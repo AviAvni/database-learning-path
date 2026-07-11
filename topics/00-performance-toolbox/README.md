@@ -104,6 +104,7 @@ before believing a conclusion.
 - Raasveldt, Holanda, Gubner, Mühleisen — "Fair Benchmarking Considered Difficult:
   Common Pitfalls in Database Performance Testing" (DBTest '18, from the DuckDB authors)
   — the DB-specific companion to this topic's §1.
+  → reading guide: [`reading-fair-benchmarking.md`](reading-fair-benchmarking.md)
 - "What Every Programmer Should Know About Memory" (Drepper) — §3–4 only, skim the rest.
   → reading guide: [`reading-drepper.md`](reading-drepper.md)
 
