@@ -1,0 +1,22 @@
+[package]
+name = "buffer-pool-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hdrhistogram = "7"
+rand = "0.8"
+rand_distr = "0.4"
+tempfile = "3"
+memmap2 = "0.9"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bin]]
+name = "pool_vs_mmap"
+path = "src/bin/pool_vs_mmap.rs"
+
+[[bench]]
+name = "eviction"
+harness = false
