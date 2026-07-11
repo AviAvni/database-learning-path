@@ -1,0 +1,12 @@
+[package]
+name = "formal-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egg = "0.9"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+debug = true

@@ -1,0 +1,74 @@
+# Reading guide — "Z3: An Efficient SMT Solver" (TACAS 2008) + `src/ast/euf/`
+
+de Moura & Bjørner. The 4-page tool paper; the architecture is the
+point. Clone already at `~/repos/z3` (from topic 16).
+
+## SMT in one diagram
+
+```
+        formula (QF or quantified)
+              │ simplify / tactics
+              ▼
+   ┌──────── CDCL SAT core ────────┐   boolean skeleton:
+   │  decide / propagate / learn   │   p ∨ ¬q, p ≡ "x+y ≤ 3" …
+   └──────┬─────────────▲──────────┘
+          │ partial      │ theory lemma
+          │ assignment   │ (conflict clause)
+          ▼             │
+   theory solvers: EUF (congruence closure e-graph),
+   linear arith (simplex), arrays, bit-vectors …
+```
+
+DPLL(T): SAT core proposes a boolean assignment; theory solvers
+check its conjunction of atoms; on conflict they hand back a lemma
+that prunes the SAT search. Theories *cooperate* by exchanging
+equalities over shared terms (Nelson-Oppen).
+
+## The e-graph, again — `src/ast/euf/`
+
+| anchor | what |
+|---|---|
+| `euf_egraph.h:23` | comment: "same effect as delayed congruence table reconstruction **from egg**" — the 2021 paper flowing back into the 2008 solver |
+| `euf_egraph.h:85` | `class egraph` |
+| `euf_egraph.h:91-96` | `to_merge` queue (plain / commutativity / justified) — the pending-unions worklist, egg's `pending` |
+| `euf_enode.h` | e-node: term + parents + root pointer |
+| `euf_etable.h` | the congruence table (hashcons keyed on canonicalized children) |
+| `euf_justification.h` | proof-producing unions — egg's `explain.rs` counterpart; Z3 needs it for conflict lemmas |
+
+Key difference from egg: Z3's e-graph must support **backtracking**
+(SAT core undoes decisions ⇒ undo unions via a trail) and
+**justifications** (every merge must be explainable to build
+conflict clauses). egg only needs monotone growth + optional
+explanations. Same structure, different contract.
+
+## E-matching (quantifiers)
+
+`∀x. f(g(x)) = x` becomes a *trigger* `f(g(x))`; e-matching finds
+instantiations by matching the trigger against the e-graph modulo
+equivalence (`euf_mam.h` — matching abstract machine ≈ egg's
+`machine.rs`, industrial strength). This is why quantified SMT is
+incomplete-but-useful: instantiation is heuristic.
+
+## Where a database meets Z3
+
+- **Query equivalence** (Cosette, topic 16): compile two SQL plans
+  to formulas, ask Z3 if outputs can differ. UNSAT = equivalent.
+- **Constraint-based test generation**: "give me a row that makes
+  this WHERE clause true" is a SAT query.
+- **Optimizer rule soundness**: our `x/x → 1` caveat is checkable —
+  `assert x=0 ∧ rewrite-changes-result`, SAT means unsound rule.
+
+## Questions (answer in notes.md)
+
+1. Why must Z3's e-graph carry justifications while egg's can skip
+   them? What would proof-producing unions cost egg's rebuild?
+2. The trail/backtracking requirement: why does deferred rebuilding
+   interact badly with undo, and how does `to_merge_t` (:91) hint at
+   the resolution?
+3. Encode the `x/x → 1` soundness check as an SMT query (ints, then
+   reals). Which theory answers each?
+4. Nelson-Oppen needs theories to agree on equalities of shared
+   terms — spot the analogy to exchanging join keys between operators
+   (topic 11).
+5. E-matching triggers: why is trigger selection the "index choice"
+   problem of SMT (too general = blowup, too specific = incomplete)?
