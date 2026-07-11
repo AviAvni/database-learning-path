@@ -68,7 +68,7 @@ flowchart TD
 
 - **Concepts:** microbenchmark pitfalls (warmup, variance, coordinated omission), CPU caches & memory hierarchy, branch prediction, TLB, `perf` counters, flamegraphs, latency percentiles vs throughput, roofline thinking.
 - **Read code:** `criterion.rs` internals (how it fights noise), RocksDB `db_bench`, redis `redis-benchmark.c`.
-- **Papers/reading:** "Systems Performance" (Gregg) ch. 1–2; Andrei Pavlo's benchmarking lecture (CMU 15-721); "How NOT to Measure Latency" (Tene talk).
+- **Papers/reading:** "Systems Performance" (Gregg) ch. 1–2; "Fair Benchmarking Considered Difficult" (DBTest '18); "How NOT to Measure Latency" (Tene talk); Drepper §3–4.
 - **Build & bench:** Rust bench harness comparing `Vec` scan vs `HashMap` lookup vs `BTreeMap` across sizes; produce flamegraphs; observe cache-line effects (seq vs random access).
 - **Capstone milestone M0:** scaffold the `falkordb-scratch` workspace + criterion bench harness + graph workload generator; record baseline numbers from the real falkordb-rs-next-gen to chase.
 

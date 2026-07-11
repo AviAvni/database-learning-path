@@ -144,6 +144,27 @@ Install: `cargo install samply flamegraph hyperfine; brew install fio`
 counters tell you *why* at the hardware level. Always use at least two of the three
 before believing a conclusion.
 
+**Roofline thinking** — before optimizing a kernel, ask which wall it's against.
+Peak performance is bounded by `min(peak compute, bandwidth × arithmetic intensity)`,
+where arithmetic intensity = ops per byte moved. Low intensity (scans, hash probes:
+~0.1–1 op/byte) → memory-bound: more SIMD won't help, cache-friendly layout will.
+High intensity (compression, hashing wide rows) → compute-bound: SIMD/algorithm wins.
+
+```
+ perf
+  │            peak compute ────────────────
+  │           ╱
+  │          ╱ ← bandwidth roof (slope = GB/s)
+  │         ╱
+  │        ╱
+  │   scan●        ●hash probe        ●compression
+  └───────┴────────┴─────────────────┴──────────── ops/byte
+        memory-bound ◄─── ridge point ───► compute-bound
+```
+
+Most database kernels live left of the ridge — that's why this whole curriculum is
+obsessed with the memory hierarchy rather than FLOPs.
+
 ```mermaid
 flowchart LR
     C["criterion<br/>WHAT got slower<br/>(numbers + CIs)"] --> P["samply / flamegraph<br/>WHY — which code<br/>(where time goes)"]

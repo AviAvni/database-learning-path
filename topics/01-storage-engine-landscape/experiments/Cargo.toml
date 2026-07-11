@@ -1,0 +1,24 @@
+[package]
+name = "engine-shootout"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fjall = "2"
+redb = "2"
+rand = "0.8"
+rand_distr = "0.4"
+tempfile = "3"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "engine_shootout"
+harness = false
+
+[profile.bench]
+debug = true
+
+[profile.release]
+debug = true
