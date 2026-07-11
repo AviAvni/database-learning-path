@@ -1,0 +1,25 @@
+[package]
+name = "perf-toolbox-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "cache_ladder"
+harness = false
+
+[[bench]]
+name = "lookup_shootout"
+harness = false
+
+[[bench]]
+name = "branch_misprediction"
+harness = false
+
+[profile.bench]
+debug = true
