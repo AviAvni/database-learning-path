@@ -23,6 +23,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 16 | Testing & Correctness Engineering | todo | |
 | 17 | SIMD & Hardware-Conscious Data Processing | todo | |
 | 18 | GPU Acceleration for Databases | todo | |
+| 19 | JIT & Query Compilation | todo | |
+| 20 | Sparse Linear Algebra & GraphBLAS Internals | todo | |
 
 ## Capstone milestones
 
@@ -47,6 +49,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M16 DST + property tests | 16 | todo |
 | M17 SIMD executor + distance kernels | 17 | todo |
 | M18 GPU backend (experimental) | 18 | todo |
+| M19 cranelift expression JIT | 19 | todo |
+| M20 sparse-matrix graph engine vs M13 shootout | 20 | todo |
 
 ## Session log
 

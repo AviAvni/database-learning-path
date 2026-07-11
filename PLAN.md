@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-19 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+21 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -199,6 +199,26 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Build & bench:** implement filter+aggregate and batch vector-distance as wgpu compute shaders (runs on Apple Silicon Metal); bench vs your topic-17 SIMD kernels *including transfer time* — find the crossover batch size where GPU wins; run BFS via SpMV on GPU vs SuiteSparse CPU.
 - **Capstone M18:** experimental GPU backend for one `minidb` hot path (vector distance scoring or columnar aggregate) behind a feature flag, with CPU-vs-GPU crossover benchmark.
 
+## 19. JIT & Query Compilation
+
+**Why:** The other answer to interpretation overhead (vs vectorization, topic 11). HyPer/Umbra made it famous; SQLite has quietly used a bytecode VM forever; SuiteSparse:GraphBLAS JIT-compiles kernels.
+
+- **Concepts:** interpreter → bytecode VM → native JIT spectrum, SQLite's VDBE, produce/consume compilation model (HyPer), compilation latency vs execution speed (why Umbra built its own IR — "Tidy Tuples"), copy-and-patch compilation, adaptive execution (start interpreting, JIT when hot), LLVM vs cranelift vs hand-rolled backends, expression JIT vs whole-pipeline JIT, postgres's LLVM JIT (and why it's often a regression).
+- **Read code:** SQLite `vdbe.c` (bytecode design), postgres `src/backend/jit/llvm/`, cranelift-jit examples, SuiteSparse:GraphBLAS JIT kernel generation (`Source/jit*`), DuckDB's *absence* of a JIT (find the discussions — vectorization as the counter-argument).
+- **Papers:** "Efficiently Compiling Efficient Query Plans for Modern Hardware" (Neumann, VLDB'11 — the paper), "Tidy Tuples and Flying Start" (Umbra, VLDBJ'21), "Copy-and-Patch Compilation" (OOPSLA'21), "Adaptive Execution of Compiled Queries" (ICDE'18), "Everything You Always Wanted to Know About Compiled and Vectorized Queries" (VLDB'18 — re-read after topic 11).
+- **Build & bench:** JIT-compile filter expressions with cranelift; three-way bench: AST-walking interpreter vs vectorized (topic 11 kernel) vs JIT — including compile time; find the query length/selectivity crossover where each wins.
+- **Capstone M19:** cranelift expression JIT in `minidb` with interpreter fallback and a compile-time budget heuristic.
+
+## 20. Sparse Linear Algebra & GraphBLAS Internals (Deep Home Turf)
+
+**Why:** You use the GraphBLAS API daily in FalkorDB — this topic is about owning what's *underneath*: the kernels, formats, and scheduling decisions SuiteSparse makes for you.
+
+- **Concepts:** sparse formats and when SuiteSparse switches between them (CSR/CSC, bitmap, full, hypersparse), SpMV vs SpMSpV, SpGEMM algorithms (Gustavson, hash-based, heap-based), masks/accumulators/semirings as an execution model, push vs pull BFS = SpMV vs masked SpMSpV (direction-optimizing), non-blocking mode & lazy evaluation, FalkorDB's delta-matrix pattern, JIT'd kernels (ties to topic 19), GPU GraphBLAS (ties to topic 18).
+- **Read code:** SuiteSparse:GraphBLAS internals — format-switch heuristics, `GB_AxB_*` SpGEMM variants, mask handling; LAGraph algorithm implementations (BFS, triangle counting, PageRank); FalkorDB's own delta-matrix layer with fresh eyes.
+- **Papers:** Davis "Algorithm 1000: SuiteSparse:GraphBLAS" (TOMS'19) + the v2 update (TOMS'23), Gustavson '78 (two-pointer SpGEMM), Buluç & Gilbert SpGEMM survey, Beamer "Direction-Optimizing BFS" (SC'12), GraphBLAS C API spec (read cover to cover once).
+- **Build & bench:** implement CSR SpMV and Gustavson SpGEMM in Rust; bench vs SuiteSparse on the same matrices (SuiteSparse Matrix Collection); implement direction-optimizing BFS with masks; measure where hypersparse representation pays off.
+- **Capstone M20:** replace `minidb`'s M13 adjacency-list graph engine with your own sparse-matrix kernels; benchmark both on LDBC queries — a FalkorDB-vs-neo4j architecture shootout inside your own codebase.
+
 ---
 
 ## After the plan (ideas backlog)
@@ -207,6 +227,5 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - Time-series engines (Gorilla compression, InfluxDB IOx)
 - Distributed transactions (Percolator, Calvin, Spanner/TrueTime)
 - HTAP architectures (TiDB/TiFlash)
-- Query compilation with cranelift (compile `minidb` queries to native code)
 - FPGA / SmartNIC / computational storage offload (beyond GPU)
 - CRDTs & local-first sync (interesting contrast to consensus)
