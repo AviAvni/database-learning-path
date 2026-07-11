@@ -12,7 +12,7 @@ internals are familiar ground; the goal is breadth + depth across all database d
 
 ```
 README.md          ← you are here: how this repo works
-PLAN.md            ← the full curriculum (26 topics) — the source of truth
+PLAN.md            ← the full curriculum (27 topics) — the source of truth
 PROGRESS.md        ← status tracker: what's done, in progress, next
 capstone/          ← falkordb-rs-next-gen rebuilt from scratch, one milestone per topic
 topics/            ← created lazily — one dir per topic when the deep dive starts

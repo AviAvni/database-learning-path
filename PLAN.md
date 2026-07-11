@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-26 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+27 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -268,6 +268,16 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Papers:** "node2vec" (KDD'16), "Semi-Supervised Classification with GCNs" (Kipf & Welling, ICLR'17), "Inductive Representation Learning on Large Graphs" (GraphSAGE, NeurIPS'17), "Graph Attention Networks" (ICLR'18), "TransE" (NeurIPS'13), "Graph Neural Networks meet Databases" survey (pick a recent arXiv one when starting).
 - **Build & bench:** implement node2vec and a 2-layer GCN in Rust (candle/burn) using your own M20 SpMM as the aggregation kernel; train on Cora and ogbn-arxiv; bench your SpMM against DGL's on the same graphs; store the learned embeddings in your M14 vector index and measure end-to-end hybrid query latency.
 - **Capstone M25:** embeddings pipeline — compute node2vec/GCN embeddings with your own kernels, store them in the vector index, and answer GraphRAG-style hybrid queries (pattern match + semantic similarity) in one Cypher query.
+
+## 26. Indexing & Probabilistic Data Structures
+
+**Why:** Indexes are bets — you pay write amplification for read speed. And the probabilistic structures (bloom filters, HLL — redis's PFCOUNT is one) buy huge wins by being *slightly wrong*.
+
+- **Concepts:** secondary index design and its write cost, composite/covering indexes & index-only scans, hash vs B-tree vs bitmap vs BRIN (≈ zone maps), partial & expression indexes, index maintenance under MVCC (postgres HOT, index bloat), index selection ("what-if" analysis), **learned indexes** (RMI, ALEX, PGM — do they survive contact with updates?); probabilistic filters: bloom filter math (FPR vs bits/key), blocked bloom (cache-line friendly), cuckoo, xor, ribbon filters (RocksDB's evolution); sketches: HyperLogLog (dense/sparse), count-min, t-digest, top-k.
+- **Read code:** postgres index access methods (`nbtree/`, `gin/`, `brin/`), RocksDB `util/bloom*` + ribbon filter, redis `hyperloglog.c` (the dense/sparse encoding dance — a classic), RedisBloom module, PGM-index and ALEX repos.
+- **Papers:** "The Case for Learned Index Structures" (SIGMOD'18), "ALEX" (SIGMOD'20), "The PGM-index" (VLDB'20), "Cuckoo Filter: Practically Better Than Bloom" (CoNEXT'14), "Xor Filters" (JEA'20), "Ribbon Filter" (arXiv:2103.02515), "HyperLogLog in Practice" (Google, EDBT'13).
+- **Build & bench:** implement blocked-bloom, cuckoo, and xor filters — bench FPR vs bits-per-key vs lookup latency in one chart; implement HLL and verify the error bound empirically against exact counts; race a PGM-index against your M3 B+tree on sorted keys, then add updates and watch the story change.
+- **Capstone M26:** secondary range indexes maintained under MVCC + bloom filters in the LSM backend + HLL fast path for approximate `count(DISTINCT ...)` in Cypher.
 
 ---
 

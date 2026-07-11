@@ -39,7 +39,7 @@ by comparing your design and numbers against the corresponding module there.
 
 ## Milestone map
 
-Milestones M0–M25 map 1:1 to curriculum topics 0–25 in `PLAN.md`; each topic's
+Milestones M0–M26 map 1:1 to curriculum topics 0–26 in `PLAN.md`; each topic's
 "Capstone milestone" line defines the scope. Status lives in `PROGRESS.md`.
 
 Rough dependency spine: M0 → M2 → M13 (naive adjacency graph) → M10/M11 (query engine)

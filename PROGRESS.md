@@ -30,6 +30,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 23 | Full-Text Search & Inverted Indexes | todo | |
 | 24 | Advanced Graph Algorithms & Analytics | todo | |
 | 25 | Graph Neural Networks & Graph ML | todo | |
+| 26 | Indexing & Probabilistic Data Structures | todo | |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -61,6 +62,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M23 full-text index + hybrid search | 23 | todo |
 | M24 algorithm library as Cypher procedures | 24 | todo |
 | M25 GNN embeddings pipeline + GraphRAG queries | 25 | todo |
+| M26 MVCC secondary indexes + bloom + HLL count path | 26 | todo |
 
 ## Session log
 
