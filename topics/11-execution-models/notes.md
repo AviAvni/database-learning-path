@@ -35,7 +35,7 @@ per-row branch.) Predict accordingly:
 Surprises / dead ends:
 
 - (provided-baseline surprise, already found) LLVM DEVIRTUALIZED the
-  Box<dyn> operator chain when the tree was statically known —
+  `Box<dyn>` operator chain when the tree was statically known —
   202 M rows/s before black_box, 180 after. A compiler will happily turn
   your Volcano engine into a compiled engine if you let it. Real engines
   can't (trees built from plans at runtime).

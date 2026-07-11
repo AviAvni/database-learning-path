@@ -42,7 +42,7 @@ galloping motivation.
 | wand speedup over oracle, common∧rare, wall clock ×? | | |
 | roaring t0∧t1 AND (both ~bitmap containers) vs 97 µs vec ×? | | |
 | roaring t0∧t5000 AND vs 52 µs vec ×? | | |
-| roaring t0 memory vs 400 KB Vec<u32> | | |
+| roaring t0 memory vs 400 KB `Vec<u32>` | | |
 
 ## Implementation log
 

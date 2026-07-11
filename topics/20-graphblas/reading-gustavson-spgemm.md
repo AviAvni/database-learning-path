@@ -53,7 +53,7 @@ accumulation and pays for it in allocator traffic.
   parallel over i) BUT power-law graphs make row costs wildly
   unequal ⇒ saxpy3's coarse/fine split, Gunrock's merge_path — the
   same load-balance problem at every layer of this curriculum
-- **compression**: masked SpGEMM (C<M>=A*B) can skip work only in
+- **compression**: masked SpGEMM (`C<M>=A*B`) can skip work only in
   dot formulation; Gustavson's mask only prunes writes
 
 ## 4. Cost intuition to carry
@@ -83,6 +83,6 @@ why every real implementation has the fine-task path.
    merge), and why does it win out-of-core / distributed
    (sequential I/O, no random SPA)?
 5. Masked Gustavson can't skip work; masked dot can. Show it on
-   triangle counting C<L>=L*L: what does each formulation compute
+   triangle counting `C<L>=L*L`: what does each formulation compute
    per wedge, and reconcile with LAGraph shipping BOTH Sandia_LL
    (saxpy) and Sandia_LUT (dot) as the fastest per-graph choices.

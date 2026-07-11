@@ -100,7 +100,7 @@ back down, and why is demotion rarer than promotion everywhere?
 
 Topic 23's `postings.rs` stub already fixes array↔bitmap promotion at 4096.
 After this guide: (a) add the galloping intersect to your mental model of
-why FalkorDB label filters should be roaring, not Vec<u64>; (b) M26's plan
+why FalkorDB label filters should be roaring, not `Vec<u64>`; (b) M26's plan
 (roaring for label/type filtering) inherits the run container for
 "all nodes created in bulk-load order" — measure whether your ID allocator
 produces runs.

@@ -15,7 +15,7 @@ piece of code in the library.
 | Source/mxm/GB_AxB_saxpy3.c:22-60 | coarse/fine tasks × Gustavson/hash — read this header comment twice |
 | Source/mxm/GB_AxB_saxpy3.c:57 | hash > m/16 ⇒ fall back to Gustavson |
 | Source/mxm/GB_AxB_saxpy3_flopcount.c | the sizing pre-pass |
-| Source/mxm/GB_AxB_dot3.c:2-10 | C<M>=A'*B — mask REQUIRED, work ∝ nnz(M) |
+| Source/mxm/GB_AxB_dot3.c:2-10 | `C<M>=A'*B` — mask REQUIRED, work ∝ nnz(M) |
 | Source/mxm/GB_AxB_dot2.c / dot4.c | unmasked / C+=A'*B dense-output variants |
 
 ## 1. Format switching is a bitmask + two floats
@@ -96,7 +96,7 @@ multiply.
    What happens on underestimate (collision pile-up — degrade,
    or rebuild? find it in GB_AxB_saxpy3.c) — compare SwissTable's
    resize story (topic 8).
-4. dot3 vs saxpy3 crossover: for C<L>=L*U' triangle counting on an
+4. dot3 vs saxpy3 crossover: for `C<L>=L*U'` triangle counting on an
    RMAT graph, estimate both costs (nnz(L) dots of avg length d̄ vs
    Σ flops) — which wins and why does LAGraph still offer both
    (LAGr_TriangleCount.c:31-46)?

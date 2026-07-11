@@ -1,0 +1,17 @@
+[book]
+title = "Database Learning Path"
+authors = ["Avi Avni"]
+language = "en"
+src = "."
+
+[build]
+create-missing = false
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+git-repository-url = "https://github.com/AviAvni/database-learning-path"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+default-theme = "rust"
+preferred-dark-theme = "ayu"

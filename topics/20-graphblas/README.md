@@ -55,7 +55,7 @@ Gustavson when the hash would exceed m/16 (:57). A *flopcount* pass
 (GB_AxB_saxpy3_flopcount.c) sizes everything first — cudf's
 size/retrieve two-phase (topic 18), five years earlier.
 
-`GB_AxB_dot3.c` computes C<M>=A'*B *only where M has entries* — the
+`GB_AxB_dot3.c` computes `C<M>=A'*B` *only where M has entries* — the
 reason FalkorDB masks are free performance, and the exact semantics
 our stub reproduces.
 
@@ -89,7 +89,7 @@ The GraphBLAS trinity, as an *executor* design:
 - **semiring (⊕,⊗)**: the inner loop's two ops. Swapping (+,×) for
   (min,+) turns SpMV into SSSP relaxation; (ANY,PAIR) turns it into
   reachability with early exit.
-- **mask C<M>=...**: not post-filtering — dot3 *iterates the mask*,
+- **mask `C<M>=...`**: not post-filtering — dot3 *iterates the mask*,
   so structural masks change complexity class (triangle counting:
   compute (L*U')∘L touches only wedges that close — LAGr_
   TriangleCount.c:31-46 lists all six masked formulations).

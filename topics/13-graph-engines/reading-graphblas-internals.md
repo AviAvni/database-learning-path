@@ -39,7 +39,7 @@ data shape, chosen by measurement, invisible above the API.
 
 `Source/mxm/GB_AxB_meta.c:20-21`:
 
-> generic: for any semiring; dot2/dot3: does C=A'*B, C<M>=A'*B ...
+> generic: for any semiring; dot2/dot3: does `C=A'*B`, `C<M>=A'*B` ...
 > saxpy: Gustavson + Hash
 
 - **dot** (`dot2/dot3/dot4` files in `Source/mxm/`): C(i,j) =

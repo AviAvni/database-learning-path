@@ -72,7 +72,7 @@ Surprises / dead ends:
 1. Star-graph R⋈S intermediates vs triangle output:
 2. AGM bound for the 4-cycle:
 3. Galloping and power-law skew:
-4. Why C<A>=A² never materializes A² (dot3):
+4. Why `C<A>=A²` never materializes A² (dot3):
 5. M10 trigger for intersect vs binary join (pattern cyclicity):
 
 ### LDBC SNB (reading-ldbc-snb.md)

@@ -73,6 +73,6 @@ slot versioning in `index_dense.hpp`.
 4. usearch templates the metric; qdrant enum-dispatches scorers. Map
    this to topic 11's compiled-vs-vectorized argument — who wins
    where?
-5. For YOUR hnsw.rs: steal the tape or use Vec<Vec<u32>> per level?
+5. For YOUR hnsw.rs: steal the tape or use `Vec<Vec<u32>>` per level?
    Decide, justify with expected access pattern, and note what M17's
    SIMD needs.

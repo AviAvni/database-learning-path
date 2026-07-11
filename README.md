@@ -8,6 +8,15 @@ Background: author is a core developer of [FalkorDB](https://github.com/FalkorDB
 and [falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen), so graph
 internals are familiar ground; the goal is breadth + depth across all database domains.
 
+## Read this online
+
+The whole path is published as a browsable book (sidebar navigation, search,
+rendered diagrams) at **https://aviavni.github.io/database-learning-path/** —
+or [download the entire book as a PDF](database-learning-path.pdf).
+
+To build locally: `cargo install mdbook mdbook-mermaid`, then
+`mdbook-mermaid install . && mdbook serve` from the repo root.
+
 ## Repo layout
 
 ```

@@ -59,7 +59,7 @@ relation matrix is hypersparse.
 - [ ] spgemm_spa (symbolic+numeric, stamp-marked SPA) — test green
 - [ ] bfs_push / bfs_pull / bfs_diropt — tests green incl. path-stays-push
 - [ ] per-level trace analyzed vs LAGraph α/β thresholds
-- [ ] stretch: masked SpGEMM (triangle count C<L>=L*L) — dot vs saxpy
+- [ ] stretch: masked SpGEMM (triangle count `C<L>=L*L`) — dot vs saxpy
 - [ ] prediction table reconciled
 
 Surprises / dead ends:
@@ -88,7 +88,7 @@ Surprises / dead ends:
 2. SPA-vs-hash crossover from cache numbers:
 3. When guess-and-grow beats symbolic+numeric:
 4. Outer-product = LSM runs + merge:
-5. Masked saxpy vs masked dot on C<L>=L*L:
+5. Masked saxpy vs masked dot on `C<L>=L*L`:
 
 ### Beamer SC '12 (reading-beamer-sc12.md)
 
