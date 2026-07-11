@@ -1,0 +1,19 @@
+[package]
+name = "topic03-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+redb = "2"
+rand = "0.8"
+tempfile = "3"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "disk_btree"
+harness = false
+
+[profile.bench]
+debug = true
