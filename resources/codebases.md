@@ -48,6 +48,7 @@ Clone the ones in active use to `~/repos/`.
 | [ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse) | C++ | columnar OLAP at the extreme; read specific MergeTree parts only |
 | [unum-cloud/usearch](https://github.com/unum-cloud/usearch) | C++ | compact single-header HNSW — topic 14 |
 | [DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) | C | SuiteSparse internals — go deeper than the API you already use |
+| [GraphBLAS/LAGraph](https://github.com/GraphBLAS/LAGraph) | C | graph algorithms as linear algebra — the reference library over GraphBLAS (topics 20, 24) |
 | [Z3Prover/z3](https://github.com/Z3Prover/z3) | C++ | SMT solver: query-equivalence proving, invariant checking (topic 16); also a perf-engineering masterclass |
 | [quickwit-oss/tantivy](https://github.com/quickwit-oss/tantivy) | Rust | inverted index / full-text engine — the readable Lucene (topic 23) |
 | [apache/lucene](https://github.com/apache/lucene) | Java | the canon of search: codecs, FSTs, segment merging (topic 23) |

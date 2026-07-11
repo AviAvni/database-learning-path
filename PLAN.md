@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-24 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+26 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -248,6 +248,26 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Papers:** "Inverted Files for Text Search Engines" (Zobel & Moffat, CSUR'06 — the survey), BM25 origins (Robertson & Zaragoza "The Probabilistic Relevance Framework"), "Faster Top-k Document Retrieval Using Block-Max Indexes" (SIGIR'11), "Roaring Bitmaps" (arXiv:1603.06549).
 - **Build & bench:** build a mini inverted index in Rust: tokenize → posting lists → BM25 → top-k with block-max WAND; bench vs tantivy on a Wikipedia dump; compare roaring vs raw-vec posting lists for AND/OR queries.
 - **Capstone M23:** full-text index on node/edge properties + hybrid search fusing BM25 with the M14 vector index (RRF) — what FalkorDB delegates to RediSearch, built in.
+
+## 24. Advanced Graph Algorithms & Analytics
+
+**Why:** Traversal (topic 13/20) is table stakes; the value is in analytics — centrality, communities, components — and in knowing when the algebraic (LAGraph) formulation beats the frontier-based one.
+
+- **Concepts:** SSSP (delta-stepping), betweenness centrality (Brandes; batched algebraic variant), PageRank (and convergence tricks), connected components (label propagation, Afforest), community detection (Louvain → Leiden, and why Louvain's communities can be broken), triangle counting & k-truss (masked SpGEMM!), push vs pull direction switching (Ligra), algebraic vs frontier formulations trade-offs, the GAP benchmark suite as the yardstick.
+- **Read code:** LAGraph (the algorithm collection over GraphBLAS — study how each algorithm maps to masks/semirings; you have `lagraph_lib` in the reference repo already), GAP benchmark reference implementations, Ligra.
+- **Papers:** "A Faster Algorithm for Betweenness Centrality" (Brandes '01), "From Louvain to Leiden" (Sci. Reports '19), "Ligra: A Lightweight Graph Processing Framework" (PPoPP'13), "The GAP Benchmark Suite" (arXiv:1508.03619), "Delta-Stepping" (Meyer & Sanders), Azad & Buluç masked-SpGEMM triangle counting.
+- **Build & bench:** implement Brandes betweenness and Leiden in Rust over your M20 sparse core; compare against LAGraph on the same matrices; run the GAP suite (BFS, SSSP, PR, CC, BC, TC) and profile where the algebraic formulation wins/loses vs frontier-based.
+- **Capstone M24:** LAGraph-style algorithm library over the sparse core, exposed as Cypher procedures (`CALL algo.pagerank(...)` — FalkorDB-style).
+
+## 25. Graph Neural Networks & Graph ML
+
+**Why:** Message passing *is* SpMM over a semiring — your GraphBLAS core is already a GNN engine waiting to happen. And GraphRAG (which you know from GraphRAG-SDK) is pulling graph DBs into the ML serving path.
+
+- **Concepts:** node embeddings (DeepWalk, node2vec — random walks + skip-gram), message passing as generalized SpMM, GCN / GraphSAGE / GAT (and what each adds), mini-batch neighbor sampling for graphs that don't fit (GraphSAGE's real contribution), knowledge-graph embeddings (TransE family), GNN systems view: how PyG/DGL kernels map to sparse ops, embeddings-in-the-database (compute → store in vector index → hybrid query), GraphRAG architectures.
+- **Read code:** DGL / PyTorch Geometric sparse kernels (the SpMM/SDDMM ops underneath), candle or burn (Rust ML — for implementing), your own GraphRAG-SDK with fresh systems eyes.
+- **Papers:** "node2vec" (KDD'16), "Semi-Supervised Classification with GCNs" (Kipf & Welling, ICLR'17), "Inductive Representation Learning on Large Graphs" (GraphSAGE, NeurIPS'17), "Graph Attention Networks" (ICLR'18), "TransE" (NeurIPS'13), "Graph Neural Networks meet Databases" survey (pick a recent arXiv one when starting).
+- **Build & bench:** implement node2vec and a 2-layer GCN in Rust (candle/burn) using your own M20 SpMM as the aggregation kernel; train on Cora and ogbn-arxiv; bench your SpMM against DGL's on the same graphs; store the learned embeddings in your M14 vector index and measure end-to-end hybrid query latency.
+- **Capstone M25:** embeddings pipeline — compute node2vec/GCN embeddings with your own kernels, store them in the vector index, and answer GraphRAG-style hybrid queries (pattern match + semantic similarity) in one Cypher query.
 
 ---
 

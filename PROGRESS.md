@@ -28,6 +28,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 21 | Formal Methods & Verification | todo | |
 | 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | todo | |
 | 23 | Full-Text Search & Inverted Indexes | todo | |
+| 24 | Advanced Graph Algorithms & Analytics | todo | |
+| 25 | Graph Neural Networks & Graph ML | todo | |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -57,6 +59,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M21 TLA+ spec + Lean invariant proof | 21 | todo |
 | M22 LDBC suite + 3-way FalkorDB shootout | 22 | todo |
 | M23 full-text index + hybrid search | 23 | todo |
+| M24 algorithm library as Cypher procedures | 24 | todo |
+| M25 GNN embeddings pipeline + GraphRAG queries | 25 | todo |
 
 ## Session log
 
