@@ -1,7 +1,7 @@
 # Reading guide — cr-sqlite: a real database goes multi-master
 
 The other four guides are about *documents*. cr-sqlite
-(~/repos/cr-sqlite) is the one that answers this topic's database
+([~/repos/cr-sqlite](https://github.com/vlcn-io/cr-sqlite)) is the one that answers this topic's database
 question: what does it take to bolt CRDT semantics onto a *relational*
 engine as a loadable extension — no fork, no new storage engine. This is
 the closest published prior art to M31's "active-active FalkorDB."

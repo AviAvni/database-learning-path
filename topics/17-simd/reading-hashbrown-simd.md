@@ -1,6 +1,6 @@
 # Reading guide — hashbrown `Group` + memchr `Vector` (the movemask story)
 
-Clone: `~/repos/hashbrown` (`src/control/group/`) and `~/repos/memchr`
+Clone: [`~/repos/hashbrown`](https://github.com/rust-lang/hashbrown) (`src/control/group/`) and [`~/repos/memchr`](https://github.com/BurntSushi/memchr)
 (`src/vector.rs`). Two crates, one question: how do you get an x86
 `movemask` (one bit per lane) on ISAs that don't have it — and when
 should you not even try?

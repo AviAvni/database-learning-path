@@ -1,6 +1,6 @@
 # Reading redis `zmalloc.c` (+ turso's page cache) — 1 h
 
-Repo: `~/repos/redis`, file `src/zmalloc.c`. Short read; the lesson is what
+Repo: [`~/repos/redis`](https://github.com/redis/redis), file `src/zmalloc.c`. Short read; the lesson is what
 memory management means when there are no pages — plus a bonus: turso's
 CLOCK page cache in Rust, the closest existing code to your experiment.
 
@@ -33,7 +33,7 @@ analogue: DuckDB gates allocations up front; redis counts and evicts after.
   budget in a single GrB call. Your capstone owns its allocations; decide
   what "maxmemory" should even mean for a graph store.
 
-## 3. Bonus: turso's page cache — ~/repos/turso core/storage/page_cache.rs
+## 3. Bonus: turso's page cache — [~/repos/turso](https://github.com/tursodatabase/turso) core/storage/page_cache.rs
 
 A real Rust CLOCK implementation to compare with your experiment *after* you
 build it (don't copy first):

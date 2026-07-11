@@ -1,8 +1,8 @@
 # Reading guide — SlateDB & Quickwit: built S3-first (code walk)
 
 **Sources:**
-- `~/repos/slatedb/slatedb/src/` — an LSM whose ONLY disk is an object store
-- `~/repos/quickwit/quickwit/quickwit-storage/src/` — search over S3;
+- [`~/repos/slatedb/slatedb/src/`](https://github.com/slatedb/slatedb) — an LSM whose ONLY disk is an object store
+- [`~/repos/quickwit/quickwit/quickwit-storage/src/`](https://github.com/quickwit-oss/quickwit) — search over S3;
   the storage tricks generalize
 - (turso's object-store backend is in flight upstream; the slatedb patterns
   are what it converges to)

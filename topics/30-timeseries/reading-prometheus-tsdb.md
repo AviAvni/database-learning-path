@@ -1,6 +1,6 @@
 # Reading guide — Prometheus TSDB: a complete time-series engine in readable Go
 
-Code: `~/repos/prometheus/tsdb/`. This is the best single codebase for
+Code: [`~/repos/prometheus/tsdb/`](https://github.com/prometheus/prometheus). This is the best single codebase for
 this topic: every TSDB concept exists here in a form you can read in an
 afternoon, and its design doc lineage (Fabian Reinartz's "Writing a Time
 Series Database from Scratch") explains every choice.

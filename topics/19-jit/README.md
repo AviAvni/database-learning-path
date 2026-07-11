@@ -42,7 +42,7 @@ queries.
 
 ## 2. SQLite's VDBE — the bytecode VM that refuses to die
 
-`~/repos/sqlite/src/vdbe.c` — one giant dispatch loop
+[`~/repos/sqlite/src/vdbe.c`](https://github.com/sqlite/sqlite) — one giant dispatch loop
 (vdbe.c:1049 `switch( pOp->opcode )`), 199 `case OP_` opcodes, each
 op a fixed struct (vdbeInt.h:55 `struct VdbeOp`: opcode + p1..p5
 operands). `EXPLAIN SELECT ...` prints the program.
@@ -103,7 +103,7 @@ memcpy + patching holes — microseconds. Guide:
 
 ## 5. Postgres's LLVM JIT — a cautionary tale
 
-`~/repos/postgres/src/backend/jit/llvm/` — expression + tuple-deform
+[`~/repos/postgres/src/backend/jit/llvm/`](https://github.com/postgres/postgres) — expression + tuple-deform
 JIT only (NOT whole-pipeline: the executor stays interpreted;
 llvmjit_expr.c:80 `llvm_compile_expr` compiles `ExprState` step
 arrays, emitting one basic block per step, llvmjit_expr.c:302-307).
@@ -142,7 +142,7 @@ the eval.rs interpreter is the FalkorDB analogue of ExprState.
 
 ## 8. cranelift — the build tool
 
-`~/repos/cranelift-jit-demo/src/jit.rs` is the whole recipe (461
+[`~/repos/cranelift-jit-demo/src/jit.rs`](https://github.com/bytecodealliance/cranelift-jit-demo) is the whole recipe (461
 lines): JITBuilder/JITModule (:39-41), FunctionBuilder translates
 AST→CLIF IR (:135, :189), then declare→define→finalize→pointer
 (:69-90). Cranelift sits at Umbra's design point: fast single-pass

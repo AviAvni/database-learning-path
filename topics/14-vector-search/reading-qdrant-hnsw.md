@@ -1,6 +1,6 @@
 # Reading guide — qdrant's HNSW + filtered search
 
-Repo: `~/repos/qdrant`, everything under
+Repo: [`~/repos/qdrant`](https://github.com/qdrant/qdrant), everything under
 `lib/segment/src/index/hnsw_index/`. This is production HNSW: the
 paper plus five years of scar tissue — and filtering, qdrant's
 actual specialty.

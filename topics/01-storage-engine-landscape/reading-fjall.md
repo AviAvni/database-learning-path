@@ -1,6 +1,6 @@
 # Reading fjall — a clean Rust LSM
 
-Repo: `~/repos/fjall` (shallow clone). Line numbers from the clone; expect drift.
+Repo: [`~/repos/fjall`](https://github.com/fjall-rs/fjall) (shallow clone). Line numbers from the clone; expect drift.
 
 fjall is the *keyspace/journal/scheduling* layer; the actual tree (memtable, SSTs,
 blooms, block index) lives in the external `lsm-tree` crate (Cargo.toml:29). Reading

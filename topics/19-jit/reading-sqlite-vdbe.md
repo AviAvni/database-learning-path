@@ -1,4 +1,4 @@
-# Reading guide — SQLite VDBE (`~/repos/sqlite/src/vdbe.c`)
+# Reading guide — SQLite VDBE ([`~/repos/sqlite/src/vdbe.c`](https://github.com/sqlite/sqlite))
 
 The oldest shipping answer to interpretation overhead: don't walk
 the AST, flatten it to bytecode once at prepare time, then run a

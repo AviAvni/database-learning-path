@@ -25,7 +25,7 @@ b-tree/rle machinery).
                 (non-text) ordered containers          same origin-pair idea
 ```
 
-## yrs walk (~/repos/y-crdt)
+## yrs walk ([~/repos/y-crdt](https://github.com/y-crdt/y-crdt))
 
 | anchor | what to see |
 |---|---|
@@ -35,7 +35,7 @@ b-tree/rle machinery).
 | `yrs/src/block.rs:984`, `:995` | `integrate`/`integrate_item` dispatch |
 | `yrs/src/block.rs:1415` | `Item::integrate` — the conflict-resolution loop. Map each branch onto your rga.rs `apply`: the scan for the insert position, the (client-id) tiebreak, splitting a run when the insert lands mid-Item |
 
-## diamond-types walk (~/repos/diamond-types)
+## diamond-types walk ([~/repos/diamond-types](https://github.com/josephg/diamond-types))
 
 | anchor | what to see |
 |---|---|

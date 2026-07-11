@@ -1,6 +1,6 @@
 # Reading guide — qdrant's quantization stack
 
-Repo: `~/repos/qdrant`. The encoders live in their own crate,
+Repo: [`~/repos/qdrant`](https://github.com/qdrant/qdrant). The encoders live in their own crate,
 `lib/quantization/src/`; the wiring into search is
 `lib/segment/src/vector_storage/quantized/`.
 

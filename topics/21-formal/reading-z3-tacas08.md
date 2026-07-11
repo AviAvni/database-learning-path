@@ -1,7 +1,7 @@
 # Reading guide — "Z3: An Efficient SMT Solver" (TACAS 2008) + `src/ast/euf/`
 
 de Moura & Bjørner. The 4-page tool paper; the architecture is the
-point. Clone already at `~/repos/z3` (from topic 16).
+point. Clone already at [`~/repos/z3`](https://github.com/Z3Prover/z3) (from topic 16).
 
 ## SMT in one diagram
 

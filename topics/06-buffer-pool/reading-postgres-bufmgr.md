@@ -1,6 +1,6 @@
 # Reading postgres `bufmgr.c` + `freelist.c` — guided skim (2 h)
 
-Repo: `~/repos/postgres`. Files: `src/backend/storage/buffer/bufmgr.c`,
+Repo: [`~/repos/postgres`](https://github.com/postgres/postgres). Files: `src/backend/storage/buffer/bufmgr.c`,
 `freelist.c`, `src/include/storage/buf_internals.h`,
 `src/include/storage/lwlock.h`. You're here for four mechanisms.
 

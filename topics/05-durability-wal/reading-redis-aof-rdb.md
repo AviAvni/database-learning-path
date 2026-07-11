@@ -1,6 +1,6 @@
 # Reading redis `aof.c` / `rdb.c` — durability, FalkorDB edition (1.5 h)
 
-Repo: `~/repos/redis`. This is the durability FalkorDB actually has today —
+Repo: [`~/repos/redis`](https://github.com/redis/redis). This is the durability FalkorDB actually has today —
 read it as the incumbent your M5 design competes with.
 
 ## 1. AOF = the command stream is the log

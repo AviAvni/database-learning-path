@@ -1,6 +1,6 @@
 # Reading tidesdb — an LSM in plain C (skim)
 
-Repo: `~/repos/tidesdb` (shallow clone). Skim-read: 1–2 h. The value here is seeing
+Repo: [`~/repos/tidesdb`](https://github.com/tidesdb/tidesdb) (shallow clone). Skim-read: 1–2 h. The value here is seeing
 the same LSM machinery as fjall with *nothing* abstracted away — memory ordering,
 pointer arithmetic, and disk offsets are all in your face.
 

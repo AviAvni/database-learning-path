@@ -1,4 +1,4 @@
-# Reading guide — FalkorDB's delta matrices (`~/repos/FalkorDB/src/graph/delta_matrix/`)
+# Reading guide — FalkorDB's delta matrices ([`~/repos/FalkorDB/src/graph/delta_matrix/`](https://github.com/FalkorDB/FalkorDB))
 
 Your own code, with this curriculum's eyes. The delta matrix is
 topic 3's LSM memtable+tombstone pattern rebuilt over GrB matrices

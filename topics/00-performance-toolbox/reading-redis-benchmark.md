@@ -1,6 +1,6 @@
 # Code reading — redis `redis-benchmark.c`
 
-Source: `~/repos/redis/src/redis-benchmark.c` (2028 lines, pinned at Redis 8.6.2 /
+Source: [`~/repos/redis/src/redis-benchmark.c`](https://github.com/redis/redis) (2028 lines, pinned at Redis 8.6.2 /
 `a176d1225`). One file, no dependencies beyond hiredis + the `ae` event loop — readable
 top to bottom in an evening. Study-guide questions: *how does it implement pipelining,
 and what does it get wrong about coordinated omission?*

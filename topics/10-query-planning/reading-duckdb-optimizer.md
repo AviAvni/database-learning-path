@@ -1,6 +1,6 @@
 # Reading guide — DuckDB `src/optimizer/`: the readable optimizer (~2 h)
 
-Local clone: `~/repos/duckdb`. Start at `optimizer.cpp`, then
+Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Start at `optimizer.cpp`, then
 `filter_pushdown.cpp`, then the `join_order/` subdirectory — the payoff.
 
 ## 1. The pass pipeline (optimizer.cpp)

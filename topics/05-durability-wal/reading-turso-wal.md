@@ -1,6 +1,6 @@
 # Reading turso's WAL — frames, checksum chain, checkpoint (1.5–2 h)
 
-Repo: `~/repos/turso`. Files: `core/storage/wal.rs`,
+Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso). Files: `core/storage/wal.rs`,
 `core/storage/sqlite3_ondisk.rs`, `core/io/mod.rs`. This is SQLite's WAL mode
 in Rust — the design your experiment should steal most from.
 

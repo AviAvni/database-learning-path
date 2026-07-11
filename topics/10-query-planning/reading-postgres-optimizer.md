@@ -1,6 +1,6 @@
 # Reading guide — postgres optimizer: 45 years of Selinger (~1.5 h)
 
-Local clone: `~/repos/postgres`, dir `src/backend/optimizer/`. Read for
+Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), dir `src/backend/optimizer/`. Read for
 the join search skeleton and the honesty of the default constants —
 this is Selinger '79, still in production.
 

@@ -1,7 +1,7 @@
 # Reading guide — the Rust planner stack: sqlparser-rs, DataFusion, polars (~1.5 h)
 
-Three local clones: `~/repos/sqlparser-rs`, `~/repos/datafusion`,
-`~/repos/polars`. Read for the RUST-shaped answers — you'll use
+Three local clones: [`~/repos/sqlparser-rs`](https://github.com/apache/datafusion-sqlparser-rs), [`~/repos/datafusion`](https://github.com/apache/datafusion),
+[`~/repos/polars`](https://github.com/pola-rs/polars). Read for the RUST-shaped answers — you'll use
 sqlparser-rs directly in the experiments, and M10's Cypher planner will
 face every design choice DataFusion made.
 

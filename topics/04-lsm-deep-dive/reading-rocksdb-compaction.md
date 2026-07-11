@@ -1,6 +1,6 @@
 # Reading RocksDB compaction + SST format (guided skim, 2–3 h)
 
-Repo: `~/repos/rocksdb`. You read the lsm-tree crate first; now the industrial
+Repo: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb). You read the lsm-tree crate first; now the industrial
 version — read for what production adds: stalls, partitioned indexes, ribbon
 filters, universal compaction.
 

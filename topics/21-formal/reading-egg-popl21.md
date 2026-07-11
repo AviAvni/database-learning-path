@@ -1,6 +1,6 @@
 # Reading guide — "egg: Fast and Extensible Equality Saturation" (POPL 2021) + source
 
-Willard et al. Clone: `~/repos/egg` (read it fully — `src/` is
+Willard et al. Clone: [`~/repos/egg`](https://github.com/egraphs-good/egg) (read it fully — `src/` is
 ~10K lines and half of that is `explain.rs`/tests). The paper's two
 contributions: **deferred rebuilding** (batch congruence repair) and
 **e-class analyses** (attach lattice facts like constant values to

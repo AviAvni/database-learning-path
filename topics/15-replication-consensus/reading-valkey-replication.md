@@ -1,6 +1,6 @@
 # Reading guide — valkey `replication.c`
 
-Clone: `~/repos/valkey` (`src/replication.c`, ~5600 lines). The
+Clone: [`~/repos/valkey`](https://github.com/valkey-io/valkey) (`src/replication.c`, ~5600 lines). The
 canonical async leader/follower design: ack the client immediately,
 ship the command stream best-effort, survive disconnects with a
 backlog. Everything Raft pays for, valkey skips — read it to see the

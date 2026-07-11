@@ -1,6 +1,6 @@
 # Reading guide — libcudf (GPU columnar operators)
 
-Clone: `~/repos/cudf` (`cpp/src/`). RAPIDS' GPU DataFrame engine —
+Clone: [`~/repos/cudf`](https://github.com/rapidsai/cudf) (`cpp/src/`). RAPIDS' GPU DataFrame engine —
 Arrow-layout columns (topic 12) with every operator rewritten under
 GPU constraints: no resizable output, atomics that must be amortized,
 and a memory hierarchy you manage by hand.

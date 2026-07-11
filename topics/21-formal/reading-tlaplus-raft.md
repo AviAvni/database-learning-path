@@ -1,7 +1,7 @@
 # Reading guide — Specifying Systems (part I) + Ongaro's raft.tla
 
 Lamport's book part I (chapters 1-7) teaches the language; Ongaro's
-published Raft spec (`~/repos/raft.tla/raft.tla`, 471 lines) shows
+published Raft spec ([`~/repos/raft.tla/raft.tla`](https://github.com/ongardie/raft.tla), 471 lines) shows
 what a real protocol spec looks like. Read them against our
 `specs/WalReplication.tla` (94 lines) — same genre, toy scale.
 

@@ -1,6 +1,6 @@
 # Reading guide — VictoriaMetrics + InfluxDB 3 (IOx): two rebuttals to Prometheus
 
-Code: `~/repos/VictoriaMetrics` (Go), `~/repos/influxdb` (Rust — the
+Code: [`~/repos/VictoriaMetrics`](https://github.com/VictoriaMetrics/VictoriaMetrics) (Go), [`~/repos/influxdb`](https://github.com/influxdata/influxdb) (Rust — the
 repo is InfluxDB 3, the productized IOx). Same problem, two opposite
 bets: VM doubles down on a custom LSM; InfluxDB 3 deletes the custom
 engine and rebuilds on Parquet + object storage (topic 28's stack).

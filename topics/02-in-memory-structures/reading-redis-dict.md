@@ -1,6 +1,6 @@
 # Reading redis `dict.c` — the incremental rehash machine
 
-Files: `~/repos/redis/src/dict.c`, `src/dict.h`. Line numbers from the local clone.
+Files: [`~/repos/redis/src/dict.c`](https://github.com/redis/redis), `src/dict.h`. Line numbers from the local clone.
 
 The problem this file solves: a hash table serving 100K ops/s cannot stop the world
 to rehash 100M entries. Redis's answer: keep **two tables** and migrate one bucket at
@@ -65,7 +65,7 @@ scan is returned ≥ once (duplicates possible, misses not).
 
 ## 6. Contrast: valkey's libvalkey client dict
 
-`~/repos/valkey/deps/libvalkey/src/dict.c` — a *single-table*, full-rehash dict
+[`~/repos/valkey/deps/libvalkey/src/dict.c`](https://github.com/valkey-io/valkey) — a *single-table*, full-rehash dict
 (dict.c:103–150): no rehashidx, no two-table dance. Fine for a client's small maps;
 unacceptable for a server's keyspace. Same structure, different RUM position —
 latency requirements are part of the workload.

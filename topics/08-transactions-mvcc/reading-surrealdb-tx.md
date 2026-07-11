@@ -1,6 +1,6 @@
 # Reading guide — surrealdb's transaction layer (~1 h)
 
-Local clone: `~/repos/surrealdb` (shallow), dir
+Local clone: [`~/repos/surrealdb`](https://github.com/surrealdb/surrealdb) (shallow), dir
 `surrealdb/core/src/kvs/`. Read this one for ARCHITECTURE, not algorithms:
 surrealdb doesn't implement MVCC — it *abstracts over* engines that do
 (tikv, foundationdb, rocksdb, in-memory...), which forces it to define the

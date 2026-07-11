@@ -1,7 +1,7 @@
 # Reading guide — SuiteSparse:GraphBLAS internals + FalkorDB's Delta_Matrix
 
-Repos: `~/repos/GraphBLAS` (SuiteSparse, shallow clone) and
-`~/repos/FalkorDB`. This is the topic-20/M20 preview — read for the
+Repos: [`~/repos/GraphBLAS`](https://github.com/DrTimothyAldenDavis/GraphBLAS) (SuiteSparse, shallow clone) and
+[`~/repos/FalkorDB`](https://github.com/FalkorDB/FalkorDB). This is the topic-20/M20 preview — read for the
 shape now, the kernels later.
 
 ## Why this matters
@@ -64,7 +64,7 @@ A², it only evaluates A² at positions where A has an edge.
 
 ## 4. FalkorDB's Delta_Matrix
 
-`~/repos/FalkorDB/src/graph/graph.h:48-52` — the graph IS matrices:
+[`~/repos/FalkorDB/src/graph/graph.h:48-52`](https://github.com/FalkorDB/FalkorDB) — the graph IS matrices:
 
 ```c
 Delta_Matrix adjacency_matrix;  // all connections

@@ -3,7 +3,7 @@
 The choke-point paper: TPC-H's 22 queries are not arbitrary — each
 stresses a named set of engine capabilities ("choke points"), and the
 paper catalogs all 28 of them. Read it WITH the queries open:
-`~/repos/duckdb/extension/tpch/dbgen/queries/q01.sql … q22.sql`
+[`~/repos/duckdb/extension/tpch/dbgen/queries/q01.sql … q22.sql`](https://github.com/duckdb/duckdb)
 (reference answers in `dbgen/answers/`).
 
 ## The choke-point taxonomy (condensed)

@@ -1,4 +1,4 @@
-# Reading guide — PyTorch Geometric's message-passing machinery (`~/repos/pytorch_geometric`)
+# Reading guide — PyTorch Geometric's message-passing machinery ([`~/repos/pytorch_geometric`](https://github.com/pyg-team/pytorch_geometric))
 
 Read PyG the way topic 20 read SuiteSparse: as an existence proof that
 one abstraction (here `MessagePassing`) covers a whole literature, and as

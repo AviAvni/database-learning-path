@@ -1,7 +1,7 @@
 # Reading guide — Percolator (OSDI '10) + TiKV's Rust implementation
 
 Paper: *Large-scale Incremental Processing Using Distributed Transactions and
-Notifications*, Peng & Dabek, OSDI 2010. Code: `~/repos/tikv`
+Notifications*, Peng & Dabek, OSDI 2010. Code: [`~/repos/tikv`](https://github.com/tikv/tikv)
 (`src/storage/txn/` and `src/storage/mvcc/`).
 
 ## Why this pairing

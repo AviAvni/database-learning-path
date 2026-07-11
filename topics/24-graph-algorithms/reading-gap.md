@@ -1,4 +1,4 @@
-# Reading guide — "The GAP Benchmark Suite" (Beamer, Asanović, Patterson — arXiv:1508.03619) + gapbs (`~/repos/gapbs`)
+# Reading guide — "The GAP Benchmark Suite" (Beamer, Asanović, Patterson — arXiv:1508.03619) + gapbs ([`~/repos/gapbs`](https://github.com/sbeamer/gapbs))
 
 The yardstick for graph analytics: 6 kernels × 5 graphs, plus
 REFERENCE IMPLEMENTATIONS that are themselves state-of-the-art

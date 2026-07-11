@@ -1,7 +1,7 @@
 # Reading guide — geo indexes: geohash-in-a-zset, Z-order, R-trees, S2/H3
 
 Code: valkey `src/geohash.c`, `src/geohash_helper.c`, `src/geo.c`
-(`~/repos/valkey`). Papers: Guttman "R-Trees: A Dynamic Index
+([`~/repos/valkey`](https://github.com/valkey-io/valkey)). Papers: Guttman "R-Trees: A Dynamic Index
 Structure for Spatial Searching" (SIGMOD 1984); the R*-tree
 (SIGMOD 1990). Docs: s2geometry.io, h3geo.org.
 

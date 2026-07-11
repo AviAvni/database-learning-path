@@ -1,4 +1,4 @@
-# Reading guide — RediSearch's inverted index, the Rust rewrite (`~/repos/RediSearch/src/redisearch_rs/`)
+# Reading guide — RediSearch's inverted index, the Rust rewrite ([`~/repos/RediSearch/src/redisearch_rs/`](https://github.com/RediSearch/RediSearch))
 
 Home turf: this is what FalkorDB delegates full-text to, and the
 interesting part is that the C core is being strangler-figged into

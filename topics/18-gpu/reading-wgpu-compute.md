@@ -1,6 +1,6 @@
 # Reading guide — wgpu compute examples
 
-Clone: `~/repos/wgpu` (`examples/`). The portable GPU-compute stack
+Clone: [`~/repos/wgpu`](https://github.com/gfx-rs/wgpu) (`examples/`). The portable GPU-compute stack
 our experiments use: WGSL shaders → naga → Metal on this Mac,
 Vulkan/DX12 elsewhere. Read three examples in order; each fixes one
 naivety of the previous.

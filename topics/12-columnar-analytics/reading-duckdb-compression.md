@@ -1,6 +1,6 @@
 # Reading guide — DuckDB `src/storage/compression/`: the encoding zoo (~2 h)
 
-Local clone: `~/repos/duckdb`. Read the framework contract first, then
+Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Read the framework contract first, then
 two encoders end-to-end (RLE, bitpacking), then skim the string stack.
 
 ## 1. The framework: analyze → score → compress → scan

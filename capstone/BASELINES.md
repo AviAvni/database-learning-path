@@ -4,7 +4,7 @@ Numbers to chase. Recorded at M0; re-measure at every milestone that claims a wi
 
 ## Provenance (Fair Benchmarking §3.1 — reproducibility)
 
-- Reference: `~/repos/falkordb-rs-next-gen` @ `e8a44d25` (2026-07-02), **release**
+- Reference: [`~/repos/falkordb-rs-next-gen`](https://github.com/FalkorDB/falkordb-rs-next-gen) @ `e8a44d25` (2026-07-02), **release**
   build `target/release/libfalkordb.dylib` — note: working tree had uncommitted
   changes to `graph/src/graph/graphblas/*` at build time, so treat these as
   "e8a44d25-ish"; rebuild from a clean commit before quoting anywhere serious.

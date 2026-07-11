@@ -6,7 +6,7 @@
   works), §5 (space analysis); skim the eval
 - Graf & Lemire — "Xor Filters: Faster and Smaller Than Bloom and Cuckoo
   Filters" (ACM JEA 2020) — read §2-3
-- RedisBloom `src/cuckoo.c` (clone at `~/repos/RedisBloom`)
+- RedisBloom `src/cuckoo.c` (clone at [`~/repos/RedisBloom`](https://github.com/RedisBloom/RedisBloom))
 
 ## 1. The one trick that makes cuckoo filters possible
 

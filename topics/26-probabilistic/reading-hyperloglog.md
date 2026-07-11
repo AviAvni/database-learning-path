@@ -6,7 +6,7 @@
   optional
 - Ertl — "New cardinality estimation algorithms for HyperLogLog sketches"
   (arXiv 2017) §2-3 — this is the estimator redis actually uses now
-- Redis `src/hyperloglog.c` (clone at `~/repos/redis`) — the 200-line header
+- Redis `src/hyperloglog.c` (clone at [`~/repos/redis`](https://github.com/redis/redis)) — the 200-line header
   comment is a full spec of the encodings; read it first
 
 ## 1. The idea in three sentences

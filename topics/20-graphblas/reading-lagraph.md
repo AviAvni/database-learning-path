@@ -1,4 +1,4 @@
-# Reading guide — LAGraph algorithms (`~/repos/LAGraph/src/algorithm/`)
+# Reading guide — LAGraph algorithms ([`~/repos/LAGraph/src/algorithm/`](https://github.com/GraphBLAS/LAGraph))
 
 Freshly cloned. The "standard library" of GraphBLAS — read three
 algorithms as *executable linear algebra*: each is a few GrB calls

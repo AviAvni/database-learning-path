@@ -1,6 +1,6 @@
 # Reading redis `t_zset.c` — the skiplist with rank queries
 
-Files: `~/repos/redis/src/t_zset.c`, struct defs in `src/server.h`. This is the
+Files: [`~/repos/redis/src/t_zset.c`](https://github.com/redis/redis), struct defs in `src/server.h`. This is the
 skiplist behind ZADD/ZRANGE/ZRANK — the canonical readable implementation.
 
 ## 1. The structs — server.h:1699–1716

@@ -136,9 +136,9 @@ flowchart TD
 - [reading-gcn.md](reading-gcn.md) — Kipf & Welling ICLR'17
 - [reading-graphsage.md](reading-graphsage.md) — Hamilton et al. NeurIPS'17 (sampling!)
 - [reading-gat.md](reading-gat.md) — Veličković et al. ICLR'18 (SDDMM)
-- [reading-pyg-message-passing.md](reading-pyg-message-passing.md) — the framework as sparse ops (`~/repos/pytorch_geometric`)
+- [reading-pyg-message-passing.md](reading-pyg-message-passing.md) — the framework as sparse ops ([`~/repos/pytorch_geometric`](https://github.com/pyg-team/pytorch_geometric))
 - [reading-transe.md](reading-transe.md) — Bordes et al. NeurIPS'13, KG embeddings
-- [reading-graphrag-sdk.md](reading-graphrag-sdk.md) — your own SDK with systems eyes (`~/repos/GraphRAG-SDK`)
+- [reading-graphrag-sdk.md](reading-graphrag-sdk.md) — your own SDK with systems eyes ([`~/repos/GraphRAG-SDK`](https://github.com/FalkorDB/GraphRAG-SDK))
 
 ## Cross-topic links
 

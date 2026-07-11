@@ -1,6 +1,6 @@
 # Reading guide — memgraph's in-memory storage (skip lists + delta MVCC)
 
-Repo: `~/repos/memgraph` (cloned for topic 9). Focus:
+Repo: [`~/repos/memgraph`](https://github.com/memgraph/memgraph) (cloned for topic 9). Focus:
 `src/storage/v2/`.
 
 ## Why this matters

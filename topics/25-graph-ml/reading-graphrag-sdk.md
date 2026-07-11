@@ -1,4 +1,4 @@
-# Reading guide — GraphRAG-SDK with systems eyes (`~/repos/GraphRAG-SDK/graphrag_sdk`)
+# Reading guide — GraphRAG-SDK with systems eyes ([`~/repos/GraphRAG-SDK/graphrag_sdk`](https://github.com/FalkorDB/GraphRAG-SDK))
 
 Your own SDK, re-read as a database workload spec. Every Python line here
 is a feature request against FalkorDB: what it does client-side in

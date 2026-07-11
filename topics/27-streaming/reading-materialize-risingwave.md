@@ -1,8 +1,8 @@
 # Reading guide — Materialize & RisingWave: two production IVM architectures
 
 **Sources:**
-- `~/repos/materialize/src/` — compute (differential), persist (durable log), adapter
-- `~/repos/risingwave/src/` — stream executors, Hummock state store
+- [`~/repos/materialize/src/`](https://github.com/MaterializeInc/materialize) — compute (differential), persist (durable log), adapter
+- [`~/repos/risingwave/src/`](https://github.com/risingwavelabs/risingwave) — stream executors, Hummock state store
 - Materialize architecture docs (`doc/developer/` in-repo) — skim
   "formalism" and "platform" docs
 

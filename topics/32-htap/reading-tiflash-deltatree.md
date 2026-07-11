@@ -1,6 +1,6 @@
 # Reading guide — TiFlash DeltaTree: columnar storage built for writes
 
-Code: ~/repos/tiflash, `dbms/src/Storages/DeltaMerge/`.
+Code: [~/repos/tiflash](https://github.com/pingcap/tiflash), `dbms/src/Storages/DeltaMerge/`.
 
 Columnar formats hate point-writes (topic 12: rewrite the column or eat
 fragmentation). TiFlash must apply an OLTP write stream *continuously* to

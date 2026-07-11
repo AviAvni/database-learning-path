@@ -3,7 +3,7 @@
 Two contrasts with RESP: a protocol with *stateful sessions and streaming*
 (postgres wire), and a protocol you don't write at all (gRPC).
 
-## 1. pgwire — ~/repos/pgwire
+## 1. pgwire — [~/repos/pgwire](https://github.com/sunng87/pgwire)
 
 The crate structure IS the protocol lesson:
 
@@ -28,7 +28,7 @@ Read it asking: *where does session state live?* — pgwire forces a
 `ClientInfo` through every call; your RESP server keeps per-connection state
 implicitly in the task. Both are answers to "protocol = state machine".
 
-## 2. qdrant — ~/repos/qdrant/src/tonic/
+## 2. qdrant — [~/repos/qdrant](https://github.com/qdrant/qdrant)/src/tonic/
 
 - `src/tonic/mod.rs:138` and `:277` — `Server::builder()` twice: separate
   internal (peer-to-peer raft) and public gRPC servers. Protocol surface

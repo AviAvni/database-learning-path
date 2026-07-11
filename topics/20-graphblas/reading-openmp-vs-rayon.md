@@ -2,8 +2,8 @@
 
 Code: SuiteSparse `Source/mxm/GB_AxB_saxpy3.c`,
 `GB_AxB_saxpy3_slice_balanced.c`, `GB_AxB_saxpy3_flopcount.c`
-(all in `~/repos/GraphBLAS`); rayon `rayon-core/src/join/mod.rs`
-and `rayon-core/src/registry.rs` (`~/repos/rayon`).
+(all in [`~/repos/GraphBLAS`](https://github.com/DrTimothyAldenDavis/GraphBLAS)); rayon `rayon-core/src/join/mod.rs`
+and `rayon-core/src/registry.rs` ([`~/repos/rayon`](https://github.com/rayon-rs/rayon)).
 
 ## Two answers to "who does which slice of the multiply?"
 

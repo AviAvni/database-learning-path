@@ -1,6 +1,6 @@
 # Reading guide — Gunrock ("GPU Graph Analytics", PPoPP '16 + the Essentials rewrite)
 
-Clone: `~/repos/gunrock` (the modern "Essentials" codebase —
+Clone: [`~/repos/gunrock`](https://github.com/gunrock/gunrock) (the modern "Essentials" codebase —
 `include/gunrock/`). The GPU graph framework that reduced every
 graph algorithm to two data-parallel operators over frontiers. The
 research problem hiding inside: adjacency lists are RAGGED, and

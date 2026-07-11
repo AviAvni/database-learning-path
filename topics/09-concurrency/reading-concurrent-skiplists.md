@@ -4,7 +4,7 @@ Same structure, two schools. Read RocksDB first (you know this file from
 topic 2 — now the concurrency), then memgraph as the contrast.
 
 ## 1. RocksDB InlineSkipList — CAS school
-`~/repos/rocksdb/memtable/inlineskiplist.h`
+[`~/repos/rocksdb/memtable/inlineskiplist.h`](https://github.com/facebook/rocksdb)
 
 - The contract (:23): `InsertConcurrently` is safe with concurrent reads
   AND writes — but the LSM makes it easier: memtable entries are
@@ -26,7 +26,7 @@ topic 2 — now the concurrency), then memgraph as the contrast.
   exactly this door.)
 
 ## 2. memgraph SkipList — lazy-locking school (Herlihy et al.)
-`~/repos/memgraph/src/utils/skip_list.hpp`
+[`~/repos/memgraph/src/utils/skip_list.hpp`](https://github.com/memgraph/memgraph)
 
 - Node (:156): per-node `SpinLock` (:163), `marked` (:164),
   `fully_linked` (:165), flexible-array tower `nexts[0]` (:169) — the

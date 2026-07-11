@@ -1,4 +1,4 @@
-# Reading guide — "Ligra: A Lightweight Graph Processing Framework for Shared Memory" (Shun & Blelloch, PPoPP 2013) (`~/repos/ligra`)
+# Reading guide — "Ligra: A Lightweight Graph Processing Framework for Shared Memory" (Shun & Blelloch, PPoPP 2013) ([`~/repos/ligra`](https://github.com/jshun/ligra))
 
 Two functions — `vertexMap` and `edgeMap` — and every frontier
 algorithm in ~50 lines each (`apps/`). Ligra's contribution is

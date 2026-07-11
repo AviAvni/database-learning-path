@@ -1,6 +1,6 @@
 # Reading guide — Z3 (TACAS '08 + the codebase) and Cosette (CIDR '17)
 
-Clone: `~/repos/z3` (`src/`). Paper: "Z3: An Efficient SMT Solver"
+Clone: [`~/repos/z3`](https://github.com/Z3Prover/z3) (`src/`). Paper: "Z3: An Efficient SMT Solver"
 (de Moura & Bjørner, TACAS '08 — 4 pages, read whole). Then
 "Cosette: An Automated Prover for SQL" (CIDR '17) for the
 DB application. Treat Z3 the way PLAN.md says: a masterclass

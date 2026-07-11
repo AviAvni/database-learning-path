@@ -98,7 +98,7 @@ The GraphBLAS trinity, as an *executor* design:
 
 ## 5. Delta matrices — FalkorDB's own layer (fresh eyes)
 
-`~/repos/FalkorDB/src/graph/delta_matrix/` — the answer to "GrB
+[`~/repos/FalkorDB/src/graph/delta_matrix/`](https://github.com/FalkorDB/FalkorDB) — the answer to "GrB
 matrices are fast to read, slow to mutate one edge at a time":
 
 ```

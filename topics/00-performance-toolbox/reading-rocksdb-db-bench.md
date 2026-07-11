@@ -1,6 +1,6 @@
 # Code reading — RocksDB `tools/db_bench_tool.cc`
 
-Source: `~/repos/rocksdb/tools/db_bench_tool.cc` (~10,400 lines, shallow clone @
+Source: [`~/repos/rocksdb/tools/db_bench_tool.cc`](https://github.com/facebook/rocksdb) (~10,400 lines, shallow clone @
 `7c80a5a`). **Do not read this linearly** — it's a flag-driven monolith. The study
 guide's goal is the *vocabulary*: these workload names and flags are the lingua franca
 of storage benchmarking (LevelDB inherited → RocksDB extended → every LSM paper since).

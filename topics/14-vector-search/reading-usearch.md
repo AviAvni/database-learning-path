@@ -1,6 +1,6 @@
 # Reading guide — usearch (compact HNSW, one header)
 
-Repo: `~/repos/usearch`, all of it in
+Repo: [`~/repos/usearch`](https://github.com/unum-cloud/usearch), all of it in
 `include/usearch/index.hpp` (+ `index_dense.hpp` for the
 type-erased/quantized wrapper). C++ templates, but the structure is
 small enough to hold in your head — read it as the reference

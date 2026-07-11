@@ -1,4 +1,4 @@
-# Reading guide — tantivy internals (`~/repos/tantivy`)
+# Reading guide — tantivy internals ([`~/repos/tantivy`](https://github.com/quickwit-oss/tantivy))
 
 Lucene's architecture, rewritten in readable Rust. Read it as four
 subsystems: analysis, term dictionary, postings, and the LSM-shaped

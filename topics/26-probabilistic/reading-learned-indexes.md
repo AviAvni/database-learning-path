@@ -4,9 +4,9 @@
 - Kraska, Beutel, Chi, Dean, Polyzotis — "The Case for Learned Index
   Structures" (SIGMOD 2018) — read §1-3 (RMI), skim the rest
 - Ferragina & Vinciguerra — "The PGM-index" (VLDB 2020) + code at
-  `~/repos/PGM-index/include/pgm/`
+  [`~/repos/PGM-index/include/pgm/`](https://github.com/gvinciguerra/PGM-index)
 - Ding et al. — "ALEX: An Updatable Adaptive Learned Index" (SIGMOD 2020) +
-  code at `~/repos/ALEX/src/core/`
+  code at [`~/repos/ALEX/src/core/`](https://github.com/microsoft/ALEX)
 
 ## 1. Reframe: a B-tree is already a model
 
@@ -35,7 +35,7 @@ number of linear segments** such that every key's predicted position is
 within ε of the truth. Then index the segments' first keys with... another
 PGM, recursively, until one segment remains.
 
-| anchor (`~/repos/PGM-index/include/pgm/`) | what it is |
+| anchor ([`~/repos/PGM-index/include/pgm/`](https://github.com/gvinciguerra/PGM-index)) | what it is |
 |---|---|
 | `pgm_index.hpp:32-33` | `PGM_SUB_EPS`/`PGM_ADD_EPS` — the window is [pos−ε, pos+ε+2), clamped; the +2 matters (segment boundaries) |
 | `pgm_index.hpp:67` | `class PGMIndex`; `build` :88 loops `make_segmentation` per level |
@@ -72,7 +72,7 @@ updates: nodes are **gapped arrays** (~50% slack), and the model is used
 not only to search but to *place* — model-based insertion puts a key at its
 predicted slot, so the model stays accurate as data arrives.
 
-| anchor (`~/repos/ALEX/src/core/alex_nodes.h`) | what it is |
+| anchor ([`~/repos/ALEX/src/core/alex_nodes.h`](https://github.com/microsoft/ALEX)) | what it is |
 |---|---|
 | `class AlexDataNode` :293 | gapped array + per-node linear model; `num_keys_` :325 vs slots = the gap budget |
 | `predict_position` :1448 | the model eval |

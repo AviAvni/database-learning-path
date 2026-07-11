@@ -1,6 +1,6 @@
 # Reading LMDB `mdb.c` — copy-on-write, no WAL (2 h)
 
-Repo: `~/repos/lmdb`, file `libraries/liblmdb/mdb.c` (12,846 lines, one file).
+Repo: [`~/repos/lmdb`](https://github.com/LMDB/lmdb), file `libraries/liblmdb/mdb.c` (12,846 lines, one file).
 LMDB is the anti-SQLite: no WAL, no page cache of its own, no free-space-within-
 page — just COW pages over one big mmap. Read it as a *design*, skim the code.
 

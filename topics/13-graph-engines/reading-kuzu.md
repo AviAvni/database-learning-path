@@ -1,6 +1,6 @@
 # Reading guide — kuzu (columnar CSR + WCOJ + factorization)
 
-Repo: `~/repos/kuzu` (shallow clone). C++. Plus the paper: "KÙZU Graph
+Repo: [`~/repos/kuzu`](https://github.com/kuzudb/kuzu) (shallow clone). C++. Plus the paper: "KÙZU Graph
 Database Management System" (CIDR '23).
 
 ## Why this matters

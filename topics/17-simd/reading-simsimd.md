@@ -1,6 +1,6 @@
 # Reading guide — SimSIMD distance kernels
 
-Clone: `~/repos/SimSIMD` — note the headers live under
+Clone: [`~/repos/SimSIMD`](https://github.com/ashvardanian/SimSIMD) — note the headers live under
 `include/numkong/` (the project's internal rename). This is M14's
 vector-distance layer done by someone who read the CPU manuals: every
 NEON file opens with a port/latency table, and every kernel's

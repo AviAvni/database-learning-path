@@ -4,7 +4,7 @@
 - Budiu, Chajed, McSherry, Ryzhyk, Tannen — "DBSP: Automatic Incremental
   View Maintenance for Rich Query Languages" (VLDB 2023) — read §1-4
   (the algebra), §5 (recursion) if the differential guide left questions
-- `~/repos/feldera/crates/dbsp/src/` — the production implementation
+- [`~/repos/feldera/crates/dbsp/src/`](https://github.com/feldera/feldera) — the production implementation
 
 ## 1. DBSP's move: make IVM a *calculus*, not a system
 

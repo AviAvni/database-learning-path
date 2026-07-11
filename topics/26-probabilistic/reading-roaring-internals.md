@@ -4,7 +4,7 @@
 - Lemire et al. — "Roaring Bitmaps: Implementation of an Optimized Software
   Library" (Software: Practice & Experience 2018) — read §2 (containers),
   §3 (SIMD kernels), skim benchmarks
-- `~/repos/roaring-rs/roaring/src/bitmap/` — the Rust port
+- [`~/repos/roaring-rs/roaring/src/bitmap/`](https://github.com/RoaringBitmap/roaring-rs) — the Rust port
 - Extends topic 23's guide (`topics/23-search/reading-postings.md`) and
   stub (`postings.rs` — array/bitmap containers already built there); this
   guide adds the third container, the density algebra, and the SIMD story

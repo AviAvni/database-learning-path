@@ -1,6 +1,6 @@
 # Reading LeanStore — swizzling, cooling, hybrid latches (2 h)
 
-Repo: `~/repos/leanstore` (the classic ICDE '18 codebase). Files under
+Repo: [`~/repos/leanstore`](https://github.com/leanstore/leanstore) (the classic ICDE '18 codebase). Files under
 `backend/leanstore/storage/buffer-manager/`: `Swip.hpp`, `BufferManager.cpp`,
 `BufferFrame.hpp`, `PageProviderThread.cpp`, `Partition.hpp`; latches in
 `backend/leanstore/sync-primitives/Latch.hpp`.

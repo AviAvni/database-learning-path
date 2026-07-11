@@ -1,6 +1,6 @@
 # Reading turso — SQLite's B-tree, in Rust
 
-Repo: `~/repos/turso` (shallow clone). Line numbers from the clone; these files are
+Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso) (shallow clone). Line numbers from the clone; these files are
 huge and move fast — expect drift, navigate by symbol name.
 
 turso re-implements the SQLite file format, so this is a reading of *the* canonical

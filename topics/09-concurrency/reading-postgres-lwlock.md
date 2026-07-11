@@ -1,6 +1,6 @@
 # Reading guide — postgres lwlock.c: a production rwlock (~1.5 h)
 
-Local clone: `~/repos/postgres`, file `src/backend/storage/lmgr/lwlock.c`.
+Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), file `src/backend/storage/lmgr/lwlock.c`.
 This is the latch under every buffer, WAL insert, and proc-array scan you
 met in topics 5–8. One u32 of state, a CAS fast path, and a wait queue —
 read it as the reference answer to "how do I build a fair rwlock that

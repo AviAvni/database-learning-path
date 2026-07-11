@@ -1,6 +1,6 @@
 # Reading hashbrown — SwissTable in Rust
 
-Repo: `~/repos/hashbrown` (shallow clone) — this IS `std::collections::HashMap`.
+Repo: [`~/repos/hashbrown`](https://github.com/rust-lang/hashbrown) (shallow clone) — this IS `std::collections::HashMap`.
 You profiled it in topic 0 (21% SipHash, rest inlined probe loop); now read the probe
 loop you couldn't see in the flamegraph.
 

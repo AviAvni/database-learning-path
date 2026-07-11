@@ -2,7 +2,7 @@
 
 **Sources:**
 - Bloom (1970), "Space/Time Trade-offs in Hash Coding with Allowable Errors" — 5 pages, read whole
-- RocksDB `util/bloom_impl.h` + `util/ribbon_impl.h` (clone at `~/repos/rocksdb`)
+- RocksDB `util/bloom_impl.h` + `util/ribbon_impl.h` (clone at [`~/repos/rocksdb`](https://github.com/facebook/rocksdb))
 - Peter Dillinger's blog-style comments *inside* the headers — the best docs are the code
 
 ## Why this sequence

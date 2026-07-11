@@ -1,6 +1,6 @@
 # Reading guide — crossbeam-epoch: the GC you'll build on (~1.5 h)
 
-Local clone: `~/repos/crossbeam`, dir `crossbeam-epoch/src/`. You'll use
+Local clone: [`~/repos/crossbeam`](https://github.com/crossbeam-rs/crossbeam), dir `crossbeam-epoch/src/`. You'll use
 this crate in `concurrent_set.rs` — read it first so `pin()` isn't magic.
 
 ## 1. The API surface (what you'll actually call)

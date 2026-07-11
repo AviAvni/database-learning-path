@@ -1,7 +1,7 @@
 # Reading guide — Neon: pageserver & safekeepers (code walk)
 
 **Sources:**
-- `~/repos/neon/` — pageserver + safekeeper crates (Rust)
+- [`~/repos/neon/`](https://github.com/neondatabase/neon) — pageserver + safekeeper crates (Rust)
 - Neon architecture posts: "Architecture decisions in Neon", "Get page at
   LSN" docs in `docs/` in-repo (skim `docs/pageserver-storage.md` &
   `docs/walservice.md` equivalents if present)

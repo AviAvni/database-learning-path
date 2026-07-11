@@ -2,7 +2,7 @@
 
 Cooper et al.'s "Benchmarking Cloud Serving Systems with YCSB" — the
 paper that standardized KV benchmarking. Read alongside
-`~/repos/go-ycsb` (the Go port; structure mirrors the Java original).
+[`~/repos/go-ycsb`](https://github.com/pingcap/go-ycsb) (the Go port; structure mirrors the Java original).
 
 ## The design: workloads = mix × distribution
 

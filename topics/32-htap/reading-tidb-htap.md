@@ -1,7 +1,7 @@
 # Reading guide — TiDB: a Raft-based HTAP database (VLDB 2020)
 
 Paper: "TiDB: A Raft-based HTAP Database", Huang et al., VLDB 2020.
-Code: ~/repos/tidb (planner), ~/repos/tiflash (learner reads).
+Code: [~/repos/tidb](https://github.com/pingcap/tidb) (planner), [~/repos/tiflash](https://github.com/pingcap/tiflash) (learner reads).
 
 ## The one move
 

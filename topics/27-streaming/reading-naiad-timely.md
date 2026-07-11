@@ -3,7 +3,7 @@
 **Sources:**
 - Murray et al. — "Naiad: A Timely Dataflow System" (SOSP 2013) — read
   §1-3 fully (the model), §4 (distributed progress) carefully, skim eval
-- `~/repos/timely-dataflow/timely/src/` — the Rust reincarnation by the
+- [`~/repos/timely-dataflow/timely/src/`](https://github.com/TimelyDataflow/timely-dataflow) — the Rust reincarnation by the
   same author (McSherry)
 
 ## 1. What problem Naiad actually solved

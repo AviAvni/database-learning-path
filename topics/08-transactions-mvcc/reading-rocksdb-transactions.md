@@ -1,6 +1,6 @@
 # Reading guide — RocksDB transactions: OCC and 2PL, same skeleton (~1.5 h)
 
-Local clone: `~/repos/rocksdb`, dir `utilities/transactions/`. RocksDB ships
+Local clone: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb), dir `utilities/transactions/`. RocksDB ships
 BOTH optimistic and pessimistic transactions over the same base class —
 the cleanest side-by-side of the two schools you'll find in production code.
 

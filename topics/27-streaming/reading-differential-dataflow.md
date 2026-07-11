@@ -3,7 +3,7 @@
 **Sources:**
 - McSherry, Murray, Isaacs, Isard — "Differential Dataflow" (CIDR 2013) —
   short; read all of it, twice
-- `~/repos/differential-dataflow/differential-dataflow/src/` — the modern
+- [`~/repos/differential-dataflow/differential-dataflow/src/`](https://github.com/TimelyDataflow/differential-dataflow) — the modern
   Rust implementation
 - `examples/bfs.rs` — 40 lines that do what our reach.rs stub cannot
 

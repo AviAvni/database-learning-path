@@ -1,10 +1,10 @@
-# Reading guide — LAGraph's analytics algorithms (`~/repos/LAGraph/src/algorithm`)
+# Reading guide — LAGraph's analytics algorithms ([`~/repos/LAGraph/src/algorithm`](https://github.com/GraphBLAS/LAGraph))
 
 Topic 20's guide covered BFS and the framework; this one reads the
 ANALYTICS algorithms — CC, TC, BC, SSSP, PR — as answers to "what
 does this look like when the only verbs are mxv/mxm/semiring/mask".
 Plus the punchline: FalkorDB already ships these
-(`~/repos/FalkorDB/src/procedures/proc_pagerank.c:197` calls
+([`~/repos/FalkorDB/src/procedures/proc_pagerank.c:197`](https://github.com/FalkorDB/FalkorDB) calls
 `LAGr_PageRank`; `proc_betweenness.c`, `proc_cdlp.c` likewise) — M24
 is re-plumbing a pattern that exists, not inventing one.
 

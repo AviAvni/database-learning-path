@@ -1,6 +1,6 @@
 # Reading valkey's io-threads rework (1.5 h)
 
-Repo: `~/repos/valkey`. Files: `src/io_threads.c`, `src/memory_prefetch.c`,
+Repo: [`~/repos/valkey`](https://github.com/valkey-io/valkey). Files: `src/io_threads.c`, `src/memory_prefetch.c`,
 plus grep points in `networking.c`. This is the "great perf PRs to study"
 item — valkey 8 rewrote redis 6's io-threads and roughly doubled throughput.
 Read it as a case study in *what to parallelize when you refuse to lock the

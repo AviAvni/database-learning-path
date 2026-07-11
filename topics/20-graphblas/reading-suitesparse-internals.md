@@ -1,4 +1,4 @@
-# Reading guide — SuiteSparse:GraphBLAS internals (`~/repos/GraphBLAS/Source/`)
+# Reading guide — SuiteSparse:GraphBLAS internals ([`~/repos/GraphBLAS/Source/`](https://github.com/DrTimothyAldenDavis/GraphBLAS))
 
 The code walk behind the TOMS papers: where format switches are
 decided, and the saxpy3 scheduler — the most database-executor-like
@@ -87,7 +87,7 @@ multiply.
 ## Questions for notes.md
 
 1. Find FalkorDB's GxB_set calls pinning formats (grep GxB_SPARSITY
-   in ~/repos/FalkorDB/src). Which matrices allow bitmap and why
+   in [~/repos/FalkorDB](https://github.com/FalkorDB/FalkorDB)/src). Which matrices allow bitmap and why
    not the adjacency ones?
 2. Why does a fine Gustavson task need atomics on the SPA but a
    coarse one doesn't — and what's the topic 11 analogue

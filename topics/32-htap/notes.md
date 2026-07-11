@@ -57,7 +57,7 @@ headline number instead of the runtime.
 
 ## Infra notes
 
-- Cloned this topic: ~/repos/tiflash, ~/repos/tidb.
+- Cloned this topic: [~/repos/tiflash](https://github.com/pingcap/tiflash), [~/repos/tidb.](https://github.com/pingcap/tidb)
 - Anchors verified: LearnerRead.cpp:35/:61, DeltaMergeStore.h:107/:668,
   Segment.h:84/:715, DeltaValueSpace.h:65, DeltaIndex.h:27,
   find_best_task.go:535/:1841/:1878.

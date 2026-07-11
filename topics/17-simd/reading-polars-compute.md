@@ -1,6 +1,6 @@
 # Reading guide — polars-compute kernels
 
-Clone: `~/repos/polars` (`crates/polars-compute/src/`). The
+Clone: [`~/repos/polars`](https://github.com/pola-rs/polars) (`crates/polars-compute/src/`). The
 production-Rust answer to "how do I ship SIMD without a nightly
 compiler or per-CPU binaries": autovec-friendly scalar bodies,
 explicit `std::simd` where it pays, raw intrinsics only for the one

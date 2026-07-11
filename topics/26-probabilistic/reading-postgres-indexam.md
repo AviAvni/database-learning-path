@@ -1,6 +1,6 @@
 # Reading guide — Postgres index AMs: nbtree, GIN, BRIN (the classical baseline)
 
-**Sources (clone at `~/repos/postgres`):**
+**Sources (clone at [`~/repos/postgres`](https://github.com/postgres/postgres)):**
 - `src/backend/access/nbtree/README` — genuinely one of the best docs in
   any codebase; read it fully
 - `src/backend/access/nbtree/nbtsearch.c` — the descent

@@ -1,6 +1,6 @@
 # Reading guide — simdjson ("Parsing Gigabytes of JSON per Second", VLDB '19)
 
-Clone: `~/repos/simdjson`. Read the paper alongside
+Clone: [`~/repos/simdjson`](https://github.com/simdjson/simdjson). Read the paper alongside
 `include/simdjson/arm64/` (you're on ARM — the NEON implementation
 is the one your machine runs). The big idea: parsing — the most
 branchy code imaginable — rebuilt as branch-free bitmask algebra

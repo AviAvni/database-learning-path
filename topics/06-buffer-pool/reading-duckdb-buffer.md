@@ -1,6 +1,6 @@
 # Reading DuckDB's buffer manager (1.5 h)
 
-Repo: `~/repos/duckdb`. Files: `src/storage/buffer/buffer_pool.cpp`,
+Repo: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Files: `src/storage/buffer/buffer_pool.cpp`,
 `src/storage/standard_buffer_manager.cpp`,
 `src/include/duckdb/storage/buffer/buffer_pool.hpp`,
 `src/include/duckdb/storage/buffer/block_handle.hpp`.

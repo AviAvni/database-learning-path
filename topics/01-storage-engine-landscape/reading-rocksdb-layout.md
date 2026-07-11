@@ -1,6 +1,6 @@
 # RocksDB — orientation map (don't read it yet)
 
-Repo: `~/repos/rocksdb` (shallow @ 7c80a5a). This is not a walkthrough — it's the map
+Repo: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb) (shallow @ 7c80a5a). This is not a walkthrough — it's the map
 you'll use in topic 4 (compaction), topic 6 (block cache), and topic 22 (db_bench).
 Budget: 30 min of `ls` and skimming headers.
 

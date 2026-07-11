@@ -1,7 +1,7 @@
 # Reading guide — "OLTP-Bench" (VLDB 2013) + BenchBase TPC-C
 
 Difallah/Pavlo/Curino/Cudré-Mauroux; the maintained fork is CMU's
-BenchBase: `~/repos/benchbase`. One harness, ~20 benchmarks
+BenchBase: [`~/repos/benchbase`](https://github.com/cmu-db/benchbase). One harness, ~20 benchmarks
 (`src/main/java/com/oltpbenchmark/benchmarks/` — tpcc, ycsb, tatp,
 smallbank, twitter, seats, wikipedia, chbenchmark …), one config
 format, per-phase rate control.

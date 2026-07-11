@@ -111,16 +111,16 @@ the pages, or the log.
 
 Read the two Rust engines as protagonists, skim the other two for contrast:
 
-- **fjall** (~/repos/fjall) — small, clean Rust LSM. Trace insert → journal → memtable
+- **fjall** ([~/repos/fjall](https://github.com/fjall-rs/fjall)) — small, clean Rust LSM. Trace insert → journal → memtable
   → flush, and get → memtable → SSTs.
   → guided walkthrough: [`reading-fjall.md`](reading-fjall.md)
-- **turso** (~/repos/turso) `core/storage/` — SQLite's B-tree re-implemented in Rust:
+- **turso** ([~/repos/turso](https://github.com/tursodatabase/turso)) `core/storage/` — SQLite's B-tree re-implemented in Rust:
   slotted pages, cursor descent, balance, pager + WAL.
   → guided walkthrough: [`reading-turso-btree.md`](reading-turso-btree.md)
-- **tidesdb** (~/repos/tidesdb) — LSM in plain C; nothing hidden behind abstractions.
+- **tidesdb** ([~/repos/tidesdb](https://github.com/tidesdb/tidesdb)) — LSM in plain C; nothing hidden behind abstractions.
   Skim to see memory ordering and disk layout made explicit.
   → guided walkthrough: [`reading-tidesdb.md`](reading-tidesdb.md)
-- **RocksDB** (~/repos/rocksdb) — don't read it yet; *orient* in it. Directory map for
+- **RocksDB** ([~/repos/rocksdb](https://github.com/facebook/rocksdb)) — don't read it yet; *orient* in it. Directory map for
   topic 4 and beyond.
   → orientation: [`reading-rocksdb-layout.md`](reading-rocksdb-layout.md)
 

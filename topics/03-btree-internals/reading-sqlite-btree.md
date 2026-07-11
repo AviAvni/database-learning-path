@@ -1,6 +1,6 @@
 # Reading SQLite `btree.c` — the classic (guided skim, 2 h)
 
-Repo: `~/repos/sqlite` (shallow clone), files `src/btree.c` (11,633 lines),
+Repo: [`~/repos/sqlite`](https://github.com/sqlite/sqlite) (shallow clone), files `src/btree.c` (11,633 lines),
 `src/btreeInt.h` (746). Don't read linearly — you already know the format from
 turso; here you're reading **the original** for the parts turso simplified and
 the comments that carry 20 years of production scars.

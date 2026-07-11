@@ -6,7 +6,7 @@ Working name: `falkordb-scratch` (rename at will).
 
 Why rebuild something you already work on? Because on the real project you inherit
 decisions; here you *make* every one — and benchmark it against the real thing. The
-reference implementation lives at `~/repos/falkordb-rs-next-gen`; every milestone ends
+reference implementation lives at [`~/repos/falkordb-rs-next-gen`](https://github.com/FalkorDB/falkordb-rs-next-gen); every milestone ends
 by comparing your design and numbers against the corresponding module there.
 
 ## Target architecture (mirrors the reference)

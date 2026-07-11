@@ -1,6 +1,6 @@
 # Reading guide — SQLancer (the oracle base classes)
 
-Clone: `~/repos/sqlancer` (`src/sqlancer/common/oracle/`). 450+
+Clone: [`~/repos/sqlancer`](https://github.com/sqlancer/sqlancer) (`src/sqlancer/common/oracle/`). 450+
 bugs in SQLite/MySQL/Postgres/DuckDB/CockroachDB from three tiny
 oracles. Read the base classes, not the per-DBMS adapters — each
 oracle's core check is a handful of lines.

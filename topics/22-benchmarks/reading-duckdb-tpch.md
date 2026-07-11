@@ -4,7 +4,7 @@ How a modern engine ships a benchmark as a built-in — and the fastest
 way to get real TPC-H numbers on this machine (no CLI install needed;
 `pip install duckdb` or the Rust crate both carry the extension).
 
-## Layout (`~/repos/duckdb/extension/tpch/`)
+## Layout ([`~/repos/duckdb/extension/tpch/`](https://github.com/duckdb/duckdb))
 
 | path | what |
 |---|---|

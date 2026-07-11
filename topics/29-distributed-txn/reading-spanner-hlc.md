@@ -2,7 +2,7 @@
 
 Papers: *Spanner: Google's Globally-Distributed Database* (OSDI '12);
 *Logical Physical Clocks* (Kulkarni et al., OPODIS '14 — the HLC paper).
-Code: `~/repos/cockroach` (`pkg/util/hlc/`, `pkg/kv/kvclient/kvcoord/`).
+Code: [`~/repos/cockroach`](https://github.com/cockroachdb/cockroach) (`pkg/util/hlc/`, `pkg/kv/kvclient/kvcoord/`).
 
 ## The problem both solve
 

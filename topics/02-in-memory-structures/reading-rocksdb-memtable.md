@@ -1,6 +1,6 @@
 # Reading RocksDB `InlineSkipList` — the lock-free memtable
 
-File: `~/repos/rocksdb/memtable/inlineskiplist.h`. This is where LSM write throughput
+File: [`~/repos/rocksdb/memtable/inlineskiplist.h`](https://github.com/facebook/rocksdb). This is where LSM write throughput
 lives: every `Put` in half the industry lands in this structure. Budget: 1–2 h.
 
 ## 1. The node layout trick — read this first

@@ -1,6 +1,6 @@
 # Reading guide — qdrant `consensus.rs` (raft-rs embedded)
 
-Clone: `~/repos/qdrant` (`src/consensus.rs` + `lib/collection`). The
+Clone: [`~/repos/qdrant`](https://github.com/qdrant/qdrant) (`src/consensus.rs` + `lib/collection`). The
 architectural decision worth studying: qdrant runs Raft over cluster
 METADATA only — collection schemas, shard placement, peer membership.
 The vectors themselves replicate OUTSIDE raft.

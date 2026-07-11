@@ -1,6 +1,6 @@
 # Reading guide — postgres heapam & visibility (~2.5 h)
 
-Local clone: `~/repos/postgres` (shallow). Files:
+Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres) (shallow). Files:
 `src/backend/access/heap/heapam.c`, `heapam_visibility.c`,
 `src/include/access/htup_details.h`, `src/include/utils/snapshot.h`,
 `src/backend/utils/time/snapmgr.c`, `pruneheap.c`, `vacuumlazy.c`.

@@ -1,6 +1,6 @@
 # Reading guide — tikv `raft-rs`
 
-Clone: `~/repos/raft-rs` (`src/`). The production Raft that tikv and
+Clone: [`~/repos/raft-rs`](https://github.com/tikv/raft-rs) (`src/`). The production Raft that tikv and
 qdrant embed. The design worth stealing: the library owns ONLY the
 state machine — no threads, no I/O, no storage. You drive it with
 `tick()`/`step(msg)` and it hands you a `Ready` bundle of work to do.

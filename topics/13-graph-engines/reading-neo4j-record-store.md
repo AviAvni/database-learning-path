@@ -1,6 +1,6 @@
 # Reading guide — neo4j's record store (the cost of index-free adjacency)
 
-Repo: `~/repos/neo4j` (shallow clone). Java, but you're reading data
+Repo: [`~/repos/neo4j`](https://github.com/neo4j/neo4j) (shallow clone). Java, but you're reading data
 layout, not code style. Everything lives under
 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/`.
 

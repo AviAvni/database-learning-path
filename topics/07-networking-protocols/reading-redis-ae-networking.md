@@ -1,6 +1,6 @@
 # Reading redis `ae.c` + `networking.c` (2 h)
 
-Repo: `~/repos/redis`. `ae.c` is ~500 lines — read it fully (rare luxury).
+Repo: [`~/repos/redis`](https://github.com/redis/redis). `ae.c` is ~500 lines — read it fully (rare luxury).
 `networking.c` is huge — read the five functions below.
 
 ## 1. ae.c — the whole loop

@@ -1,7 +1,7 @@
 # Reading guide — Gorilla (VLDB '15) + prometheus chunkenc/xor.go
 
 Paper: *Gorilla: A Fast, Scalable, In-Memory Time Series Database*,
-Pelkonen et al., VLDB 2015. Code: `~/repos/prometheus/tsdb/chunkenc/xor.go`
+Pelkonen et al., VLDB 2015. Code: [`~/repos/prometheus/tsdb/chunkenc/xor.go`](https://github.com/prometheus/prometheus)
 — the most-deployed reimplementation of §4.1.
 
 ## Why it worked

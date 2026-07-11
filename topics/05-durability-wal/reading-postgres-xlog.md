@@ -1,6 +1,6 @@
 # Reading postgres `xlog.c` — guided skim (2 h)
 
-Repo: `~/repos/postgres`. Files: `src/backend/access/transam/xlog.c` (10,196
+Repo: [`~/repos/postgres`](https://github.com/postgres/postgres). Files: `src/backend/access/transam/xlog.c` (10,196
 lines — do NOT read linearly), `xloginsert.c`, `xlogrecovery.c`,
 `src/include/access/xlogrecord.h`. You're here for five mechanisms.
 

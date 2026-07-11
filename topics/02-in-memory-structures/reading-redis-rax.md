@@ -1,6 +1,6 @@
 # Reading redis `rax.c` — the compressed radix tree (skim, ~45 min)
 
-Files: `~/repos/redis/src/rax.h`, `src/rax.c`. Used for stream IDs, client tracking
+Files: [`~/repos/redis/src/rax.h`](https://github.com/redis/redis), `src/rax.c`. Used for stream IDs, client tracking
 keys, cluster slot→key maps. Read for the *layout*; skim the insert logic.
 
 ## 1. The node — rax.h:78–111

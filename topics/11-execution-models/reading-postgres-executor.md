@@ -1,6 +1,6 @@
 # Reading guide — postgres executor: Volcano, warts and wisdom (~1 h)
 
-Local clone: `~/repos/postgres`, dir `src/backend/executor/`. Read it as
+Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), dir `src/backend/executor/`. Read it as
 the honest per-tuple baseline your benchmark's `volcano.rs` models — and
 for the one place postgres already fought back (the expression
 interpreter).

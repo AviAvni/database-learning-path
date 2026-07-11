@@ -1,4 +1,4 @@
-# Reading guide — cranelift-jit-demo (`~/repos/cranelift-jit-demo/src/jit.rs`)
+# Reading guide — cranelift-jit-demo ([`~/repos/cranelift-jit-demo/src/jit.rs`](https://github.com/bytecodealliance/cranelift-jit-demo))
 
 The implementation manual for our stub. 461 lines that contain the
 entire cranelift JIT recipe: a toy language compiled to callable

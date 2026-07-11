@@ -1,6 +1,6 @@
 # Reading the `lsm-tree` crate — fjall's engine (read it all, 3 h)
 
-Repo: `~/repos/lsm-tree` (shallow clone of fjall-rs/lsm-tree). Topic 1 read
+Repo: [`~/repos/lsm-tree`](https://github.com/fjall-rs/lsm-tree) (shallow clone of fjall-rs/lsm-tree). Topic 1 read
 fjall's keyspace layer; everything LSM-shaped delegates here. Small enough to
 read completely — this guide orders it.
 

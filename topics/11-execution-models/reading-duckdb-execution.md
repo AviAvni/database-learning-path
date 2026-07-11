@@ -1,6 +1,6 @@
 # Reading guide — DuckDB `src/execution/`: the vectorized reference (~2 h)
 
-Local clone: `~/repos/duckdb`. Read in this order: the vector types (the
+Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Read in this order: the vector types (the
 data plane), then the pipeline executor (the control plane), then the
 join hash table (where the tricks pay off).
 

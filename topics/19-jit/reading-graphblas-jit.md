@@ -1,4 +1,4 @@
-# Reading guide — SuiteSparse:GraphBLAS JIT (`~/repos/GraphBLAS/Source/jitifyer/`)
+# Reading guide — SuiteSparse:GraphBLAS JIT ([`~/repos/GraphBLAS/Source/jitifyer/`](https://github.com/DrTimothyAldenDavis/GraphBLAS))
 
 The third grain of JIT. Postgres compiles per query; Umbra per
 pipeline; GraphBLAS compiles per *kernel specialization* — a

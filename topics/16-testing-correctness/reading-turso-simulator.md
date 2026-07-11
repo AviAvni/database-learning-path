@@ -1,6 +1,6 @@
 # Reading guide — turso's deterministic simulator
 
-Clone: `~/repos/turso` (`testing/simulator/`, plus `fuzz/`). The most
+Clone: [`~/repos/turso`](https://github.com/tursodatabase/turso) (`testing/simulator/`, plus `fuzz/`). The most
 readable production DST codebase in Rust — read it as the reference
 implementation for our `dst.rs` stub and for M16.
 

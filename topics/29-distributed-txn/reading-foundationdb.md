@@ -1,7 +1,7 @@
 # Reading guide — FoundationDB (SIGMOD '21): the unbundled transaction
 
 Paper: *FoundationDB: A Distributed Unbundled Transactional Key Value
-Store*, SIGMOD 2021. Code: `~/repos/foundationdb` (C++ with the Flow
+Store*, SIGMOD 2021. Code: [`~/repos/foundationdb`](https://github.com/apple/foundationdb) (C++ with the Flow
 actor dialect — read for structure, not style).
 
 ## The move: decompose the transaction itself

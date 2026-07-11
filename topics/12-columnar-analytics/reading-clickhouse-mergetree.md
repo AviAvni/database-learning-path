@@ -1,6 +1,6 @@
 # Reading guide — ClickHouse MergeTree: brute force, organized (~1.5 h)
 
-Local clone: `~/repos/clickhouse` (fresh shallow clone), dir
+Local clone: [`~/repos/clickhouse`](https://github.com/ClickHouse/ClickHouse) (fresh shallow clone), dir
 `src/Storages/MergeTree/`. This codebase is huge — read ONLY the slices
 below. The goal: understand parts / granules / sparse index / merges,
 and recognize topic 4's LSM shapes at analytics scale.

@@ -3,7 +3,7 @@
 Specs: Bolt Protocol + PackStream specifications (neo4j docs,
 https://neo4j.com/docs/bolt/current/). Code: FalkorDB *had* a complete
 Bolt 5.x server until #2170 removed it (2026-07-08) — read it frozen in
-time with `cd ~/repos/FalkorDB && git show 0b11a00b3^:src/bolt/<file>`.
+time with `cd [~/repos/FalkorDB](https://github.com/FalkorDB/FalkorDB) && git show 0b11a00b3^:src/bolt/<file>`.
 
 ## The shape of a Bolt session
 

@@ -1,6 +1,6 @@
 # Reading guide — polars-stream + DataFusion: vectorized, in Rust (~1.5 h)
 
-Local clones: `~/repos/polars`, `~/repos/datafusion`. Two Rust answers to
+Local clones: [`~/repos/polars`](https://github.com/pola-rs/polars), [`~/repos/datafusion`](https://github.com/apache/datafusion). Two Rust answers to
 the same design questions DuckDB answered in C++ — and the closest
 templates for M11's runtime.
 

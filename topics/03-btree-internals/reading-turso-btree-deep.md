@@ -1,6 +1,6 @@
 # Reading turso `btree.rs` — deep dive (the mechanics topic 1 skipped)
 
-Repo: `~/repos/turso`, file `core/storage/btree.rs` (+ `core/storage/sqlite3_ondisk.rs`,
+Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso), file `core/storage/btree.rs` (+ `core/storage/sqlite3_ondisk.rs`,
 `core/storage/pager.rs`). You read the cursor/seek/insert surface in topic 1;
 now the page mechanics. Budget: 2–3 h.
 

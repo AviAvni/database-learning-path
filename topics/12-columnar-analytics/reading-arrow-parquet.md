@@ -1,6 +1,6 @@
 # Reading guide — arrow-rs + parquet-rs: the formats in Rust (~1.5 h)
 
-Local clone: `~/repos/arrow-rs` (fresh shallow clone — one repo, both
+Local clone: [`~/repos/arrow-rs`](https://github.com/apache/arrow-rs) (fresh shallow clone — one repo, both
 crates: `arrow-*` and `parquet/`). Read Arrow as "the layout kernels
 compute on" and Parquet as "the layout bytes rest in", then the
 boundary between them.

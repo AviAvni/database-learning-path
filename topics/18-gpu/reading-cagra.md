@@ -1,6 +1,6 @@
 # Reading guide — CAGRA ("Highly Parallel Graph Construction for GPU ANN", ICDE '24) + cuVS code
 
-Clone: `~/repos/cuvs` (`cpp/src/neighbors/detail/cagra/`). Topic
+Clone: [`~/repos/cuvs`](https://github.com/rapidsai/cuvs) (`cpp/src/neighbors/detail/cagra/`). Topic
 14's HNSW rebuilt from GPU-first principles: what does a
 graph-traversal index look like when the executor is 32-wide warps
 instead of one pointer-chasing core?

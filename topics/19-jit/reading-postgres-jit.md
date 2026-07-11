@@ -1,4 +1,4 @@
-# Reading guide — Postgres LLVM JIT (`~/repos/postgres/src/backend/jit/llvm/`)
+# Reading guide — Postgres LLVM JIT ([`~/repos/postgres/src/backend/jit/llvm/`](https://github.com/postgres/postgres))
 
 The production cautionary tale. Postgres 11+ ships an LLVM JIT for
 *expressions and tuple deforming only* — the executor loop stays
