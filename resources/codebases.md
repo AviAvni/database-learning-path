@@ -39,6 +39,7 @@ Clone the ones in active use to `~/repos/`.
 | [cmu-db/bustub](https://github.com/cmu-db/bustub) | C++ | CMU 15-445 teaching DB: buffer pool, B+tree, txn labs |
 | [erikgrinaker/toydb](https://github.com/erikgrinaker/toydb) | Rust | reference for the capstone: raft + MVCC + SQL, written to teach |
 | [apache/datafusion](https://github.com/apache/datafusion) | Rust | Arrow-native query engine — planner + vectorized exec in Rust |
+| [pola-rs/polars](https://github.com/pola-rs/polars) | Rust | vectorized columnar engine: lazy optimizer, streaming exec, SIMD kernels — DuckDB's Rust rival |
 | [kuzudb/kuzu](https://github.com/kuzudb/kuzu) | C++ | columnar graph storage, worst-case optimal joins (topic 13) |
 | [cberner/redb](https://github.com/cberner/redb) | Rust | clean embedded COW B-tree in Rust |
 | [spacejam/sled](https://github.com/spacejam/sled) | Rust | Bw-tree-inspired engine; read its post-mortems too |

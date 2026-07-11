@@ -114,7 +114,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 **Why:** The optimizer is the database's brain. Directly relevant to Cypher planning in FalkorDB.
 
 - **Concepts:** logical vs physical plans, relational algebra rewrites (predicate pushdown, join reordering), cost models & cardinality estimation (where it all goes wrong), dynamic programming join ordering, Cascades framework.
-- **Read code:** DuckDB `src/optimizer/` (readable!), postgres `optimizer/` (join search), sqlparser-rs, datafusion optimizer.
+- **Read code:** DuckDB `src/optimizer/` (readable!), postgres `optimizer/` (join search), sqlparser-rs, datafusion optimizer, polars lazy-frame optimizer (`crates/polars-plan/`).
 - **Papers:** "Access Path Selection" (Selinger '79 — the founding paper), "How Good Are Query Optimizers, Really?" (VLDB'15 — humbling), "The Cascades Framework" (Graefe '95).
 - **Build & bench:** write a mini planner: parse SQL subset → logical plan → apply pushdown + join reordering; verify plans change with table sizes; compare against DuckDB's `EXPLAIN`.
 - **Capstone M10:** simple query language + planner for `minidb`.
@@ -124,7 +124,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 **Why:** Volcano vs vectorized vs compiled — the defining performance battle of modern analytics.
 
 - **Concepts:** iterator (Volcano) model, vectorized execution (X100/DuckDB), query compilation (HyPer), morsel-driven parallelism, hash joins & aggregation internals, SIMD in query processing.
-- **Read code:** DuckDB `src/execution/` (vectors, pipelines), datafusion (Arrow-based), postgres `executor/` (classic Volcano).
+- **Read code:** DuckDB `src/execution/` (vectors, pipelines), polars streaming engine + SIMD compute kernels (`crates/polars-compute/`), datafusion (Arrow-based), postgres `executor/` (classic Volcano).
 - **Papers:** "MonetDB/X100: Hyper-Pipelining Query Execution" (CIDR'05), "Everything You Always Wanted to Know About Compiled and Vectorized Queries" (VLDB'18), "Morsel-Driven Parallelism" (SIGMOD'14).
 - **Build & bench:** implement the same aggregation query (scan+filter+group-by) three ways: tuple-at-a-time, vectorized (1024-row batches), and with SIMD; bench — the gap is the whole lesson.
 - **Capstone M11:** vectorized executor for `minidb` queries.
@@ -134,7 +134,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 **Why:** DuckDB/ClickHouse-style OLAP. Compression IS performance here.
 
 - **Concepts:** row vs column layout, encodings (RLE, dictionary, bit-packing, delta, FSST for strings), zone maps / min-max pruning, Parquet & Arrow formats, late materialization.
-- **Read code:** DuckDB `src/storage/compression/`, arrow-rs, parquet-rs.
+- **Read code:** DuckDB `src/storage/compression/`, polars (Arrow memory layout in practice), arrow-rs, parquet-rs.
 - **Papers:** "C-Store" (VLDB'05), "Integrating Compression and Execution in Column-Oriented Database Systems" (SIGMOD'06), "BtrBlocks" (SIGMOD'23), "FSST" (VLDB'20).
 - **Build & bench:** implement RLE + dictionary + bit-packing encoders; bench scan speed on encoded vs raw data (decompression can be *faster* than reading raw — verify); run ClickBench queries on DuckDB and profile.
 - **Capstone M12:** columnar table format + zone-map pruning in `minidb`.
