@@ -12,7 +12,7 @@ internals are familiar ground; the goal is breadth + depth across all database d
 
 The whole path is published as a browsable book (sidebar navigation, search,
 rendered diagrams) at **https://aviavni.github.io/database-learning-path/** —
-or [download the entire book as a PDF](database-learning-path.pdf).
+or [download the entire book as a PDF](https://aviavni.github.io/database-learning-path/database-learning-path.pdf).
 
 To build locally: `cargo install mdbook mdbook-mermaid`, then
 `mdbook-mermaid install . && mdbook serve` from the repo root.
