@@ -1,0 +1,18 @@
+[package]
+name = "replication-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+
+[[bin]]
+name = "partition_test"
+path = "src/bin/partition_test.rs"
+
+[[bin]]
+name = "repl_lag"
+path = "src/bin/repl_lag.rs"
+
+[profile.release]
+debug = true
