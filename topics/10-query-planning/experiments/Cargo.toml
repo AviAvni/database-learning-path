@@ -1,0 +1,11 @@
+[package]
+name = "planner-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlparser = "0.52"
+
+[[bin]]
+name = "explain"
+path = "src/bin/explain.rs"
