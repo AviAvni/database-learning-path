@@ -109,6 +109,11 @@ delta vs time-travel; ordering: newest-to-oldest wins; GC: cooperative wins)
 | reading-ssi-postgres.md | SSI: rw-antidependency pyramids, VLDB'12 |
 | reading-inmemory-mvcc.md | Wu/Pavlo empirical evaluation + Hekaton |
 
+Further references: Kung & Robinson "On Optimistic Methods for
+Concurrency Control" (TODS 1981) — the OCC school's founding paper
+(read/validate/write phases; RocksDB's OptimisticTransaction is this,
+verbatim); one of the most-cited DB papers of all time.
+
 ## 6. Experiments (`experiments/`)
 
 `src/mvcc.rs` — YOU implement MVCC with snapshot isolation over an in-memory

@@ -98,6 +98,11 @@ timestamp machinery — see reading-differential-dataflow.md §4 for why.
 - [reading-materialize-risingwave.md](reading-materialize-risingwave.md) — two production architectures compared
 - [reading-kafka-log.md](reading-kafka-log.md) — NetDB'11 + the log as the database
 
+Further references: "MillWheel" (VLDB 2013) — where *watermarks* (low
+watermarks over event time) entered production streaming; the
+heuristic ancestor of timely's proof-carrying frontiers, and the
+lineage behind Google Dataflow/Beam and Flink's model.
+
 ## Cross-topic links
 
 - Topic 20: FalkorDB delta matrices — DP=+Δ, DM=−Δ, `wait` = integrate;

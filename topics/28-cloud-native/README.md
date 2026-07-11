@@ -108,6 +108,14 @@ resolve reads correctly.
 - [reading-neon.md](reading-neon.md) — pageserver/safekeeper code walk (the anchors above)
 - [reading-slatedb-quickwit.md](reading-slatedb-quickwit.md) — LSM & search engineered S3-first
 
+Further references: "Lakehouse" (CIDR 2021) + "Delta Lake" (VLDB
+2020) — the open-format counterpoint to Snowflake: keep data in
+Parquet on object storage, get ACID from a transaction log of file
+lists (the same manifest-as-truth move as SlateDB's, at table scale);
+"CockroachDB" (SIGMOD 2020) — the shared-nothing rebuttal to this
+whole topic's disaggregation thesis (every node stores + computes;
+Raft per range instead of a page server).
+
 ## 6. Cross-topic threads
 
 - Topic 4: Neon's layer map and SlateDB are LSMs; S3 just moved where the

@@ -130,6 +130,13 @@ index is sparse because scans, not point reads, are the workload.
 | [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md) | BtrBlocks sampling + FSST symbol tables |
 | [reading-clickhouse-paper.md](reading-clickhouse-paper.md) | VLDB '24 system paper |
 
+Further references: "Dremel" (VLDB 2010) — the repetition/definition-
+level encoding for NESTED data that Parquet adopted wholesale (§4's
+format has a whole second half we skip because graphs are flat);
+"Lakehouse" (CIDR 2021) + "Delta Lake" (VLDB 2020) — what happens when
+the Parquet files themselves become the database (ACID via a
+transaction log of file lists — topic 28's manifest idea).
+
 ## Capstone M12
 
 Columnar attribute storage + zone-map pruning for property filters:

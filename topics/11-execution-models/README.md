@@ -147,6 +147,13 @@ IS the lesson. Predict the two ratios in notes.md first.
 | [reading-compiled-vs-vectorized.md](reading-compiled-vs-vectorized.md) | VLDB '18 — the fair fight |
 | [reading-morsel-parallelism.md](reading-morsel-parallelism.md) | SIGMOD '14 — scheduling |
 
+Further references: "Photon" (SIGMOD 2022) — Databricks' vectorized
+C++ engine, notable for *why not compilation*: easier to build, debug,
+and roll out than codegen at their scale; "Velox" (VLDB 2022) — Meta's
+reusable execution library (the executor as a component, like Calcite
+for topic 10); "GAMMA" (1986) — where exchange-operator parallelism
+came from, if you want the pre-history of §4.
+
 ## Capstone M11
 
 Vectorized runtime for the graph engine (reference mirror:

@@ -104,6 +104,19 @@ problem, different clothes (M10/M20 will meet it as nnz estimation).
 | reading-selinger-cascades.md | the founding paper + the framework that generalized it |
 | reading-how-good-optimizers.md | VLDB'15 — the humbling numbers |
 
+Further references:
+- "Apache Calcite" (SIGMOD 2018) — the optimizer as a *library*
+  (rules + cost model, no storage, no executor); what DataFusion is to
+  Rust, Calcite is to the JVM world.
+- "Spark SQL: Relational Data Processing in Spark" (SIGMOD 2015) —
+  Catalyst: plans as trees, rules as Scala pattern matches; the most
+  widely deployed rewrite-rule engine in existence.
+- Learned query optimization: "Learned Cardinalities" (Kipf et al.,
+  CIDR 2019) attacks §4's problem with a model; "Neo" (VLDB 2019) and
+  "Bao" (SIGMOD 2021, Marcus et al.) steer the whole planner — Bao
+  picks among hint sets so the classical optimizer stays as the safety
+  net. Read after the VLDB'15 paper: they are its direct descendants.
+
 ## 7. Experiments (`experiments/`)
 
 Mini planner: sqlparser-rs parses; YOU build the logical plan, pushdown,
