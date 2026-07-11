@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-23 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+24 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -133,9 +133,9 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 
 **Why:** DuckDB/ClickHouse-style OLAP. Compression IS performance here.
 
-- **Concepts:** row vs column layout, encodings (RLE, dictionary, bit-packing, delta, FSST for strings), zone maps / min-max pruning, Parquet & Arrow formats, late materialization.
-- **Read code:** DuckDB `src/storage/compression/`, polars (Arrow memory layout in practice), arrow-rs, parquet-rs.
-- **Papers:** "C-Store" (VLDB'05), "Integrating Compression and Execution in Column-Oriented Database Systems" (SIGMOD'06), "BtrBlocks" (SIGMOD'23), "FSST" (VLDB'20).
+- **Concepts:** row vs column layout, encodings (RLE, dictionary, bit-packing, delta, FSST for strings), zone maps / min-max pruning, Parquet & Arrow formats, late materialization, columnar-store architectures compared: ClickHouse MergeTree (LSM-flavored parts + sparse primary index, materialized views) vs DuckDB (embedded, single-file) vs real-time OLAP (Pinot/Druid ingest-time indexing).
+- **Read code:** DuckDB `src/storage/compression/`, ClickHouse `MergeTree/` (parts, granules, sparse index — pick narrow slices), polars (Arrow memory layout in practice), arrow-rs, parquet-rs.
+- **Papers:** "C-Store" (VLDB'05), "Integrating Compression and Execution in Column-Oriented Database Systems" (SIGMOD'06), "BtrBlocks" (SIGMOD'23), "FSST" (VLDB'20), "ClickHouse: Lightning Fast Analytics for Everyone" (VLDB'24).
 - **Build & bench:** implement RLE + dictionary + bit-packing encoders; bench scan speed on encoded vs raw data (decompression can be *faster* than reading raw — verify); run ClickBench queries on DuckDB and profile.
 - **Capstone M12:** columnar table format + zone-map pruning in `minidb`.
 
@@ -183,17 +183,17 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 
 **Why:** The last 10x on a single core. Touched in topic 11 — this is the dedicated deep dive: writing kernels that saturate the CPU.
 
-- **Concepts:** SIMD fundamentals (AVX2/AVX-512 vs ARM NEON/SVE — know both, you're on ARM), autovectorization and why it fails, Rust portable SIMD (`std::simd`) vs intrinsics, branchless selection (masks + compress), SIMD hash probing (SwissTable), SIMD string parsing/comparison, bit-packed decoding at SIMD speed (FastLanes), gather/scatter costs, instruction-level parallelism & dependency chains.
-- **Read code:** polars `crates/polars-compute/` kernels, simdjson (the masterclass — read with the paper), hashbrown SIMD group probing, DuckDB compressed-scan kernels, usearch/SimSIMD distance functions, memchr crate.
+- **Concepts:** SIMD fundamentals (AVX2/AVX-512 vs ARM NEON/SVE — know both, you're on ARM), autovectorization and why it fails, Rust portable SIMD (`std::simd`) vs intrinsics, branchless selection (masks + compress), SIMD hash probing (SwissTable), SIMD string parsing/comparison, bit-packed decoding at SIMD speed (FastLanes), gather/scatter costs, instruction-level parallelism & dependency chains, Mojo's SIMD-first design (`SIMD[type, width]` as a first-class parametric type — compare its ergonomics vs `std::simd` and intrinsics).
+- **Read code:** polars `crates/polars-compute/` kernels, simdjson (the masterclass — read with the paper), hashbrown SIMD group probing, DuckDB compressed-scan kernels, usearch/SimSIMD distance functions, memchr crate, Mojo stdlib + Modular's matmul optimization blog series.
 - **Papers:** "Rethinking SIMD Vectorization for In-Memory Databases" (SIGMOD'15), "Parsing Gigabytes of JSON per Second" (simdjson, VLDB'19), "The FastLanes Compression Layout" (VLDB'23).
-- **Build & bench:** write filter-selection and dot-product kernels four ways: naive scalar, autovectorized, `std::simd`, NEON intrinsics; bench with `perf stat` (IPC, vector-lane utilization); then SIMD-ize a bit-packing decoder and compare against topic 12's scalar version.
+- **Build & bench:** write filter-selection and dot-product kernels four ways: naive scalar, autovectorized, `std::simd`, NEON intrinsics; bench with `perf stat` (IPC, vector-lane utilization); then SIMD-ize a bit-packing decoder and compare against topic 12's scalar version; port one kernel to Mojo and compare both the numbers and the code you had to write.
 - **Capstone M17:** SIMD-accelerated kernels in `minidb`'s vectorized executor + vector-index distance functions; keep scalar fallbacks and a bench comparing them.
 
 ## 18. GPU Acceleration for Databases
 
 **Why:** GPUs are reshaping analytics, graph algorithms, and vector search — directly relevant to FalkorDB's future (GraphBLAS on GPU exists). Learn when the PCIe tax is worth paying.
 
-- **Concepts:** GPU architecture for DB people (SIMT, warps, occupancy, memory coalescing, shared memory), the data-transfer bottleneck (PCIe vs NVLink vs unified memory on Apple Silicon), GPU hash joins & aggregation, GPU graph processing (Gunrock, cuGraph, GraphBLAST — SpMV on GPU!), GPU vector search (Faiss GPU, cuVS/CAGRA), programming models: CUDA vs Metal vs wgpu/WebGPU (portable, works on your Mac).
+- **Concepts:** GPU architecture for DB people (SIMT, warps, occupancy, memory coalescing, shared memory), the data-transfer bottleneck (PCIe vs NVLink vs unified memory on Apple Silicon), GPU hash joins & aggregation, GPU graph processing (Gunrock, cuGraph, GraphBLAST — SpMV on GPU!), GPU vector search (Faiss GPU, cuVS/CAGRA), programming models: CUDA vs Metal vs wgpu/WebGPU (portable, works on your Mac) vs Mojo/MLIR (one language targeting CPU SIMD *and* GPU — the portability bet worth understanding).
 - **Read code:** cuVS/RAFT (vector search kernels), libcudf (GPU columnar ops), Gunrock or GraphBLAST (graph frontier expansion), HeavyDB query compilation to GPU, Rust: `wgpu` compute examples, `cudarc`.
 - **Papers:** "A Study of the Fundamental Performance Characteristics of GPUs and CPUs for Database Analytics" (Crystal, SIGMOD'20), "Billion-scale similarity search with GPUs" (Faiss, arXiv:1702.08734), "Gunrock" (PPoPP'16), "CAGRA: Highly Parallel Graph Construction for GPU ANN" (ICDE'24).
 - **Build & bench:** implement filter+aggregate and batch vector-distance as wgpu compute shaders (runs on Apple Silicon Metal); bench vs your topic-17 SIMD kernels *including transfer time* — find the crossover batch size where GPU wins; run BFS via SpMV on GPU vs SuiteSparse CPU.
@@ -223,10 +223,10 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 
 **Why:** Testing (topic 16) finds bugs you imagined; formal methods find the ones you didn't. AWS, MongoDB, and CockroachDB all spec their protocols in TLA+. Also: e-graphs are quietly powering modern query optimizers.
 
-- **Concepts:** SAT → SMT (DPLL(T), theories), Z3's architecture (tactics, e-matching, the congruence closure e-graph), TLA+ & PlusCal (specify, then let TLC model-check), safety vs liveness, refinement, equality saturation with e-graphs (egg) for rewrite-rule optimizers, lightweight formal methods (spec only the scary parts), protocol testing languages (P, Ivy) as a lighter alternative.
-- **Read code:** Z3 internals (`src/smt/`, the e-graph — a high-performance search engine over logic), egg (Rust equality saturation — read fully, it's small), published TLA+ specs: Raft (Ongaro's), MongoDB replication, CockroachDB's specs repo.
-- **Papers:** "How Amazon Web Services Uses Formal Methods" (CACM'15 — the motivation paper), "egg: Fast and Extensible Equality Saturation" (POPL'21), "Z3: An Efficient SMT Solver" (TACAS'08), Lamport's "Specifying Systems" (part I) + the TLA+ video course, "Cosette" (CIDR'17 — revisit from topic 16).
-- **Build & bench:** write a TLA+ spec of `minidb`'s WAL-replication protocol (topic 15) and model-check it — then remove an ack and watch TLC find the data-loss trace; build an expression-rewrite pass with egg and compare plans vs your hand-ordered rules from topic 10.
+- **Concepts:** SAT → SMT (DPLL(T), theories), Z3's architecture (tactics, e-matching, the congruence closure e-graph), TLA+ & PlusCal (specify, then let TLC model-check), safety vs liveness, refinement, equality saturation with e-graphs (egg) for rewrite-rule optimizers, lightweight formal methods (spec only the scary parts), protocol testing languages (P, Ivy) as a lighter alternative, theorem proving with Lean 4 (proofs vs model checking — and Lean's runtime itself: Perceus reference counting, functional-but-in-place updates, a systems-performance story in its own right).
+- **Read code:** Z3 internals (`src/smt/`, the e-graph — a high-performance search engine over logic), egg (Rust equality saturation — read fully, it's small), published TLA+ specs: Raft (Ongaro's), MongoDB replication, CockroachDB's specs repo, Lean 4 (`leanprover/lean4` — the compiler/runtime in `src/runtime/`, and how mathlib scales proof search).
+- **Papers:** "How Amazon Web Services Uses Formal Methods" (CACM'15 — the motivation paper), "egg: Fast and Extensible Equality Saturation" (POPL'21), "Z3: An Efficient SMT Solver" (TACAS'08), Lamport's "Specifying Systems" (part I) + the TLA+ video course, "Cosette" (CIDR'17 — revisit from topic 16), "Counting Immutable Beans" + "Perceus: Garbage-Free Reference Counting" (the Lean/Koka runtime papers).
+- **Build & bench:** write a TLA+ spec of `minidb`'s WAL-replication protocol (topic 15) and model-check it — then remove an ack and watch TLC find the data-loss trace; build an expression-rewrite pass with egg and compare plans vs your hand-ordered rules from topic 10; in Lean 4, formalize and prove a small invariant (e.g., your B+tree ordering property or skiplist level distribution) — taste the proof-vs-test trade-off.
 - **Capstone M21:** TLA+ spec of `minidb` replication (or MVCC visibility) checked by TLC in CI; optional egg-based rewrite stage in the planner.
 
 ## 22. Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC & Friends
@@ -238,6 +238,16 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Papers:** "TPC-H Analyzed: Hidden Messages and Lessons Learned" (Boncz — the choke-point paper, read alongside running it), "Fair Benchmarking Considered Difficult" (DBTest'18), "OLTP-Bench" (VLDB'13), "How Good Are Query Optimizers, Really?" (VLDB'15 — the JOB paper, revisit), LDBC SNB paper.
 - **Build & bench:** run TPC-H SF10 on DuckDB and postgres, profile three choke-point queries and explain the gap; run YCSB against redis and your topic-7 RESP server; run LDBC SNB interactive on FalkorDB vs neo4j and analyze where each wins.
 - **Capstone M22:** standing benchmark suite for `minidb` — YCSB workloads, a TPC-H query subset, micro-LDBC graph queries, ann-benchmarks recall/QPS — with regression tracking across capstone milestones.
+
+## 23. Full-Text Search & Inverted Indexes (Elasticsearch / Lucene / tantivy)
+
+**Why:** The third great index family after trees and hash tables. Lucene is a 25-year masterclass, tantivy is its readable Rust rival, and RediSearch is home turf.
+
+- **Concepts:** inverted index anatomy (term dictionary, posting lists), text analysis pipelines (tokenizers, stemming), posting-list compression (varint, bit-packing, roaring bitmaps), FSTs for term dictionaries, BM25 scoring, top-k retrieval with WAND / block-max WAND, Lucene's LSM-like segment architecture + merge policies (compare with topic 4!), doc values (Lucene's columnar side), Elasticsearch distribution layer (shards, scatter-gather, relevance vs recall), hybrid search (BM25 + vectors, reciprocal rank fusion — ties to topic 14).
+- **Read code:** tantivy (Rust, the best read — postings, FST dictionary, block-max WAND), Lucene core (`codecs/`, segment merging), RediSearch (redis-module perspective you know), quickwit (tantivy over object storage), Elasticsearch mostly at the architecture-docs level.
+- **Papers:** "Inverted Files for Text Search Engines" (Zobel & Moffat, CSUR'06 — the survey), BM25 origins (Robertson & Zaragoza "The Probabilistic Relevance Framework"), "Faster Top-k Document Retrieval Using Block-Max Indexes" (SIGIR'11), "Roaring Bitmaps" (arXiv:1603.06549).
+- **Build & bench:** build a mini inverted index in Rust: tokenize → posting lists → BM25 → top-k with block-max WAND; bench vs tantivy on a Wikipedia dump; compare roaring vs raw-vec posting lists for AND/OR queries.
+- **Capstone M23:** full-text index in `minidb` + hybrid search fusing BM25 with the M14 vector index (RRF).
 
 ---
 

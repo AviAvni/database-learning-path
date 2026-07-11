@@ -49,3 +49,9 @@ Clone the ones in active use to `~/repos/`.
 | [unum-cloud/usearch](https://github.com/unum-cloud/usearch) | C++ | compact single-header HNSW — topic 14 |
 | [DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) | C | SuiteSparse internals — go deeper than the API you already use |
 | [Z3Prover/z3](https://github.com/Z3Prover/z3) | C++ | SMT solver: query-equivalence proving, invariant checking (topic 16); also a perf-engineering masterclass |
+| [quickwit-oss/tantivy](https://github.com/quickwit-oss/tantivy) | Rust | inverted index / full-text engine — the readable Lucene (topic 23) |
+| [apache/lucene](https://github.com/apache/lucene) | Java | the canon of search: codecs, FSTs, segment merging (topic 23) |
+| [elastic/elasticsearch](https://github.com/elastic/elasticsearch) | Java | distributed search architecture over Lucene: shards, scatter-gather (topic 23) |
+| [RediSearch/RediSearch](https://github.com/RediSearch/RediSearch) | C | search as a redis module — your ecosystem's approach (topic 23) |
+| [leanprover/lean4](https://github.com/leanprover/lean4) | C++/Lean | theorem proving + Perceus RC runtime (topic 21) |
+| [modular/mojo](https://github.com/modular/modular) | Mojo | SIMD-first language on MLIR, CPU+GPU kernels (topics 17, 18) |

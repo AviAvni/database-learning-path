@@ -27,6 +27,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 20 | Sparse Linear Algebra & GraphBLAS Internals | todo | |
 | 21 | Formal Methods & Verification | todo | |
 | 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | todo | |
+| 23 | Full-Text Search & Inverted Indexes | todo | |
 
 ## Capstone milestones
 
@@ -55,6 +56,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M20 sparse-matrix graph engine vs M13 shootout | 20 | todo |
 | M21 TLA+ spec checked in CI | 21 | todo |
 | M22 standing benchmark suite + regression tracking | 22 | todo |
+| M23 full-text index + hybrid search (BM25 + vector) | 23 | todo |
 
 ## Session log
 
