@@ -1,7 +1,7 @@
 # The Plan — Database Internals Curriculum
 
-17 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
-vector / distributed topics are interleaved so it stays fun. Each topic has: why it
+19 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
 
@@ -179,6 +179,26 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Build & bench:** add proptest model-checking to `minidb` (ops vs an in-memory model oracle); build a mini DST harness (simulated clock + fault-injecting IO layer); fuzz your SST/page parsers.
 - **Capstone M16:** full DST + crash-recovery + property test suite over `minidb`. Graduation.
 
+## 17. SIMD & Hardware-Conscious Data Processing
+
+**Why:** The last 10x on a single core. Touched in topic 11 — this is the dedicated deep dive: writing kernels that saturate the CPU.
+
+- **Concepts:** SIMD fundamentals (AVX2/AVX-512 vs ARM NEON/SVE — know both, you're on ARM), autovectorization and why it fails, Rust portable SIMD (`std::simd`) vs intrinsics, branchless selection (masks + compress), SIMD hash probing (SwissTable), SIMD string parsing/comparison, bit-packed decoding at SIMD speed (FastLanes), gather/scatter costs, instruction-level parallelism & dependency chains.
+- **Read code:** polars `crates/polars-compute/` kernels, simdjson (the masterclass — read with the paper), hashbrown SIMD group probing, DuckDB compressed-scan kernels, usearch/SimSIMD distance functions, memchr crate.
+- **Papers:** "Rethinking SIMD Vectorization for In-Memory Databases" (SIGMOD'15), "Parsing Gigabytes of JSON per Second" (simdjson, VLDB'19), "The FastLanes Compression Layout" (VLDB'23).
+- **Build & bench:** write filter-selection and dot-product kernels four ways: naive scalar, autovectorized, `std::simd`, NEON intrinsics; bench with `perf stat` (IPC, vector-lane utilization); then SIMD-ize a bit-packing decoder and compare against topic 12's scalar version.
+- **Capstone M17:** SIMD-accelerated kernels in `minidb`'s vectorized executor + vector-index distance functions; keep scalar fallbacks and a bench comparing them.
+
+## 18. GPU Acceleration for Databases
+
+**Why:** GPUs are reshaping analytics, graph algorithms, and vector search — directly relevant to FalkorDB's future (GraphBLAS on GPU exists). Learn when the PCIe tax is worth paying.
+
+- **Concepts:** GPU architecture for DB people (SIMT, warps, occupancy, memory coalescing, shared memory), the data-transfer bottleneck (PCIe vs NVLink vs unified memory on Apple Silicon), GPU hash joins & aggregation, GPU graph processing (Gunrock, cuGraph, GraphBLAST — SpMV on GPU!), GPU vector search (Faiss GPU, cuVS/CAGRA), programming models: CUDA vs Metal vs wgpu/WebGPU (portable, works on your Mac).
+- **Read code:** cuVS/RAFT (vector search kernels), libcudf (GPU columnar ops), Gunrock or GraphBLAST (graph frontier expansion), HeavyDB query compilation to GPU, Rust: `wgpu` compute examples, `cudarc`.
+- **Papers:** "A Study of the Fundamental Performance Characteristics of GPUs and CPUs for Database Analytics" (Crystal, SIGMOD'20), "Billion-scale similarity search with GPUs" (Faiss, arXiv:1702.08734), "Gunrock" (PPoPP'16), "CAGRA: Highly Parallel Graph Construction for GPU ANN" (ICDE'24).
+- **Build & bench:** implement filter+aggregate and batch vector-distance as wgpu compute shaders (runs on Apple Silicon Metal); bench vs your topic-17 SIMD kernels *including transfer time* — find the crossover batch size where GPU wins; run BFS via SpMV on GPU vs SuiteSparse CPU.
+- **Capstone M18:** experimental GPU backend for one `minidb` hot path (vector distance scoring or columnar aggregate) behind a feature flag, with CPU-vs-GPU crossover benchmark.
+
 ---
 
 ## After the plan (ideas backlog)
@@ -188,4 +208,5 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - Distributed transactions (Percolator, Calvin, Spanner/TrueTime)
 - HTAP architectures (TiDB/TiFlash)
 - Query compilation with cranelift (compile `minidb` queries to native code)
+- FPGA / SmartNIC / computational storage offload (beyond GPU)
 - CRDTs & local-first sync (interesting contrast to consensus)

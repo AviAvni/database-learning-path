@@ -21,6 +21,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 14 | Vector Search | todo | |
 | 15 | Replication, Consensus & Distribution | todo | |
 | 16 | Testing & Correctness Engineering | todo | |
+| 17 | SIMD & Hardware-Conscious Data Processing | todo | |
+| 18 | GPU Acceleration for Databases | todo | |
 
 ## Capstone milestones
 
@@ -43,6 +45,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M14 vector index | 14 | todo |
 | M15 replication → Raft | 15 | todo |
 | M16 DST + property tests | 16 | todo |
+| M17 SIMD executor + distance kernels | 17 | todo |
+| M18 GPU backend (experimental) | 18 | todo |
 
 ## Session log
 
