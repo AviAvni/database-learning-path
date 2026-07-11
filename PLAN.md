@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-27 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+31 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -279,13 +279,50 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Build & bench:** implement blocked-bloom, cuckoo, and xor filters — bench FPR vs bits-per-key vs lookup latency in one chart; implement HLL and verify the error bound empirically against exact counts; race a PGM-index against your M3 B+tree on sorted keys, then add updates and watch the story change.
 - **Capstone M26:** secondary range indexes maintained under MVCC + bloom filters in the LSM backend + HLL fast path for approximate `count(DISTINCT ...)` in Cypher.
 
+## 27. Streaming & Incremental View Maintenance
+
+**Why:** Recomputing from scratch is the enemy. Differential dataflow and DBSP made incremental computation rigorous — and FalkorDB's delta matrices are already halfway there conceptually.
+
+- **Concepts:** dataflow model (timely), differential dataflow (deltas all the way down), DBSP (the algebraic theory of incremental computation — Z-sets will feel familiar after semirings), materialized view maintenance, watermarks & out-of-order data, exactly-once semantics, the log as the database (Kafka), incremental graph queries (registered/standing Cypher queries).
+- **Read code:** differential-dataflow + timely (Rust, Frank McSherry), Feldera (DBSP implementation, Rust), Materialize architecture, RisingWave (Rust streaming DB).
+- **Papers:** "Naiad: A Timely Dataflow System" (SOSP'13), "Differential Dataflow" (CIDR'13), "DBSP: Automatic Incremental View Maintenance for Rich Query Languages" (VLDB'23 best paper), "Kafka" (NetDB'11).
+- **Build & bench:** incremental PageRank and triangle counting with differential-dataflow — stream edge insertions and compare incremental-update cost vs full recompute as the graph grows; write a delta-join operator by hand to demystify it.
+- **Capstone M27:** standing Cypher queries — register a query, keep its result incrementally maintained under graph mutations via delta matrices, push changes to subscribers.
+
+## 28. Cloud-Native & Disaggregated Storage
+
+**Why:** The architecture every serious DB is converging on: compute is stateless, the log/object store is the database. Aurora, Neon, Snowflake — and it changes every design trade-off you learned in topics 3–6.
+
+- **Concepts:** compute–storage separation, Aurora's "the log is the database", Neon's pageserver + WAL-redo model, object storage as substrate (S3 latency/cost/consistency model), caching tiers & request hedging, snapshots and copy-on-write branching, serverless & scale-to-zero, shared-data vs shared-nothing, LSM tiering to object storage.
+- **Read code:** neon (Rust — pageserver, safekeepers), slatedb (Rust LSM on object storage — small and current), quickwit (search over S3), turso's object-store work.
+- **Papers:** "Amazon Aurora: Design Considerations for High Throughput Cloud-Native Relational Databases" (SIGMOD'17), "Socrates: The New SQL Server in the Cloud" (SIGMOD'19), "The Snowflake Elastic Data Warehouse" (SIGMOD'16), "Building a Database on S3" (SIGMOD'08 — prescient), Neon architecture posts.
+- **Build & bench:** move your LSM backend's SSTs to object storage (MinIO locally) with a local NVMe cache tier; measure p50/p99 read latencies vs local-only and tune the cache; implement copy-on-write graph branching (Neon-style branches for graphs).
+- **Capstone M28:** tiered storage backend — hot data local, SSTs on object storage — plus instant graph snapshots/branches.
+
+## 29. Distributed Transactions
+
+**Why:** The layer above topic 15's Raft: making *transactions* span shards. The gap between 2PC-in-a-textbook and Spanner/FoundationDB is where the deep understanding lives.
+
+- **Concepts:** 2PC and its blocking failure mode, Percolator (transactions over a KV store — TiKV's model), Spanner's TrueTime + external consistency, hybrid logical clocks (HLC — CockroachDB's answer to no atomic clocks), Calvin & deterministic databases (Abadi's counterpoint), FoundationDB's decomposed architecture (sequencer/resolvers/storage), contention & abort-rate dynamics, the cross-shard graph traversal problem (why graph partitioning is hard).
+- **Read code:** tikv (`txn/` — Percolator in Rust), FoundationDB (with the SIGMOD'21 paper as the map), CockroachDB `kv/txn` coordinator + HLC.
+- **Papers:** "Spanner" (OSDI'12), "Large-scale Incremental Processing Using Distributed Transactions" (Percolator, OSDI'10), "Calvin" (SIGMOD'12), "FoundationDB: A Distributed Unbundled Transactional Key Value Store" (SIGMOD'21), "Logical Physical Clocks" (HLC, OPODIS'14).
+- **Build & bench:** shard your graph across two processes; implement 2PC, then Percolator-style transactions over the KV layer; drive both with the M16 DST harness injecting crashes at every 2PC state; measure abort rates vs contention (Zipfian hot keys).
+- **Capstone M29:** cross-shard transactions + cross-shard pattern matching over a partitioned graph.
+
+## 30. Time-Series Engines
+
+**Why:** Small, beautiful, and immediately useful: Gorilla's encodings are the best compression-ratio-per-line-of-code in databases. And temporal graphs are an open frontier for FalkorDB.
+
+- **Concepts:** Gorilla compression (delta-of-delta timestamps, XOR floats), time-partitioned storage & retention/downsampling, out-of-order ingestion (the hard part), tag inverted index (series lookup — topic 23 reappears), high-cardinality pain, IOx architecture (DataFusion + Parquet + object storage — topics 11/12/28 combined), TSBS benchmarking.
+- **Read code:** influxdb (IOx engine, Rust), prometheus `tsdb/` (Go, very readable — head block + WAL + compaction), VictoriaMetrics (ruthless efficiency).
+- **Papers:** "Gorilla: A Fast, Scalable, In-Memory Time Series Database" (VLDB'15 — read first), "Monarch: Google's Planet-Scale In-Memory Time Series Database" (VLDB'20), "BtrDB" (FAST'16).
+- **Build & bench:** implement the Gorilla codec (delta-of-delta + XOR floats) in Rust; bench compression ratio and decode throughput on real metrics (node_exporter dumps) vs Parquet+zstd; handle out-of-order writes and measure the cost.
+- **Capstone M30:** temporal graph support — edge/property history with Gorilla-compressed values and time-travel pattern matching (`MATCH ... AT TIME t`).
+
 ---
 
 ## After the plan (ideas backlog)
 
-- Streaming & incremental view maintenance (differential dataflow, Materialize)
-- Time-series engines (Gorilla compression, InfluxDB IOx)
-- Distributed transactions (Percolator, Calvin, Spanner/TrueTime)
 - HTAP architectures (TiDB/TiFlash)
 - FPGA / SmartNIC / computational storage offload (beyond GPU)
 - CRDTs & local-first sync (interesting contrast to consensus)

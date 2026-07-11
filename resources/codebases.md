@@ -56,3 +56,8 @@ Clone the ones in active use to `~/repos/`.
 | [RediSearch/RediSearch](https://github.com/RediSearch/RediSearch) | C | search as a redis module — your ecosystem's approach (topic 23) |
 | [leanprover/lean4](https://github.com/leanprover/lean4) | C++/Lean | theorem proving + Perceus RC runtime (topic 21) |
 | [modular/mojo](https://github.com/modular/modular) | Mojo | SIMD-first language on MLIR, CPU+GPU kernels (topics 17, 18) |
+| [TimelyDataflow/differential-dataflow](https://github.com/TimelyDataflow/differential-dataflow) | Rust | incremental computation — the real thing (topic 27) |
+| [neondatabase/neon](https://github.com/neondatabase/neon) | Rust | disaggregated postgres: pageserver, safekeepers, branching (topic 28) |
+| [slatedb/slatedb](https://github.com/slatedb/slatedb) | Rust | LSM directly on object storage — small, modern (topic 28) |
+| [prometheus/prometheus](https://github.com/prometheus/prometheus) | Go | `tsdb/`: readable time-series storage (topic 30) |
+| [influxdata/influxdb](https://github.com/influxdata/influxdb) | Rust | IOx: DataFusion+Parquet+object storage combined (topics 11/12/28/30) |

@@ -31,6 +31,10 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 24 | Advanced Graph Algorithms & Analytics | todo | |
 | 25 | Graph Neural Networks & Graph ML | todo | |
 | 26 | Indexing & Probabilistic Data Structures | todo | |
+| 27 | Streaming & Incremental View Maintenance | todo | |
+| 28 | Cloud-Native & Disaggregated Storage | todo | |
+| 29 | Distributed Transactions | todo | |
+| 30 | Time-Series Engines | todo | |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -63,6 +67,10 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M24 algorithm library as Cypher procedures | 24 | todo |
 | M25 GNN embeddings pipeline + GraphRAG queries | 25 | todo |
 | M26 MVCC secondary indexes + bloom + HLL count path | 26 | todo |
+| M27 standing Cypher queries (incremental results) | 27 | todo |
+| M28 tiered object storage + graph branching | 28 | todo |
+| M29 cross-shard transactions + pattern matching | 29 | todo |
+| M30 temporal graph + time-travel queries | 30 | todo |
 
 ## Session log
 
