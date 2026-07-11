@@ -1,0 +1,14 @@
+[package]
+name = "mvcc-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+
+[[bin]]
+name = "txn_bench"
+path = "src/bin/txn_bench.rs"
+
+[profile.release]
+debug = true
