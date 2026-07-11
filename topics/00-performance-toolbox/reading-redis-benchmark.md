@@ -22,6 +22,15 @@ and what does it get wrong about coordinated omission?*
 
 ## How pipelining works (the elegant part)
 
+```
+c->obuf — the whole benchmark is one pre-built buffer, written over and over:
+
+┌──────┬────────┬──────────────────────────┬──────────────────────────┬─ ─ ─
+│ AUTH │ SELECT │ SET key:__0000000042__ v │ SET key:__0000000913__ v │ ×pipeline
+└──────┴────────┴──────────▲───────────────┴──────────▲───────────────┴─ ─ ─
+  trimmed after 1st reply  └── randptr[] patch digits in place — no re-serialization
+```
+
 There is no request queue. `createClient` (625) copies the *same command bytes*
 `config.pipeline` times into one output buffer `c->obuf`, sets
 `c->pending = config.pipeline`, and the event loop just writes the whole buffer and
@@ -46,7 +55,17 @@ randomization per slot of the buffer, and the whole batch is one timing unit.
 
 ## What it gets wrong about coordinated omission
 
-The loop is **closed**: `clientDone` (420) → `resetClient` (368) → re-arm write handler
+```mermaid
+flowchart LR
+    W["writeHandler (555)<br/>c->start = ustime()"] --> R["readHandler (442)<br/>latency = now − start<br/>on FIRST reply only (452)"]
+    R --> D["clientDone (420)"]
+    D --> RC["resetClient (368)"]
+    RC -->|"next batch starts only after<br/>the previous one finished"| W
+```
+
+The cycle above is the whole problem: it's **closed** — there is no intended-arrival
+schedule anywhere, so a server stall pauses the generator itself. In detail:
+`clientDone` (420) → `resetClient` (368) → re-arm write handler
 → next batch starts *after* the previous one finished. `c->start` is set at send time,
 not against any intended schedule. Consequences, in Tene's terms:
 

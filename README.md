@@ -28,6 +28,16 @@ resources/
 
 ## Workflow (for me and for Claude next session)
 
+```mermaid
+flowchart LR
+    A["PROGRESS.md<br/>where are we?"] --> B["PLAN.md<br/>pick next topic"]
+    B --> C["topics/NN-name/<br/>expand into study guide"]
+    C --> D["study · experiments<br/>· benchmarks · notes.md"]
+    D --> E["capstone/<br/>milestone MNN"]
+    E --> F["update PROGRESS.md<br/>+ commit"]
+    F -.->|next topic| B
+```
+
 1. Open `PROGRESS.md` to see where we are.
 2. Pick the next topic (or any topic — order is a suggestion, not a rule) from `PLAN.md`.
 3. Create `topics/NN-topic-name/` and expand the PLAN.md section into a full study

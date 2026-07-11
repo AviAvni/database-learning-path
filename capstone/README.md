@@ -11,20 +11,21 @@ by comparing your design and numbers against the corresponding module there.
 
 ## Target architecture (mirrors the reference)
 
-```
-     RESP server — GRAPH.QUERY / GRAPH.RO_QUERY (wire-compatible with FalkorDB clients)
-              |
-     Cypher parser ──► binder ──► planner / optimizer ──► vectorized runtime
-                                                          (batches, ops, expression eval → JIT)
-              |
-     graph core: sparse/delta matrices (own GraphBLAS-subset kernels)
-                 + attribute store, string pool, node/edge datablocks
-              |
-     MVCC (copy-on-write graph) · constraints · indexes (range, vector, full-text)
-              |
-     persistence: WAL + recovery · B+tree / LSM backends · buffer pool
-              |
-     replication (WAL-shipping → Raft) · DST + fuzzing + openCypher TCK + LDBC benches
+```mermaid
+flowchart TD
+    CLIENT["FalkorDB clients<br/>(falkordb-py, redis-cli, ...)"]
+    CLIENT --> RESP["RESP server — GRAPH.QUERY / GRAPH.RO_QUERY<br/>wire-compatible · M7"]
+    RESP --> PARSE["Cypher parser → binder<br/>M10"]
+    PARSE --> PLAN["planner / optimizer<br/>M10 · egg rewrites M21"]
+    PLAN --> RT["vectorized runtime — batches, operators, expression eval<br/>M11 · SIMD M17 · JIT M19 · GPU M18"]
+    RT --> CORE["graph core: sparse/delta matrices — own GraphBLAS-subset kernels<br/>M13 naive → M20 sparse · + attribute store, string pool, datablocks M2"]
+    CORE --> TXN["MVCC copy-on-write graph M8 · constraints ·<br/>indexes: range M3/M26, vector M14, full-text M23"]
+    TXN --> PERSIST["persistence: WAL + recovery M5 · B+tree M3 / LSM M4 backends ·<br/>buffer pool M6 · tiered object storage M28"]
+    PERSIST --> DIST["replication: WAL-shipping → Raft M15 ·<br/>cross-shard txns M29 · active-active CRDT M31"]
+    QA["correctness & perf spine:<br/>DST + fuzzing + openCypher TCK M16 ·<br/>TLA+/Lean M21 · LDBC benches M22"]
+    QA -.->|guards| RT
+    QA -.-> CORE
+    QA -.-> PERSIST
 ```
 
 ## Ground rules
@@ -46,5 +47,21 @@ Rough dependency spine: M0 → M2 → M13 (naive adjacency graph) → M10/M11 (q
 → M20 (sparse-matrix core replaces M13). Everything else attaches to that spine —
 persistence (M3–M6), server (M7), MVCC/concurrency (M8/M9), indexes (M12/M14/M23),
 distribution (M15), correctness (M16/M21), performance (M17/M18/M19/M22).
+
+```mermaid
+flowchart LR
+    M0["M0<br/>workspace +<br/>bench harness"] --> M2["M2<br/>attribute store +<br/>datablocks"]
+    M2 --> M13["M13<br/>naive adjacency<br/>graph core"]
+    M13 --> M10["M10<br/>parser +<br/>planner"]
+    M10 --> M11["M11<br/>vectorized<br/>runtime"]
+    M11 --> M20["M20<br/>sparse-matrix core<br/>(the heart)"]
+    P["persistence<br/>M3–M6"] -.-> M13
+    S["server<br/>M7"] -.-> M10
+    C["MVCC + concurrency<br/>M8 / M9"] -.-> M13
+    I["indexes<br/>M12 / M14 / M23 / M26"] -.-> M20
+    D["distribution<br/>M15 / M28 / M29 / M31"] -.-> M20
+    Q["correctness<br/>M16 / M21"] -.-> M11
+    PF["performance<br/>M17 / M18 / M19 / M22"] -.-> M20
+```
 
 Workspace is created at M0 (topic 0). Nothing lives here until then.

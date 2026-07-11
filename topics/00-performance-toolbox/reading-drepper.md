@@ -30,10 +30,28 @@ PDF: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf (~114 pages —
 - **Fig 3.11** (cache-line utilization) explains why columnar layouts win: touching 8
   bytes of a 128-byte line wastes 94% of the transfer. Topic 12 in one figure.
 
+```
+filter on one 8-byte column, 128 B cache lines (M-series):
+
+row layout:  line = [ a │ b  c  d  e  f  g ... padding ... ]   use 8 B / 128 B → 94% wasted
+col layout:  line = [ a  a  a  a  a  a  a  a  a  a  a  a  a  a  a  a ]   use 128 B → 0% wasted
+```
+
+
 ## §4 — Virtual memory (~10 pages)
 
 - **4.1–4.2** Page tables are a 4-level radix tree walked *in memory* — a TLB miss is
   up to 4 dependent loads. Sound familiar? It's pointer chasing (topic 0 §2).
+
+```
+A TLB miss is pointer chasing in silicon — 4 dependent memory loads:
+
+CR3 ──► PGD entry ──► PUD entry ──► PMD entry ──► PTE ──► finally, your data
+        (load 1)      (load 2)      (load 3)     (load 4)
+        each load can itself miss cache ⇒ worst case ~4 × DRAM latency
+        before the ACTUAL access even starts
+```
+
 - **4.3 (the key bit)** TLB reach: 4 KB pages × ~2K entries ≈ a few MB — far smaller
   than working sets. Why databases care about **huge pages** (2 MB/1 GB; 16 KB base
   pages on Apple Silicon already 4x the reach).

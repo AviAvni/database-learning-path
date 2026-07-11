@@ -21,6 +21,23 @@ single measurement lies; this covers how a *comparison between systems* lies.
 
 ## The eight pitfalls (§3)
 
+```mermaid
+flowchart TD
+    Q["Where a system comparison lies"]
+    Q --> SU["Setup"]
+    Q --> CMP["Comparison"]
+    Q --> MEA["Measurement"]
+    Q --> RES["Results"]
+    SU --> P1["3.1 non-reproducible<br/>(the Escher result)"]
+    SU --> P2["3.2 untuned baseline<br/>(debug build, default config)"]
+    CMP --> P3["3.3 apples vs oranges<br/>(kernel vs full system)"]
+    CMP --> P4["3.4 tuned to the benchmark<br/>(known selectivities)"]
+    MEA --> P5["3.5 cold/hot conflated"]
+    MEA --> P6["3.6 restart ≠ cold<br/>(OS page cache warm)"]
+    MEA --> P7["3.7 preprocessing ignored<br/>(index build, auto-imprints)"]
+    RES --> P8["3.8 fast but wrong<br/>(diff against a trusted engine)"]
+```
+
 1. **Non-reproducibility (3.1)** — the Escher result: Fig. 2 shows MariaDB < Postgres <
    SQLite < MariaDB\*, all "true". The trick: MariaDB\* used DOUBLE instead of DECIMAL
    columns — both allowed by the TPC-H spec, invisible unless the full setup is

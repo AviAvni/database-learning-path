@@ -46,6 +46,20 @@ of storage benchmarking (LevelDB inherited → RocksDB extended → every LSM pa
 
 ## What to notice about measurement
 
+```mermaid
+flowchart TD
+    F["--benchmarks=fillseq,readrandom,--histogram<br/>comma list runs IN ORDER against the same DB"]
+    F --> RUN["Benchmark::Run() (4030)<br/>workload name → method pointer"]
+    RUN --> RB["RunBenchmark(n, name, method) (4583)<br/>spawn N threads"]
+    RB --> T1["thread 1<br/>Stats + HistogramImpl (2436)"]
+    RB --> T2["thread 2 ..."]
+    RB --> TN["thread N"]
+    T1 --> M["merge per-thread histograms (2488)<br/>never average percentiles — Tene's rule"]
+    T2 --> M
+    TN --> M
+    M --> OUT["default output: throughput<br/>latency histogram only with --histogram"]
+```
+
 - Per-op latency goes through `FinishedOps` (2564) into a plain `HistogramImpl` —
   reported only with `--histogram`. Default output is *throughput* (ops/s, MB/s).
 - It's a **closed loop** like redis-benchmark: each thread issues the next op after the

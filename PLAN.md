@@ -7,6 +7,59 @@ that also advances the **capstone** (`capstone/README.md`).
 
 Order is a recommendation. Topics 0–6 are the foundation; after that, jump around freely.
 
+## The map
+
+```mermaid
+flowchart TD
+    subgraph FOUNDATION["Foundation — do in order"]
+        direction LR
+        T0["0 perf<br/>toolbox"] --> T1["1 B-tree<br/>vs LSM"] --> T2["2 in-memory<br/>structures"] --> T3["3 B-tree<br/>internals"] --> T4["4 LSM<br/>deep dive"] --> T5["5 WAL &<br/>recovery"] --> T6["6 buffer<br/>pool"]
+    end
+    subgraph CORE["Systems core"]
+        T7["7 networking"]
+        T8["8 MVCC"]
+        T9["9 concurrency"]
+    end
+    subgraph QUERY["Query engine"]
+        T10["10 parse/plan/optimize"] --> T11["11 execution models"] --> T19["19 JIT"]
+        T12["12 columnar"]
+    end
+    subgraph GRAPH["Graph — home turf"]
+        T13["13 graph engines"] --> T20["20 GraphBLAS internals"] --> T24["24 graph algorithms"] --> T25["25 graph ML"]
+    end
+    subgraph SEARCH["Indexes & search"]
+        T14["14 vector"]
+        T23["23 full-text"]
+        T26["26 probabilistic"]
+    end
+    subgraph HW["Hardware"]
+        T17["17 SIMD"] --> T18["18 GPU"]
+    end
+    subgraph DIST["Distributed"]
+        T15["15 replication/Raft"] --> T29["29 distributed txns"]
+        T28["28 cloud-native"]
+        T31["31 CRDTs"]
+    end
+    subgraph CORRECT["Correctness"]
+        T16["16 testing"] --> T21["21 formal methods"]
+    end
+    subgraph STREAM["Streaming & temporal"]
+        T27["27 incremental views"]
+        T30["30 time-series"]
+    end
+    T22["22 standard benchmarks — the yardstick for everything"]
+    FOUNDATION --> CORE
+    FOUNDATION --> QUERY
+    FOUNDATION --> GRAPH
+    FOUNDATION --> SEARCH
+    FOUNDATION --> HW
+    FOUNDATION --> DIST
+    FOUNDATION --> CORRECT
+    FOUNDATION --> STREAM
+    QUERY --> T22
+    GRAPH --> T22
+```
+
 ---
 
 ## 0. The Performance Toolbox

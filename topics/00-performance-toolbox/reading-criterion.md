@@ -6,6 +6,18 @@ line criterion prints during a bench run maps to a specific step here.
 
 ## The pipeline in `common()`
 
+```mermaid
+flowchart TD
+    S["1 · routine.sample()  (line 83)<br/>(iters, times) — iters grows [d, 2d, 3d, ...]"]
+    S --> N["2 · avg_times[i] = times[i] / iters[i]  (124–129)"]
+    N --> T["3 · tukey::classify  (141)<br/>label outliers — NEVER remove"]
+    N --> E["4a · estimates()  (300)<br/>mean/median/MAD, each bootstrapped (321)"]
+    S --> R["4b · regression()  (269)<br/>slope of total_time vs iters = ns/iter"]
+    R --> H["headline:  time: [lo mid hi]  = slope's bootstrap CI"]
+    E --> C["5 · compare.rs  (188)<br/>bootstrapped t-test vs saved baseline<br/>+ noise_threshold gate"]
+    H --> C
+```
+
 **1. Sampling (line 83)** — `routine.sample(...)` returns `(sampling_mode, iters, times)`:
 two parallel arrays, e.g. 100 samples where sample *i* ran `iters[i]` iterations and took
 `times[i]` total. Key trick: it never times a single iteration (too noisy, clock
@@ -33,6 +45,18 @@ Philosophy: deleting data you don't like is how benchmarks lie.
   (checked at line 152). The headline `time: [lo mid hi]` is the **slope's** bootstrap
   CI. Why slope beats mean-of-averages: constant per-sample overhead (measurement, loop
   setup) inflates every `avg_times[i]` but shows up as an *intercept* the slope ignores.
+
+```
+total_time                                 why slope beats mean-of-averages:
+    │                          ×
+    │                    ×                 slope  = ns per iteration  ← the answer
+    │              ×
+    │        ×
+    │  ×
+    ├─────────────────────────── iters
+    ╵← intercept = fixed per-sample overhead
+       (mean of averages absorbs it; the slope ignores it)
+```
 
 **5. Regression detection (line 188 → `compare.rs`)** — loads the saved baseline,
 bootstraps a two-sample t-test (line 200: `p_value`) asking "is the difference real?",
