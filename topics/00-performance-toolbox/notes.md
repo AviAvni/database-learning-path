@@ -2,6 +2,49 @@
 
 Numbers from this machine (Apple Silicon, macOS). Record *why*, not just what.
 
+## Talk: Gil Tene — "How NOT to Measure Latency" (watched ✅)
+
+Core thesis: almost everyone measures latency wrong, and the errors all point the
+same direction — making systems look *better* than they are.
+
+1. **Latency is a distribution, never a number.** Means and standard deviations are
+   meaningless for latency (it's multi-modal, heavy-tailed, not normal). Always report
+   percentiles — and the *whole* curve, not just p50/p99.
+2. **The tail is what users experience.** A page load touching ~100 resources hits the
+   p99 almost every time (1 − 0.99¹⁰⁰ ≈ 63%). "p99.9 doesn't matter" is backwards:
+   the more requests per user interaction, the deeper the percentile that dominates UX.
+3. **Coordinated omission** — the big one. If the load generator waits for a response
+   before sending the next request, a server stall silences the generator exactly when
+   things go bad: the bad results are *omitted* from the data, coordinated with the
+   stall. A 100s test with one 50s pause can report "p99 < 1ms" while reality is
+   ~25s average during half the test. The error is ~1000x+, not a rounding issue.
+   - Fix: measure against the **intended send schedule** (constant-rate arrival), not
+     the actual send time. If a request should have gone out at t=5s but went out at
+     t=55s, its latency includes those 50s of wait.
+   - This is why HdrHistogram has correction modes and why wrk2/redis-benchmark grew
+     constant-throughput modes.
+4. **Service time ≠ response time.** Service time = how long the server took once it
+   started; response time = what the client experiences, including queueing. Load
+   generators that back off measure service time and *call* it response time.
+   Throughput-vs-latency plots made this way are fiction beyond saturation.
+5. **"Sustainable throughput" framing.** Don't ask "what's the max throughput?" — ask
+   "what's the max throughput at which we still meet the latency requirements?"
+   Test by stating requirements first (e.g. p99.9 < 20ms, max < 200ms), then finding
+   the highest load that passes. A benchmark without a latency requirement is a
+   throughput benchmark, and throughput alone is easy to game.
+6. **Beware the hockey stick you can't see.** Plotted percentile curves always bend up
+   hard somewhere ("the hockey stick"); tests that stop at p99 just hide where. Plot to
+   the max recorded value — the max is a real event that happened, not an outlier to trim.
+7. **Never average percentiles** across intervals/machines — p99s don't average. Merge
+   the histograms (HdrHistogram), then read percentiles off the merged data.
+
+**Rules for this repo's benchmarks (from the talk):**
+- Capstone server benches (M7+) must use a constant-rate open-loop load generator with
+  coordinated-omission correction (HdrHistogram), never closed-loop request→wait→request.
+- Report p50/p90/p99/p99.9/max + full percentile plot; never mean latency.
+- Criterion is fine for CPU microbenches (throughput of kernels), but *not* an oracle
+  for request latency — different tool for a different question.
+
 ## Experiment 3 — branch_misprediction (done, first pass)
 
 | Variant | Sorted | Shuffled |
