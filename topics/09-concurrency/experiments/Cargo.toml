@@ -1,0 +1,20 @@
+[package]
+name = "concurrency-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-epoch = "0.9"
+crossbeam-skiplist = "0.1"
+rand = "0.8"
+
+[[bin]]
+name = "scaling"
+path = "src/bin/scaling.rs"
+
+[[bin]]
+name = "false_sharing"
+path = "src/bin/false_sharing.rs"
+
+[profile.release]
+debug = true
