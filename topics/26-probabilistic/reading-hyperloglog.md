@@ -1,13 +1,10 @@
-# Reading guide — HyperLogLog (paper + redis hyperloglog.c)
+# HyperLogLog: count distinct in 12 KB
 
-**Sources:**
-- Heule, Nunkesser, Hall — "HyperLogLog in Practice" (Google, EDBT 2013) —
-  read §3-5 (the practical fixes); the original Flajolet '07 analysis is
-  optional
-- Ertl — "New cardinality estimation algorithms for HyperLogLog sketches"
-  (arXiv 2017) §2-3 — this is the estimator redis actually uses now
-- Redis `src/hyperloglog.c` (clone at [`~/repos/redis`](https://github.com/redis/redis)) — the 200-line header
-  comment is a full spec of the encodings; read it first
+`count(DISTINCT x)` over billions of elements, 0.81% error, 12 KB of
+state, and per-shard sketches that merge losslessly in any order — one
+probabilistic observation buys all of it. This chapter derives the
+estimator, then walks redis's production implementation, which adds a
+sparse encoding and a better count formula on top.
 
 ## 1. The idea in three sentences
 
@@ -23,6 +20,25 @@ max() is idempotent, which is also why union = register-wise max, exactly.
                      ↓                          ↓
              rank = lzcnt+1 (1..51)       register index j
              regs[j] = max(regs[j], rank)      m = 16384
+```
+
+The whole write path is five lines, and the merge is one:
+
+```rust
+const P: u32 = 14;
+const M: usize = 1 << P;                        // 16384 registers, 1 byte each here
+
+fn add(regs: &mut [u8; M], x: &[u8]) {
+    let h = hash64(x);
+    let j = (h & (M as u64 - 1)) as usize;      // low P bits: which register
+    let pat = h >> P;                            // remaining 50 bits: the pattern
+    let rank = (pat.trailing_zeros() + 1).min(64 - P + 1) as u8;
+    regs[j] = regs[j].max(rank);                 // max is idempotent: dups free
+}
+
+fn merge(a: &mut [u8; M], b: &[u8; M]) {
+    for j in 0..M { a[j] = a[j].max(b[j]); }     // == the HLL of the union, exactly
+}
 ```
 
 **Q1.** Why must the index bits and the pattern bits not overlap? (What
@@ -46,6 +62,21 @@ switchover from HLL-in-Practice §5. That's worth pausing on: Google's fix
 was *piecewise empirical patching*; Ertl re-derived the estimator so one
 formula is unbiased across the whole range. Redis shipped Google's version
 for years, then switched (see the comment above hllCount).
+
+The estimator, transcribed (this is `hllCount` minus the caching):
+
+```rust
+fn count(regs: &[u8; M]) -> f64 {
+    let mut histo = [0u32; 64];
+    for &r in regs { histo[r as usize] += 1; }   // count() reads the HISTOGRAM
+    let m = M as f64;
+    let q = 64 - P;                              // max rank = q + 1
+    let mut z = m * tau((m - histo[q as usize + 1] as f64) / m);
+    for k in (1..=q).rev() { z = 0.5 * (z + histo[k as usize] as f64); }
+    z += m * sigma(histo[0] as f64 / m);         // zero registers → low-range fix
+    ALPHA_INF * m * m / z                        // alpha_inf = 1/(2 ln 2)
+}
+```
 
 **Q2.** `reghisto[0]` counts *never-touched* registers. sigma() blows up to
 +inf as that fraction → 1. Show that for n ≪ m the estimator degenerates to
@@ -98,3 +129,18 @@ without making every node-insert O(m).
 register max, `count` is hllCount's tau/sigma transcribed, `merge` is
 hllMergeDense scalar. The `< 3%` error test at n ∈ {1K, 100K, 5M} spans
 the ranges the old estimator needed three different formulas for.
+
+## References
+
+**Papers**
+- Heule, Nunkesser, Hall — "HyperLogLog in Practice" (Google, EDBT 2013)
+  — §3-5 are the practical fixes; the original Flajolet '07 analysis is
+  optional
+- Ertl — "New cardinality estimation algorithms for HyperLogLog
+  sketches" ([arXiv:1702.01284](https://arxiv.org/abs/1702.01284), 2017)
+  — §2-3; the estimator redis uses now
+
+**Code**
+- [redis](https://github.com/redis/redis) `src/hyperloglog.c` — the
+  200-line header comment is a full spec of the encodings; read it
+  before the functions

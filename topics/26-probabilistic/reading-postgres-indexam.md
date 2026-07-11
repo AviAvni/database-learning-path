@@ -1,16 +1,9 @@
-# Reading guide — Postgres index AMs: nbtree, GIN, BRIN (the classical baseline)
+# Postgres index AMs: nbtree, GIN, BRIN — the exact baseline
 
-**Sources (clone at [`~/repos/postgres`](https://github.com/postgres/postgres)):**
-- `src/backend/access/nbtree/README` — genuinely one of the best docs in
-  any codebase; read it fully
-- `src/backend/access/nbtree/nbtsearch.c` — the descent
-- `src/backend/access/gin/ginpostinglist.c` + `gin/README`
-- `src/backend/access/brin/brin.c` + `brin/README`
-
-**Why this guide is in the *probabilistic* topic:** every structure above
-answers the same question our filters/sketches answer — "where might X
-be?" — but with exactness paid for in space and cache misses. Read these as
-the *prices* the probabilistic structures undercut.
+Every structure in this chapter answers the same question our
+filters and sketches answer — "where might X be?" — but with exactness
+paid for in space and cache misses. Read nbtree, GIN, and BRIN as the
+*prices* the probabilistic structures undercut.
 
 ## 1. nbtree — what 23 cache misses buys you
 
@@ -62,6 +55,17 @@ rows). It is exactly topic 12's zone map, and it is *already*
 probabilistic in the useful direction: *one-sided* — it can say "range
 definitely has no qualifying rows," never "row definitely exists."
 
+The entire query-side logic fits in a filter:
+
+```rust
+fn bringetbitmap(ranges: &[MinMax], q: (Val, Val)) -> Vec<PageRange> {
+    ranges.iter().enumerate()
+        .filter(|(_, r)| r.min <= q.1 && q.0 <= r.max)  // overlap ⇒ MAYBE
+        .map(|(i, _)| page_range(i))                     // 128 heap pages each
+        .collect()   // one-sided: prunes ranges, never confirms rows
+}
+```
+
 ```
                  answers "definitely not here"      bits per key
   bloom          per KEY, any order                 ~10
@@ -86,10 +90,19 @@ does postgres's absence hurt most for a graph workload, and why is that the
 one topic 4 already measured? (Point-miss cost × miss rate of MATCH
 lookups.)
 
-## 5. The one-table summary
+## 4. The one-table summary
 
 | AM | granularity | answer type | write cost | shadow in this topic |
 |---|---|---|---|---|
 | nbtree | row (TID) | exact | leaf dirty + WAL per insert | the 167/218 ns baseline lanes |
 | GIN | key → TID set | exact set | pending-list amortized | roaring/postings (topic 23) |
 | BRIN | 128-page range | one-sided maybe | update range summary | zone maps (topic 12), bloom's cousin |
+
+## References
+
+**Code** ([postgres](https://github.com/postgres/postgres), `src/backend/access/`)
+- `nbtree/README` — genuinely one of the best docs in any codebase;
+  read it fully (the Lehman & Yao section is the payoff)
+- `nbtree/nbtsearch.c` — the descent
+- `gin/ginpostinglist.c` + `gin/README` — varbyte posting lists
+- `brin/brin.c` + `brin/README` — block-range summaries

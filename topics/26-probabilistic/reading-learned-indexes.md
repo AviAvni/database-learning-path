@@ -1,12 +1,10 @@
-# Reading guide — Learned indexes: Kraska'18 → PGM → ALEX
+# Learned indexes: the index is a model of the CDF
 
-**Sources:**
-- Kraska, Beutel, Chi, Dean, Polyzotis — "The Case for Learned Index
-  Structures" (SIGMOD 2018) — read §1-3 (RMI), skim the rest
-- Ferragina & Vinciguerra — "The PGM-index" (VLDB 2020) + code at
-  [`~/repos/PGM-index/include/pgm/`](https://github.com/gvinciguerra/PGM-index)
-- Ding et al. — "ALEX: An Updatable Adaptive Learned Index" (SIGMOD 2020) +
-  code at [`~/repos/ALEX/src/core/`](https://github.com/microsoft/ALEX)
+An index maps key → position. If the key distribution is smooth, a
+handful of linear models approximates that map with a bounded error you
+binary-search away — replacing a tree walk's cache misses with two
+multiply-adds. Three designs mark the territory: RMI (the provocation),
+PGM (the guarantee — our stub), and ALEX (the one that takes writes).
 
 ## 1. Reframe: a B-tree is already a model
 
@@ -50,6 +48,17 @@ the simpler **shrinking cone**: keep an interval [lo, hi] of feasible slopes
 through the segment's first point; each new point narrows it; emit when
 empty. Same ε guarantee, ≥ as many segments, and O(1) state instead of two
 hulls.
+
+```rust
+struct Cone { x0: u64, y0: f64, lo: f64, hi: f64 }   // slopes through (x0,y0)
+
+fn add_point(c: &mut Cone, x: u64, y: usize, eps: f64) -> bool {
+    let (dx, dy) = ((x - c.x0) as f64, y as f64 - c.y0);
+    c.lo = c.lo.max((dy - eps) / dx);   // each point NARROWS the feasible
+    c.hi = c.hi.min((dy + eps) / dx);   // slope interval...
+    c.lo <= c.hi                        // ...empty ⇒ emit segment, start fresh
+}
+```
 
 **Q1.** Construct 4 points where the cone closes a segment but the hull
 method keeps going. (Hint: the cone forces every prediction line through
@@ -114,3 +123,21 @@ The ε guarantee is the deep difference: PGM degrades in *space* (more
 segments) on hostile data while lookup stays bounded; RMI degrades in
 *time*; ALEX degrades in *write amplification*. Our
 `epsilon_holds_on_hostile_distribution` test pins the PGM behavior.
+
+## References
+
+**Papers**
+- Kraska, Beutel, Chi, Dean, Polyzotis — "The Case for Learned Index
+  Structures" (SIGMOD 2018,
+  [arXiv:1712.01208](https://arxiv.org/abs/1712.01208)) — §1-3 (RMI),
+  skim the rest
+- Ferragina & Vinciguerra — "The PGM-index" (VLDB 2020,
+  [pgm.di.unipi.it](https://pgm.di.unipi.it))
+- Ding et al. — "ALEX: An Updatable Adaptive Learned Index" (SIGMOD
+  2020, [arXiv:1905.08898](https://arxiv.org/abs/1905.08898))
+
+**Code**
+- [PGM-index](https://github.com/gvinciguerra/PGM-index)
+  `include/pgm/` — `pgm_index.hpp` + `piecewise_linear_model.hpp`
+- [ALEX](https://github.com/microsoft/ALEX) `src/core/` —
+  `alex_nodes.h` is where the gapped-array machinery lives

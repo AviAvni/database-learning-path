@@ -137,13 +137,13 @@ SIMD over roaring-rs.
 
 ## Reading guides
 
-- [reading-bloom-to-ribbon.md](reading-bloom-to-ribbon.md) — bloom math → blocked → ribbon (RocksDB code)
-- [reading-cuckoo-xor.md](reading-cuckoo-xor.md) — CoNEXT'14 + JEA'20 + RedisBloom cuckoo.c
-- [reading-hyperloglog.md](reading-hyperloglog.md) — HLL in Practice + redis hyperloglog.c
-- [reading-learned-indexes.md](reading-learned-indexes.md) — Kraska'18 → PGM → ALEX (both repos)
-- [reading-roaring-internals.md](reading-roaring-internals.md) — SPE'18 + roaring-rs (extends topic 23's guide)
-- [reading-geo-indexes.md](reading-geo-indexes.md) — valkey GEO (geohash-in-a-zset), Z-order vs Hilbert vs R-tree vs S2/H3
-- [reading-postgres-indexam.md](reading-postgres-indexam.md) — nbtree/GIN/BRIN as the classical baseline
+- [reading-bloom-to-ribbon.md](reading-bloom-to-ribbon.md) — Bloom → blocked → ribbon: fifty years of filter fixes
+- [reading-cuckoo-xor.md](reading-cuckoo-xor.md) — Cuckoo & XOR filters: fingerprints you can delete
+- [reading-hyperloglog.md](reading-hyperloglog.md) — HyperLogLog: count distinct in 12 KB
+- [reading-learned-indexes.md](reading-learned-indexes.md) — Learned indexes: the index is a model of the CDF
+- [reading-roaring-internals.md](reading-roaring-internals.md) — Roaring bitmaps: adaptive containers for integer sets
+- [reading-geo-indexes.md](reading-geo-indexes.md) — Geo indexes: 2D queries through the 1D index you already have
+- [reading-postgres-indexam.md](reading-postgres-indexam.md) — Postgres index AMs: nbtree, GIN, BRIN — the exact baseline
 
 ## Cross-topic links
 

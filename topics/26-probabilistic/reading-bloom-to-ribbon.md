@@ -1,9 +1,9 @@
-# Reading guide — Bloom → Blocked Bloom → Ribbon (RocksDB code)
+# Bloom → blocked → ribbon: fifty years of filter fixes
 
-**Sources:**
-- Bloom (1970), "Space/Time Trade-offs in Hash Coding with Allowable Errors" — 5 pages, read whole
-- RocksDB `util/bloom_impl.h` + `util/ribbon_impl.h` (clone at [`~/repos/rocksdb`](https://github.com/facebook/rocksdb))
-- Peter Dillinger's blog-style comments *inside* the headers — the best docs are the code
+A filter answers "definitely absent / maybe present" in ~10 bits per
+key, which is why every LSM read path starts with one. Bloom's 1970
+design has exactly two sins — space and cache misses — and this chapter
+follows the fixes for each into the two filters RocksDB actually ships.
 
 ## Why this sequence
 
@@ -39,6 +39,24 @@ Derive (don't memorize) `FPR ≈ (1 − e^(−kn/m))^k`:
 | `AddHashPrepared` (:206) | the probe loop: each probe uses bits (h >> 27) & 511 of a *re-multiplied* h — 9 bits per probe, all inside one line |
 | `HashMayMatchPrepared` (:231) | query = same loop, early-exit on first zero bit |
 | `CacheLocalFpRate` (:42) | the honesty function: computes blocked-bloom FPR as the *expectation over the Poisson distribution of keys-per-block* |
+
+The entire query path, de-SIMD'd (this is `HashMayMatchPrepared`):
+
+```rust
+const PROBES: u32 = 6;
+
+fn may_contain(bits: &[u64], num_blocks: u32, h1: u32, mut h2: u32) -> bool {
+    let block = fastrange32(h1, num_blocks) as usize * 8;  // 8 words = 512 bits
+    for _ in 0..PROBES {
+        let bit = (h2 >> 23) & 511;               // top 9 bits pick 1 of 512
+        if bits[block + (bit / 64) as usize] & (1u64 << (bit % 64)) == 0 {
+            return false;                          // early exit, ONE line touched
+        }
+        h2 = h2.wrapping_mul(0x9e3779b9);          // golden-ratio remix per probe
+    }
+    true                                           // maybe
+}
+```
 
 Read `CacheLocalFpRate` carefully — it's the whole blocked-bloom trade in
 10 lines. A block that got 2× the average keys has much worse FPR, and the
@@ -92,3 +110,16 @@ Our `bloom::BlockedBloom` is `FastLocalBloomImpl` minus SIMD:
 6 probes each take 9 bits from a rotating h2. After implementing, compare
 your measured FPR-vs-theory ratio against what `CacheLocalFpRate` predicts
 for your keys-per-block Poisson mean.
+
+## References
+
+**Papers**
+- Bloom — "Space/Time Trade-offs in Hash Coding with Allowable Errors"
+  (CACM 1970) — 5 pages, read whole
+- Dillinger & Walzer — "Ribbon filter: practically smaller than Bloom
+  and Xor" ([arXiv:2103.02515](https://arxiv.org/abs/2103.02515), 2021)
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb) `util/bloom_impl.h` +
+  `util/ribbon_impl.h` — Peter Dillinger's blog-style comments *inside*
+  the headers are the best docs; read code and comments together

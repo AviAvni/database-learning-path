@@ -1,13 +1,12 @@
-# Reading guide — Roaring bitmap internals (SPE'18 + roaring-rs)
+# Roaring bitmaps: adaptive containers for integer sets
 
-**Sources:**
-- Lemire et al. — "Roaring Bitmaps: Implementation of an Optimized Software
-  Library" (Software: Practice & Experience 2018) — read §2 (containers),
-  §3 (SIMD kernels), skim benchmarks
-- [`~/repos/roaring-rs/roaring/src/bitmap/`](https://github.com/RoaringBitmap/roaring-rs) — the Rust port
-- Extends topic 23's guide (`topics/23-search/reading-postings.md`) and
-  stub (`postings.rs` — array/bitmap containers already built there); this
-  guide adds the third container, the density algebra, and the SIMD story
+The workhorse of every "set of row/node IDs" problem: chop the u32
+space into 64K chunks and store each chunk in whichever of three
+encodings is smallest for its density. This chapter extends topic 23's
+guide (`topics/23-search/reading-postings.md`) and its `postings.rs`
+stub — array/bitmap containers exist there already; here we add the
+third container, the density algebra, and the SIMD story, following
+the roaring-rs port.
 
 ## 1. Recap + the missing third container
 
@@ -53,6 +52,21 @@ The galloping case is the one topic 23 met as skip-lists/WAND: when
 linear merge. Same asymmetry-exploiting move as ALEX's exponential search
 ([reading-learned-indexes.md](reading-learned-indexes.md)) and topic 23's
 galloping in `MAXSCORE`.
+
+```rust
+fn intersect_gallop(small: &[u16], big: &[u16], out: &mut Vec<u16>) {
+    let mut lo = 0;
+    for &x in small {                             // |small| ≪ |big|
+        let mut step = 1;                         // gallop: 1, 2, 4, 8, ...
+        while lo + step < big.len() && big[lo + step] < x { step <<= 1; }
+        let hi = (lo + step + 1).min(big.len());
+        match big[lo..hi].binary_search(&x) {     // then binary in the bracket
+            Ok(i)  => { out.push(x); lo += i + 1; }
+            Err(i) => { lo += i; }
+        }
+    }                                             // O(|small| · log|big|)
+}
+```
 
 **Q2.** Union of two arrays can overflow ARRAY_LIMIT. `container.rs:106`
 checks `union_cardinality <= ARRAY_LIMIT` *before* choosing the output
@@ -104,3 +118,16 @@ why FalkorDB label filters should be roaring, not `Vec<u64>`; (b) M26's plan
 (roaring for label/type filtering) inherits the run container for
 "all nodes created in bulk-load order" — measure whether your ID allocator
 produces runs.
+
+## References
+
+**Papers**
+- Lemire et al. — "Roaring Bitmaps: Implementation of an Optimized
+  Software Library" (Software: Practice & Experience 2018,
+  [arXiv:1709.07821](https://arxiv.org/abs/1709.07821)) — §2
+  containers, §3 SIMD kernels, skim benchmarks
+
+**Code**
+- [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)
+  `roaring/src/bitmap/` — the Rust port; `store/` holds the three
+  containers and the pairwise kernels

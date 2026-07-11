@@ -1,12 +1,10 @@
-# Reading guide — Cuckoo & XOR filters (CoNEXT'14, JEA'20, RedisBloom cuckoo.c)
+# Cuckoo & XOR filters: fingerprints you can delete
 
-**Sources:**
-- Fan, Andersen, Kaminsky, Mitzenmacher — "Cuckoo Filter: Practically Better
-  Than Bloom" (CoNEXT 2014) — read §3 (algorithm), §4 (why partial-key
-  works), §5 (space analysis); skim the eval
-- Graf & Lemire — "Xor Filters: Faster and Smaller Than Bloom and Cuckoo
-  Filters" (ACM JEA 2020) — read §2-3
-- RedisBloom `src/cuckoo.c` (clone at [`~/repos/RedisBloom`](https://github.com/RedisBloom/RedisBloom))
+Bloom smears each key across k shared bits; cuckoo filters store each
+key as one *discrete* fingerprint in one of two buckets — which buys
+deletion and a better space/FPR trade, at the price of inserts that can
+fail. XOR filters then drop updatability entirely and win more space.
+The reference implementation here is RedisBloom's `cuckoo.c`.
 
 ## 1. The one trick that makes cuckoo filters possible
 
@@ -42,6 +40,24 @@ perturbs the low bits — kicked keys land nearby and clump.)
 | `Filter_KOInsert` :307 | the kicking loop: evict a resident (`ii = getAltHash(fp, ii)` :321), swap, retry up to maxIterations |
 | `CuckooFilter_InsertFP` :256 | try all subfilters' empty slots first, kick only in the newest, **grow a new subfilter** when kicking fails |
 | `CuckooFilter_Delete` :216 | delete = find + zero the slot, newest subfilter first |
+
+The insert path with the kicking loop, in one screen:
+
+```rust
+fn insert(&mut self, key: &[u8]) -> bool {
+    let (mut fp, i1) = self.fp_and_index(key);       // fp: 12 bits, never 0
+    let i2 = (i1 ^ self.hash_fp(fp)) & self.mask;    // partial-key involution
+    if self.put_if_free(i1, fp) || self.put_if_free(i2, fp) { return true; }
+
+    let mut i = if coin_flip() { i1 } else { i2 };
+    for _ in 0..MAX_KICKS {                           // 500
+        fp = self.swap_with_random_resident(i, fp);   // evict someone
+        i = (i ^ self.hash_fp(fp)) & self.mask;       // victim's OTHER bucket
+        if self.put_if_free(i, fp) { return true; }
+    }
+    false            // paper behavior; RedisBloom grows a subfilter instead
+}
+```
 
 Note what RedisBloom adds over the paper: a *chain of subfilters* (like an
 LSM of filters). When kicking fails at MAX_KICKS it doesn't return "full" —
@@ -101,3 +117,18 @@ flowchart TD
 of 4 × u16, 12-bit fp (never 0 = empty), random-victim kicking to
 MAX_KICKS=500. The `delete_actually_removes` test is the point of the whole
 exercise — it's the test a bloom filter *cannot* pass.
+
+## References
+
+**Papers**
+- Fan, Andersen, Kaminsky, Mitzenmacher — "Cuckoo Filter: Practically
+  Better Than Bloom" (CoNEXT 2014) — §3 algorithm, §4 why partial-key
+  works, §5 space analysis; skim the eval
+- Graf & Lemire — "Xor Filters: Faster and Smaller Than Bloom and
+  Cuckoo Filters" (ACM JEA 2020,
+  [arXiv:1912.08258](https://arxiv.org/abs/1912.08258)) — §2-3
+
+**Code**
+- [RedisBloom](https://github.com/RedisBloom/RedisBloom) `src/cuckoo.c`
+  — the production shape, including the subfilter-chain growth the
+  paper doesn't have

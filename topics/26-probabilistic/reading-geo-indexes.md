@@ -1,9 +1,11 @@
-# Reading guide — geo indexes: geohash-in-a-zset, Z-order, R-trees, S2/H3
+# Geo indexes: 2D queries through the 1D index you already have
 
-Code: valkey `src/geohash.c`, `src/geohash_helper.c`, `src/geo.c`
-([`~/repos/valkey`](https://github.com/valkey-io/valkey)). Papers: Guttman "R-Trees: A Dynamic Index
-Structure for Spatial Searching" (SIGMOD 1984); the R*-tree
-(SIGMOD 1990). Docs: s2geometry.io, h3geo.org.
+Spatial search looks like it demands a new index structure — valkey's
+GEO commands prove it doesn't: interleave the coordinate bits into one
+integer and a plain sorted index becomes a spatial one. This chapter
+walks that trick, why the curve you pick matters (Z-order vs Hilbert),
+and the families that *do* build real spatial structures (R-tree,
+S2, H3).
 
 ## The valkey GEO trick: no spatial index at all
 
@@ -30,6 +32,22 @@ Structure for Spatial Searching" (SIGMOD 1984); the R*-tree
                                                   geo.c:338
      ZRANGEBYSCORE → candidates                   geo.c:367
    exact haversine filter on candidates
+```
+
+The interleave is five magic-mask rounds (geohash.c:52 does exactly this):
+
+```rust
+fn interleave64(xlo: u32, ylo: u32) -> u64 {
+    let spread = |mut v: u64| {                 // 26 bits → every other bit
+        v = (v | (v << 16)) & 0x0000FFFF0000FFFF;
+        v = (v | (v << 8))  & 0x00FF00FF00FF00FF;
+        v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0F;
+        v = (v | (v << 2))  & 0x3333333333333333;
+        v = (v | (v << 1))  & 0x5555555555555555;
+        v
+    };
+    spread(xlo as u64) | (spread(ylo as u64) << 1)   // y25 x25 ... y0 x0
+}
 ```
 
 Two ideas worth stealing:
@@ -67,7 +85,8 @@ sphere).
   `picksplit` heuristics (minimize area/overlap enlargement) are
   the whole game; R* re-inserts to fix bad early splits. PostGIS =
   R-tree implemented *as a GiST extension* — read
-  reading-postgres-indexam.md's GiST section with this in mind.
+  [reading-postgres-indexam.md](reading-postgres-indexam.md) with this
+  in mind: GiST is the AM that lets `picksplit`/`penalty` be plugins.
 - **S2 (Google)**: sphere → 6 cube faces → quadtree per face →
   Hilbert-ordered 64-bit cell IDs. Hierarchy = prefix relation, so
   containment tests are integer ops; coverings of a region are
@@ -101,3 +120,16 @@ sphere).
    sorted property index M26 already builds. What's the *only* new
    code (encode + 9-cell range computation + haversine), and what's
    reused verbatim?
+
+## References
+
+**Papers**
+- Guttman — "R-Trees: A Dynamic Index Structure for Spatial Searching"
+  (SIGMOD 1984)
+- Beckmann, Kriegel, Schneider, Seeger — "The R*-tree" (SIGMOD 1990)
+
+**Code & docs**
+- [valkey](https://github.com/valkey-io/valkey) `src/geohash.c`,
+  `src/geohash_helper.c`, `src/geo.c`
+- [s2geometry.io](https://s2geometry.io) — S2 cell hierarchy docs
+- [h3geo.org](https://h3geo.org) — H3 hex grid docs
