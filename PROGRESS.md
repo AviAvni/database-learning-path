@@ -4,7 +4,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 
 | # | Topic | Status | Takeaway |
 |---|-------|--------|----------|
-| 0 | The Performance Toolbox | in progress | |
+| 0 | The Performance Toolbox | done | Benchmarks lie by default: my own cache_ladder measured its own cache footprint until the walker carried state; flamegraph showed 21% of HashMap lookup time is SipHash; DRAM ladder verified at ~1/5/100 ns. |
 | 1 | Storage Engine Landscape: B-Tree vs LSM | todo | |
 | 2 | In-Memory Structures: Hash Tables, Skip Lists, Tries | todo | |
 | 3 | B-Tree Internals & Paged Storage | todo | |
@@ -41,7 +41,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 
 | Milestone | Depends on topic | Status |
 |-----------|------------------|--------|
-| M0 workspace + bench harness + reference baselines | 0 | in progress — workspace + workload gen + smoke bench done; baselines pending |
+| M0 workspace + bench harness + reference baselines | 0 | done — workspace + workload gen + smoke bench + BASELINES.md (reference @ e8a44d25) |
 | M1 storage-backend abstraction | 1 | todo |
 | M2 attribute store + string pool + datablocks | 2 | todo |
 | M3 B+tree backend (properties + range indexes) | 3 | todo |
@@ -77,5 +77,6 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 ## Session log
 
 <!-- newest first: date — what was done -->
+- 2026-07-10 — topic 0 finished: cache_ladder (after fixing a self-caching bug: restarting the pointer chase at 0 measured an 8MB hot path — fixed by carrying the walker across iterations; true ladder 1.0 ns L1 / 5–9 ns L2 / ~110 ns DRAM+TLB), lookup_shootout (HashMap flat at ~7–9 ns thanks to MLP; binary search wins ≤1e4; linear scan never beats hashing at n≥100 — folklore busted), flamegraph captured (21% SipHash in HashMap lookups), reference baselines recorded in capstone/BASELINES.md. Topic 0 + M0 done.
 - 2026-07-10 — topic 0 started: study guide + 3 experiment benches (cache_ladder, lookup_shootout, branch_misprediction); capstone workspace scaffolded with `workload` crate (seeded Zipfian generator, ~11M ops/s). First measured result: branchy filter 8.1x slower on shuffled vs sorted data; branchless flat at 15 Gelem/s. Repo published to github.com/AviAvni/database-learning-path.
 - 2026-07-10 — repo initialized: plan, capstone design, resources.

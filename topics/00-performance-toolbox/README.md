@@ -194,7 +194,7 @@ flowchart LR
 - [x] `workload` crate: seeded, Zipfian-skewed graph workload generator
       (node/edge inserts, point reads, 2-hop traversal patterns)
 - [x] criterion harness wired up (generator smoke bench)
-- [ ] Baseline numbers from the reference `falkordb-rs-next-gen` recorded in
+- [x] Baseline numbers from the reference `falkordb-rs-next-gen` recorded in
       `capstone/BASELINES.md` (run its bench suite; numbers to chase later)
 
 ## Done when

@@ -22,8 +22,8 @@ fn make_chain(len: usize, rng: &mut StdRng) -> Vec<usize> {
     chain
 }
 
-fn chase(chain: &[usize], steps: usize) -> usize {
-    let mut idx = 0usize;
+fn chase(chain: &[usize], start: usize, steps: usize) -> usize {
+    let mut idx = start;
     for _ in 0..steps {
         idx = chain[idx];
     }
@@ -32,6 +32,7 @@ fn chase(chain: &[usize], steps: usize) -> usize {
 
 fn bench_cache_ladder(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_ladder");
+    group.sample_size(10);
     let mut rng = StdRng::seed_from_u64(42);
 
     // Working-set sizes in bytes: 16KB → 512MB (8 bytes per usize slot).
@@ -46,7 +47,14 @@ fn bench_cache_ladder(c: &mut Criterion) {
         let chain = make_chain(len, &mut rng);
         group.throughput(Throughput::Elements(steps as u64));
         group.bench_with_input(BenchmarkId::from_parameter(format!("{kb}KB")), &chain, |b, chain| {
-            b.iter(|| chase(black_box(chain), steps))
+            // Carry the position across iterations: restarting at 0 every iter
+            // re-walks the same `steps` slots, which stay cached — at 512MB that
+            // silently measures an ~8MB hot path instead of DRAM.
+            let mut idx = 0usize;
+            b.iter(|| {
+                idx = chase(black_box(chain), idx, steps);
+                black_box(idx)
+            })
         });
     }
     group.finish();
