@@ -1,9 +1,11 @@
-# Reading guide — LAGraph algorithms ([`~/repos/LAGraph/src/algorithm/`](https://github.com/GraphBLAS/LAGraph))
+# LAGraph: graph algorithms as executable linear algebra
 
-Freshly cloned. The "standard library" of GraphBLAS — read three
-algorithms as *executable linear algebra*: each is a few GrB calls
-whose entire performance story lives in which engine/format/mask
-they trigger underneath.
+LAGraph is the "standard library" of GraphBLAS — and each of the
+three algorithms read here (BFS, triangle counting, PageRank) is a
+few GrB calls whose entire performance story lives in which
+engine/format/mask they trigger underneath. This is where the
+previous chapters' machinery gets exercised end to end, and where
+M20's parity targets come from.
 
 ## Anchor map
 
@@ -36,6 +38,27 @@ Everything we said in reading-beamer-sc12.md is these ~70 lines.
 The out_degree vector and AT are *optional inputs* — without them
 it silently degrades to push-only (:18-22): the caller decides
 whether pull's memory doubling is worth it, not the library.
+
+The whole loop, transcribed:
+
+```rust
+loop {
+    // the direction switch wraps ONE line of algebra per level
+    if push && growing && (nq > n / 8 || push_work > unexplored / 8) {
+        push = false;                            // frontier huge → pull
+    } else if !push && nq < n / 512 {
+        push = true;                             // tail → back to push
+    }
+    q = if push {
+        vxm(&q, &visited, AnySecondi, a)         // q'<!visited> = q' * A
+    } else {
+        mxv(at, &q, &visited, AnySecondi)        // q<!visited> = AT * q
+    };
+    parent.assign_where(&q);                     // ANY: any parent will do
+    nq = q.nvals();
+    if nq == 0 { break; }
+}
+```
 
 ## 2. The semiring trick: ANY_SECONDI
 
@@ -105,3 +128,12 @@ benchmark-vs-correctness tension to remember for topic 22.
    Which semiring per variant (ANY_SECONDI vs ANY_PAIR + level
    assign), and what does each move per level (indices vs nothing
    — iso!)?
+
+## References
+
+**Code**
+- [LAGraph](https://github.com/GraphBLAS/LAGraph) `src/algorithm/`
+  — `template/LG_BreadthFirstSearch_SSGrB_template.c` (the whole
+  Beamer paper in ~70 lines), `LAGr_TriangleCount.c` (:31-46 lists
+  all six masked formulations), `LAGr_PageRankGAP.c`,
+  `LG_CC_FastSV7.c` (M24 material — read later)

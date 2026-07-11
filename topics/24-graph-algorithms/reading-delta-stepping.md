@@ -1,9 +1,11 @@
-# Reading guide — "Δ-Stepping: A Parallelizable Shortest Path Algorithm" (Meyer & Sanders, J. Algorithms 2003)
+# Δ-stepping: the dial between Dijkstra and Bellman-Ford
 
-The paper that put a DIAL between Dijkstra and Bellman-Ford. Our
-`sssp::delta_stepping` stub implements it; gapbs `src/sssp.cc` and
-LAGraph `LAGr_SingleSourceShortestPath.c` are the two production
-readings of the same idea.
+Meyer & Sanders' paper put a DIAL between Dijkstra (perfect ordering,
+zero parallelism) and Bellman-Ford (perfect parallelism, wasteful
+work): bucket vertices by tentative distance and relax a bucket at a
+time. This chapter derives the dial, then compares the two production
+readings of it — gapbs's frontier version and LAGraph's algebraic
+one — which our `sssp::delta_stepping` stub sits between.
 
 ## The dial
 
@@ -21,6 +23,33 @@ readings of the same idea.
 
   Δ→min_weight  ⇒ Dijkstra (every bucket ≤ 1 settle-round)
   Δ→∞           ⇒ Bellman-Ford (one bucket, all rounds inside it)
+```
+
+The bucket loop, in one screen:
+
+```rust
+fn delta_stepping(g: &Csr, src: u32, delta: u64) -> Vec<u64> {
+    let mut dist = vec![u64::MAX; g.n]; dist[src as usize] = 0;
+    let mut bins: Vec<Vec<u32>> = vec![vec![src]];        // bins[i] = [iΔ, (i+1)Δ)
+    let mut i = 0;
+    while i < bins.len() {
+        while let Some(u) = bins[i].pop() {               // bucket i can REFILL
+            let du = dist[u as usize];
+            if du / delta < i as u64 { continue; }        // stale entry — skip
+            for (v, w) in g.edges(u) {                    // relax; parallel-safe:
+                let nd = du + w;                          //   min is idempotent
+                if nd < dist[v as usize] {
+                    dist[v as usize] = nd;
+                    let b = (nd / delta) as usize;        // light edge ⇒ b == i:
+                    bins.resize(bins.len().max(b + 1), vec![]);
+                    bins[b].push(v);                      //   re-enters this bucket
+                }
+            }
+        }
+        i += 1;                                           // bucket i settled exactly
+    }
+    dist
+}
 ```
 
 The paper's analysis: for random weights and low-diameter graphs
@@ -76,3 +105,18 @@ are just a sparsity filter on which rows participate per step.
    BFS-flavored. Sketch `CALL algo.sssp(src, 'weight', delta)` over
    the M20 core: which semiring, which vector becomes the bucket,
    and where does Δ live in the API?
+
+## References
+
+**Papers**
+- Meyer & Sanders — "Δ-Stepping: A Parallelizable Shortest Path
+  Algorithm" (J. Algorithms 2003) — the dial and its analysis;
+  the road-network caveat is in the analysis sections
+
+**Code**
+- [gapbs](https://github.com/sbeamer/gapbs) `src/sssp.cc` — frontier
+  version, thread-local bins; the :32-44 header comment explains why
+  redundancy beats bookkeeping
+- [LAGraph](https://github.com/GraphBLAS/LAGraph)
+  `src/algorithm/LAGr_SingleSourceShortestPath.c` — the algebraic
+  version: one MIN_PLUS `GrB_vxm` per inner iteration

@@ -1,9 +1,11 @@
-# Reading guide — postgres heapam & visibility (~2.5 h)
+# Postgres MVCC: every tuple carries its own visibility
 
-Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres) (shallow). Files:
-`src/backend/access/heap/heapam.c`, `heapam_visibility.c`,
-`src/include/access/htup_details.h`, `src/include/utils/snapshot.h`,
-`src/backend/utils/time/snapmgr.c`, `pruneheap.c`, `vacuumlazy.c`.
+Postgres stores versions IN the table: each heap tuple's header names its
+creator and deleter, and visibility is a pure function of (tuple header,
+snapshot) — no lock manager consulted on the read path. This chapter walks
+the tuple header, the snapshot, the visibility function that is the spec
+of snapshot isolation, the write paths, and the debt collectors that clean
+up after all of it.
 
 ## 1. The tuple header IS the MVCC state (htup_details.h)
 
@@ -39,6 +41,29 @@ write transactions.
 3. xmin committed but `XidInMVCCSnapshot(xmin)` → invisible (committed
    AFTER my snapshot — this is the line that makes it "snapshot")
 4. then the same dance for xmax to decide "deleted yet, for me?"
+
+The same function, minus a decade of hint-bit engineering:
+
+```rust
+fn satisfies_mvcc(t: &Tuple, s: &Snapshot) -> bool {
+    // "visible xid" = committed AND not still in flight at snapshot time
+    let vis = |xid: Xid| committed(xid) && !in_snapshot(xid, s);
+    if t.xmin == s.my_xid {
+        if t.cmin >= s.cur_cid { return false; } // later command in my own txn
+    } else if !vis(t.xmin) {
+        return false;                            // creator invisible to me
+    }
+    match t.xmax {
+        None => true,                            // never deleted
+        Some(x) if x == s.my_xid => t.cmax >= s.cur_cid,
+        Some(x) => !vis(x),                      // deleter invisible ⇒ row lives
+    }
+}
+
+fn in_snapshot(xid: Xid, s: &Snapshot) -> bool { // committed AFTER my snapshot?
+    xid >= s.xmax || (xid >= s.xmin && s.xip.binary_search(&xid).is_ok())
+}
+```
 
 - `HeapTupleSatisfiesUpdate` :511 — the OTHER visibility function, used by
   UPDATE/DELETE to find the latest version and report
@@ -99,3 +124,13 @@ write transactions.
 
 You can execute `HeapTupleSatisfiesMVCC` on paper for: (a) my own insert,
 (b) a commit that landed after my snapshot, (c) a HOT-updated row mid-chain.
+
+## References
+
+**Code**
+- [postgres](https://github.com/postgres/postgres) —
+  `src/backend/access/heap/heapam.c`, `heapam_visibility.c`,
+  `src/include/access/htup_details.h`, `src/include/utils/snapshot.h`,
+  `src/backend/utils/time/snapmgr.c`, `pruneheap.c`, `vacuumlazy.c`;
+  ~2.5 h — read `HeapTupleSatisfiesMVCC` in full first, it is the spec
+  of SI, and the :86–111 comment in htup_details.h before chasing t_ctid

@@ -1,9 +1,12 @@
-# Reading guide — Prometheus TSDB: a complete time-series engine in readable Go
+# Prometheus TSDB: an LSM with time as the key
 
-Code: [`~/repos/prometheus/tsdb/`](https://github.com/prometheus/prometheus). This is the best single codebase for
-this topic: every TSDB concept exists here in a form you can read in an
-afternoon, and its design doc lineage (Fabian Reinartz's "Writing a Time
-Series Database from Scratch") explains every choice.
+Every TSDB concept — head, WAL, immutable time blocks, label index,
+bounded out-of-order — exists in `prometheus/tsdb/` in a form you can
+read in an afternoon, which makes it the best single codebase for this
+topic. Its design-doc lineage (Fabian Reinartz's "Writing a Time Series
+Database from Scratch") explains every choice. Read it as topic 4's LSM
+wearing a metrics costume, and as the reference for our `head.rs` and
+`index.rs` stubs.
 
 ## The architecture
 
@@ -51,6 +54,25 @@ delete in databases.
    crash recovery replays into the head. Checkpointing truncates the WAL
    once a block is cut — topic 5's story verbatim.
 
+The ingestion contract, condensed from `head_append.go`'s decision
+ladder (this is exactly what `head.rs` implements):
+
+```rust
+fn append(&mut self, series: SeriesId, t: i64, v: f64) -> Result<()> {
+    let s = self.series.get_mut(series);
+    if t >= s.max_time() {
+        self.wal.log(series, t, v);           // durability first
+        return s.open_chunk().push(t, v);     // in-order fast path: the 99.9%
+    }
+    if t < s.max_time() - self.ooo_window {
+        return Err(TooOldSample);             // beyond the watermark: refused
+    }
+    self.wal.log(series, t, v);
+    s.ooo_chunks.insert(t, v)                 // disorder is QUARANTINED — merged
+}                                             // at query/compaction time, so the
+                                              // in-order path never pays for it
+```
+
 ## Where it hurts (the famous failure modes)
 
 - **High cardinality**: every unique label set is a new series — a new
@@ -80,3 +102,15 @@ delete in databases.
    memSeries. What is the analogue of the label index — and does graph
    topology (adjacency) belong in the "labels" (indexed dimensions) or in
    the "values" (payload)?
+
+## References
+
+**Papers**
+- Fabian Reinartz — "Writing a Time Series Database from Scratch"
+  (design doc / blog, 2017) — the rationale behind every structure in
+  the code walk; read it first if the layout feels arbitrary
+
+**Code**
+- [prometheus](https://github.com/prometheus/prometheus) `tsdb/` —
+  start at `head.go`, `head_append.go`, `index/postings.go`,
+  `compact.go`; the whole engine is an afternoon of Go

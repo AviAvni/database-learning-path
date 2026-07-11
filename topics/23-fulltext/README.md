@@ -71,12 +71,12 @@ reason: two-pointer intersection is O(|dense|), not O(|sparse|).
 
 ## Reading guides
 
-- [reading-zobel-moffat.md](reading-zobel-moffat.md) — the CSUR'06 survey: the whole field in one paper
-- [reading-bm25.md](reading-bm25.md) — Robertson & Zaragoza, why BM25's shape is principled, not folklore
-- [reading-blockmax-wand.md](reading-blockmax-wand.md) — SIGIR'11, the skipping algorithm our stub implements
-- [reading-roaring.md](reading-roaring.md) — arXiv:1603.06549, the container algebra
-- [reading-tantivy.md](reading-tantivy.md) — code walk: FST dict, bitpacked blocks, SkipReader, block_wand
-- [reading-redisearch.md](reading-redisearch.md) — home turf: the Rust rewrite's InvertedIndex + varint codecs
+- [reading-zobel-moffat.md](reading-zobel-moffat.md) — Inverted indexes: the whole design space in one survey
+- [reading-bm25.md](reading-bm25.md) — BM25: a derivation, not folklore
+- [reading-blockmax-wand.md](reading-blockmax-wand.md) — Block-max WAND: skip everything that provably can't win
+- [reading-roaring.md](reading-roaring.md) — Roaring bitmaps: no single set representation wins
+- [reading-tantivy.md](reading-tantivy.md) — tantivy: Lucene's architecture in readable Rust
+- [reading-redisearch.md](reading-redisearch.md) — RediSearch in Rust: a mutable inverted index
 - topic 4: LSM guides — segment merging is the same design
 - topic 14: `reading-hnsw.md` — the other half of M23's hybrid search
 

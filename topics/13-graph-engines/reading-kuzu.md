@@ -1,14 +1,10 @@
-# Reading guide — kuzu (columnar CSR + WCOJ + factorization)
-
-Repo: [`~/repos/kuzu`](https://github.com/kuzudb/kuzu) (shallow clone). C++. Plus the paper: "KÙZU Graph
-Database Management System" (CIDR '23).
-
-## Why this matters
+# Kùzu: DuckDB for graphs
 
 kuzu is "DuckDB for graphs": columnar disk-based storage, vectorized
 execution — and two graph-specific ideas worth stealing: CSR that
 survives updates via node groups, and a worst-case-optimal Intersect
-operator embedded in an otherwise binary-join plan.
+operator embedded in an otherwise binary-join plan. This chapter walks
+the C++ alongside the CIDR '23 system paper.
 
 ## 1. Columnar CSR node groups
 
@@ -59,6 +55,20 @@ deferring the cross product. A DataChunk carries flat + unflat vectors
 (the vector-type flags of topic 11, pushed further). Aggregations like
 `count(*)` can multiply group sizes without ever flattening.
 
+```rust
+// factorized count(*) for a 2-hop: multiply group SIZES, never
+// materialize the Σ deg(a)·deg(b) tuples a flat plan would build
+fn two_hop_count(csr: &Csr) -> u64 {
+    (0..csr.n)
+        .map(|a| {
+            csr.neighbors(a).iter()
+                .map(|&b| csr.degree(b) as u64)   // multiplicity, not rows
+                .sum::<u64>()
+        })
+        .sum()   // matrix spelling: the grand sum of A²'s path counts
+}
+```
+
 FalkorDB's matrix spelling of the same fact: A² holds PATH COUNTS as
 values — the algebra factorizes for you.
 
@@ -76,3 +86,17 @@ values — the algebra factorizes for you.
 5. Kuzu compresses neighbor-id columns with topic-12 encodings. Which
    encoding wins for CSR targets sorted by src, and why? (Think about
    what's monotonic within a run and what isn't.)
+
+## References
+
+**Papers**
+- Feng, Gupta, Jin, et al. — "KÙZU Graph Database Management System"
+  (CIDR 2023) — the §vectorization/factorization discussion is the
+  part the code doesn't narrate
+
+**Code**
+- [kuzu](https://github.com/kuzudb/kuzu) (shallow clone) —
+  `src/include/storage/table/csr_node_group.h` (the design comment at
+  :165-171 is the storage story),
+  `src/include/processor/operator/intersect/intersect.h` +
+  `intersect_build.h` (the WCOJ operator)

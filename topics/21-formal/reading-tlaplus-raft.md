@@ -1,9 +1,11 @@
-# Reading guide — Specifying Systems (part I) + Ongaro's raft.tla
+# A spec is a state machine: TLA+ through raft.tla
 
-Lamport's book part I (chapters 1-7) teaches the language; Ongaro's
-published Raft spec ([`~/repos/raft.tla/raft.tla`](https://github.com/ongardie/raft.tla), 471 lines) shows
-what a real protocol spec looks like. Read them against our
-`specs/WalReplication.tla` (94 lines) — same genre, toy scale.
+TLA+ has one idea — describe your protocol as "which next-states
+are allowed" and let TLC enumerate every interleaving. Lamport's
+*Specifying Systems* part I (chapters 1-7) teaches the language;
+Ongaro's published Raft spec (471 lines) shows what a real protocol
+spec looks like. Read both against our `specs/WalReplication.tla`
+(94 lines) — same genre, toy scale.
 
 ## TLA+ mental model
 
@@ -22,6 +24,26 @@ A spec is a state machine described in math:
 No control flow, no processes — just "which next-states are allowed".
 Concurrency falls out of the disjunction: TLC explores every
 interleaving of enabled actions. That's the whole trick.
+
+A real action, from our WalReplication.tla — an action is a
+predicate relating the current state to the primed next state:
+
+```tla
+\* WAL shipping: backup r pulls the next entry it is missing.
+Ship(r) ==
+    /\ r # primary /\ r \notin crashed /\ primary \notin crashed
+    /\ wal[r] < wal[primary]                    \* enabled only when behind
+    /\ wal' = [wal EXCEPT ![r] = @ + 1]         \* ONE entry per action —
+    /\ UNCHANGED <<primary, crashed, committed>> \* atomicity IS the model
+
+Next ==
+    \/ Append
+    \/ Commit
+    \/ \E r \in Replicas : Ship(r) \/ Crash(r) \/ Failover(r)
+
+\* THE invariant TLC checks on every reachable state:
+Durability == primary \notin crashed => committed <= wal[primary]
+```
 
 ## raft.tla anchors
 
@@ -77,3 +99,16 @@ protocols, not corrupt ones).
    M21 deliverable's outline.
 5. `[][Next]_vars` allows stuttering. Why is that essential for
    refinement (mapping a detailed spec onto an abstract one)?
+
+## References
+
+**Papers**
+- Lamport — *Specifying Systems* (Addison-Wesley 2002) — part I,
+  chapters 1-7; free PDF from Lamport's site — the rest of the book
+  is reference material
+
+**Code**
+- [raft.tla](https://github.com/ongardie/raft.tla) `raft.tla` —
+  Ongaro's published spec, 471 lines; anchors above
+- `specs/WalReplication.tla` (this topic's experiments) — the
+  94-line toy to read first

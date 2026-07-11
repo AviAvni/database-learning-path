@@ -1,8 +1,12 @@
-# Code reading — criterion `analysis/mod.rs`
+# How criterion turns noise into a number you can trust
 
-Source: `~/.cargo/registry/src/index.crates.io-*/criterion-0.5.1/src/analysis/mod.rs` (370 lines).
-This file is criterion's statistical spine; `common()` (line 39) is a pipeline, and every
-line criterion prints during a bench run maps to a specific step here.
+Every benchmark in this curriculum runs through criterion, so before trusting
+any of them it pays to know exactly what the tool does to raw timings. The
+answer lives in one 370-line file, `analysis/mod.rs`: `common()` (line 39) is
+a pipeline, and every line criterion prints during a bench run maps to a
+specific step here. Three ideas do all the work — bootstrap instead of
+normality assumptions, slope instead of mean, label outliers instead of
+dropping them.
 
 ## The pipeline in `common()`
 
@@ -58,6 +62,23 @@ total_time                                 why slope beats mean-of-averages:
        (mean of averages absorbs it; the slope ignores it)
 ```
 
+The bootstrap itself — the engine under every CI criterion prints — fits in
+ten lines:
+
+```rust
+fn bootstrap_ci(sample: &[f64], nresamples: usize) -> (f64, f64) {
+    let n = sample.len();
+    let mut stats = Vec::with_capacity(nresamples);
+    for _ in 0..nresamples {                       // 100_000 in criterion
+        // resample WITH replacement, same size — pretend the sample IS the population
+        let stat = mean((0..n).map(|_| sample[rand_below(n)]));
+        stats.push(stat);                          // distribution OF THE STATISTIC
+    }
+    stats.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (percentile(&stats, 2.5), percentile(&stats, 97.5))  // CI = its percentiles —
+}                                                        // no normality assumed
+```
+
 **5. Regression detection (line 188 → `compare.rs`)** — loads the saved baseline,
 bootstraps a two-sample t-test (line 200: `p_value`) asking "is the difference real?",
 then a bootstrapped relative-change estimate against `noise_threshold` asking "is it big
@@ -94,3 +115,13 @@ additive, so min = true cost. Criterion rejects that:
 
 Criterion is built on three ideas: **bootstrap instead of normality assumptions, slope
 instead of mean, label outliers instead of dropping them.**
+
+## References
+
+**Code**
+- [criterion.rs](https://github.com/bheisler/criterion.rs)
+  `src/analysis/mod.rs` (locally:
+  `~/.cargo/registry/src/index.crates.io-*/criterion-0.5.1/src/analysis/mod.rs`,
+  370 lines) — `common()` is the spine; follow the suggested reading
+  order above through `tukey.rs`, `regression.rs`, `compare.rs`, and
+  `routine.rs::warm_up`

@@ -86,20 +86,20 @@ acquiring the lock (xlog.c:2885) — most backends find their work already done.
 ## 4. Code reading (5–7 h)
 
 - **postgres `xlog.c`** (10K lines — guided skim).
-  → guide: [`reading-postgres-xlog.md`](reading-postgres-xlog.md)
+  → [`reading-postgres-xlog.md`](reading-postgres-xlog.md) — postgres xlog: reserve-then-copy and the flush recheck
 - **turso WAL** — frame format, checksum chain, checkpoint, recovery.
-  → guide: [`reading-turso-wal.md`](reading-turso-wal.md)
+  → [`reading-turso-wal.md`](reading-turso-wal.md) — Turso's WAL: recovery is finding where the log ends
 - **redis `aof.c` vs `rdb.c`** — command log vs fork snapshot (the FalkorDB
   reality today).
-  → guide: [`reading-redis-aof-rdb.md`](reading-redis-aof-rdb.md)
+  → [`reading-redis-aof-rdb.md`](reading-redis-aof-rdb.md) — Redis AOF & RDB: the command stream is the log
 
 ## 5. Papers (3–5 h)
 
 - Mohan et al., "ARIES" (TODS '92) — summary first, then selected sections.
-  → guide: [`reading-aries.md`](reading-aries.md)
+  → [`reading-aries.md`](reading-aries.md) — ARIES: recovery when you escape nothing
 - "Aether: A Scalable Approach to Logging" (VLDB '10) — group commit +
   log-contention analysis on multicore.
-  → guide: [`reading-aether.md`](reading-aether.md)
+  → [`reading-aether.md`](reading-aether.md) — Aether: one log, no bottleneck
 
 ## 6. Experiments (in `experiments/`)
 

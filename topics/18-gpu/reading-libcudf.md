@@ -1,9 +1,10 @@
-# Reading guide — libcudf (GPU columnar operators)
+# libcudf: GPU kernels can't push
 
-Clone: [`~/repos/cudf`](https://github.com/rapidsai/cudf) (`cpp/src/`). RAPIDS' GPU DataFrame engine —
-Arrow-layout columns (topic 12) with every operator rewritten under
-GPU constraints: no resizable output, atomics that must be amortized,
-and a memory hierarchy you manage by hand.
+RAPIDS' GPU DataFrame engine — Arrow-layout columns (topic 12) with
+every operator rewritten under GPU constraints: no resizable output,
+atomics that must be amortized, and a memory hierarchy you manage by
+hand. The two-phase size/retrieve pattern and cooperative-group
+probing here are the idioms every GPU-DB operator ends up using.
 
 ## Anchor map
 
@@ -32,7 +33,26 @@ GPU kernels can't `push`. Every variable-output operator runs twice:
 `inner_join_size.cu` and `inner_join_retrieve.cu` are literally the
 same probe loop with different epilogues. Alternatives they could
 have used and didn't: atomic global cursor (contended), max-size
-over-allocation (memory). Question: pass 2 recomputes all of pass
+over-allocation (memory).
+
+```rust
+// pass 1: the probe loop with a COUNTING epilogue
+par_for i in 0..n_probe {
+    count[thread_id] += table.matches(keys[i]);
+}
+let offsets = exclusive_scan(count);      // per-thread write positions
+let out = alloc_exact(offsets.total());   // GPU output must be pre-sized
+
+// pass 2: the SAME probe loop with a WRITING epilogue
+par_for i in 0..n_probe {
+    for m in table.probe(keys[i]) {       // recompute beats remembering:
+        out[offsets[thread_id]] = (i, m); // HBM traffic to materialize
+        offsets[thread_id] += 1;          // match lists costs more than
+    }                                     // probing the table twice
+}
+```
+
+Question: pass 2 recomputes all of pass
 1's probes — why is recompute cheaper than remembering (HBM
 bandwidth vs materializing per-thread match lists)? Compare
 simdjson's over-write-under-advance: same problem, opposite answer —
@@ -101,3 +121,12 @@ ragged-frontier problem.
    pass-1-only of the cudf pattern. Sketch the pass-2 (compact
    values, not count) using a workgroup prefix scan — Crystal's
    BlockScan.
+
+## References
+
+**Code**
+- [cudf](https://github.com/rapidsai/cudf) — `cpp/src/` — the anchor
+  map above: `join/hash_join/` for size/retrieve,
+  `join/distinct_hash_join.cu` for cooperative-groups probing,
+  `groupby/hash/` for the shared-vs-global aggregation split,
+  `bitmask/` for validity-mask kernels

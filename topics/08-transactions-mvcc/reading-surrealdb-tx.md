@@ -1,11 +1,10 @@
-# Reading guide — surrealdb's transaction layer (~1 h)
+# The minimal transactional KV interface: surrealdb's kvs layer
 
-Local clone: [`~/repos/surrealdb`](https://github.com/surrealdb/surrealdb) (shallow), dir
-`surrealdb/core/src/kvs/`. Read this one for ARCHITECTURE, not algorithms:
 surrealdb doesn't implement MVCC — it *abstracts over* engines that do
 (tikv, foundationdb, rocksdb, in-memory...), which forces it to define the
-minimal transactional interface a multi-model DB needs. That interface is
-a good checklist for M8's storage-backend abstraction (M1).
+minimal transactional interface a multi-model DB needs. Read this one for
+ARCHITECTURE, not algorithms: that interface is a good checklist for M8's
+storage-backend abstraction (M1).
 
 ## 1. The layering
 
@@ -65,3 +64,10 @@ problem — invalidation — deleted by MVCC.)
 
 You can list the 6–8 operations a transactional KV interface needs to
 support a multi-model DB, and say which are capabilities vs guarantees.
+
+## References
+
+**Code**
+- [surrealdb](https://github.com/surrealdb/surrealdb) —
+  `surrealdb/core/src/kvs/`: `ds.rs`, `tr.rs`, `tx.rs`; ~1 h — read the
+  Transactor signatures in tr.rs, they ARE the interface checklist

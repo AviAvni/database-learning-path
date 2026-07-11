@@ -1,9 +1,11 @@
-# Reading guide — ClickHouse MergeTree: brute force, organized (~1.5 h)
+# MergeTree: brute force, organized
 
-Local clone: [`~/repos/clickhouse`](https://github.com/ClickHouse/ClickHouse) (fresh shallow clone), dir
-`src/Storages/MergeTree/`. This codebase is huge — read ONLY the slices
-below. The goal: understand parts / granules / sparse index / merges,
-and recognize topic 4's LSM shapes at analytics scale.
+ClickHouse's storage engine is topic 4's LSM shapes at analytics
+scale: immutable sorted parts, background merges, and — because the
+workload is scans, not point reads — an index that is deliberately
+SPARSE. This chapter walks the slices of `src/Storages/MergeTree/`
+that carry the design: parts / granules / sparse index / merges. The
+codebase is huge; read ONLY what's anchored below.
 
 ## 1. The mental model
 
@@ -42,6 +44,18 @@ index is SPARSE because the workload is scans.
 Sparse = you always over-read up to a granule; the bet is that
 decompress+scan of 8192 rows is cheap (vectorized) and the index stays
 resident. A B-tree answers "which row"; this answers "which 8192 rows".
+
+The pruning core is two binary searches:
+
+```rust
+// primary_idx[g] = ORDER BY key of granule g's FIRST row — 8192x
+// smaller than the data, always in memory
+fn mark_range(primary_idx: &[Key], lo: &Key, hi: &Key) -> Range<usize> {
+    let first = primary_idx.partition_point(|k| k < lo).saturating_sub(1);
+    let last = primary_idx.partition_point(|k| k <= hi);
+    first..last   // for each granule: seek marks[g].compressed_offset,
+}                 // decompress the block, skip to row — then just scan
+```
 
 ## 3. Merges (topic 4 redux)
 
@@ -92,3 +106,19 @@ precomputation (Pinot/Druid star-tree) vs embedded convenience
 You can draw part → granule → mark → compressed block, walk a point
 query through the sparse index, and name what ClickHouse traded away
 (point reads, in-place updates) for scan throughput.
+
+## References
+
+**Papers**
+- The VLDB '24 system paper gets its own chapter:
+  [reading-clickhouse-paper.md](reading-clickhouse-paper.md) — read it
+  after this code walk
+
+**Code**
+- [ClickHouse](https://github.com/ClickHouse/ClickHouse) —
+  `src/Storages/MergeTree/` (the anchors above:
+  `MergeTreeSettings.cpp`, `IMergeTreeDataPart.h`,
+  `MergeTreeDataSelectExecutor.cpp`,
+  `MergeTreeDataMergerMutator.cpp`, `MergeTask.h`),
+  `src/Formats/MarkInCompressedFile.h`, and `src/Compression/` for the
+  codec chains; a fresh shallow clone is enough

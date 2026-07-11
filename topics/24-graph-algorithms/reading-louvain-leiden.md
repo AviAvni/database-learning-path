@@ -1,10 +1,10 @@
-# Reading guide — "From Louvain to Leiden: guaranteeing well-connected communities" (Traag, Waltman, van Eck — Scientific Reports 2019)
+# Louvain to Leiden: communities that stay connected
 
 Community detection's most-used algorithm (Louvain) has a bug in its
 GUARANTEES, not its code: it can output communities that are
-internally DISCONNECTED. This paper demonstrates it, explains why,
-and fixes it with one extra phase. Read it as a correctness paper
-wearing a clustering costume — very topic-16.
+internally DISCONNECTED. Traag, Waltman & van Eck demonstrate it,
+explain why, and fix it with one extra phase. Read it as a
+correctness paper wearing a clustering costume — very topic-16.
 
 ## Modularity + Louvain in five lines
 
@@ -18,6 +18,25 @@ wearing a clustering costume — very topic-16.
        community with max ΔQ           (fast: ΔQ is O(deg) to eval)
     2. aggregate: contract each community to a super-vertex,
        recurse on the smaller graph
+```
+
+The local-move kernel — the part both algorithms share and Leiden
+speeds up with a queue:
+
+```rust
+fn local_move(v: u32, g: &Csr, comm: &mut [u32], tot: &mut [f64]) -> bool {
+    let mut w_to = HashMap::new();                  // topic 20's SPA, again
+    for (u, w) in g.edges(v) { *w_to.entry(comm[u]).or_insert(0.0) += w; }
+    let (kv, m2) = (g.wdeg(v), g.total_weight_x2());
+    let (mut best, mut best_gain) = (comm[v], 0.0);
+    for (&c, &w_vc) in &w_to {                      // ΔQ is O(deg) to evaluate:
+        let gain = w_vc / m2                        //   edges gained inside c
+                 - kv * tot[c] / (m2 * m2);         //   minus null-model expectation
+        if gain > best_gain { best = c; best_gain = gain; }
+    }
+    // NOTE: ΔQ never asks "does removing v disconnect my old community?"
+    if best != comm[v] { move_vertex(v, best, comm, tot); true } else { false }
+}
 ```
 
 ## The bug (paper §2, Fig. 1 — internalize this figure)
@@ -84,3 +103,12 @@ costs nothing.
    style property test for a community-detection procedure
    (connectivity check per community = one BFS each, or one
    FastSV on the induced subgraph).
+
+## References
+
+**Papers**
+- Traag, Waltman, van Eck — "From Louvain to Leiden: guaranteeing
+  well-connected communities" (Scientific Reports 2019,
+  [arXiv:1810.08473](https://arxiv.org/abs/1810.08473)) — §2 and
+  Fig. 1 are the bug; §Methods has the randomized refinement and why
+  greedy breaks it

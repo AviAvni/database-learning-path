@@ -1,7 +1,11 @@
-# Reading redis `rax.c` — the compressed radix tree (skim, ~45 min)
+# rax: a radix tree packed into cache lines
 
-Files: [`~/repos/redis/src/rax.h`](https://github.com/redis/redis), `src/rax.c`. Used for stream IDs, client tracking
-keys, cluster slot→key maps. Read for the *layout*; skim the insert logic.
+Redis's compressed radix tree — behind stream IDs, client tracking keys, and
+cluster slot→key maps — is what a trie looks like when memory is the corner
+of the RUM triangle you're defending: one variable-size node layout,
+deliberately unaligned pointers, path-compressed runs. Read for the *layout*
+(~45 min, skim the insert logic); it's the memory-first contrast case for the
+ART paper that follows.
 
 ## 1. The node — rax.h:78–111
 
@@ -50,7 +54,32 @@ Modern ARM/x86 do unaligned loads nearly free; the cache line saved is worth mor
 ## 3. Insert = split machinery — rax.c:515–658 (skim)
 
 `raxGenericInsert` walks with `raxLowWalk`, which returns `splitpos` — where the
-new key diverges *inside* a compressed run. The long comment before the code
+new key diverges *inside* a compressed run. The walk itself is the tree's whole
+read path:
+
+```rust
+// returns (bytes of key consumed, split position inside a compressed run)
+fn low_walk(mut node: &RaxNode, key: &[u8]) -> (usize, usize) {
+    let mut i = 0;
+    while i < key.len() {
+        if node.iscompr() {
+            let run = node.chars();                  // e.g. "oot" — one node
+            let m = common_prefix(run, &key[i..]);
+            if m < run.len() { return (i + m, m); }  // diverged MID-run: splitpos
+            i += m;
+            node = node.child(0);                    // whole run = ONE pointer
+        } else {
+            match node.chars().iter().position(|&c| c == key[i]) { // dense scan:
+                Some(j) => { node = node.child(j); i += 1; }       //   chars only,
+                None => return (i, 0),                             //   ptrs untouched
+            }
+        }
+    }
+    (i, 0)      // consumed the whole key: node.iskey ⇒ hit
+}
+```
+
+The long comment before the insert code
 enumerates the cases; the picture:
 
 ```
@@ -88,3 +117,10 @@ Same structure, opposite RUM corner: rax minimizes M, ART minimizes R.
 
 You can sketch a compressed vs non-compressed node's `data[]` layout from memory
 and say why the pointers are unaligned on purpose.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) `src/rax.h`, `src/rax.c` —
+  the layout comment at rax.h:83–109 is the spec; read it in full before
+  the functions

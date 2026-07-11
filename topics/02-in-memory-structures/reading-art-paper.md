@@ -1,8 +1,11 @@
-# Reading guide — Leis et al., "The Adaptive Radix Tree" (ICDE 2013)
+# ART: sorted like a tree, probed like a hash table
 
-Paper: *The Adaptive Radix Tree: ARTful Indexing for Main-Memory Databases*,
-Leis, Kemper, Neumann. ~2 h. This is the index inside HyPer and DuckDB — a radix
-tree tuned until it beats hash tables on some workloads *while staying sorted*.
+The index inside HyPer and DuckDB — a radix tree tuned until it beats hash
+tables on some workloads *while staying sorted*. Where rax spends its design
+budget on memory, ART spends it on lookup speed: node layouts that adapt to
+fanout, each picking the cheapest search its density allows. It is also where
+this topic's SwissTable and radix-tree threads literally meet, in Node16's
+SIMD probe.
 
 ## The problem it solves
 
@@ -29,6 +32,26 @@ Node256      ptrs[256] ┌●×256────────┐    direct array �
 Nodes grow/shrink between types as children are added/removed. Note the
 progression of *search strategy*: linear → SIMD → indexed → direct. Each type
 picks the cheapest search its density allows.
+
+One `match` carries the whole idea:
+
+```rust
+fn find_child(node: &Node, byte: u8) -> Option<&Node> {
+    match node {
+        Node4 { keys, ptrs, n } =>              // ≤4 children: linear scan,
+            (0..*n).find(|&i| keys[i] == byte)  //   one cache line
+                   .map(|i| &ptrs[i]),
+        Node16 { keys, ptrs, .. } => {
+            let hits = simd_eq(keys, byte);     // the SwissTable group probe
+            one_bit(hits).map(|i| &ptrs[i])     //   (≤1 hit here: keys unique)
+        }
+        Node48 { index, ptrs } =>               // byte-indexed indirection
+            slot(index[byte as usize]).map(|s| &ptrs[s]),
+        Node256 { ptrs } =>                     // direct — no search at all
+            ptrs[byte as usize].as_ref(),
+    }
+}
+```
 
 ## Reading order
 
@@ -67,3 +90,12 @@ skiplist's per-node cost (1.33 pointers avg + key) has no such bound story.
 
 You can name the four node types with their search strategies from memory, and
 explain binary-comparable key encoding well enough to encode (u64, u16) pairs.
+
+## References
+
+**Papers**
+- Leis, Kemper, Neumann — "The Adaptive Radix Tree: ARTful Indexing for
+  Main-Memory Databases" (ICDE 2013) —
+  [PDF](https://db.in.tum.de/~leis/papers/ART.pdf) — ~2 h; §III.A is the
+  core, don't skip §III.E/§IV (binary-comparable keys), read §V's
+  figures with topic-0 eyes

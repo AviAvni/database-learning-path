@@ -102,12 +102,12 @@ delta vs time-travel; ordering: newest-to-oldest wins; GC: cooperative wins)
 
 | Guide | What you'll trace |
 |---|---|
-| reading-postgres-heapam.md | tuple headers, SatisfiesMVCC, HOT, prune/vacuum |
-| reading-rocksdb-transactions.md | OCC validate-at-commit vs 2PL TryLock, same base class |
-| reading-surrealdb-tx.md | txn layer over pluggable KV, versioned reads as API |
-| reading-ansi-critique.md | Berenson '95 — why ANSI's definitions were broken |
-| reading-ssi-postgres.md | SSI: rw-antidependency pyramids, VLDB'12 |
-| reading-inmemory-mvcc.md | Wu/Pavlo empirical evaluation + Hekaton |
+| reading-postgres-heapam.md | Postgres MVCC: every tuple carries its own visibility |
+| reading-rocksdb-transactions.md | OCC and 2PL, same skeleton: RocksDB transactions |
+| reading-surrealdb-tx.md | The minimal transactional KV interface: surrealdb's kvs layer |
+| reading-ansi-critique.md | Isolation levels, made rigorous: history patterns and write skew |
+| reading-ssi-postgres.md | SSI: serializable snapshot isolation without blocking anyone |
+| reading-inmemory-mvcc.md | In-memory MVCC: timestamps as locks, and the design-space price list |
 
 Further references: Kung & Robinson "On Optimistic Methods for
 Concurrency Control" (TODS 1981) — the OCC school's founding paper

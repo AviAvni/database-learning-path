@@ -1,8 +1,11 @@
-# Reading the `lsm-tree` crate — fjall's engine (read it all, 3 h)
+# An LSM you can read whole: the lsm-tree crate
 
-Repo: [`~/repos/lsm-tree`](https://github.com/fjall-rs/lsm-tree) (shallow clone of fjall-rs/lsm-tree). Topic 1 read
-fjall's keyspace layer; everything LSM-shaped delegates here. Small enough to
-read completely — this guide orders it.
+Every LSM concept in this topic — restart-point block encoding, bloom-gated
+point reads, versioned level metadata, pluggable compaction — exists as a few
+hundred readable lines in fjall's `lsm-tree` crate. Topic 1 read fjall's
+keyspace layer; everything LSM-shaped delegates here, and the crate is small
+enough to read completely. This chapter orders that read so each layer lands
+before the one that uses it.
 
 ## 1. Block encoding — `src/table/block/`
 
@@ -65,6 +68,24 @@ read completely — this guide orders it.
   MVCC reads pick the newest version ≤ snapshot seqno.
 - Hash computed once and shared across all segment filter checks (:721–723) —
   the SipHash-cost lesson from topic 0 applied.
+
+The whole path, compressed to its shape:
+
+```rust
+fn get(&self, key: &[u8], snapshot: SeqNo) -> Option<Value> {
+    if let Some(v) = self.active.get(key, snapshot) { return live(v); }
+    for mt in self.sealed.iter().rev() {              // newest sealed first
+        if let Some(v) = mt.get(key, snapshot) { return live(v); }
+    }
+    let h = hash(key);                                // hashed ONCE for all filters
+    for run in self.version.runs() {                  // L0: run per flush; L1+: one
+        let Some(seg) = run.get_for_key(key) else { continue };  // disjoint ⇒ binary search
+        if !seg.filter_maybe_contains(h) { continue; }            // bloom: skip the IO
+        if let Some(v) = seg.point_read(key, snapshot) { return live(v); }
+    }
+    None                                              // live(): tombstone ⇒ None
+}
+```
 - Tombstones: `value_type.rs:8–27`; hidden at read time (`tree/mod.rs:67–72`),
   dropped at bottom-level compaction.
 
@@ -83,3 +104,11 @@ read completely — this guide orders it.
 You can trace one `get` from `tree/mod.rs:639` to a data-block binary search,
 naming every filter/index consulted, and explain why tombstones die only at
 the bottom.
+
+## References
+
+**Code**
+- [fjall-rs/lsm-tree](https://github.com/fjall-rs/lsm-tree) — the engine under
+  fjall; read it all (~3 h): `src/table/block/`, `src/table/`,
+  `src/table/filter/standard_bloom/`, `src/version/`, `src/compaction/`,
+  `src/tree/mod.rs`. Local shallow clone at `~/repos/lsm-tree`.

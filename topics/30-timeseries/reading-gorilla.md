@@ -1,8 +1,10 @@
-# Reading guide — Gorilla (VLDB '15) + prometheus chunkenc/xor.go
+# Gorilla: compress by predicting
 
-Paper: *Gorilla: A Fast, Scalable, In-Memory Time Series Database*,
-Pelkonen et al., VLDB 2015. Code: [`~/repos/prometheus/tsdb/chunkenc/xor.go`](https://github.com/prometheus/prometheus)
-— the most-deployed reimplementation of §4.1.
+The 8-byte f64 value dominates every naive metrics codec — Gorilla's XOR
+trick is the attack on those 8 bytes, and it's the chunk format inside
+essentially every modern TSDB. This chapter reads the VLDB '15 paper's
+§4.1 against prometheus's `tsdb/chunkenc/xor.go`, the most-deployed
+reimplementation, and is the spec for our `gorilla.rs` stub.
 
 ## Why it worked
 
@@ -45,6 +47,27 @@ Values: `0` = identical; `10` = meaningful bits fit the previous
 5-bit leading-zero count + 6-bit length + the bits. The 6-bit length
 stores 64 as 0 — the classic off-by-one everyone reimplements.
 
+Both halves of the append path are "encode the prediction error":
+
+```rust
+fn append(&mut self, t: i64, v: f64) {
+    let dod = (t - self.t_prev) - self.delta_prev;  // error vs "same delta as last time"
+    match dod {                                     // smaller error => fewer bits
+        0            => self.w.bits(0b0, 1),
+        -63..=64     => { self.w.bits(0b10, 2);   self.w.bits(dod as u64, 7); }
+        -255..=256   => { self.w.bits(0b110, 3);  self.w.bits(dod as u64, 9); }
+        -2047..=2048 => { self.w.bits(0b1110, 4); self.w.bits(dod as u64, 12); }
+        _            => { self.w.bits(0b1111, 4); self.w.bits(dod as u64, 64); }
+    }
+    let xor = v.to_bits() ^ self.v_prev.to_bits(); // error vs "same value as last time"
+    if xor == 0 { self.w.bits(0b0, 1); }
+    else { self.write_vdelta(xor); }   // '10': reuse prev (leading,trailing) window;
+                                       // '11': 5-bit leading + 6-bit len + middle bits
+    self.delta_prev = t - self.t_prev;
+    self.t_prev = t; self.v_prev = v;
+}
+```
+
 ## prometheus xor.go, line by line
 
 1. `xorAppender.Append` (`xor.go:161`) — the whole timestamp path. Note
@@ -83,3 +106,15 @@ stores 64 as 0 — the classic off-by-one everyone reimplements.
    value where values are often strings/ids, not floats. Which half of
    Gorilla survives (dod timestamps) and what replaces XOR for
    non-numeric payloads?
+
+## References
+
+**Papers**
+- Pelkonen et al. — "Gorilla: A Fast, Scalable, In-Memory Time Series
+  Database" (VLDB 2015) — §4.1 is the codec and the reason to read it;
+  §3 and §5 are the ops war stories
+
+**Code**
+- [prometheus](https://github.com/prometheus/prometheus)
+  `tsdb/chunkenc/xor.go` — the most-deployed reimplementation of §4.1;
+  note the retuned dod buckets (14/17/20/64 bits) vs the paper's

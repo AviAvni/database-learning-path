@@ -1,10 +1,10 @@
-# Reading guide — simdjson ("Parsing Gigabytes of JSON per Second", VLDB '19)
+# simdjson: parsing without branches
 
-Clone: [`~/repos/simdjson`](https://github.com/simdjson/simdjson). Read the paper alongside
-`include/simdjson/arm64/` (you're on ARM — the NEON implementation
-is the one your machine runs). The big idea: parsing — the most
-branchy code imaginable — rebuilt as branch-free bitmask algebra
-over 64-byte blocks.
+Parsing — the most branchy code imaginable — rebuilt as branch-free
+bitmask algebra over 64-byte blocks, at gigabytes per second. Read
+the paper alongside `include/simdjson/arm64/` (you're on ARM — the
+NEON implementation is the one your machine runs). Every trick here
+transfers to a DB engine: RESP framing, CSV ingest, LIKE prefilters.
 
 ## Two-stage architecture
 
@@ -67,7 +67,25 @@ Turning a 64-bit mask into an array of positions: `cnt = popcnt`,
 then repeatedly `trailing_zeros` + `clear lowest bit`, unrolled by
 8 with the count written UNCONDITIONALLY (write 8, advance by
 popcount — over-write, under-advance). Same shape as our
-branchless filter append. Question: why is writing 8 always faster
+branchless filter append.
+
+```rust
+// bit_indexer: mask → positions. Over-write, under-advance.
+fn flatten(out: &mut [u32], n: usize, start: u32, mut m: u64) -> usize {
+    let cnt = m.count_ones() as usize;
+    let mut k = 0;
+    while k < cnt {                    // ceil(cnt/8) iterations, branch-free body
+        for j in 0..8 {                // write 8 UNCONDITIONALLY —
+            out[n + k + j] = start + m.trailing_zeros();  // garbage lanes are fine
+            m &= m.wrapping_sub(1);    // clear lowest set bit
+        }
+        k += 8;
+    }
+    n + cnt                            // advance by the REAL count only
+}
+```
+
+Question: why is writing 8 always faster
 than writing exactly cnt?
 
 ## 5. What transfers to a DB engine
@@ -91,3 +109,17 @@ than writing exactly cnt?
    patterns makes nibble tables sufficient?
 5. For M7: sketch stage-1 masks for RESP (`*3\r\n$3\r\nSET...`) —
    which characters are "structural"?
+
+## References
+
+**Papers**
+- Langdale & Lemire — "Parsing Gigabytes of JSON per Second"
+  (VLDB Journal 2019,
+  [arXiv:1902.08318](https://arxiv.org/abs/1902.08318)) — §3 is
+  stage 1; work the escaped-backslash example in §3.1.1 by hand
+
+**Code**
+- [simdjson](https://github.com/simdjson/simdjson) —
+  `include/simdjson/arm64/` (simd.h, bitmask.h) plus
+  `src/generic/stage1/` — read the NEON files, they're what your
+  machine runs

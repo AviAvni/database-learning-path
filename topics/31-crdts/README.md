@@ -100,10 +100,10 @@ left+right origins — see `reading-sequence-crdts.md`.
 
 ## Reading guides
 
-1. `reading-shapiro-crdts.md` — Shapiro SSS'11 + INRIA report: SEC, CvRDT/CmRDT, the catalog.
-2. `reading-kleppmann-json-crdts.md` — JSON CRDT ('17), the move op ('21), Local-First (Onward! '19).
-3. `reading-sequence-crdts.md` — Yjs/yrs internals, diamond-types, Loro & Fugue (interleaving).
-4. `reading-cr-sqlite.md` — a real *database* going multi-master with CRDT columns.
+1. [reading-shapiro-crdts.md](reading-shapiro-crdts.md) — CRDT foundations: convergence without coordination.
+2. [reading-kleppmann-json-crdts.md](reading-kleppmann-json-crdts.md) — JSON CRDTs & the move op: identity beats paths.
+3. [reading-sequence-crdts.md](reading-sequence-crdts.md) — Sequence CRDTs: what a decade of engineering does to RGA.
+4. [reading-cr-sqlite.md](reading-cr-sqlite.md) — cr-sqlite: a real database goes multi-master.
 
 ## Experiments
 

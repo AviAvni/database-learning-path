@@ -1,8 +1,10 @@
-# Reading guide — "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR '22)
+# mmap is not a buffer pool
 
-Crotty, Leis, Pavlo. Short, punchy, deliberately provocative — 1.5 h. It's a
-position paper: read it adversarially, then read the counter-evidence (LMDB
-exists and is excellent).
+mmap looks like a free buffer pool, and a famous position paper says that for
+a general-purpose write-heavy DBMS every apparent win reverses. It is short,
+punchy, and deliberately provocative — so read it adversarially, then
+construct the counter-evidence yourself (LMDB exists and is excellent). The
+payoff is knowing precisely *which* property of a workload makes mmap wrong.
 
 ## The temptation (§1–2)
 
@@ -72,3 +74,10 @@ Read-only/COW designs escape most of it.
 
 You can argue both sides for five minutes each — "never mmap" and "LMDB is
 right" — and state precisely which property of your workload picks the side.
+
+## References
+
+**Papers**
+- Crotty, Leis, Pavlo — "Are You Sure You Want to Use MMAP in Your DBMS?"
+  (CIDR 2022) — short position paper; memorize the four problems of §3,
+  re-read §4 (why even read-only mmap loses at scale)

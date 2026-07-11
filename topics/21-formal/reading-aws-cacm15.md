@@ -1,9 +1,10 @@
-# Reading guide — "How Amazon Web Services Uses Formal Methods" (CACM 2015)
+# Why AWS writes TLA+: exhaustively testable pseudo-code
 
-Newcombe et al. — the paper that moved TLA+ from academia to
+The CACM 2015 experience report that moved TLA+ from academia to
 industrial default for distributed protocols. Read it for the
 *economics*, not the math: what class of bug justifies days of
-spec-writing.
+spec-writing — and what a spec still can't do for you. It frames
+every other chapter in this topic.
 
 ## The core claims
 
@@ -52,3 +53,10 @@ spec-writing.
    cases?
 5. Spec-code drift: sketch how the capstone's CI could keep
    WalReplication.tla honest against the real replication code.
+
+## References
+
+**Papers**
+- Newcombe, Rath, Zhang, Munteanu, Brooker, Deroche — "How Amazon
+  Web Services Uses Formal Methods" (CACM 2015) — short; read all
+  of it, the sidebar tables carry the economics

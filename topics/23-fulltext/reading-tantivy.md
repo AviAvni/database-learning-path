@@ -1,8 +1,11 @@
-# Reading guide — tantivy internals ([`~/repos/tantivy`](https://github.com/quickwit-oss/tantivy))
+# tantivy: Lucene's architecture in readable Rust
 
-Lucene's architecture, rewritten in readable Rust. Read it as four
-subsystems: analysis, term dictionary, postings, and the LSM-shaped
-indexer. Everything below is anchored to source.
+The reference implementation for everything the previous chapters
+derived: FST term dictionary, bitpacked posting blocks with
+block-max skip data, BM25 as a table lookup, and an LSM-shaped
+indexer. Read it as four subsystems — analysis, term dictionary,
+postings, and the segment merger — everything below is anchored to
+source.
 
 ## The read path, file by file
 
@@ -20,6 +23,23 @@ indexer. Everything below is anchored to source.
 | skip data | `postings/skip.rs:93` `SkipReader`; `:175 block_max_score(bm25_weight)`; `:186 last_doc_in_block` | block-max metadata lives in skip entries — moving blocks never decodes postings |
 | scoring | `query/bm25.rs:8-9` K1/B; `:52` idf; `:59` tf-norm via 1-byte fieldnorm table | scoring = table lookup + multiply-add |
 | WAND | `query/boolean_query/block_wand_union.rs:8-24` `find_pivot_doc`; sibling `block_wand_intersection.rs` | the SIGIR'11 paper, shipped |
+
+The postings block format, distilled:
+
+```rust
+// 128 doc-id deltas, bit-packed to the WHOLE block's max width
+fn write_block(docs: &[u32; 128], prev_last: u32, out: &mut Vec<u8>) {
+    let mut deltas = [0u32; 128];
+    for i in 0..128 {
+        deltas[i] = docs[i] - if i == 0 { prev_last } else { docs[i - 1] };
+    }
+    let bits = 32 - deltas.iter().max().unwrap().leading_zeros() as u8;
+    out.push(bits);              // ONE width per block → SIMD unpacks all
+    bitpack(&deltas, bits, out); //   128 at once, no per-posting branches
+}
+// next to it, a skip entry: { last_doc, block_max_score } — WAND moves
+// across blocks without ever decoding the losers
+```
 
 ## The write path = topic 4 wearing a hat
 
@@ -67,3 +87,15 @@ sorting/faceting — literally topic 12 embedded in a text index.
    preview): which of the five segment files does BM25 top-k
    actually need to fetch, and in what order — how does the layout
    minimize round trips?
+
+## References
+
+**Code**
+- [tantivy](https://github.com/quickwit-oss/tantivy) — the anchors
+  above: `src/tokenizer/tokenizer.rs`,
+  `src/termdict/fst_termdict/termdict.rs`,
+  `src/postings/term_info.rs`, `src/postings/compression/mod.rs`,
+  `src/postings/skip.rs`, `src/query/bm25.rs`,
+  `src/query/boolean_query/block_wand_union.rs`,
+  `src/indexer/log_merge_policy.rs` — the 90-minute order above is
+  the recommended pass

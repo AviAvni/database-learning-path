@@ -1,15 +1,12 @@
-# Reading guide — qdrant's quantization stack
-
-Repo: [`~/repos/qdrant`](https://github.com/qdrant/qdrant). The encoders live in their own crate,
-`lib/quantization/src/`; the wiring into search is
-`lib/segment/src/vector_storage/quantized/`.
-
-## Why this matters
+# The quantization ladder: shrink, search, rescore
 
 Topic 12's thesis — compression IS performance — with a new twist:
 here compression is LOSSY, so the system needs machinery to claw the
-recall back (oversample + rescore). That pipeline shape is what M14
-copies.
+recall back (oversample + rescore). This chapter climbs qdrant's
+three-rung ladder (scalar u8, PQ, binary) and the pipeline that makes
+lossy codes safe; that pipeline shape is what M14 copies. The
+encoders live in their own crate, `lib/quantization/src/`; the wiring
+into search is `lib/segment/src/vector_storage/quantized/`.
 
 ## 1. Scalar u8 (`encoded_vectors_u8.rs`)
 
@@ -28,6 +25,18 @@ per-vector offsets stored alongside the codes. Integer dot on u8 =
 4× fewer bytes moved AND SIMD-friendlier (topic 17 will vectorize
 exactly this). Quantile-based range (`quantile.rs`) clips outliers
 so alpha isn't wasted on the tails.
+
+```rust
+// score u8 codes WITHOUT decoding: integer dot + affine correction
+fn dot_u8(q: &Encoded, v: &Encoded, alpha: f32, off: f32, d: usize) -> f32 {
+    let int_dot: u32 = q.codes.iter().zip(&v.codes)
+        .map(|(&a, &b)| a as u32 * b as u32)
+        .sum();                              // the u8 loop SIMD loves
+    alpha * alpha * int_dot as f32
+        + alpha * off * (q.sum + v.sum)      // Σqᵢ, Σvᵢ: stored per vector
+        + d as f32 * off * off               // constant for the whole index
+}
+```
 
 ## 2. Product quantization (`encoded_vectors_pq.rs`)
 
@@ -85,3 +94,19 @@ representation for the scan, expensive one only for survivors.
    fit in L1? What happens to the trick when m=64?
 5. M14 decision: which rung of the ladder for graph node embeddings,
    given M17 SIMD comes later — commit + reason.
+
+## References
+
+**Papers**
+- Jégou, Douze, Schmid — the PQ paper (IEEE TPAMI 2011) — gets its
+  own chapter: [reading-pq.md](reading-pq.md)
+
+**Code**
+- [qdrant](https://github.com/qdrant/qdrant) — encoders in
+  `lib/quantization/src/` (`encoded_vectors_u8.rs`,
+  `encoded_vectors_pq.rs`, `encoded_vectors_binary.rs`,
+  `quantile.rs`); wiring in
+  `lib/segment/src/vector_storage/quantized/`
+  (`quantized_scorer_builder.rs` and the storage variants) and
+  `lib/segment/src/index/hnsw_index/hnsw/search.rs`
+  (`get_oversampled_top`)

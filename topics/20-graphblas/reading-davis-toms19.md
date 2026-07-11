@@ -1,9 +1,10 @@
-# Reading guide — "Algorithm 1000: SuiteSparse:GraphBLAS" (Davis, TOMS '19) + the v2 update (TOMS '23)
+# SuiteSparse:GraphBLAS: a sparse-matrix executor in disguise
 
-The system paper for the library under FalkorDB. Read it as an
-executor-design paper, not a math paper: it's about lazy
-evaluation, format polymorphism, and kernel dispatch — the same
-problems as topics 8-11, in matrix clothing.
+Davis's TOMS '19 system paper (plus the '23 v2 update) describes the
+library under FalkorDB. Read it as an executor-design paper, not a
+math paper: it's about lazy evaluation, format polymorphism, and
+kernel dispatch — the same problems as topics 8-11, in matrix
+clothing.
 
 ## 1. The object model (paper §3, code `Source/matrix/GB_matrix.h`)
 
@@ -27,6 +28,27 @@ SuiteSparse uses it for *mutation batching* (pending tuples get
 sorted+merged once), not full lazy fusion (v2 paper discusses the
 JIT changing this calculus). Compare topic 27's incremental view
 maintenance: same "amortize small updates" shape.
+
+The whole mechanism, distilled:
+
+```rust
+fn set_element(a: &mut Matrix, i: u64, j: u64, v: f64) {
+    a.pending.push((i, j, v));       // O(1): append, don't restructure CSR
+}
+
+fn delete_element(a: &mut Matrix, i: u64, j: u64) {
+    if let Some(e) = a.find_mut(i, j) {
+        e.mark_zombie();             // flag in place — no O(nnz) splice
+    }
+}
+
+fn wait(a: &mut Matrix) {            // the GrB_wait boundary
+    a.prune_zombies();               // one sweep drops ALL zombies
+    a.pending.sort_unstable();       // n inserts → one sort + one merge,
+    a.merge_pending_into_csr();      //   not n binary-searched splices
+    conform(a);                      // then maybe switch format
+}
+```
 
 ## 3. The v2 update (TOMS '23) — what changed
 
@@ -67,3 +89,20 @@ out. Question 4.
 5. 32-bit indices (v10): for a 10M-node 100M-edge graph, compute
    the CSR memory in v9 (64-bit) vs v10 — and where the same 2×
    shows up in our Rust CSR if we switch usize→u32.
+
+## References
+
+**Papers**
+- Davis — "Algorithm 1000: SuiteSparse:GraphBLAS: Graph Algorithms
+  in the Language of Sparse Linear Algebra" (ACM TOMS 2019) — the
+  system paper; read §3 (object model) and the non-blocking-mode
+  discussion closely
+- Davis — "Algorithm 1037: SuiteSparse:GraphBLAS: Parallel Graph
+  Algorithms in the Language of Sparse Linear Algebra" (ACM TOMS
+  2023) — the v2 update: JIT, 32/64-bit indices, iso matrices
+
+**Code**
+- [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
+  `Source/matrix/GB_matrix.h` — the object model in one header;
+  the internals walk is
+  [reading-suitesparse-internals.md](reading-suitesparse-internals.md)

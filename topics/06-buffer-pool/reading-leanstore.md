@@ -1,12 +1,11 @@
-# Reading LeanStore — swizzling, cooling, hybrid latches (2 h)
+# LeanStore in code: swips, cooling, hybrid latches
 
-Repo: [`~/repos/leanstore`](https://github.com/leanstore/leanstore) (the classic ICDE '18 codebase). Files under
-`backend/leanstore/storage/buffer-manager/`: `Swip.hpp`, `BufferManager.cpp`,
-`BufferFrame.hpp`, `PageProviderThread.cpp`, `Partition.hpp`; latches in
-`backend/leanstore/sync-primitives/Latch.hpp`.
-
-Read the paper guide (reading-leanstore-paper.md) first for the why; this is
-the how.
+The paper claims a hot page access can cost zero atomics; this chapter walks
+the classic ICDE '18 codebase to see how — a u64 that is either a pointer or
+a page id, a background thread that cools random frames, and latches whose
+readers hold nothing. Read the paper guide
+([reading-leanstore-paper.md](reading-leanstore-paper.md)) first for the why;
+this is the how.
 
 ## 1. Swip — Swip.hpp:17–67
 
@@ -29,6 +28,24 @@ swip may reference a page (else un/re-swizzling can't find all pointers).
                   latch parent, clear cool bit (second chance), return.
  EVICTED         → page fault: grab free frame, readPageSync (:317),
                   swizzle the swip, return.
+```
+
+The same three arms, as code:
+
+```rust
+// The hot path is a pointer dereference — nothing else.
+fn resolve(&self, parent: &HybridGuard, swip: &mut Swip) -> &BufferFrame {
+    if swip.is_hot() { return swip.frame(); }         // raw pointer: ~0 overhead
+    if swip.is_cool() {
+        parent.upgrade_exclusive();                   // touched while cooling ⇒
+        swip.warm();                                  // second chance: clear the
+        return swip.frame();                          // bit, dodge the FIFO
+    }
+    let frame = self.free_frames.pop();               // EVICTED ⇒ page fault:
+    self.read_page_sync(swip.pid(), frame);           // the ONLY case that pays
+    swip.swizzle(frame);                              // pid → pointer, in place —
+    frame                                             // next access is hot
+}
 ```
 
 Note the latching order comment — BufferManager.hpp:67–68: swizzle vs
@@ -87,3 +104,14 @@ can't block eviction, it just fails validation and retries.
 
 You can draw the swip state machine (HOT/COOL/EVICTED with transitions and
 who performs each) and explain why a hot hit costs zero atomics.
+
+## References
+
+**Code**
+- [leanstore/leanstore](https://github.com/leanstore/leanstore) (the
+  classic ICDE '18 codebase) —
+  `backend/leanstore/storage/buffer-manager/`: `Swip.hpp`,
+  `BufferManager.cpp`, `BufferFrame.hpp`, `PageProviderThread.cpp`,
+  `Partition.hpp`; latches in
+  `backend/leanstore/sync-primitives/Latch.hpp`. Local clone at
+  `~/repos/leanstore`.

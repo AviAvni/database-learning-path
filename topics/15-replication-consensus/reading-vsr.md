@@ -1,9 +1,11 @@
-# Reading guide — "Viewstamped Replication Revisited" (Liskov & Cowling, 2012)
+# Viewstamped Replication: same invariants, opposite choices
 
 The other consensus protocol — actually the FIRST (VR 1988 predates
 Paxos's publication). Read it AFTER Raft: same invariants, opposite
-engineering choices at almost every fork. TigerBeetle ships VSR in
-production, so this is not a museum piece.
+engineering choices at almost every fork — deterministic round-robin
+leadership instead of elections, logs shipped at view change instead
+of repaired after, and (the shocker) no disk required. TigerBeetle
+ships VSR in production, so this is not a museum piece.
 
 ## Terminology decoder
 
@@ -27,6 +29,24 @@ production, so this is not a museum piece.
    and installs it via STARTVIEW.
 3. **Recovery**: a restarted replica asks the group for state
    instead of reading disk.
+
+The view change, condensed — note what's missing (no votes, no
+randomized timeouts):
+
+```rust
+// the next primary is DETERMINED: view mod n. it just needs f+1 logs
+fn install_view(&mut self, view: u64, msgs: &[DoViewChange]) {
+    assert!(msgs.len() >= self.f + 1);            // quorum intersects commits
+    let best = msgs.iter()
+        .max_by_key(|m| (m.last_normal_view, m.op_number))
+        .unwrap();                                // Raft's election restriction,
+    self.log = best.log.clone();                  // applied AFTER the fact —
+    self.op_number = best.op_number;              // logs ship at view change,
+    self.commit_number =                          // where Raft repairs later
+        msgs.iter().map(|m| m.commit_number).max().unwrap();
+    self.broadcast(StartView { view, log: &self.log });
+}
+```
 
 ## The forks in the road (the reason to read this)
 
@@ -65,3 +85,17 @@ model Raft ignores entirely).
 5. TigerBeetle: which VSR feature makes "disk can lie" (checksum
    fails, torn write) survivable, where Raft's model assumes storage
    is faithful? Connect to topic 5's torn-page discussion.
+
+## References
+
+**Papers**
+- Liskov, Cowling — "Viewstamped Replication Revisited"
+  (MIT-CSAIL-TR-2012-021, 2012) — the version to read; the three
+  sub-protocols plus the no-disk argument
+- Oki, Liskov — "Viewstamped Replication: A New Primary Copy Method"
+  (PODC 1988) — optional; the original, for the historical claim
+
+**Code**
+- [tigerbeetle](https://github.com/tigerbeetle/tigerbeetle) — VSR in
+  production Zig, with the storage-fault model bolted on; `src/vsr/`
+  if you want to see the protocol shipped

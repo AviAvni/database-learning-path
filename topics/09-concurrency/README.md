@@ -110,10 +110,10 @@ per-thread `used_memory` counters (topic 6); you'll measure the effect in
 
 | Guide | What you'll trace |
 |---|---|
-| reading-postgres-lwlock.md | a production rwlock: packed u32 state, CAS fast path, proclist wait queue |
-| reading-crossbeam-epoch.md | pin/defer/try_advance — the GC you'll build on |
-| reading-concurrent-skiplists.md | RocksDB CAS+splices vs memgraph lazy-locking — two schools, one structure |
-| reading-bwtree.md | ICDE'13 design + SIGMOD'18 reality check + OLC paper |
+| reading-postgres-lwlock.md | One word, one CAS, one queue: postgres's production rwlock |
+| reading-crossbeam-epoch.md | Epoch reclamation: the GC that makes lock-free reads free |
+| reading-concurrent-skiplists.md | Two concurrent skiplists: CAS vs lazy locking |
+| reading-bwtree.md | Bw-tree vs OLC: why lock-free lost to optimistic latches |
 
 ## 8. Experiments (`experiments/`)
 

@@ -1,8 +1,10 @@
-# Reading hashbrown — SwissTable in Rust
+# hashbrown: the probe loop the flamegraph couldn't show
 
-Repo: [`~/repos/hashbrown`](https://github.com/rust-lang/hashbrown) (shallow clone) — this IS `std::collections::HashMap`.
-You profiled it in topic 0 (21% SipHash, rest inlined probe loop); now read the probe
-loop you couldn't see in the flamegraph.
+This IS `std::collections::HashMap` — you profiled it in topic 0 (21% SipHash,
+rest inlined probe loop), and now you read the probe loop the flamegraph
+flattened into "everything else". One idea carries the whole design: keep a
+dense array of 1-byte tags beside the slots, so one SIMD load filters 8–16
+candidates before a single key byte is touched.
 
 ## 1. The control-byte array — the whole idea
 
@@ -22,6 +24,26 @@ slot array:     [ kv | ___ | kv | kv | ___ | kv | kv | ___ ]  touched only on ta
 Probing = compare h2 against 16 tags in one SIMD op; only matching slots get a real
 key comparison. False-positive rate per group ≈ 16/128 — cheap. This is the
 "dense filter + fat payload" pattern (README §4).
+
+The lookup, de-macro'd:
+
+```rust
+fn find(table: &RawTable, hash: u64, key: &K) -> Option<usize> {
+    let h2 = (hash >> 57) as u8;                        // top 7 bits = the tag
+    let mut probe = ProbeSeq::new(h1(hash), table.mask); // triangular stride
+    loop {
+        let group = Group::load(&table.ctrl[probe.pos]); // ONE dense cache line
+        for bit in group.match_tag(h2) {                 // SIMD: 8–16 tags at once
+            let slot = (probe.pos + bit) & table.mask;
+            if table.key(slot) == key { return Some(slot); } // 2nd line: the slot
+        }
+        if group.match_empty().any_bit_set() {
+            return None;    // EMPTY stops the probe; DELETED does NOT —
+        }                   //   the key may have been pushed past a tombstone
+        probe.move_next(table.mask);
+    }
+}
+```
 
 ## 2. Where things live
 
@@ -72,3 +94,11 @@ the second. h2 filtering exists precisely so there's rarely a *third*.
 
 You can draw the control-byte array and narrate one lookup from hash to slot,
 including both cache lines it touches.
+
+## References
+
+**Code**
+- [hashbrown](https://github.com/rust-lang/hashbrown) (shallow clone at
+  `~/repos/hashbrown`) — `src/raw.rs` (RawTable, ProbeSeq, insert path),
+  `src/control/tag.rs`, `src/control/group/neon.rs` (the Apple Silicon
+  path; SSE2 sibling for x86)

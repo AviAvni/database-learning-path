@@ -1,8 +1,11 @@
-# Reading guide — "Counting Immutable Beans" (IFL'19) + "Perceus" (PLDI'21)
+# Perceus: reference counting precise enough to reuse memory
 
-The Lean 4 / Koka runtime papers. Read them as a *systems* story:
-how a pure functional language gets in-place update performance —
-and what that teaches a Rust engine about reference counting.
+How does a pure functional language (Lean 4, Koka) get in-place
+update performance? Two compiler passes — borrow inference and
+reuse tokens — make reference counting precise enough that copying
+mostly disappears. Read the two runtime papers as a *systems*
+story: they explain why Lean 4 is fast enough to be the M21 proof
+target, and what `Arc`-everywhere Rust engines leave on the table.
 
 ## The problem
 
@@ -43,6 +46,24 @@ data — no GC headroom.
                without the type system
 ```
 
+What the compiler actually emits for `map`, in Rust-ish form:
+
+```rust
+fn map(f: &Closure, xs: Ptr<Cons>) -> Ptr<Cons> {
+    if rc(xs) == 1 {
+        // reuse token: we are the only owner — xs's cell is handed
+        // to the Cons about to be built. map becomes an in-place loop.
+        xs.head = f.call(xs.head);
+        xs.tail = map(f, xs.tail);
+        xs                              // zero allocation
+    } else {
+        let out = alloc(Cons { head: f.call(xs.head), tail: map(f, xs.tail) });
+        dec(xs);                        // dropped at exact last use —
+        out                             //   peak memory = live data
+    }
+}
+```
+
 ## Why this is in a database curriculum
 
 - **The RC(1) fast path is delta-matrix thinking**: mutate in place
@@ -80,3 +101,14 @@ preserved by set/remove/wait.
    write, strength of guarantee, maintenance under refactor).
 5. Koka's effect types let Perceus assume no hidden aliasing. What's
    the moral equivalent in Rust that makes `Arc::make_mut` sound?
+
+## References
+
+**Papers**
+- Ullrich, de Moura — "Counting Immutable Beans: Reference Counting
+  Optimized for Purely Functional Programming" (IFL 2019,
+  [arXiv:1908.05647](https://arxiv.org/abs/1908.05647)) — borrow
+  inference + the first reuse story; this is Lean 4's runtime
+- Reinking, Xie, de Moura, Leijen — "Perceus: Garbage Free
+  Reference Counting with Reuse" (PLDI 2021) — drop-at-last-use,
+  the garbage-free claim, and the sharper reuse analysis

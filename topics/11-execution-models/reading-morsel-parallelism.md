@@ -1,8 +1,10 @@
-# Reading guide — "Morsel-Driven Parallelism" (SIGMOD '14) (~1 h)
+# Morsel-driven parallelism: workers pull, skew dissolves
 
-Leis et al. (HyPer group). The scheduling half of the modern engine:
-topic 11's other papers decide the INNER loop; this one decides how 8+
-cores share it.
+Leis et al. (SIGMOD '14, HyPer group) — the scheduling half of the modern
+engine: this topic's other papers decide the INNER loop; this one decides
+how 8+ cores share it. The idea fits in a sentence — workers pull small
+work units instead of receiving static partitions — and everything else
+falls out of it.
 
 ## The problem with plan-driven parallelism
 
@@ -40,6 +42,21 @@ partition data between static worker sets.
   inserts for the build — they use the latter, lock-free, topic 9's
   toolbox).
 
+The worker loop IS the design:
+
+```rust
+fn worker(dispatcher: &Dispatcher, ht: &BuildHt) {
+    let mut local_agg = PartialAgg::new();       // thread-local: no contention
+    while let Some(m) = dispatcher.pull(my_socket()) { // prefer LOCAL morsels,
+        let chunk = scan(m);                     // steal remote when starved
+        let sel = filter(&chunk);                // the WHOLE pipeline runs
+        let matches = probe(ht, &chunk, &sel);   // here, one thread, so
+        local_agg.update(&matches);              // intermediates stay hot
+    }                                            // commit unit = one morsel:
+    dispatcher.combine(local_agg);               // that's the elasticity
+}
+```
+
 ## Where you've already seen it
 
 - DuckDB: row-group (122880) work units + `MaxThreads` on sources —
@@ -76,3 +93,10 @@ partition data between static worker sets.
 
 You can explain skew-stranding with the one-hot-partition picture and
 say precisely what "elasticity" means (commit granularity = one morsel).
+
+## References
+
+**Papers**
+- Leis, Boncz, Kemper, Neumann — "Morsel-Driven Parallelism: A NUMA-Aware
+  Query Evaluation Framework for the Many-Core Age" (SIGMOD 2014) —
+  ~1 h; §2–3 for the design, skim the NUMA eval if you live on a laptop

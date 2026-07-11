@@ -1,9 +1,12 @@
-# Reading guide — DDIA chapters 5, 8, 9 (Kleppmann)
+# Lag, lies, and linearizability
 
-Designing Data-Intensive Applications. Ch. 5 (Replication), ch. 8
-(The Trouble with Distributed Systems), ch. 9 (Consistency and
-Consensus). The concepts layer over this topic's code: read ch. 5
-alongside valkey's replication.c, ch. 9 alongside the Raft paper.
+The concepts layer over this topic's code — Kleppmann's three
+chapters give the vocabulary for everything valkey and Raft do:
+replication lag and its anomalies (ch. 5), why partial failure and
+lying clocks make distribution hard (ch. 8), and what
+linearizability/consensus actually promise (ch. 9). Read ch. 5
+alongside valkey's `replication.c` and ch. 9 alongside the Raft
+paper; ch. 8 is the connective tissue.
 
 ## Ch. 5 — Replication: the anomaly catalog
 
@@ -77,3 +80,12 @@ clocks lie. Extract:
 5. Linearizable-read options: leader lease vs ReadIndex vs quorum
    read — cost per read of each, and which M22 (the capstone's
    read-path milestone) should pick.
+
+## References
+
+**Papers / Books**
+- Kleppmann — "Designing Data-Intensive Applications" (O'Reilly
+  2017) — ch. 5 (Replication), ch. 8 (The Trouble with Distributed
+  Systems), ch. 9 (Consistency and Consensus); pair ch. 5 with
+  [reading-valkey-replication.md](reading-valkey-replication.md) and
+  ch. 9 with [reading-raft-paper.md](reading-raft-paper.md)

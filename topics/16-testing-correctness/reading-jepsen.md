@@ -1,9 +1,13 @@
-# Reading guide — Jepsen & elle
+# Jepsen & elle: isolation anomalies are cycles
 
-Sources: jepsen.io/analyses — read TWO: "Redis-Raft 1b3fbf6"
-(2020) and a graph one, "Dgraph 1.0.2" (2018). Plus the elle paper:
-"Elle: Inferring Isolation Anomalies from Experimental Observations"
-(VLDB '20) and github.com/jepsen-io/elle.
+Jepsen believes nothing you tell it: it drives real concurrent
+clients against a real cluster while breaking the network, records
+the history, and only afterwards decides whether that history was
+even possible under the claimed consistency model. The checker is
+the hard part — this chapter covers elle's trick for making it
+polynomial, plus two analyses worth reading in full: Redis-Raft
+(the catalog of consensus-plumbing bugs) and Dgraph (the graph-DB
+cautionary tale).
 
 ## The method
 
@@ -35,6 +39,25 @@ serialization graph is recoverable:
 - build the dependency graph from these facts; **a cycle = an
   isolation anomaly**, and the cycle TYPE names it (G0 dirty write,
   G1c cyclic info flow, G-single = read skew...)
+
+The whole checker, structurally:
+
+```rust
+// a read of k = [1, 3] by txn T makes dependency edges OBSERVABLE:
+fn check(history: &History) -> Result<(), Cycle> {
+    let mut g = Graph::new();
+    for read in history.reads() {
+        for w in read.list.windows(2) {
+            g.add(writer(w[0]), writer(w[1]), Ww);   // list order = write order
+        }
+        if let Some(&last) = read.list.last() {
+            g.add(writer(last), read.txn, Wr);       // T saw last's write
+        }
+        // and T -> writer(v) for any v appended after: an rw anti-dep
+    }
+    g.find_cycle()   // a cycle = an anomaly; its edge types NAME it
+}
+```
 
 Polynomial time, and the counterexample is human-readable ("this
 txn read state that implies it ran both before and after that
@@ -87,3 +110,17 @@ you told it.
    appends via propose(), reads of committed(), cycle check over
    the history. What does the deterministic sim make TRIVIAL that
    real Jepsen fights (total real-time order is known!)?
+
+## References
+
+**Papers**
+- Kingsbury & Alvaro — "Elle: Inferring Isolation Anomalies from
+  Experimental Observations" (VLDB 2020,
+  [arXiv:2003.10554](https://arxiv.org/abs/2003.10554))
+- Jepsen analyses ([jepsen.io/analyses](https://jepsen.io/analyses))
+  — read TWO: "Redis-Raft 1b3fbf6" (2020) and a graph one,
+  "Dgraph 1.0.2" (2018)
+
+**Code**
+- [elle](https://github.com/jepsen-io/elle) — the checker itself;
+  the README's anomaly taxonomy is the fastest G0/G1/G2 refresher

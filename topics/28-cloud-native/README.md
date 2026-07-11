@@ -102,11 +102,11 @@ resolve reads correctly.
 
 ## 5. Reading guides
 
-- [reading-aurora.md](reading-aurora.md) — the log is the database; 4/6 quorums; why no 2PC
-- [reading-socrates.md](reading-socrates.md) — durability ≠ availability; the 4-tier decomposition
-- [reading-snowflake-s3.md](reading-snowflake-s3.md) — shared-data warehousing + the prescient 2008 S3 paper
-- [reading-neon.md](reading-neon.md) — pageserver/safekeeper code walk (the anchors above)
-- [reading-slatedb-quickwit.md](reading-slatedb-quickwit.md) — LSM & search engineered S3-first
+- [reading-aurora.md](reading-aurora.md) — Aurora: only the log crosses the network
+- [reading-socrates.md](reading-socrates.md) — Socrates: durability is not availability
+- [reading-snowflake-s3.md](reading-snowflake-s3.md) — Snowflake and the 2008 S3 paper: immutability dissolves the walls
+- [reading-neon.md](reading-neon.md) — Neon: page versions from WAL, branches for free
+- [reading-slatedb-quickwit.md](reading-slatedb-quickwit.md) — SlateDB & Quickwit: born on S3
 
 Further references: "Lakehouse" (CIDR 2021) + "Delta Lake" (VLDB
 2020) — the open-format counterpoint to Snowflake: keep data in

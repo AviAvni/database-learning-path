@@ -1,17 +1,12 @@
-# Reading guide — neo4j's record store (the cost of index-free adjacency)
+# Neo4j's record store: the price of index-free adjacency
 
-Repo: [`~/repos/neo4j`](https://github.com/neo4j/neo4j) (shallow clone). Java, but you're reading data
-layout, not code style. Everything lives under
-`community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/`.
-
-## Why this matters
-
-neo4j is the architecture FalkorDB most directly positions against.
-"Index-free adjacency" = neighbors are direct pointers, no index
-lookup. The bet made sense on 2010 spinning disks (seek = 10 ms, so
-any pointer beats a B-tree descent). On DRAM it inverts: a pointer
-chase is a ~110 ns cache miss (topic 0), a CSR slice is a prefetchable
-stream.
+neo4j is the architecture FalkorDB most directly positions against,
+and this chapter reads its data layout (Java, but you're reading
+layout, not code style). "Index-free adjacency" = neighbors are direct
+pointers, no index lookup. The bet made sense on 2010 spinning disks
+(seek = 10 ms, so any pointer beats a B-tree descent). On DRAM it
+inverts: a pointer chase is a ~110 ns cache miss (topic 0), a CSR
+slice is a prefetchable stream.
 
 ## 1. Fixed-size records
 
@@ -59,6 +54,26 @@ guarantee. A supernode with 100K edges = 100K dependent loads.
 Contrast CSR: `targets[offsets[i]..offsets[i+1]]` — one range,
 hardware prefetcher does the rest.
 
+```rust
+// expand(A) in a record store: a linked-list walk where every hop
+// is a dependent load — the CPU cannot prefetch what it hasn't read
+fn expand(rels: &[RelRecord], node: &NodeRecord) -> Vec<u64> {
+    let mut out = Vec::new();
+    let mut r = node.next_rel;
+    while r != NIL {
+        let rec = &rels[r as usize];             // scattered: likely a miss
+        if rec.first_node == node.id {
+            out.push(rec.second_node);
+            r = rec.first_next_rel;              // ← next hop unknown until
+        } else {                                 //   THIS record arrives
+            out.push(rec.first_node);
+            r = rec.second_next_rel;             // same record, other chain
+        }
+    }
+    out    // CSR spelling: targets[offsets[i]..offsets[i+1]] — one slice
+}
+```
+
 Also note the chain problem neo4j itself acknowledges: deleting a
 relationship must unlink from BOTH chains (up to 4 neighbor records
 touched), and finding a specific relationship between two nodes means
@@ -94,3 +109,14 @@ traversal; CSR/matrix engines optimize traversal and need an overlay
 5. "Index-free adjacency" was a disk-era argument. State the modern
    version of the argument that still holds, and the part that died
    with DRAM.
+
+## References
+
+**Code**
+- [neo4j](https://github.com/neo4j/neo4j) (shallow clone) — everything
+  lives under
+  `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/`:
+  `format/standard/NodeRecordFormat.java`,
+  `format/standard/RelationshipRecordFormat.java` (read both
+  `readRecord` methods for the layouts),
+  `record/RelationshipRecord.java`

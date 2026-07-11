@@ -1,7 +1,11 @@
-# Reading redis `t_zset.c` — the skiplist with rank queries
+# The redis skiplist: spans make rank queries free
 
-Files: [`~/repos/redis/src/t_zset.c`](https://github.com/redis/redis), struct defs in `src/server.h`. This is the
-skiplist behind ZADD/ZRANGE/ZRANK — the canonical readable implementation.
+The canonical readable skiplist — the structure behind ZADD/ZRANGE/ZRANK in
+`t_zset.c` — with one addition the textbooks skip: every forward link records
+how many level-0 nodes it jumps over, so summing spans during an ordinary
+descent yields a node's rank at no extra cost. Read it before the RocksDB
+memtable chapter to see what a skiplist looks like when concurrency isn't
+allowed to take features away.
 
 ## 1. The structs — server.h:1699–1716
 
@@ -22,6 +26,26 @@ Two things beyond the textbook skiplist:
   in O(log n) without any extra structure.
 - **`backward`** — level-0 only, making reverse range queries (ZREVRANGE) a plain
   list walk from the tail.
+
+The span trick in action — an ordinary descent that counts as it goes:
+
+```rust
+fn rank_of(list: &SkipList, target: &Key) -> u64 {
+    let mut node = &list.head;
+    let mut rank = 0u64;
+    for lvl in (0..list.level).rev() {           // express lanes: top → bottom
+        while let Some(next) = node.forward(lvl) {
+            if next.key < *target {
+                rank += node.span(lvl);          // spans sum to the rank — free
+                node = next;
+            } else {
+                break;                           // too far: drop one level
+            }
+        }
+    }
+    rank        // ZRANK in O(log n), no auxiliary structure, no re-walk
+}
+```
 
 ## 2. Height selection — t_zset.c:254
 
@@ -68,3 +92,9 @@ no deletes). Concurrency *removes* features — a theme topic 9 makes precise.
 
 You can explain spans to someone in two sentences, and you know which features your
 experiment's skiplist can steal (backward/span) vs what RocksDB's concurrency forbids.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) `src/t_zset.c` (zslInsert,
+  zslRandomLevel) — struct definitions in `src/server.h:1699–1716`

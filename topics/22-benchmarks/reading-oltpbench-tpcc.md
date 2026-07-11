@@ -1,10 +1,12 @@
-# Reading guide — "OLTP-Bench" (VLDB 2013) + BenchBase TPC-C
+# TPC-C: contention by design (and the harness that runs it honestly)
 
-Difallah/Pavlo/Curino/Cudré-Mauroux; the maintained fork is CMU's
-BenchBase: [`~/repos/benchbase`](https://github.com/cmu-db/benchbase). One harness, ~20 benchmarks
-(`src/main/java/com/oltpbenchmark/benchmarks/` — tpcc, ycsb, tatp,
-smallbank, twitter, seats, wikipedia, chbenchmark …), one config
-format, per-phase rate control.
+TPC-C doesn't measure throughput — it measures how an engine
+behaves when the workload deliberately funnels transactions through
+hot rows. This chapter reads the OLTP-Bench paper (VLDB 2013) for
+what a fair OLTP harness must do — rate control above all — and
+then walks TPC-C's designed contention in the maintained fork,
+CMU's BenchBase: one harness, ~20 benchmarks, one config format,
+per-phase rate control.
 
 ## The harness's three contributions
 
@@ -39,6 +41,24 @@ OrderStatus, Delivery, StockLevel. Contention is BY DESIGN:
 | `TPCCUtil.java:94-116` | `NURand` non-uniform randoms; note :94's constraint on `C_LAST_LOAD_C` vs `C_LAST_RUN_C` (157/223) — load-time and run-time skew must DIFFER by spec |
 | `TPCCConfig.java` | the 45/43/4/4/4 weights |
 
+The spec's two human-proofing devices, in code:
+
+```rust
+// NURand: TPC-C's non-uniform random — OR of two uniforms biases bits
+// toward 1, concentrating hits in a hot region you can't cheat away
+fn nurand(a: u64, x: u64, y: u64, c: u64, rng: &mut Rng) -> u64 {
+    // c MUST differ between load time and run time (TPCCUtil:94) —
+    // otherwise the loader could pre-sort the hot region into cache
+    (((rng.range(0, a) | rng.range(x, y)) + c) % (y - x + 1)) + x
+}
+
+// keying + think time: the simulated human nobody runs — capped
+// exponential wait between transactions (TPCCWorker:85-100)
+fn think_time(mean: f64, rng: &mut Rng) -> f64 {
+    (-rng.f64().ln() * mean).min(10.0 * mean)   // spec caps at 10× mean
+}
+```
+
 **Why nobody runs it honestly**: with think times, one warehouse
 supports ~12.86 tpmC max — spec-compliant runs need thousands of
 warehouses (= huge data) to post big numbers. Everyone strips think
@@ -67,3 +87,17 @@ latch, not the engine. "tpmC" without an audit is a vibe.
    reports the higher p999, and why is that the honest one?
 5. OLTP-Bench's phased rates: sketch the config that reproduces a
    cache-warmup-then-spike incident (topic 6's eviction storm).
+
+## References
+
+**Papers**
+- Difallah, Pavlo, Curino, Cudré-Mauroux — "OLTP-Bench: An
+  Extensible Testbed for Benchmarking Relational Databases" (VLDB
+  2013) — §3 (harness architecture, rate control) is the part that
+  aged well
+
+**Code**
+- [benchbase](https://github.com/cmu-db/benchbase) — the maintained
+  fork; `src/main/java/com/oltpbenchmark/benchmarks/tpcc/`
+  (`TPCCWorker.java`, `TPCCUtil.java`, `TPCCConfig.java`) and
+  `config/postgres/sample_tpcc_config.xml`

@@ -1,10 +1,10 @@
-# Reading guide — Faiss GPU ("Billion-scale similarity search with GPUs", arXiv:1702.08734)
+# Faiss GPU: k-select that never leaves registers
 
-Johnson, Douze, Jégou. The 2017 paper that made GPU ANN real:
-IVF-PQ (topic 14's quantization ladder) at billion scale, built
-around one algorithmic contribution — k-selection that never leaves
-registers — and one systems discipline: keep the index resident,
-stream only queries.
+Johnson, Douze & Jégou's 2017 paper made GPU ANN real: IVF-PQ
+(topic 14's quantization ladder) at billion scale, built around one
+algorithmic contribution — k-selection that never leaves registers —
+and one systems discipline: keep the index resident, stream only
+queries. It's Crystal's regime B practiced before Crystal named it.
 
 ## 1. The memory-tier layout (the whole system in one table)
 
@@ -36,7 +36,25 @@ a heap — serial, branchy, SIMT-hostile. Faiss: WarpSelect —
  end: merge 32 lane-queues once → warp's top-k
 ```
 
-One pass over the distances, k-select at register speed. This is
+One pass over the distances, k-select at register speed.
+
+```rust
+// WarpSelect, one lane's view: a tiny sorted queue in REGISTERS
+let mut queue = [f32::INFINITY; Q];       // lane-local register array
+let mut threshold = f32::INFINITY;        // the warp's current kth-best
+for d in my_stripe_of_distances {
+    if d < threshold {                    // overwhelmingly false → no work
+        queue.insert_sorted(d);           // predicated compare-exchange
+    }
+    if ballot_any_lane_full() {           // warp vote, no shared memory
+        odd_even_merge_across_warp();     // fixed schedule = zero divergence
+        threshold = kth_best();           // queues drain, threshold tightens
+    }
+}
+// end: merge the 32 lane-queues once → the warp's top-k
+```
+
+This is
 topic 17's "sorting networks beat comparison sorts at small fixed
 n" scaled to warps — and CAGRA's bitonic itopk is its descendant.
 Question: why do sorting NETWORKS (fixed compare-exchange schedule)
@@ -93,3 +111,11 @@ it's §4's 20× case and needs no index redesign.
 5. For M18: l2_batch(1 query × 100K targets, dim 128) ≈ their
    brute-force case at batch 1. Predict from the roofline whether
    Metal wins BEFORE running your implementation — then check.
+
+## References
+
+**Papers**
+- Johnson, Douze, Jégou — "Billion-scale similarity search with
+  GPUs" ([arXiv:1702.08734](https://arxiv.org/abs/1702.08734), IEEE
+  Trans. on Big Data 2019) — §4 (k-selection) is the real
+  contribution; §5's layout table is the systems lesson

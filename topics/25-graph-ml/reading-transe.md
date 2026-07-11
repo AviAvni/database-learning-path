@@ -1,4 +1,4 @@
-# Reading guide — "Translating Embeddings for Modeling Multi-relational Data" (Bordes et al., NeurIPS 2013) — TransE
+# TransE: relations as vector translations
 
 The knowledge-graph embedding paper: relations as VECTOR TRANSLATIONS.
 Three pages of model, a decade of descendants. Read it for the scoring
@@ -22,6 +22,21 @@ Training: margin ranking loss over corrupted triples —
 swaps head OR tail with a random entity. Plus the detail everyone forgets:
 entity embeddings are re-normalized to the unit ball every batch (else the
 loss is trivially minimized by inflating norms).
+
+The whole training step:
+
+```rust
+fn train_step(ent: &mut Mat, rel: &Mat, (h, r, t): Triple,
+              gamma: f32, lr: f32, rng: &mut Rng) {
+    ent.renormalize_unit_ball();                 // the detail everyone forgets
+    let (hc, tc) = corrupt(h, t, rng);           // swap head OR tail, random entity
+    let pos = l2(ent.row(h) + rel.row(r) - ent.row(t));
+    let neg = l2(ent.row(hc) + rel.row(r) - ent.row(tc));
+    if gamma + pos - neg > 0.0 {                 // margin violated: push
+        sgd(ent, rel, (h, r, t), (hc, r, tc), lr);  // pos triple closer,
+    }                                               // neg triple apart
+}
+```
 
 ## Known failure modes (they define the descendants)
 
@@ -59,3 +74,11 @@ the database.
 5. M25 stretch: `CALL algo.transe(rel_types...)` — where do per-relation
    vectors live (graph metadata? a relations table?) and do they update
    transactionally with edge-type DDL?
+
+## References
+
+**Papers**
+- Bordes, Usunier, Garcia-Durán, Weston, Yakhnenko — "Translating
+  Embeddings for Modeling Multi-relational Data" (NeurIPS 2013) —
+  three pages of model; read for the scoring function and training
+  loop

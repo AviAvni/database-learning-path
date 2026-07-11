@@ -1,9 +1,11 @@
-# Reading guide — DiskANN / Vamana (NeurIPS '19)
+# DiskANN: one SSD read per hop
 
-Subramanya et al., "DiskANN: Fast Accurate Billion-point Nearest
-Neighbor Search on a Single Node." The paper that put ANN on SSDs
-without giving up recall — topics 3/4's disk-layout discipline
-applied to graphs.
+The paper that put billion-point ANN on SSDs without giving up
+recall — topics 3/4's disk-layout discipline applied to graphs. Three
+ideas carry it: a flat graph built for provably few hops (Vamana's
+α-slack pruning), a block layout that co-locates a node's vector and
+links so each hop is exactly one read, and PQ codes in RAM that steer
+the walk while exact f32 distances rank the results.
 
 ## 1. Why HNSW can't just go to disk
 
@@ -49,6 +51,26 @@ for disks!), compute EXACT distances from the fetched f32 vectors to
 rank results. PQ error only affects WHERE YOU WALK, not the final
 ranking — rescoring fused into traversal.
 
+```rust
+// the disk loop: PQ (RAM) decides where to walk, f32 (SSD) decides the
+// ranking — the approximation never touches the final order
+fn search(q: &[f32], k: usize, w: usize) -> Vec<(f32, Id)> {
+    let mut cands = MinHeap::from([(pq_dist(q, MEDOID), MEDOID)]);
+    let mut seen = HashSet::from([MEDOID]);
+    let mut results = Vec::new();
+    while let Some(beam) = cands.pop_n(w) {          // W best, by PQ distance
+        for blk in ssd_read_batch(&beam) {           // W reads IN FLIGHT at once
+            results.push((l2(q, &blk.vector), blk.id));   // exact f32 ranks
+            for &n in &blk.neighbors {               // links came in the SAME read
+                if seen.insert(n) { cands.push((pq_dist(q, n), n)); }
+            }
+        }
+        if converged(&cands, &results, k) { break; }
+    }
+    top_k(results, k)
+}
+```
+
 The topic-13 echo is exact: node + adjacency co-located per block =
 kuzu's CSR node groups; PQ-in-RAM = the sparse index steering to the
 right block (ClickHouse marks, topic 12).
@@ -75,3 +97,16 @@ right block (ClickHouse marks, topic 12).
 5. M28 preview: DiskANN blocks over object storage — what breaks
    when a "read" is 50 ms S3 GET instead of 100 µs NVMe? Which knob
    moves?
+
+## References
+
+**Papers**
+- Subramanya, Devvrit, Kadekodi, Krishnaswamy, Simhadri — "DiskANN:
+  Fast Accurate Billion-point Nearest Neighbor Search on a Single
+  Node" (NeurIPS 2019) — §2 Vamana + RobustPrune, §3 the SSD design;
+  the eval headline numbers are in §4
+
+**Code**
+- [DiskANN](https://github.com/microsoft/DiskANN) — Microsoft's
+  production implementation of the paper (optional; the paper is
+  self-contained)

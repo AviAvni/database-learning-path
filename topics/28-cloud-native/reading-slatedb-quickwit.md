@@ -1,14 +1,11 @@
-# Reading guide — SlateDB & Quickwit: built S3-first (code walk)
+# SlateDB & Quickwit: born on S3
 
-**Sources:**
-- [`~/repos/slatedb/slatedb/src/`](https://github.com/slatedb/slatedb) — an LSM whose ONLY disk is an object store
-- [`~/repos/quickwit/quickwit/quickwit-storage/src/`](https://github.com/quickwit-oss/quickwit) — search over S3;
-  the storage tricks generalize
-- (turso's object-store backend is in flight upstream; the slatedb patterns
-  are what it converges to)
-
-Neon/Aurora retrofit object storage under an existing engine. These two were
-*born* on S3 — so every S3 pathology has an explicit, readable countermeasure.
+Neon and Aurora retrofit object storage under an existing engine;
+SlateDB (an LSM whose ONLY disk is an object store) and Quickwit
+(search over S3) were *born* there — so every S3 pathology has an
+explicit, readable countermeasure in their code. This chapter is the
+menu M28's tiered-storage stubs are ordered from: caches, hedged
+reads, CAS fencing, zero-copy clones.
 
 ## 1. SlateDB — the LSM from topic 4, re-priced for S3
 
@@ -30,6 +27,25 @@ Neon/Aurora retrofit object storage under an existing engine. These two were
 | `fence.rs:105` | `fence()` — bump your epoch via **CAS on the manifest object**; a zombie writer's next manifest CAS fails. Single-writer safety WITHOUT a lease service — consensus outsourced to S3 conditional PUT (the 2008 paper's missing primitive, delivered 2024) |
 | `checkpoint.rs:30`, `clone.rs:38` | checkpoints pin a manifest version; `create_clone` = new DB whose manifest *references the parent's SSTs* — zero-copy CoW clone, Neon-branch shaped |
 | `manifest/invariants.rs:42` | the fencing invariant, stated as a doc'd invariant with a wall-clock-skew argument |
+
+The fencing trick, whole — consensus outsourced to one conditional PUT:
+
+```rust
+fn fence(store: &ObjectStore) -> Result<Writer> {
+    loop {
+        let (m, version) = store.get_manifest()?;      // versioned read
+        let me = m.writer_epoch + 1;                    // claim the next epoch
+        let next = m.with_writer_epoch(me);
+        // CAS: PUT if-match version — S3 rejects concurrent writers
+        match store.put_manifest_if_version(&next, version) {
+            Ok(_) => return Ok(Writer { epoch: me }),   // fenced in; any zombie's
+            Err(Conflict) => continue,                  //   next CAS sees a newer
+        }                                               //   epoch and MUST die
+    }
+}
+// every later state change re-CASes the manifest carrying `epoch`,
+// so a paused writer can never publish after being fenced.
+```
 
 **Q1.** Walk the write path and find every place latency is bought back:
 WAL batching (many puts per WAL SST), `AwaitDurable` opt-out, memtable
@@ -75,3 +91,17 @@ offsets, label→matrix directory, node-count header)?
 | per-request $ | big SSTs, block-granular ranged GETs | one-object bundles + hotcache | (block granularity) |
 | no rename/atomicity | manifest CAS + epochs | immutable splits + metastore | — |
 | cheap copies | checkpoint/clone over shared SSTs | splits shared by reference | branch.rs |
+
+## References
+
+**Code**
+- [slatedb](https://github.com/slatedb/slatedb) `slatedb/src/` — the
+  anchor table above: `db.rs`, `tablestore.rs`,
+  `cached_object_store/`, `db_cache/`, `manifest/`, `fence.rs`,
+  `checkpoint.rs`, `clone.rs`
+- [quickwit](https://github.com/quickwit-oss/quickwit)
+  `quickwit/quickwit-storage/src/` — `bundle_storage.rs`,
+  `timeout_and_retry_storage.rs`, `split_cache/`,
+  `cache/byte_range_cache.rs`; the storage tricks generalize
+- turso's object-store backend is in flight upstream; the slatedb
+  patterns are what it converges to

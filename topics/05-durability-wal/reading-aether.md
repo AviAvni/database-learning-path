@@ -1,8 +1,10 @@
-# Reading guide — Aether: A Scalable Approach to Logging (VLDB 2010)
+# Aether: one log, no bottleneck
 
-Johnson, Pandis, Stoica, Athanassoulis, Ailamaki. ~12 pages. Budget 2 h.
-The question: on a multicore, the log is ONE shared object every transaction
-must append to and flush — how does it not become the bottleneck?
+On a multicore, the log is ONE shared object every transaction must append to
+and flush — so how does it not become the bottleneck? Aether's answer is four
+independent fixes that compose, and one of them (consolidation arrays) is the
+ancestor of how postgres inserts WAL today. This chapter maps each fix to its
+modern descendant.
 
 ## The four bottlenecks (§1–2)
 
@@ -56,6 +58,27 @@ parallel, make it so). Postgres's `ReserveXLogInsertLocation` (spinlock for 3
 arithmetic ops) + 8 parallel insertion locks is this idea in production —
 read reading-postgres-xlog.md §2 side by side with §5.
 
+The slot dance, in code:
+
+```rust
+// Combine appends BEFORE the lock; only sequencing stays serial.
+fn append(&self, rec: &[u8]) -> Lsn {
+    let slot = self.slots.join();                    // CAS onto an open slot
+    let my_off = slot.size.fetch_add(rec.len());     // add my bytes — no lock
+    if my_off == 0 {                                 // first in = group leader
+        let total = slot.close();                    // no more joiners
+        let base = {
+            let _g = self.buffer_lock.lock();        // tiny critical section:
+            self.reserve(total)                      // ONE reservation for all
+        };
+        slot.publish(base);
+    }
+    let base = slot.wait_for_base();
+    self.buf_write(base + my_off, rec);              // everyone copies IN PARALLEL
+    Lsn(base + my_off)
+}
+```
+
 ## Read in this order
 
 1. §1–2 for the bottleneck taxonomy (the table above).
@@ -82,3 +105,11 @@ read reading-postgres-xlog.md §2 side by side with §5.
 
 You can name the four bottlenecks from memory, sketch a consolidation array,
 and point at the postgres code that embodies it.
+
+## References
+
+**Papers**
+- Johnson, Pandis, Stoica, Athanassoulis, Ailamaki — "Aether: A Scalable
+  Approach to Logging" (VLDB 2010) — ~12 pages; §1–2 for the bottleneck
+  taxonomy, §5 (consolidation arrays) is the durable contribution, §3 for
+  the ELR argument, skim §4 and the evaluation

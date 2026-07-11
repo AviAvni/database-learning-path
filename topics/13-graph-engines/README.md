@@ -133,15 +133,15 @@ over three representations, same power-law graph:
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-graphblas-internals.md](reading-graphblas-internals.md) | SuiteSparse: 4 sparsity formats, dot-vs-saxpy mxm, masks; FalkorDB Delta_Matrix |
-| [reading-neo4j-record-store.md](reading-neo4j-record-store.md) | 15 B node / 34 B rel records, relationship chains, the cost of pointers |
-| [reading-memgraph-storage.md](reading-memgraph-storage.md) | skip-list vertex store, per-vertex edge vectors, delta MVCC |
-| [reading-kuzu.md](reading-kuzu.md) | columnar CSR node groups, Intersect/WCOJ, factorization (CIDR '23) |
-| [reading-wcoj.md](reading-wcoj.md) | AGM bound, Generic Join, EmptyHeaded |
-| [reading-ldbc-snb.md](reading-ldbc-snb.md) | SNB workloads, what to steal for the M22 benchmark |
-| [reading-query-languages.md](reading-query-languages.md) | Cypher vs GQL vs SQL/PGQ vs SPARQL vs Gremlin vs Datalog — semantics, not syntax |
+| [reading-graphblas-internals.md](reading-graphblas-internals.md) | GraphBLAS & Delta_Matrix: the graph as matrices |
+| [reading-neo4j-record-store.md](reading-neo4j-record-store.md) | Neo4j's record store: the price of index-free adjacency |
+| [reading-memgraph-storage.md](reading-memgraph-storage.md) | Memgraph: skip lists, edge vectors, delta MVCC |
+| [reading-kuzu.md](reading-kuzu.md) | Kùzu: DuckDB for graphs |
+| [reading-wcoj.md](reading-wcoj.md) | Worst-case optimal joins: intersect, don't enumerate |
+| [reading-ldbc-snb.md](reading-ldbc-snb.md) | LDBC SNB: the graph benchmark referee |
+| [reading-query-languages.md](reading-query-languages.md) | Graph query languages: semantics, not syntax |
 
 ## Capstone M13
 

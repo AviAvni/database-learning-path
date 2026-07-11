@@ -115,14 +115,14 @@ tree reduction) with per-phase timings, `gpu_bench` crossover sweep
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-crystal-sigmod20.md](reading-crystal-sigmod20.md) | the tile-based GPU query model + when PCIe kills it |
-| [reading-wgpu-compute.md](reading-wgpu-compute.md) | wgpu examples: hello_compute, repeated_compute, workgroups |
-| [reading-libcudf.md](reading-libcudf.md) | cuco hash join size/retrieve, shared-mem groupby |
-| [reading-gunrock.md](reading-gunrock.md) | advance/filter operators, load-balancing menu, BFS enactor |
-| [reading-cagra.md](reading-cagra.md) | ICDE '24 + single-CTA search kernel, hashmap visited set |
-| [reading-faiss-gpu.md](reading-faiss-gpu.md) | billion-scale IVF on GPU: k-select in registers, memory tiers |
+| [reading-crystal-sigmod20.md](reading-crystal-sigmod20.md) | GPU vs CPU for analytics: two regimes, two verdicts |
+| [reading-wgpu-compute.md](reading-wgpu-compute.md) | wgpu compute: the 1.5 ms tax before your first FLOP |
+| [reading-libcudf.md](reading-libcudf.md) | libcudf: GPU kernels can't push |
+| [reading-gunrock.md](reading-gunrock.md) | Gunrock: advance, filter, and the ragged-frontier problem |
+| [reading-cagra.md](reading-cagra.md) | CAGRA: HNSW rebuilt for warps |
+| [reading-faiss-gpu.md](reading-faiss-gpu.md) | Faiss GPU: k-select that never leaves registers |
 
 ## Capstone M18
 

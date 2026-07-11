@@ -1,16 +1,12 @@
-# Reading guide — SuiteSparse:GraphBLAS internals + FalkorDB's Delta_Matrix
-
-Repos: [`~/repos/GraphBLAS`](https://github.com/DrTimothyAldenDavis/GraphBLAS) (SuiteSparse, shallow clone) and
-[`~/repos/FalkorDB`](https://github.com/FalkorDB/FalkorDB). This is the topic-20/M20 preview — read for the
-shape now, the kernels later.
-
-## Why this matters
+# GraphBLAS & Delta_Matrix: the graph as matrices
 
 FalkorDB stores the graph AS matrices; every Cypher expand becomes a
 GraphBLAS call. Two things make that fast rather than academic:
 SuiteSparse picks storage format and mxm algorithm per matrix at
 runtime, and FalkorDB layers a delta overlay on top so single-edge
-writes don't rebuild CSR.
+writes don't rebuild CSR. This chapter walks both codebases — it's
+also the topic-20/M20 preview: read for the shape now, the kernels
+later.
 
 ## 1. Four sparsity formats, chosen automatically
 
@@ -87,6 +83,26 @@ The header's ASCII state diagrams (`delta_matrix.h:26-80`) enumerate
 legal states: an entry may be in M, in DP, or in M+DM (deleted but not
 yet flushed) — never in both DP and DM.
 
+The whole contract in three functions:
+
+```rust
+// read = (M ∪ DP) ∖ DM — three probes, never a flush
+fn get(g: &DeltaMatrix, i: u64, j: u64) -> bool {
+    (g.m.get(i, j) || g.dp.get(i, j)) && !g.dm.get(i, j)
+}
+
+fn set(g: &mut DeltaMatrix, i: u64, j: u64) {
+    if g.dm.remove(i, j) { return; }            // re-add of a pending delete
+    if !g.m.get(i, j) { g.dp.insert(i, j); }    // never touch the CSR
+}
+
+fn wait(g: &mut DeltaMatrix) {                  // the LSM compaction:
+    g.m = (&g.m | &g.dp) - &g.dm;               // whole-matrix rebuild —
+    g.dp.clear();                               // expensive, so DEFERRED
+    g.dm.clear();                               // behind a sync policy
+}
+```
+
 - `delta_set_element_bool.c` — writes go to DP (or clear DM if
   re-adding a deleted edge)
 - `delta_remove_element.c` — deletes set DM (or clear DP)
@@ -112,3 +128,21 @@ has the same idea internally ("pending tuples" merged on
    matrices. Why is this still a win vs flushing on every write?
 5. Map Delta_Matrix states to LSM vocabulary: what's the memtable, the
    SST, the tombstone, the compaction?
+
+## References
+
+**Papers**
+- Davis — "Algorithm 1000: SuiteSparse:GraphBLAS: Graph Algorithms in
+  the Language of Sparse Linear Algebra" (ACM TOMS 2019) — optional
+  companion; the code comments below cover the same ground
+
+**Code**
+- [GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
+  (SuiteSparse, shallow clone) — `Include/GraphBLAS.h` for the four
+  formats and switch thresholds, `Source/mxm/GB_AxB_meta.c` (the
+  header comment is the algorithm menu), `Source/mask/GB_masker.c`
+- [FalkorDB](https://github.com/FalkorDB/FalkorDB) —
+  `src/graph/graph.h`, `src/graph/delta_matrix/delta_matrix.h` (the
+  ASCII state diagrams in the header are the spec), plus
+  `delta_set_element_bool.c`, `delta_remove_element.c`,
+  `delta_wait.c`, `delta_mxm.c`

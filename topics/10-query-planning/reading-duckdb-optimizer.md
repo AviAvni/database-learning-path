@@ -1,7 +1,10 @@
-# Reading guide — DuckDB `src/optimizer/`: the readable optimizer (~2 h)
+# The readable optimizer: DuckDB's pass pipeline and join-order DP
 
-Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Start at `optimizer.cpp`, then
-`filter_pushdown.cpp`, then the `join_order/` subdirectory — the payoff.
+DuckDB's `src/optimizer/` is the clearest production optimizer you can
+read: ~25 ordered rewrite passes, each verified after it runs, feeding a
+DPccp join enumerator with a greedy escape hatch and a cost model that is
+just cardinality. Start at `optimizer.cpp`, then `filter_pushdown.cpp`,
+then the `join_order/` subdirectory — the payoff.
 
 ## 1. The pass pipeline (optimizer.cpp)
 
@@ -56,6 +59,23 @@ a filter on the NULL-padded side cannot sink).
   the join output + children costs. That's it. Cardinality IS the cost
   model (which is why VLDB'15's result stings).
 
+Both files in one function — Cout, the sum of intermediate sizes:
+
+```rust
+fn cost(plan: &Node) -> f64 {
+    match plan {
+        Scan(t) => t.estimated_rows,
+        Join(l, r, preds) => {
+            let mut card = rows(l) * rows(r);
+            for p in preds {
+                card /= distinct_count(p) as f64;  // total denominators from
+            }                                      // matching equivalence sets
+            card + cost(l) + cost(r)  // output size + children:
+        }                             // cardinality IS the cost model
+    }
+}
+```
+
 ## Questions for notes.md
 
 1. Why does pullup-then-pushdown beat pushdown alone? Find one operator
@@ -77,3 +97,12 @@ a filter on the NULL-padded side cannot sink).
 
 You can list the pass order from memory (coarse buckets), and explain
 DPccp + the greedy fallback + the cardinality formula in three sentences.
+
+## References
+
+**Code**
+- [duckdb](https://github.com/duckdb/duckdb) — `src/optimizer/`:
+  `optimizer.cpp` (the pass pipeline, read :197–367 top to bottom),
+  `filter_pushdown.cpp` + `pushdown/`, and `join_order/`
+  (`plan_enumerator.cpp`, `cardinality_estimator.cpp`, `cost_model.cpp`);
+  ~2 h

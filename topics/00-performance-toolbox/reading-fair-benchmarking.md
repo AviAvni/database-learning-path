@@ -1,12 +1,10 @@
-# Reading — "Fair Benchmarking Considered Difficult" (DBTest '18)
+# Fair benchmarking: eight ways a system comparison lies
 
-Raasveldt, Holanda, Gubner, Mühleisen (CWI — Raasveldt & Mühleisen later created
-DuckDB). 6 pages, one evening. PDF:
-https://hannes.muehleisen.org/publications/DBTEST2018-performance-testing.pdf
-Experiment code: https://github.com/pholanda/FairBenchmarking
-
-Read it as the *database-specific* companion to topic 0 §1: criterion/Tene cover how a
-single measurement lies; this covers how a *comparison between systems* lies.
+Criterion and Tene cover how a *single measurement* lies; this chapter — built
+on a 6-page DBTest '18 paper from the future DuckDB authors — covers how a
+*comparison between systems* lies. It is the database-specific companion to
+topic 0 §1, and its Appendix A checklist is an artifact you will reuse
+against every capstone comparison in this curriculum.
 
 ## Structure
 
@@ -95,3 +93,17 @@ Appendix A is a reusable review checklist: benchmarks chosen + justified; reprod
 (hardware, params, code, data); both systems optimized; same functionality; cold/hot
 separated and correctly collected; preprocessing equalized; results verified; medians +
 CIs over several runs. Pin it next to every capstone `notes.md` comparison.
+
+## References
+
+**Papers**
+- Raasveldt, Holanda, Gubner, Mühleisen — "Fair Benchmarking Considered
+  Difficult: Common Pitfalls in Database Performance Testing" (DBTest
+  2018) —
+  [PDF](https://hannes.muehleisen.org/publications/DBTEST2018-performance-testing.pdf)
+  — 6 pages, one evening; read §3 carefully, Appendix A is the reusable
+  artifact. (CWI — Raasveldt & Mühleisen later created DuckDB.)
+
+**Code**
+- [pholanda/FairBenchmarking](https://github.com/pholanda/FairBenchmarking)
+  — the paper's experiment scripts and configs

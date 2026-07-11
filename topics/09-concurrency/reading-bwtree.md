@@ -1,7 +1,10 @@
-# Reading guide — Bw-tree (ICDE '13), the reality check (SIGMOD '18), and OLC (Leis) (~2.5 h)
+# Bw-tree vs OLC: why lock-free lost to optimistic latches
 
-Three papers, one arc: the most radical lock-free index ever shipped, the
-paper that measured it honestly, and the modest protocol that won.
+Three papers, one arc: the most radical lock-free index ever shipped
+(the Bw-tree, ICDE '13), the paper that measured it honestly (SIGMOD '18),
+and the modest protocol that won (optimistic lock coupling). The arc is
+this topic's thesis in miniature — the memory hierarchy, not elegance,
+decides which concurrency scheme survives.
 
 ## 1. "The Bw-Tree" (Levandoski et al., ICDE '13)
 
@@ -57,6 +60,22 @@ ART, skiplist:
 - Restarts need: no torn reads that can fault (reads of freed memory
   must be survivable ⇒ epochs again, or never-free node memory).
 
+The entire reader protocol fits in a loop — note what it never does:
+write shared memory.
+
+```rust
+fn read_node<T>(n: &Node, read: impl Fn(&Node) -> T) -> T {
+    loop {
+        let v1 = n.version.load(Acquire);
+        if v1 & LOCKED != 0 { spin_wait(); continue; } // writer active
+        let out = read(n);                    // read optimistically...
+        if n.version.load(Acquire) == v1 {
+            return out;                       // ...nothing moved: done
+        }                                     // else a writer intervened:
+    }                                         // restart — the only cost
+}
+```
+
 ## The arc, in one line
 
 Indirection + deltas (Bw) lost to versions + restarts (OLC) because the
@@ -84,3 +103,15 @@ memory hierarchy prices pointer chases higher than optimistic retries.
 
 You can argue both sides — why Bw-tree looked inevitable in 2013 and why
 OLC won by 2018 — with the cache-line-level reasons, not slogans.
+
+## References
+
+**Papers**
+- Levandoski, Lomet, Sengupta — "The Bw-Tree: A B-tree for New Hardware
+  Platforms" (ICDE 2013) — the design; §II–IV
+- Wang, Pavlo et al. — "Building a Bw-Tree Takes More Than Just Buzz
+  Words" (SIGMOD 2018) — the reality check; §4.2's component breakdown
+  is the useful table, read it as a bill of costs
+- Leis et al. — "Optimistic Lock Coupling: A Scalable and Efficient
+  General-Purpose Synchronization Method" (IEEE Data Eng. Bulletin 2019)
+  — short; the protocol that won

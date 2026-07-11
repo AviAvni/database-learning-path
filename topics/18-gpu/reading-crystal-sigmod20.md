@@ -1,10 +1,11 @@
-# Reading guide — Crystal ("A Study of the Fundamental Performance Characteristics of GPUs and CPUs for Database Analytics", SIGMOD '20)
+# GPU vs CPU for analytics: two regimes, two verdicts
 
-Shanbhag, Madden, Yu. The paper that settled a decade of "GPU
+Shanbhag, Madden & Yu's Crystal paper settled a decade of "GPU
 databases: hype?" papers by building the fairest possible comparison:
-a tile-based GPU query library (Crystal) vs a state-of-the-art CPU
-baseline, on Star Schema Benchmark, with the transfer question made
-explicit.
+a tile-based GPU query library vs a state-of-the-art CPU baseline, on
+Star Schema Benchmark, with the transfer question made explicit. Its
+two-regime framing is the go/no-go lens for every operator M18
+considers offloading.
 
 ## 1. The framing: two regimes, two verdicts
 
@@ -42,6 +43,20 @@ block), staged through shared memory:
 It's topic 11's vectorized execution with tiles for batches and
 shared memory for the L1-resident chunk — and the compaction step
 is topic 17's compress, built from scan instead of vpcompress.
+
+```rust
+// tile-based filter: 100K threads share no cursor — the SCAN makes the order
+par_for tile in input.tiles(ITEMS_PER_THREAD * THREADS_PER_BLOCK) {
+    let items = block_load(tile);                        // coalesced
+    let flags = items.map(|x| pred(x) as u32);           // BlockPred
+    let (offsets, total) = block_exclusive_scan(flags);  // BlockScan
+    let base = atomic_add(&global_cursor, total);        // once per BLOCK
+    for i in 0..ITEMS_PER_THREAD {
+        if flags[i] == 1 { out[base + offsets[i]] = items[i]; }
+    }
+}
+```
+
 Question: why does GPU filter output need a prefix-scan where the
 CPU used a cursor `k += mask`? (No total order across 100K threads
 — the scan MAKES one.)
@@ -86,3 +101,12 @@ Which two belong on a GPU at all?
 5. For M18: our engine's hot paths are graph expand (random),
    filter (streaming), distance scoring (dense). Apply §4's
    roofline to each and write the one-line go/no-go.
+
+## References
+
+**Papers**
+- Shanbhag, Madden, Yu — "A Study of the Fundamental Performance
+  Characteristics of GPUs and CPUs for Database Analytics"
+  (SIGMOD 2020) — §2-3 for the tile model, §5-6 for the two-regime
+  measurements; the CPU-baseline-honesty discussion is worth reading
+  even if you never touch a GPU

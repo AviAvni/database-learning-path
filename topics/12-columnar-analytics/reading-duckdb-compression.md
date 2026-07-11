@@ -1,7 +1,28 @@
-# Reading guide — DuckDB `src/storage/compression/`: the encoding zoo (~2 h)
+# DuckDB's encoding zoo: analyze, score, commit
 
-Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Read the framework contract first, then
-two encoders end-to-end (RLE, bitpacking), then skim the string stack.
+Who picks the encoding? DuckDB's answer: nobody — race every candidate
+encoder over the column and let the byte estimates decide, per column,
+per row group. This chapter walks the framework contract that makes
+that affordable, then two encoders end-to-end (RLE, bit-packing), then
+the string stack and the zone maps that filter pushdown lands on.
+
+The selection loop, condensed:
+
+```rust
+// per column, per row group: race every encoder, cheapest estimate wins
+fn choose(col: &RowGroupColumn, candidates: &[&dyn Encoder]) -> &dyn Encoder {
+    let mut best = (f64::INFINITY, candidates[0]);
+    for enc in candidates {
+        let mut st = enc.init_analyze();
+        if !col.vectors().all(|v| enc.analyze(&mut st, v)) {
+            continue;                          // encoder drops out early
+        }
+        let score = enc.final_analyze(st);     // ESTIMATED bytes — no compressing yet
+        if score < best.0 { best = (score, *enc); }
+    }
+    best.1        // winner re-reads the whole column in compress_data
+}
+```
 
 ## 1. The framework: analyze → score → compress → scan
 
@@ -90,3 +111,13 @@ rewrite becomes a storage-level skip.
 You can recite the analyze→score→compress lifecycle, the four
 bitpacking modes with their triggers, and explain why fetch_row shapes
 the whole encoder menu.
+
+## References
+
+**Code**
+- [duckdb](https://github.com/duckdb/duckdb) — read
+  `src/include/duckdb/function/compression_function.hpp` first (the
+  lifecycle contract is documented in the header), then the encoders in
+  `src/storage/compression/` (`rle.cpp`, `bitpacking.cpp`,
+  `dictionary_compression.cpp`, `fsst.cpp`, `dict_fsst/`, `zstd.cpp`);
+  zone maps in `src/storage/table/column_data.cpp`

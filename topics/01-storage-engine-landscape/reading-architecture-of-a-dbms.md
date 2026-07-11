@@ -1,7 +1,10 @@
-# Reading guide — "Architecture of a Database System" (Hellerstein, Stonebraker, Hamilton, 2007)
+# Architecture of a DBMS: the five-box org chart
 
-~120 pages, but you are NOT reading it all now. This is the curriculum's *atlas*:
-read the map chapters this week, then return per-topic. Budget now: 2 h.
+A database is five cooperating managers, and a storage engine is just one of
+them. This chapter maps Hellerstein, Stonebraker & Hamilton's survey — the
+curriculum's *atlas* — onto the topics ahead: read the map chapters this week,
+then return per-topic as each box gets built. You are NOT reading all ~120
+pages now; budget 2 h.
 
 ## Read NOW (topic 1)
 
@@ -47,3 +50,12 @@ flowchart TB
 
 A database is five cooperating managers, and a storage engine is just one of them —
 this paper is the org chart for everything the capstone will build.
+
+## References
+
+**Papers**
+- Hellerstein, Stonebraker, Hamilton — "Architecture of a Database
+  System" (Foundations and Trends in Databases, 2007) —
+  [PDF](https://dsf.berkeley.edu/papers/fntdb07-architecture.pdf) — read
+  §1–2 + §6 now (2 h); §3–§5 and §7 are reference material to return to
+  per the table above

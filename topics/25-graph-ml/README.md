@@ -132,13 +132,13 @@ flowchart TD
 
 ## Reading guides
 
-- [reading-node2vec.md](reading-node2vec.md) — Grover & Leskovec KDD'16
-- [reading-gcn.md](reading-gcn.md) — Kipf & Welling ICLR'17
-- [reading-graphsage.md](reading-graphsage.md) — Hamilton et al. NeurIPS'17 (sampling!)
-- [reading-gat.md](reading-gat.md) — Veličković et al. ICLR'18 (SDDMM)
-- [reading-pyg-message-passing.md](reading-pyg-message-passing.md) — the framework as sparse ops ([`~/repos/pytorch_geometric`](https://github.com/pyg-team/pytorch_geometric))
-- [reading-transe.md](reading-transe.md) — Bordes et al. NeurIPS'13, KG embeddings
-- [reading-graphrag-sdk.md](reading-graphrag-sdk.md) — your own SDK with systems eyes ([`~/repos/GraphRAG-SDK`](https://github.com/FalkorDB/GraphRAG-SDK))
+- [reading-node2vec.md](reading-node2vec.md) — node2vec: the neighborhood is a query, p and q are its knobs
+- [reading-gcn.md](reading-gcn.md) — GCN: the two-line neural network your engine already runs
+- [reading-graphsage.md](reading-graphsage.md) — GraphSAGE: sample the neighborhood, learn the function
+- [reading-gat.md](reading-gat.md) — GAT: when the edge weights are computed per query
+- [reading-pyg-message-passing.md](reading-pyg-message-passing.md) — PyTorch Geometric: one abstraction, the whole GNN literature
+- [reading-transe.md](reading-transe.md) — TransE: relations as vector translations
+- [reading-graphrag-sdk.md](reading-graphrag-sdk.md) — GraphRAG-SDK: a RAG pipeline read as a workload spec
 
 ## Cross-topic links
 

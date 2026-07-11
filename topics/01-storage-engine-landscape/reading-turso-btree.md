@@ -1,10 +1,10 @@
-# Reading turso — SQLite's B-tree, in Rust
+# Turso's B-tree: the canonical page engine, in Rust
 
-Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso) (shallow clone). Line numbers from the clone; these files are
-huge and move fast — expect drift, navigate by symbol name.
-
-turso re-implements the SQLite file format, so this is a reading of *the* canonical
-page-oriented engine, with Rust types instead of C macros. Two files carry the topic:
+turso re-implements the SQLite file format, so this is a reading of *the*
+canonical page-oriented engine — slotted pages, cursor descent, multi-sibling
+balance, pager + WAL — with Rust types instead of C macros. It is the B-tree
+protagonist opposite fjall's LSM. These files are huge and move fast — expect
+line-number drift, navigate by symbol name. Two files carry the topic:
 
 | File | Size | Role |
 |------|------|------|
@@ -33,6 +33,27 @@ itself. The shape to internalize:
 
 This layout is why B-trees have space amplification: the free gap in the middle of
 every page is the price of in-place insertion.
+
+The insert, mechanically — two regions growing toward each other until they
+meet:
+
+```rust
+fn insert_cell(page: &mut Page, idx: usize, cell: &[u8]) -> Result<(), Full> {
+    let ptrs_end = page.header_len() + 2 * (page.ncells + 1); // ptr array grows →
+    let content_start = page.content_start - cell.len();      // content grows ←
+    if content_start < ptrs_end {
+        return Err(Full);                       // regions met: time to balance/split
+    }
+    page.buf[content_start..content_start + cell.len()].copy_from_slice(cell);
+    page.shift_pointers_right(idx);             // open slot idx — keys stay sorted
+    page.write_u16(page.ptr_slot(idx), content_start as u16);
+    page.ncells += 1;
+    page.content_start = content_start;
+    Ok(())
+}
+// delete = remove the u16 pointer, LEAVE the bytes → fragmentation,
+// reclaimed only by defragment_page() — cheap deletes, deferred cleanup
+```
 
 ## 2. The cursor — how every operation moves
 
@@ -86,3 +107,13 @@ by one level.
 
 You can draw the slotted page from memory and explain how one insert can dirty 1 page
 (common), 3 pages (balance), or O(height) pages (root split).
+
+## References
+
+**Code**
+- [turso](https://github.com/tursodatabase/turso) —
+  `core/storage/btree.rs` (~13K lines: cursor, slotted pages, balance),
+  `core/storage/pager.rs`, `core/storage/wal.rs`,
+  `core/storage/page_cache.rs`, `core/storage/sqlite3_ondisk.rs`
+  (shallow clone at `~/repos/turso`; line numbers drift — navigate by
+  symbol name)

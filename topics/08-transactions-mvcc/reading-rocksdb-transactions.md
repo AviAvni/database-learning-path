@@ -1,8 +1,10 @@
-# Reading guide — RocksDB transactions: OCC and 2PL, same skeleton (~1.5 h)
+# OCC and 2PL, same skeleton: RocksDB transactions
 
-Local clone: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb), dir `utilities/transactions/`. RocksDB ships
-BOTH optimistic and pessimistic transactions over the same base class —
-the cleanest side-by-side of the two schools you'll find in production code.
+RocksDB ships BOTH optimistic and pessimistic transactions over the same
+base class — the cleanest side-by-side of the two concurrency schools
+you'll find in production code. Both buffer writes privately and differ
+only in WHEN conflicts are detected: at access time (TryLock) or at
+commit time (validation).
 
 Everything hangs off sequence numbers: a RocksDB snapshot is just "the seq
 at begin". MVCC comes free from the LSM (topic 4): old versions already
@@ -27,6 +29,22 @@ exist as older entries; a snapshot pins them against compaction GC.
   only** (`cache_only`): if the memtable's earliest seq is newer than my
   snapshot, RocksDB *can't know* and conservatively aborts (`TryAgain`).
   Cheap validation, bought with spurious aborts on long transactions.
+
+```rust
+// CheckKey, conceptually: "was this key written after my snapshot?"
+fn validate(&self, snap_seq: u64) -> Result<(), Abort> {
+    for key in self.write_batch.keys() {
+        if self.db.memtable_min_seq() > snap_seq {
+            return Err(Abort::TryAgain);  // memtable too young to answer —
+        }                                 // abort conservatively, retry
+        if self.db.latest_seq(key, /*memtable_only=*/ true) > snap_seq {
+            return Err(Abort::Busy);      // someone committed over me
+        }
+    }
+    Ok(())                                // batch → DB, atomically
+}
+```
+
 - Commit modes (optimistic_transaction.cc:66):
   `CommitWithSerialValidate` (h:76) — validate inside the single writer
   queue (correct by serialization); `CommitWithParallelValidate` (h:78) —
@@ -80,3 +98,12 @@ exist as older entries; a snapshot pins them against compaction GC.
 
 You can explain, with file:line, where each school pays its conflict cost,
 and why both can share one write-buffering base class.
+
+## References
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb) —
+  `utilities/transactions/`: `transaction_base.{h,cc}` (shared skeleton),
+  `optimistic_transaction.{h,cc}` + `transaction_util.cc` (OCC),
+  `pessimistic_transaction.{h,cc}` + `lock/point/point_lock_manager.h`
+  (2PL); ~1.5 h

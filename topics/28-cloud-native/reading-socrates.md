@@ -1,8 +1,11 @@
-# Reading guide — Socrates: SQL Server in the cloud (SIGMOD '19)
+# Socrates: durability is not availability
 
-**Source:** Antonopoulos et al. — "Socrates: The New SQL Server in the
-Cloud" (SIGMOD 2019). Read §1-2 for the argument, §3-5 for the four tiers,
-skim performance.
+SQL Server rebuilt for Azure, with one architectural thesis: the tier
+that makes a write durable and the tier that serves pages back have
+opposite requirements, so they should be different services. This
+chapter reads the four-tier decomposition and how it reuses — rather
+than rewrites — the classic engine, the counterpoint to Aurora's
+storage-layer rewrite.
 
 ## 1. Why read this right after Aurora
 
@@ -70,3 +73,10 @@ notes.md.
 | cold tier | (internal) | XStore blobs | S3 layer files |
 | engine rewrite? | storage layer yes | minimal (reuse) | none (stock Postgres + smgr hook) |
 | caches | storage-side pages | RBPEX (compute AND page server) | pageserver layers + compute shared buffers |
+
+## References
+
+**Papers**
+- Antonopoulos et al. — "Socrates: The New SQL Server in the Cloud"
+  (SIGMOD 2019) — read §1-2 for the argument, §3-5 for the four
+  tiers, skim performance

@@ -116,14 +116,14 @@ query plans for proofs).
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-turso-simulator.md](reading-turso-simulator.md) | clock/io/file fault injection, interaction plans, properties, doublecheck, shrinking |
-| [reading-fdb-simulation.md](reading-fdb-simulation.md) | FoundationDB's simulation docs + Antithesis: the deterministic hypervisor bet |
-| [reading-sqlancer.md](reading-sqlancer.md) | PQS/TLP/NoREC oracle base classes — the 3-line checks that found 450+ bugs |
-| [reading-pqs-tlp-papers.md](reading-pqs-tlp-papers.md) | OSDI '20 + OOPSLA '20: rectified expression evaluation, 3-valued partitioning |
-| [reading-jepsen.md](reading-jepsen.md) | Jepsen methodology + elle's cycle detection; the redis-raft findings |
-| [reading-z3.md](reading-z3.md) | Z3 TACAS '08 + tactic/solver architecture; Cosette-style rewrite verification |
+| [reading-turso-simulator.md](reading-turso-simulator.md) | turso's simulator: every failure is a u64 seed |
+| [reading-fdb-simulation.md](reading-fdb-simulation.md) | FoundationDB & Antithesis: the whole cluster in one thread |
+| [reading-sqlancer.md](reading-sqlancer.md) | SQLancer: 450+ bugs from three tiny oracles |
+| [reading-pqs-tlp-papers.md](reading-pqs-tlp-papers.md) | PQS & TLP: solving the test-oracle problem twice |
+| [reading-jepsen.md](reading-jepsen.md) | Jepsen & elle: isolation anomalies are cycles |
+| [reading-z3.md](reading-z3.md) | Z3 & Cosette: testing every input at once |
 
 ## Capstone M16
 

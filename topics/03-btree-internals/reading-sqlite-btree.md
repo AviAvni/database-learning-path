@@ -1,9 +1,10 @@
-# Reading SQLite `btree.c` — the classic (guided skim, 2 h)
+# btree.c: twenty years of production scars
 
-Repo: [`~/repos/sqlite`](https://github.com/sqlite/sqlite) (shallow clone), files `src/btree.c` (11,633 lines),
-`src/btreeInt.h` (746). Don't read linearly — you already know the format from
-turso; here you're reading **the original** for the parts turso simplified and
-the comments that carry 20 years of production scars.
+You already know the format from turso — this guided skim (2 h) reads **the
+original** for the parts turso simplified and for comments that carry two
+decades of production experience: the balance_quick fast path, the "25%
+faster" right-bias tweak, pointer maps, predecessor-swap deletes. Don't read
+its 11,633 lines linearly; follow the route below.
 
 ## 1. Start with btreeInt.h:1–215
 
@@ -43,6 +44,21 @@ Key structs:
   the page (insertCell :7363–7450) rather than reallocating — balance consumes
   them immediately. The page is never physically overfull on disk.
 
+```rust
+// insertCell's trick: a page is never physically overfull
+fn insert_cell(page: &mut MemPage, i: usize, cell: Cell) {
+    match page.allocate_space(cell.len()) {     // freeblocks → gap → defrag
+        Some(off) => page.write_cell(off, i, &cell),
+        None => {
+            page.ap_ovfl.push((i, cell));       // parked IN MEMORY, beside the page
+            // caller must run balance() before the page is released: the
+            // balance pool drains ap_ovfl while redistributing ≤3 siblings,
+            // so the on-disk format never needs an "overfull" representation
+        }
+    }
+}
+```
+
 ## 5. Two things turso doesn't have (yet)
 
 - **Pointer maps** (auto-vacuum) — btreeInt.h:653–668, btree.c:1098–1170:
@@ -68,3 +84,11 @@ Key structs:
 You can explain why NB=3 (bounded work per split, adjacent redistribution beats
 cascading splits) and name the two fast paths (bias hint, balance_quick) that
 serve sequential inserts.
+
+## References
+
+**Code**
+- [sqlite](https://github.com/sqlite/sqlite) — `src/btree.c` (11,633
+  lines; don't read linearly) and `src/btreeInt.h` (746 lines) —
+  btreeInt.h:1–215 is the best on-disk-format documentation in open
+  source; read that comment entire before any function

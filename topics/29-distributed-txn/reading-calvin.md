@@ -1,8 +1,11 @@
-# Reading guide — Calvin (SIGMOD '12): deterministic databases
+# Calvin: agree on inputs, not outcomes
 
-Paper: *Calvin: Fast Distributed Transactions for Partitioned Database
-Systems*, Thomson et al., SIGMOD 2012. No repo clone — the lineage lives
-on in FaunaDB and the deterministic-database literature (Abadi's group).
+Every other protocol in this topic coordinates on transaction *outcomes*
+at runtime. Calvin is the counterpoint: fix the input order first, execute
+deterministically, and the whole commit-protocol problem disappears —
+along with the interactive transactions everyone actually writes. There
+is no reference repo to read here; the lineage lives on in FaunaDB and in
+Abadi's deterministic-database literature, so this chapter is paper-only.
 
 ## The contrarian move
 
@@ -34,6 +37,22 @@ outcomes**. No 2PC. No commit protocol at all.
 3. **Executor** — runs txn logic. Cross-shard txns exchange *read results*
    (push, not request) — each shard knows from the plan exactly which
    remote reads to expect.
+
+The scheduler is the part worth writing down — deterministic 2PL is just
+2PL with the request order pinned to the log:
+
+```rust
+fn scheduler(log: &[Txn], lm: &mut LockManager) {
+    for txn in log {                          // exactly log order, every replica
+        for key in txn.read_write_set() {     // known up front — the Calvin price
+            lm.enqueue(key, txn.id);          // FIFO queue per key
+        }
+    }
+    // grant rule: txn runs once it heads every queue it sits in.
+    // A total order over acquisition => no deadlock cycle can form,
+    // and every replica makes IDENTICAL grant decisions without talking.
+}
+```
 
 A crashed shard recovers by replaying the input log from a checkpoint —
 no undo, no in-doubt txns, no blocking window. Our `tpc.rs` crash matrix
@@ -74,3 +93,15 @@ symptom.
    the read set IS the result. Could an M29 FalkorDB use OLLP
    (reconnaissance traversal, then deterministic re-execution), and what
    invalidation check would "did the read set move?" become on a graph?
+
+## References
+
+**Papers**
+- Thomson, Diamond, Weng, Ren, Shao, Abadi — "Calvin: Fast Distributed
+  Transactions for Partitioned Database Systems" (SIGMOD 2012) — §2-3
+  are the architecture and the deterministic locking; §5's OLLP is the
+  answer to dependent transactions
+
+**Code**
+- No reference implementation to clone — the lineage lives on in FaunaDB
+  and in Abadi's deterministic-database papers

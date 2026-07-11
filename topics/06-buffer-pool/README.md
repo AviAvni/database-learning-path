@@ -106,20 +106,20 @@ against maxmemory, and *opaque* to redis defrag.
 ## 6. Code reading (5–7 h)
 
 - **postgres `bufmgr.c` + `freelist.c`** — packed atomic state, CLOCK,
-  buffer rings. → guide: [`reading-postgres-bufmgr.md`](reading-postgres-bufmgr.md)
+  buffer rings. → [`reading-postgres-bufmgr.md`](reading-postgres-bufmgr.md) — postgres bufmgr: a buffer's life in one atomic word
 - **DuckDB buffer manager** — eviction queue with dead nodes, memory
-  reservations, spill-to-temp. → guide: [`reading-duckdb-buffer.md`](reading-duckdb-buffer.md)
+  reservations, spill-to-temp. → [`reading-duckdb-buffer.md`](reading-duckdb-buffer.md) — DuckDB's buffer pool: eviction by queue of hints
 - **LeanStore** — swips, cooling stage, hybrid latches.
-  → guide: [`reading-leanstore.md`](reading-leanstore.md)
+  → [`reading-leanstore.md`](reading-leanstore.md) — LeanStore in code: swips, cooling, hybrid latches
 - **redis `zmalloc.c`** (+ turso's CLOCK page cache as a bonus).
-  → guide: [`reading-redis-zmalloc.md`](reading-redis-zmalloc.md)
+  → [`reading-redis-zmalloc.md`](reading-redis-zmalloc.md) — zmalloc: memory management when there are no pages
 
 ## 7. Papers (4–6 h)
 
 - "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR '22).
-  → guide: [`reading-mmap-paper.md`](reading-mmap-paper.md)
+  → [`reading-mmap-paper.md`](reading-mmap-paper.md) — mmap is not a buffer pool
 - "LeanStore: In-Memory Data Management Beyond Main Memory" (ICDE '18) +
-  vmcache (SIGMOD '23) as the sequel. → guide: [`reading-leanstore-paper.md`](reading-leanstore-paper.md)
+  vmcache (SIGMOD '23) as the sequel. → [`reading-leanstore-paper.md`](reading-leanstore-paper.md) — LeanStore & vmcache: pay only on the miss
 
 ## 8. Experiments (in `experiments/`)
 

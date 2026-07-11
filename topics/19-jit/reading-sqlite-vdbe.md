@@ -1,10 +1,11 @@
-# Reading guide — SQLite VDBE ([`~/repos/sqlite/src/vdbe.c`](https://github.com/sqlite/sqlite))
+# SQLite's VDBE: the bytecode floor
 
 The oldest shipping answer to interpretation overhead: don't walk
 the AST, flatten it to bytecode once at prepare time, then run a
 register machine. 25 years in production, zero JIT, and for
 SQLite's workload (few rows per query, embedded) it is the RIGHT
-point on the spectrum.
+point on the spectrum — the floor every JIT must beat before its
+compile time counts.
 
 ## Anchor map
 
@@ -105,3 +106,13 @@ lane in jit_bench if the JIT crossover disappoints (question 5).
    (flatten to `Vec<Op>` with register slots, interpret with one
    match). Predict where it lands between interp and JIT in
    rows/s, then (stretch) build it and check.
+
+## References
+
+**Code**
+- [sqlite](https://github.com/sqlite/sqlite) `src/vdbe.c` — start at
+  the dispatch loop (:1049) and read opcodes in file order; the
+  `case OP_` comment convention makes it navigable
+- [sqlite](https://github.com/sqlite/sqlite) `src/vdbeInt.h` —
+  `struct VdbeOp` and the register/cursor state
+- `EXPLAIN` in any sqlite3 shell — the fastest way to see programs

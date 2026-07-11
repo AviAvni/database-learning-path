@@ -80,10 +80,10 @@ max physical time seen (the anti-Lamport-drift bound).
 
 ## 5. Reading guides
 
-- [reading-percolator-tikv.md](reading-percolator-tikv.md) — the protocol + TiKV's Rust implementation
-- [reading-spanner-hlc.md](reading-spanner-hlc.md) — TrueTime, external consistency, and CockroachDB's HLC answer
-- [reading-calvin.md](reading-calvin.md) — deterministic databases: the "agree on inputs, not outcomes" counterpoint
-- [reading-foundationdb.md](reading-foundationdb.md) — the unbundled transaction + the simulation culture
+- [reading-percolator-tikv.md](reading-percolator-tikv.md) — Percolator: 2PC with the coordinator erased
+- [reading-spanner-hlc.md](reading-spanner-hlc.md) — Spanner & HLC: timestamps without the oracle
+- [reading-calvin.md](reading-calvin.md) — Calvin: agree on inputs, not outcomes
+- [reading-foundationdb.md](reading-foundationdb.md) — FoundationDB: the unbundled transaction
 
 ## 6. Cross-topic threads
 

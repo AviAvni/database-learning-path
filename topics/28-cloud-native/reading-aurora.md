@@ -1,10 +1,11 @@
-# Reading guide — Amazon Aurora (SIGMOD '17)
+# Aurora: only the log crosses the network
 
-**Source:** Verbitski et al. — "Amazon Aurora: Design Considerations for
-High Throughput Cloud-Native Relational Databases" (SIGMOD 2017) — 12 pages,
-read whole. Optionally the SIGMOD '18 follow-up ("On Avoiding Distributed
-Consensus for I/Os, Commits, and Membership Changes") for the quorum
-subtleties.
+Aurora is where "the log is the database" became a shipping OLTP
+architecture: the writer sends storage nothing but redo records, and
+six-way-replicated storage nodes materialize pages by replaying them.
+This chapter extracts the quorum design, the commit path, and the
+recovery story — the template every later disaggregated engine
+(Socrates, Neon) either copies or argues with.
 
 ## 1. The one-sentence thesis
 
@@ -72,3 +73,13 @@ keeps S3 behind a pageserver?
 - 35× network amplification eliminated vs MySQL-on-mirrored-EBS.
 - Commit = log-quorum-ack only; recovery = seconds (no REDO replay at
   compute).
+
+## References
+
+**Papers**
+- Verbitski et al. — "Amazon Aurora: Design Considerations for High
+  Throughput Cloud-Native Relational Databases" (SIGMOD 2017) —
+  12 pages, read whole
+- Verbitski et al. — "Amazon Aurora: On Avoiding Distributed Consensus
+  for I/Os, Commits, and Membership Changes" (SIGMOD 2018) — optional,
+  for the quorum subtleties

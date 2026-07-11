@@ -1,9 +1,11 @@
-# Reading guide — Bolt & PackStream (via FalkorDB's removed implementation)
+# Bolt & PackStream: the graph in the type system
 
-Specs: Bolt Protocol + PackStream specifications (neo4j docs,
-https://neo4j.com/docs/bolt/current/). Code: FalkorDB *had* a complete
-Bolt 5.x server until #2170 removed it (2026-07-08) — read it frozen in
-time with `cd [~/repos/FalkorDB](https://github.com/FalkorDB/FalkorDB) && git show 0b11a00b3^:src/bolt/<file>`.
+RESP encodes a node as nested arrays the client must re-interpret; Bolt puts
+Node, Relationship, and Path on the wire as first-class types, and makes
+result streaming client-driven — backpressure IS the protocol. The reference
+implementation here is FalkorDB's own Bolt 5.x server, complete until #2170
+removed it (2026-07-08): read it frozen in time with
+`git show 0b11a00b3^:src/bolt/<file>` in `~/repos/FalkorDB`.
 
 ## The shape of a Bolt session
 
@@ -42,6 +44,26 @@ in the type system.
 - Compare topic 7 §1: RESP optimizes the *parser* (scan for \r\n);
   PackStream optimizes the *type round-trip* (marker dispatch table).
 
+The marker scheme, as an encoder:
+
+```rust
+// High nibble = type, low nibble = size for "tiny" variants; ints are
+// varint-by-cases, biased so -16..127 costs exactly one byte.
+fn write_int(out: &mut Vec<u8>, v: i64) {
+    match v {
+        -16..=127 => out.push(v as u8),                                        // tiny
+        _ if i8::try_from(v).is_ok()  => { out.push(0xC8); out.push(v as u8); }
+        _ if i16::try_from(v).is_ok() => { out.push(0xC9); out.extend((v as i16).to_be_bytes()); }
+        _ if i32::try_from(v).is_ok() => { out.push(0xCA); out.extend((v as i32).to_be_bytes()); }
+        _ => { out.push(0xCB); out.extend(v.to_be_bytes()); }
+    }
+}
+fn write_struct_header(out: &mut Vec<u8>, n_fields: u8, tag: u8) {
+    out.push(0xB0 + n_fields);   // marker: tiny structure of n fields
+    out.push(tag);               // 0x4E Node, 0x52 Relationship, 0x50 Path, 0x10 RUN…
+}                                // then the fields follow, each PackStream-encoded
+```
+
 ## Server-side mechanics worth stealing
 
 - `BoltRequestHandler` (bolt_api.c:670): one dispatch switch over
@@ -77,3 +99,16 @@ in the type system.
    pieces of your M7 RESP server are protocol-neutral (executor,
    result set) and which need a Bolt twin? Sketch the
    `bolt_reply_*`-equivalent trait your result set must implement.
+
+## References
+
+**Papers**
+- Neo4j — Bolt Protocol + PackStream specifications
+  (https://neo4j.com/docs/bolt/current/) — the normative source for
+  markers, messages, and the handshake
+
+**Code**
+- [FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) `src/bolt/`
+  (`bolt.c`, `bolt.h`, `bolt_api.c`) — removed by #2170; read it frozen
+  in time with `git show 0b11a00b3^:src/bolt/<file>` in
+  `~/repos/FalkorDB`

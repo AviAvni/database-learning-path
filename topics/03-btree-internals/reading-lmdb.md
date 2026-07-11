@@ -1,8 +1,11 @@
-# Reading LMDB `mdb.c` — copy-on-write, no WAL (2 h)
+# LMDB: recovery is choosing a root pointer
 
-Repo: [`~/repos/lmdb`](https://github.com/LMDB/lmdb), file `libraries/liblmdb/mdb.c` (12,846 lines, one file).
-LMDB is the anti-SQLite: no WAL, no page cache of its own, no free-space-within-
-page — just COW pages over one big mmap. Read it as a *design*, skim the code.
+LMDB is the anti-SQLite: no WAL, no page cache of its own, no free-space-
+within-page — just copy-on-write pages over one big mmap, with crash recovery
+reduced to picking the newer of two meta pages. This chapter reads its single
+12,846-line file as a *design*, skimming the code (2 h); it is also the
+on-disk twin of the capstone reference's in-memory `cow_btree`, which is
+exactly M3's comparison exercise.
 
 ## 1. The commit protocol — the whole design in one sequence
 
@@ -20,6 +23,24 @@ page — just COW pages over one big mmap. Read it as a *design*, skim the code.
 
 No WAL, no redo, no undo. Recovery is *choosing a root pointer*. The price is
 paid elsewhere: every commit rewrites the whole root-to-leaf path.
+
+The protocol fits on a napkin:
+
+```rust
+fn commit(env: &mut Env, txn: Txn) -> Result<()> {
+    write_pages(&txn.dirty)?;               // COW pages at NEW page numbers —
+    fsync(env.fd)?;                         //   durable before any root sees them
+    let meta = Meta { txnid: txn.id, root: txn.new_root };
+    write_meta_slot(env, (txn.id % 2) as usize, &meta)?;  // toggle: never
+    fsync(env.fd)                                         //   overwrite live meta
+}
+
+fn open(env: &Env) -> Root {
+    let (m0, m1) = read_both_metas(env);
+    pick_valid_with_larger_txnid(m0, m1).root   // recovery IS this line —
+}                                               // a crash anywhere above just
+                                                // means the old meta still wins
+```
 
 ## 2. COW mechanics
 
@@ -82,3 +103,11 @@ paid elsewhere: every commit rewrites the whole root-to-leaf path.
 
 You can narrate a crash at any point in the commit sequence and say which root
 survives, and you can state the reader-pins-pages problem and its capstone twin.
+
+## References
+
+**Code**
+- [LMDB](https://github.com/LMDB/lmdb) `libraries/liblmdb/mdb.c`
+  (12,846 lines, one file; local clone at `~/repos/lmdb`) — read it as a
+  design, skim the code; the `MDB_meta` comment (:1356) and the reader
+  table (`MDB_reader` :869) carry the whole model

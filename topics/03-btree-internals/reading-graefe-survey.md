@@ -1,14 +1,10 @@
-# Reading guide — Graefe, "Modern B-Tree Techniques" (2011)
+# Modern B-tree techniques: height is the metric, fanout is the lever
 
-Foundations and Trends in Databases, ~200 pages. **Do not read it all.** It's a
-survey/reference; this guide picks the ~50 pages that matter for this topic and
-the capstone. Budget: 3 h.
-
-## Why this survey
-
-Every "B-trees are simple" take dies here. Graefe catalogs what production
-B-trees actually do: compression, latching, logging interactions, bulk loads.
-You'll come back to it in topics 5 (logging), 8/9 (latching), 12 (columnar).
+Every "B-trees are simple" take dies in Graefe's ~200-page survey of what
+production B-trees actually do — compression, latching, logging interactions,
+bulk loads. **Do not read it all.** This chapter picks the ~50 pages that
+matter for this topic and the capstone (budget: 3 h); you'll come back for
+more in topics 5 (logging), 8/9 (latching), and 12 (columnar).
 
 ## Read now (this topic)
 
@@ -42,6 +38,22 @@ You'll come back to it in topics 5 (logging), 8/9 (latching), 12 (columnar).
                        topic 17)
 ```
 
+Suffix truncation is small enough to write down whole — the point is that a
+separator is *synthetic*, so it only has to sort between its neighbors:
+
+```rust
+// separator between leaf keys "smith,bob" and "smyth,al" → "smy"
+fn shortest_separator(left: &[u8], right: &[u8]) -> Vec<u8> {
+    let mut i = 0;
+    while i < left.len() && left[i] == right[i] {
+        i += 1;                       // skip the shared prefix
+    }
+    right[..=i].to_vec()              // one byte past divergence: > left, ≤ right
+}
+// shorter separators ⇒ more fit per interior page ⇒ fanout up ⇒ height down —
+// and height is priced in page reads, so EVERY lookup collects the saving
+```
+
 Fanout arithmetic to internalize: 4KB page, 16-byte keys + 8-byte child pointers
 ≈ 170 fanout ⇒ 1B keys in height 4. Truncate separators to 4 bytes ⇒ fanout ~340
 ⇒ height 4 still, but at 10B keys. **Height is the metric; fanout is the lever;
@@ -60,3 +72,11 @@ key size is what you control.**
 
 You can do the fanout→height arithmetic cold, and you've marked which sections
 you'll return to in topics 5 and 9.
+
+## References
+
+**Papers**
+- Graefe — "Modern B-Tree Techniques" (Foundations and Trends in
+  Databases, 2011) — ~200 pages; do NOT read it all — follow the
+  section table above (§3 truncation + normalized keys and §5 node
+  sizes now; §6–§8 deferred to topics 9, 5, and 12/22)

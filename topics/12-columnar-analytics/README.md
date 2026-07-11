@@ -121,14 +121,14 @@ index is sparse because scans, not point reads, are the workload.
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-duckdb-compression.md](reading-duckdb-compression.md) | analyze/score/compress framework, bitpacking modes, FSST, zone maps |
-| [reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md) | parts, granules, sparse index, merges |
-| [reading-arrow-parquet.md](reading-arrow-parquet.md) | arrow-rs layout + parquet-rs encodings/stats |
-| [reading-cstore-compression.md](reading-cstore-compression.md) | C-Store (VLDB '05) + SIGMOD '06 compression-aware execution |
-| [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md) | BtrBlocks sampling + FSST symbol tables |
-| [reading-clickhouse-paper.md](reading-clickhouse-paper.md) | VLDB '24 system paper |
+| [reading-duckdb-compression.md](reading-duckdb-compression.md) | DuckDB's encoding zoo: analyze, score, commit |
+| [reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md) | MergeTree: brute force, organized |
+| [reading-arrow-parquet.md](reading-arrow-parquet.md) | Arrow & Parquet: the layout compute wants, the bytes disk wants |
+| [reading-cstore-compression.md](reading-cstore-compression.md) | C-Store: operate on compressed data |
+| [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md) | FSST & BtrBlocks: compress harder, stay random-access |
+| [reading-clickhouse-paper.md](reading-clickhouse-paper.md) | ClickHouse: the case for brute force |
 
 Further references: "Dremel" (VLDB 2010) — the repetition/definition-
 level encoding for NESTED data that Parquet adopted wholesale (§4's

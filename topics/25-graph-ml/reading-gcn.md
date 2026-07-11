@@ -1,7 +1,7 @@
-# Reading guide — "Semi-Supervised Classification with Graph Convolutional Networks" (Kipf & Welling, ICLR 2017)
+# GCN: the two-line neural network your engine already runs
 
-The paper that made GNNs a two-line equation. Read §2 for the layer, §3
-for why it's a first-order spectral approximation (skimmable), and
+Kipf & Welling made GNNs a two-line equation. Read §2 for the layer,
+§3 for why it's a first-order spectral approximation (skimmable), and
 appendix B for the actual dimensions — then notice everything is
 operations your engine already has.
 
@@ -29,6 +29,22 @@ Our `gcn::gcn_norm` stub reproduces it in CSR; the dense oracle
 `gcn_norm_dense` is the definitional check.
 
 ## What the engine sees
+
+One layer, no framework — a query plan with two operators:
+
+```rust
+fn gcn_layer(a_hat: &Csr, h: &Mat, w: &Dense) -> Mat {
+    let t = h.matmul(w);              // transform FIRST: n×d · d×h — because
+                                      //   h < d, this shrinks what SpMM drags
+    let mut out = Mat::zeros(h.n, w.cols);
+    for v in 0..a_hat.n {             // aggregate: one SpMM row at a time
+        for (u, w_vu) in a_hat.row(v) {          // w_vu = 1/√(d_v·d_u)
+            for k in 0..w.cols { out[v][k] += w_vu * t[u][k]; }
+        }
+    }
+    out.relu()                        // sigma — free
+}
+```
 
 Per layer: one SpMM (`2·nnz·h` FLOPs) + one small dense matmul
 (`2·n·d·h`). On Cora (n=2708, nnz=13K, d=1433, h=16) the DENSE transform
@@ -68,3 +84,16 @@ materialized matrix, weights are two small constants — a GCN forward is a
 5. For M25: a GCN forward over the M20 delta-matrix graph — do pending
    deltas participate in A_hat, and is that the same decision as topic
    24's `CALL algo.wcc` three-option question?
+
+## References
+
+**Papers**
+- Kipf & Welling — "Semi-Supervised Classification with Graph
+  Convolutional Networks" (ICLR 2017,
+  [arXiv:1609.02907](https://arxiv.org/abs/1609.02907)) — §2 for the
+  layer, §3 skimmable, appendix B for the dimensions
+
+**Code**
+- [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric)
+  `torch_geometric/nn/conv/gcn_conv.py` — `gcn_norm` (:45-71) is the
+  reference A_hat construction our `gcn::gcn_norm` stub reproduces

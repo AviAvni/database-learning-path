@@ -1,10 +1,11 @@
-# Reading guide — Gunrock ("GPU Graph Analytics", PPoPP '16 + the Essentials rewrite)
+# Gunrock: advance, filter, and the ragged-frontier problem
 
-Clone: [`~/repos/gunrock`](https://github.com/gunrock/gunrock) (the modern "Essentials" codebase —
-`include/gunrock/`). The GPU graph framework that reduced every
-graph algorithm to two data-parallel operators over frontiers. The
-research problem hiding inside: adjacency lists are RAGGED, and
-warps hate ragged.
+The GPU graph framework that reduced every graph algorithm to two
+data-parallel operators over frontiers — and then spent its research
+budget on the problem hiding inside: adjacency lists are RAGGED, and
+warps hate ragged. Read the modern "Essentials" codebase alongside
+the paper; the load-balancing menu in `operators/advance/` is the
+chapter's core.
 
 ## Anchor map
 
@@ -34,7 +35,21 @@ warps hate ragged.
 ```
 
 bfs.hxx:139-145 is the whole loop: `advance::execute_runtime` then
-optionally `filter::execute_runtime` to remove invalids. Question:
+optionally `filter::execute_runtime` to remove invalids.
+
+```rust
+// every graph algorithm = the same two operators + a different lambda
+while !frontier.is_empty() {
+    let next = advance(csr, &frontier, |src, dst| {
+        // BFS lambda: a LOST race is benign — any parent is a valid tree
+        parent[dst].compare_exchange(INVALID, src).is_ok()
+    });
+    frontier = filter(next, |v| is_valid(v));   // dedupe/compact
+}
+// SSSP, PageRank, CC: same loop, different lambda + frontier policy
+```
+
+Question:
 BFS works WITHOUT the filter (bfs.hxx:114's comment) — what grows
 unbounded if you skip it, and why is that sometimes still faster
 (redundant work vs a full extra pass — the "idempotent BFS" trick)?
@@ -101,3 +116,17 @@ free at 400 GB/s)?
 5. For M24: LDBC power-law graphs on GPU — which advance strategy
    per LDBC scale factor, and does the answer change with the
    frontier's hub fraction per BFS level?
+
+## References
+
+**Papers**
+- Wang, Davidson, Pan, Wu, Riffel, Owens — "Gunrock: A
+  High-Performance Graph Processing Library on the GPU" (PPoPP 2016,
+  [arXiv:1501.05387](https://arxiv.org/abs/1501.05387)) — §3 the
+  operator model, §4 load balancing
+
+**Code**
+- [gunrock](https://github.com/gunrock/gunrock) — the modern
+  "Essentials" rewrite under `include/gunrock/` — read
+  `algorithms/bfs.hxx` first, then the three load-balance strategies
+  in `framework/operators/advance/`

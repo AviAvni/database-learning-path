@@ -1,7 +1,10 @@
-# Reading redis `ae.c` + `networking.c` (2 h)
+# The redis event loop: pipelining for free
 
-Repo: [`~/repos/redis`](https://github.com/redis/redis). `ae.c` is ~500 lines — read it fully (rare luxury).
-`networking.c` is huge — read the five functions below.
+One thread, one poll syscall per iteration, and two buffering decisions —
+parse everything the read buffer holds, write nothing until beforeSleep —
+give redis pipelining and reply batching without any dedicated machinery.
+`ae.c` is ~500 lines, so read it fully (a rare luxury); `networking.c` is
+huge, so read only the five functions this chapter walks.
 
 ## 1. ae.c — the whole loop
 
@@ -32,6 +35,27 @@ Repo: [`~/repos/redis`](https://github.com/redis/redis). `ae.c` is ~500 lines �
   readable event. State lives in `multibulklen`/`bulklen` (:184–185) — your
   Rust parser's resumption test mirrors exactly this.
 
+The read path's shape, in one loop:
+
+```rust
+// processInputBuffer: drain every COMPLETE command the buffer holds.
+// This loop IS pipelining: 100 commands in one read() = 100 executions,
+// zero extra syscalls.
+fn process_input(&mut self, c: &mut Client) {
+    loop {
+        match parse_multibulk(&c.querybuf[c.pos..]) {  // *argc, then $len + bytes per arg
+            Parsed { cmd, consumed } => {
+                c.pos += consumed;
+                execute(&cmd, c);                      // addReply BUFFERS, never writes
+            }
+            Incomplete => break,      // keep the bytes; multibulklen/bulklen remember
+        }                             // where we were — resume on the next readable event
+    }
+    c.querybuf.drain(..c.pos);
+    c.pos = 0;
+}
+```
+
 ## 3. The write path — the part that surprises people
 
 - `addReply` — :572: does NOT write to the socket. Appends to the client's
@@ -55,7 +79,7 @@ module → RedisModule_ReplyWith* → these same buffers → possibly the axe.
 
 1. Why write in beforeSleep rather than in addReply? Count syscalls for a
    pipeline of 100 GETs both ways.
-2. `events[fd]` arrays vs a HashMap<fd, handler>: why is the array not just
+2. `events[fd]` arrays vs a `HashMap<fd, handler>`: why is the array not just
    faster but *correct* here? (fd reuse semantics after close.)
 3. The big-arg zero-copy: what property of sds + querybuf repositioning
    makes it safe? When does it fail (arg spans two reads)?
@@ -67,3 +91,10 @@ module → RedisModule_ReplyWith* → these same buffers → possibly the axe.
 
 You can narrate one loop iteration with 3 pipelined clients — every syscall,
 every buffer — and explain where a 101st slow client changes the story.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) — `src/ae.c` (read fully),
+  `src/networking.c` (the five functions above), plus the buffer-size
+  constants in `src/server.h`. Local clone at `~/repos/redis`.

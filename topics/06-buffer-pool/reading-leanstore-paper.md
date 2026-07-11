@@ -1,8 +1,11 @@
-# Reading guide — LeanStore (ICDE '18) + vmcache (SIGMOD '23)
+# LeanStore & vmcache: pay only on the miss
 
 Two papers, one arc: how to make a buffer-managed system as fast as an
-in-memory one. Budget 3 h total. Read LeanStore first, then vmcache as
-"what we'd do differently five years later" — same group (Leis et al.).
+in-memory one. LeanStore (ICDE '18) eliminates the per-access costs with
+pointer swizzling, a cooling stage, and optimistic latches; vmcache
+(SIGMOD '23), from the same group, is "what we'd do differently five years
+later" — same goal, mechanism moved into the MMU. Read LeanStore first, then
+vmcache as the retraction-and-fix.
 
 ## LeanStore: the problem statement (§I–II)
 
@@ -45,6 +48,29 @@ and drops the mechanism:
 - The exmap kernel module fixes the syscall/TLB costs of madvise-heavy
   eviction; without it, plain vmcache still beats classic pools.
 
+The whole design fits in one state machine:
+
+```rust
+// Translation is the MMU's job; RESIDENCY is the DB's.
+fn page(&self, pid: u64) -> *mut u8 { unsafe { self.virt.add(pid as usize * 4096) } }
+
+fn fix(&self, pid: u64) {
+    loop {
+        let s = self.state[pid].load();      // Evicted/Marked/Locked/Unlocked + version
+        match s.kind() {
+            Evicted => if self.state[pid].cas(s, s.locked()) {
+                pread(self.fd, self.page(pid), 4096, pid * 4096); // into the FIXED addr
+                self.state[pid].store(s.unlocked_bumped());       // word doubles as
+                return;                                           // the hybrid latch
+            },
+            Marked | Unlocked => if self.state[pid].cas(s, s.locked()) { return; },
+            Locked => core::hint::spin_loop(),  // someone else is faulting it in
+        }
+    }
+}
+// evict: write back if dirty, madvise(DONTNEED, page(pid)), state → Evicted
+```
+
 ```
  LeanStore:  translation in POINTERS  (swips, invasive, tree-shaped data)
  vmcache:    translation in the MMU   (virt addressing, any ref-graph)
@@ -74,3 +100,14 @@ addressing with DB-controlled residency.
 You can state what each of the three LeanStore ingredients eliminates, and
 explain in two sentences why vmcache can drop swizzling without giving back
 the hot-path win.
+
+## References
+
+**Papers**
+- Leis, Haubenschild, Kemper, Neumann — "LeanStore: In-Memory Data
+  Management Beyond Main Memory" (ICDE 2018) — focus on §III.B (one swip
+  per page, bottom-up eviction), §III.D (cooling-stage sizing, Fig. 6),
+  §V (the graceful-degradation money plot)
+- Leis, Alhomssi, Ziegler, Loeck, Dietrich — "Virtual-Memory Assisted
+  Buffer Management" (vmcache/exmap, SIGMOD 2023) — read after LeanStore,
+  as the retraction and the fix

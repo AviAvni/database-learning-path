@@ -1,8 +1,10 @@
-# Reading guide — "Designing Access Methods: The RUM Conjecture" (Athanassoulis et al., EDBT 2016)
+# The RUM conjecture: optimize two, pay with the third
 
-Short vision paper (~6 pages, 1 h). It doesn't build anything — it names the trade-off
-every storage structure lives inside. Read it *after* the two engine papers so the
-triangle has concrete corners.
+After the B-tree and LSM papers give the triangle its concrete corners, this
+short vision paper names the trade-off every storage structure lives inside:
+read, update, and memory overhead cannot all approach optimal at once. It
+doesn't build anything — it hands you the design compass the rest of the
+curriculum steers by. Read it *after* the two engine papers.
 
 ## The claim
 
@@ -56,3 +58,12 @@ as the other two approach 1.** Not a proven theorem — a design compass (hence
 
 There is no best index, only a workload-shaped position on a three-way frontier —
 "which engine is better" is an ill-posed question until the workload is named.
+
+## References
+
+**Papers**
+- Athanassoulis, Kester, Maas, Stoica, Idreos, Ailamaki, Callaghan —
+  "Designing Access Methods: The RUM Conjecture" (EDBT 2016) —
+  [PDF](https://stratos.seas.harvard.edu/files/stratos/files/rum.pdf) —
+  ~6 pages, 1 h; read after the B-tree and LSM papers so the triangle
+  has concrete corners

@@ -104,19 +104,24 @@ flowchart TD
 
 - **turso `core/storage/btree.rs`** — deep dive: slotted page ops, balance state
   machines, overflow, freelist.
-  → guided walkthrough: [`reading-turso-btree-deep.md`](reading-turso-btree-deep.md)
+  → chapter: [`reading-turso-btree-deep.md`](reading-turso-btree-deep.md) — Inside
+  the slotted page: freeblocks, overflow, balance
 - **SQLite `src/btree.c`** — the classic (11.6K lines; guided skim).
-  → guided walkthrough: [`reading-sqlite-btree.md`](reading-sqlite-btree.md)
+  → chapter: [`reading-sqlite-btree.md`](reading-sqlite-btree.md) — btree.c: twenty
+  years of production scars
 - **LMDB `libraries/liblmdb/mdb.c`** — COW, double meta, no WAL.
-  → guided walkthrough: [`reading-lmdb.md`](reading-lmdb.md)
+  → chapter: [`reading-lmdb.md`](reading-lmdb.md) — LMDB: recovery is choosing a
+  root pointer
 
 ## 6. Papers / docs (3–4 h)
 
 - Graefe, "Modern B-Tree Techniques" (Foundations & Trends 2011) — the survey;
   read selectively.
-  → reading guide: [`reading-graefe-survey.md`](reading-graefe-survey.md)
+  → chapter: [`reading-graefe-survey.md`](reading-graefe-survey.md) — Modern B-tree
+  techniques: height is the metric, fanout is the lever
 - SQLite database file format (official doc) — read alongside the code.
-  → reading guide: [`reading-sqlite-file-format.md`](reading-sqlite-file-format.md)
+  → chapter: [`reading-sqlite-file-format.md`](reading-sqlite-file-format.md) — The
+  SQLite file format: decode a row by hand
 
 ## 7. Experiments (in `experiments/`)
 

@@ -1,4 +1,4 @@
-# Reading guide — Umbra "Tidy Tuples and Flying Start" (VLDBJ '21) + Copy-and-Patch (OOPSLA '21)
+# Umbra & copy-and-patch: the war on compile latency
 
 Two attacks on the same enemy: compile LATENCY. HyPer proved
 compiled queries run fast; production taught that 100 ms of LLVM
@@ -71,6 +71,20 @@ the decision uses *measured* runtime, not a planner estimate.
               → machine code in ~100s of ns per op
 ```
 
+The runtime "compiler" is barely a loop:
+
+```rust
+fn compile(ops: &[IrOp], stencils: &Stencils, out: &mut Code) {
+    for op in ops {
+        let s = &stencils[op.kind()];        // object code built at BUILD time
+        let base = out.append(&s.bytes);     // "compilation" is a memcpy
+        for hole in &s.holes {               // relocations left unresolved
+            out.patch(base + hole.offset, op.operand(hole.which));
+        }
+    }                                        // no IR, no passes, no regalloc
+}
+```
+
 The trick making stencils composable: continuation-passing style +
 tail calls (`musttail`) so each stencil ends by jumping to the next
 — no prologue/epilogue, registers stay live across stencils
@@ -109,3 +123,12 @@ you don't want two backends.
    (measure in jit_bench). Using the measured interp rows/s, write
    the break-even row count formula and compute it. Does a
    FalkorDB `WHERE` clause over a 1M-node scan clear it?
+
+## References
+
+**Papers**
+- Kersten, Leis, Neumann — "Tidy Tuples and Flying Start: Fast
+  Compilation and Fast Execution of Relational Queries in Umbra"
+  (VLDB Journal 2021)
+- Xu & Kjolstad — "Copy-and-Patch Compilation" (OOPSLA 2021,
+  [arXiv:2011.13127](https://arxiv.org/abs/2011.13127))

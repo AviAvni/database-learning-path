@@ -1,8 +1,9 @@
-# Reading RocksDB compaction + SST format (guided skim, 2–3 h)
+# RocksDB compaction: scores, stalls, and the manifest
 
-Repo: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb). You read the lsm-tree crate first; now the industrial
-version — read for what production adds: stalls, partitioned indexes, ribbon
-filters, universal compaction.
+The lsm-tree crate gave you the clean shape; RocksDB is what a decade of
+production adds on top — score-driven compaction picking, write stalls as
+back-pressure, partitioned indexes, ribbon filters, and a MANIFEST that does
+MVCC for metadata. This chapter is a guided skim of exactly those additions.
 
 ## 1. Leveled picking — `db/compaction/compaction_picker_level.cc`
 
@@ -13,6 +14,28 @@ filters, universal compaction.
   key boundaries, grab the overlapping next-level files.
 - :596 — score recomputed accounting for **in-flight** compactions — the picker
   is a scheduler; double-booking a level wastes IO.
+
+The scoring loop, reduced to its logic:
+
+```rust
+// Compact the level with the highest score ≥ 1.0; the picker is a
+// scheduler, so bytes already being compacted don't count twice.
+fn pick_compaction_level(&self, v: &Version) -> Option<usize> {
+    (0..v.num_levels())
+        .map(|lvl| {
+            let score = if lvl == 0 {
+                v.num_l0_files() as f64 / self.l0_file_trigger as f64
+            } else {
+                (v.level_bytes(lvl) - v.bytes_being_compacted(lvl)) as f64
+                    / self.max_bytes_for_level(lvl) as f64
+            };
+            (lvl, score)
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .filter(|&(_, score)| score >= 1.0)   // below 1.0: no debt, do nothing
+        .map(|(lvl, _)| lvl)
+}
+```
 
 ## 2. The merge itself — `compaction_job.cc:1904`
 
@@ -83,3 +106,17 @@ fjall's version: a spin-loop delay at 20–30 L0 runs (fjall
 
 You can list the three stall triggers from memory and explain LogAndApply's
 refcounted-Version scheme as "MVCC for metadata".
+
+## References
+
+**Code**
+- [facebook/rocksdb](https://github.com/facebook/rocksdb) —
+  `db/compaction/compaction_picker_level.cc`,
+  `db/compaction/compaction_job.cc`, `db/column_family.cc` (stalls),
+  `table/block_based/block_based_table_builder.cc`,
+  `table/block_based/block_based_table_reader.cc`,
+  `table/block_based/filter_policy.cc`, `db/version_set.cc` (MANIFEST).
+  Local clone at `~/repos/rocksdb`.
+- [fjall-rs/fjall](https://github.com/fjall-rs/fjall)
+  `src/keyspace/write_delay.rs` — the 100×-simpler stall valve, for
+  contrast.

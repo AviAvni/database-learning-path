@@ -1,10 +1,12 @@
-# Reading guide — SimSIMD distance kernels
+# SimSIMD: the port/latency table is the design doc
 
-Clone: [`~/repos/SimSIMD`](https://github.com/ashvardanian/SimSIMD) — note the headers live under
-`include/numkong/` (the project's internal rename). This is M14's
-vector-distance layer done by someone who read the CPU manuals: every
-NEON file opens with a port/latency table, and every kernel's
-accumulator count follows from it.
+This is M14's vector-distance layer done by someone who read the CPU
+manuals: every NEON file opens with a per-instruction port/latency
+table, and every kernel's accumulator count follows from it. The
+chapter's through-line — ports × latency decides everything, and
+fancy instructions lose to plain FMAs that spread across ports.
+(Note: the headers live under `include/numkong/`, the project's
+internal rename.)
 
 ## Anchor map
 
@@ -113,3 +115,12 @@ n=8 dims vs n=4096)?
 5. For M17 dispatch: sketch the fn-pointer table for
    {dot, l2sq, filter} × {neon, scalar} and where
    `is_aarch64_feature_detected!` runs exactly once.
+
+## References
+
+**Code**
+- [SimSIMD](https://github.com/ashvardanian/SimSIMD) —
+  `include/numkong/` — one file per ISA per kernel family
+  (`dot/neon.h`, `spatial/neon.h`, sve/haswell/skylake siblings);
+  the port/latency tables at the top of each NEON header are the
+  real reading assignment

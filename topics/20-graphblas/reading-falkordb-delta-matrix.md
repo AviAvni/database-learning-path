@@ -1,10 +1,11 @@
-# Reading guide — FalkorDB's delta matrices ([`~/repos/FalkorDB/src/graph/delta_matrix/`](https://github.com/FalkorDB/FalkorDB))
+# Delta matrices: an LSM memtable over GraphBLAS
 
-Your own code, with this curriculum's eyes. The delta matrix is
-topic 3's LSM memtable+tombstone pattern rebuilt over GrB matrices
-— read it against topics 3 (LSM), 6 (buffer mgmt), and this
-topic's zombies/pending-tuples machinery, and ask at each step
-"why not just let SuiteSparse's own deltas do this?"
+FalkorDB's answer to "GrB matrices are fast to read, slow to mutate
+one edge at a time" — your own code, with this curriculum's eyes.
+The delta matrix is topic 3's LSM memtable+tombstone pattern rebuilt
+over GrB matrices — read it against topics 3 (LSM), 6 (buffer mgmt),
+and this topic's zombies/pending-tuples machinery, and ask at each
+step "why not just let SuiteSparse's own deltas do this?"
 
 ## Anchor map
 
@@ -34,7 +35,25 @@ example. Distilled:
 ```
 
 Same read algebra as an LSM point-read (memtable ∪ sstables minus
-tombstones), and `wait` is minor compaction.
+tombstones), and `wait` is minor compaction. The read and write
+paths, distilled:
+
+```rust
+// logical A ≡ (M ∪ DP) \ DM — an LSM point-read over matrices
+fn contains(&self, i: u64, j: u64) -> bool {
+    if self.dm.contains(i, j) { return false; }   // tombstone wins
+    self.dp.contains(i, j) || self.m.contains(i, j)
+}
+
+fn set(&mut self, i: u64, j: u64) {
+    if self.m.contains(i, j) {
+        self.dm.remove(i, j);        // resurrect a pending-deleted entry
+    } else {
+        self.dp.set(i, j);           // NEW entry → DP (keeps DP ∩ M = ∅)
+    }
+    self.transposed.set(j, i);       // the twin trio, in lockstep
+}
+```
 
 ## 2. Why not SuiteSparse's own pending tuples? (the load-bearing question)
 
@@ -112,3 +131,12 @@ via the LDBC update workloads.
    + sort at wait (LSM-flavored) vs HashMap (point-read-flavored)
    — which do the LDBC interactive update+read mixes prefer?
    Predict, then bench both under gb_bench's update workload.
+
+## References
+
+**Code**
+- [FalkorDB](https://github.com/FalkorDB/FalkorDB)
+  `src/graph/delta_matrix/` — start with the state-transition
+  comment table in `delta_matrix.h:34-108` (it IS the design doc),
+  then `delta_wait.c`, `delta_mxm.c`, `delta_get_set.c`,
+  `delta_will_wait.c`

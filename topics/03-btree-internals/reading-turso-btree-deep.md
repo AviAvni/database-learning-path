@@ -1,8 +1,10 @@
-# Reading turso `btree.rs` — deep dive (the mechanics topic 1 skipped)
+# Inside the slotted page: freeblocks, overflow, balance
 
-Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso), file `core/storage/btree.rs` (+ `core/storage/sqlite3_ondisk.rs`,
-`core/storage/pager.rs`). You read the cursor/seek/insert surface in topic 1;
-now the page mechanics. Budget: 2–3 h.
+Topic 1's turso chapter traced the cursor/seek/insert surface; this one
+descends into the page mechanics that surface glossed over — the freeblock
+chain, the exact overflow-spill formulas, the resumable balance state
+machines, varints, and the whole-page freelist. Budget: 2–3 h across
+`core/storage/btree.rs`, `sqlite3_ondisk.rs`, and `pager.rs`.
 
 ## 1. Slotted page operations
 
@@ -14,6 +16,31 @@ now the page mechanics. Budget: 2–3 h.
 - **Defragment**: `btree.rs:8273–8444` — fast path when ≤2 freeblocks, slow path
   compacts everything. Question while reading: what triggers defrag, and why is
   it correct to move cells but never the pointer array?
+
+The freeblock walk, distilled — first-fit through a linked list threaded
+through the dead space itself:
+
+```rust
+fn find_free_slot(page: &mut Page, need: usize) -> Option<u16> {
+    let mut prev = FREEBLOCK_HEAD;           // header bytes 1–2
+    let mut off = page.first_freeblock();
+    while off != 0 {
+        let (next, size) = page.freeblock_at(off);   // 2B next-ptr + 2B size
+        if size as usize >= need {
+            let rest = size as usize - need;
+            if rest < 4 {                    // leftover can't hold a freeblock:
+                page.unlink(prev, next);     //   take it all, book the scraps
+                page.add_fragmented(rest as u8);      //   (header cap: 60)
+                return Some(off);
+            }
+            page.set_size(off, rest as u16); // carve the tail, keep the block
+            return Some(off + rest as u16);
+        }
+        prev = off; off = next;
+    }
+    None    // nothing fits: allocate from the middle gap, or defragment
+}
+```
 
 ## 2. Overflow — the exact SQLite formulas
 
@@ -89,3 +116,13 @@ experiment's opening.
 
 You can write the byte layout of a table-leaf page containing two cells and one
 freeblock, from memory, and explain what balance_non_root pools and why ≤3.
+
+## References
+
+**Code**
+- [turso](https://github.com/tursodatabase/turso) —
+  `core/storage/btree.rs` (slotted-page ops, balance state machines),
+  `core/storage/sqlite3_ondisk.rs` (overflow, varints, cell formats),
+  `core/storage/pager.rs` (freelist) — local clone at `~/repos/turso`;
+  line numbers drift, navigate by symbol name. Extends topic 1's
+  [reading-turso-btree.md](../01-storage-engine-landscape/reading-turso-btree.md)

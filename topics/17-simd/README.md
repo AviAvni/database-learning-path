@@ -110,15 +110,15 @@ stable stand-in):
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-simdjson.md](reading-simdjson.md) | VLDB '19 + arm64 code: nibble LUT classification, prefix_xor quote parity, bit_indexer flatten |
-| [reading-polars-compute.md](reading-polars-compute.md) | float_sum STRIPE/pairwise, filter avx512 vpcompress + scalar fallbacks |
-| [reading-hashbrown-simd.md](reading-hashbrown-simd.md) | Group abstraction: sse2 movemask vs neon vshrn vs generic SWAR |
-| [reading-simsimd.md](reading-simsimd.md) | port/latency tables, multi-accumulator dot/l2sq, ISA dispatch files |
-| [reading-sigmod15-vectorization.md](reading-sigmod15-vectorization.md) | Polychroniou et al: selection/probe/partition, gather cost model |
-| [reading-fastlanes.md](reading-fastlanes.md) | VLDB '23: interleaved layout, width-generic unpack, ↔ topic 12 |
-| [reading-mojo-simd.md](reading-mojo-simd.md) | SIMD[type,width] ergonomics vs std::simd vs intrinsics; matmul blog arc |
+| [reading-simdjson.md](reading-simdjson.md) | simdjson: parsing without branches |
+| [reading-polars-compute.md](reading-polars-compute.md) | polars-compute: shipping SIMD in stable Rust |
+| [reading-hashbrown-simd.md](reading-hashbrown-simd.md) | hashbrown & memchr: movemask without movemask |
+| [reading-simsimd.md](reading-simsimd.md) | SimSIMD: the port/latency table is the design doc |
+| [reading-sigmod15-vectorization.md](reading-sigmod15-vectorization.md) | SIMD for databases: two primitives, four operators |
+| [reading-fastlanes.md](reading-fastlanes.md) | FastLanes: bit-unpacking at memory bandwidth |
+| [reading-mojo-simd.md](reading-mojo-simd.md) | Mojo's `SIMD[type, width]`: width as a type parameter |
 
 ## Capstone M17
 

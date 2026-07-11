@@ -1,9 +1,10 @@
-# Reading guide — wgpu compute examples
+# wgpu compute: the 1.5 ms tax before your first FLOP
 
-Clone: [`~/repos/wgpu`](https://github.com/gfx-rs/wgpu) (`examples/`). The portable GPU-compute stack
-our experiments use: WGSL shaders → naga → Metal on this Mac,
-Vulkan/DX12 elsewhere. Read three examples in order; each fixes one
-naivety of the previous.
+The portable GPU-compute stack our experiments use: WGSL shaders →
+naga → Metal on this Mac, Vulkan/DX12 elsewhere. This chapter walks
+three examples in order — each fixes one naivety of the previous —
+and names the fixed costs (dispatch overhead, staging copies, buffer
+limits) that decide whether any operator is worth offloading at all.
 
 ## Anchor map
 
@@ -64,7 +65,28 @@ Two DB-relevant gaps: no float atomics (aggregate f32 sums via
 u32-bitcast CAS loops or per-workgroup partials — our sum kernel's
 design is FORCED by this) and no device-wide barrier (multi-pass
 algorithms = multiple dispatches; BFS levels each need their own
-submit). Question: what does the no-device-barrier rule do to the
+submit).
+
+```rust
+// sum.wgsl's shape: fold in registers, tree-reduce in shared memory,
+// ONE partial per workgroup — because WGSL has no float atomicAdd
+var<workgroup> scratch: array<f32, WG>;
+
+@compute @workgroup_size(WG)
+fn sum(gid: u32, lid: u32) {
+    var acc = 0.0;
+    for (var i = gid; i < n; i += stride) { acc += input[i]; }  // coalesced
+    scratch[lid] = acc;
+    workgroupBarrier();
+    for (var s = WG / 2u; s > 0u; s >>= 1u) {   // tree reduction
+        if (lid < s) { scratch[lid] += scratch[lid + s]; }
+        workgroupBarrier();
+    }
+    if (lid == 0u) { partials[workgroup_id] = scratch[0]; }
+}   // second dispatch (or CPU) folds the partials — no device barrier
+```
+
+Question: what does the no-device-barrier rule do to the
 stretch-goal BFS (frontier per dispatch — where does the frontier
 size live)?
 
@@ -94,3 +116,13 @@ dispatches)?
    Which signature do you expose: `sum(&[f32])` (per-call upload,
    regime A) or `upload(&[f32]) -> GpuVec` + `sum(&GpuVec)` (regime
    B)? Justify from this guide's measurements.
+
+## References
+
+**Code**
+- [wgpu](https://github.com/gfx-rs/wgpu) — `examples/` — read in
+  order: `standalone/01_hello_compute/` (the full plumbing, heavily
+  commented — its doc-comment admits the overhead out loud),
+  `features/src/repeated_compute/` (amortizing setup — what our
+  GpuCtx does), then `hello_workgroups` / `hello_synchronization` /
+  `big_compute_buffers` as needed

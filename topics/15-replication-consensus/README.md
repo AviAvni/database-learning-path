@@ -94,14 +94,14 @@ requires session stickiness or tracking offsets (DDIA ch. 5).
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-raft-paper.md](reading-raft-paper.md) | ATC '14: election, log matching, §5.4 safety, membership, snapshots |
-| [reading-valkey-replication.md](reading-valkey-replication.md) | replication.c: repl buffer, PSYNC partial resync, replica state machine, WAIT |
-| [reading-raft-rs.md](reading-raft-rs.md) | tikv raft-rs: step_* dispatch, Progress tracking, the Ready contract |
-| [reading-qdrant-consensus.md](reading-qdrant-consensus.md) | raft-rs embedded for cluster metadata; data replicated OUTSIDE raft |
-| [reading-vsr.md](reading-vsr.md) | Viewstamped Replication Revisited — same invariants, opposite choices |
-| [reading-ddia-repl.md](reading-ddia-repl.md) | DDIA ch. 5/8/9 reading prompts: lag anomalies, partial failure, linearizability |
+| [reading-raft-paper.md](reading-raft-paper.md) | Raft: logs converge by construction |
+| [reading-valkey-replication.md](reading-valkey-replication.md) | Valkey replication: ack first, replicate later |
+| [reading-raft-rs.md](reading-raft-rs.md) | raft-rs: consensus with the I/O left out |
+| [reading-qdrant-consensus.md](reading-qdrant-consensus.md) | Qdrant's consensus: raft for metadata, replica sets for data |
+| [reading-vsr.md](reading-vsr.md) | Viewstamped Replication: same invariants, opposite choices |
+| [reading-ddia-repl.md](reading-ddia-repl.md) | Lag, lies, and linearizability |
 
 ## Capstone M15
 

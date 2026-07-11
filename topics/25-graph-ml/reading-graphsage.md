@@ -1,4 +1,4 @@
-# Reading guide — "Inductive Representation Learning on Large Graphs" (Hamilton, Ying, Leskovec, NeurIPS 2017) — GraphSAGE
+# GraphSAGE: sample the neighborhood, learn the function
 
 Two contributions wearing one acronym: (1) **inductive** — learn an
 aggregator FUNCTION, not per-node embeddings, so unseen nodes get
@@ -20,6 +20,22 @@ databases-relevant idea: it's a page-budget for graph access.
   (sage_conv.py:149-152) with the self path as a separate `lin_r`
   (sage_conv.py:108,139) — concat implemented as sum of two linears.
 - SAMPLE: uniform, S_l per layer (paper uses S1=25, S2=10).
+
+One mean-SAGE layer for one node, sampling included:
+
+```rust
+fn sage_layer(g: &Csr, h: &Mat, v: u32, s: usize,
+              w_self: &Dense, w_nbr: &Dense, rng: &mut Rng) -> Vec<f32> {
+    let mut agg = vec![0.0; h.d];
+    let sample = g.neighbors(v).choose_multiple(rng, s);  // fan-in capped at s
+    for &u in &sample {                                   // uniform sample of N(v)
+        for k in 0..h.d { agg[k] += h.row(u)[k]; }
+    }
+    for k in 0..h.d { agg[k] /= sample.len() as f32; }    // AGG = mean
+    // "concat then W" done as sum of two linears (PyG's lin_l/lin_r trick)
+    relu(add(w_self.mul(h.row(v)), w_nbr.mul(&agg)))
+}
+```
 
 ## The fan-out explosion (why sampling exists)
 
@@ -68,3 +84,18 @@ database *view* — materialized per batch, biased by design.
 5. For M25's `algo.embed()`: transductive (node2vec) vs inductive (SAGE)
    as the stored artifact — which do you ship first, and what does the
    vector index (topic 14) need to know about staleness either way?
+
+## References
+
+**Papers**
+- Hamilton, Ying, Leskovec — "Inductive Representation Learning on
+  Large Graphs" (NeurIPS 2017,
+  [arXiv:1706.02216](https://arxiv.org/abs/1706.02216)) — Alg. 1 and
+  the sampling discussion; the aggregator zoo is skimmable
+
+**Code**
+- [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric)
+  `torch_geometric/nn/conv/sage_conv.py` (:108,139,146-152 — concat
+  as two linears, fused `spmm` with `reduce=mean`) and
+  `torch_geometric/loader/neighbor_loader.py` (:10 — sampling,
+  industrialized)

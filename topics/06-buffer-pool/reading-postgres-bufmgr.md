@@ -1,8 +1,11 @@
-# Reading postgres `bufmgr.c` + `freelist.c` — guided skim (2 h)
+# postgres bufmgr: a buffer's life in one atomic word
 
-Repo: [`~/repos/postgres`](https://github.com/postgres/postgres). Files: `src/backend/storage/buffer/bufmgr.c`,
-`freelist.c`, `src/include/storage/buf_internals.h`,
-`src/include/storage/lwlock.h`. You're here for four mechanisms.
+Postgres packs everything CLOCK needs to know about a buffer — refcount,
+usage count, flags — into a single atomic u64, so the hit path is one CAS and
+the sweep hand reads victims without locks. This chapter skims the four
+mechanisms that make the classic shared-buffers design work: the packed
+state, the hit path, the miss path with foreground dirty-victim flushes, and
+the background writer that exists to hide them.
 
 ## 1. The packed state — buf_internals.h:49–147
 
@@ -50,6 +53,27 @@ Read `PinBufferForBlock` (:1223) → `ReadBuffer_common` (:1276) →
 - `StrategyGetBuffer` — :184: loop at :246–290 — pinned (refcount ≠ 0) ⇒
   skip; usage_count > 0 ⇒ decrement, keep sweeping; both zero ⇒ victim.
   "no unpinned buffers available" error if everything's pinned (~:274).
+
+The sweep, distilled:
+
+```rust
+// One shared clock hand; a buffer survives ≤5 sweeps untouched.
+fn get_victim(&self) -> BufId {
+    loop {
+        let id = self.clock_tick();                 // fetch_add(1) % NBuffers
+        let s = self.desc[id].state.load();
+        if s.refcount() != 0 { continue; }          // pinned: invisible to CLOCK
+        if s.usage_count() > 0 {                    // recently used: spend a life
+            let _ = self.desc[id].state.cas(s, s.dec_usage());
+            continue;
+        }
+        if self.desc[id].state.cas(s, s.pinned()) { // both zero ⇒ victim; pin it
+            return id;                              // caller flushes it if dirty —
+        }                                           // in the FOREGROUND
+    }
+}
+```
+
 - **Buffer rings** — `GetAccessStrategy` :426: a seqscan gets a 256KB
   private ring (BAS_BULKREAD, :442–459) so one `SELECT count(*)` on a huge
   table can't flush the whole pool. Eviction policy as *admission* policy.
@@ -77,3 +101,12 @@ default 100 pages/round) + a moving average of recent allocation rate
 
 You can narrate a miss on a dirty victim end-to-end — every lock, atomic,
 and I/O in order — and say which step BgBufferSync moves off the hot path.
+
+## References
+
+**Code**
+- [postgres/postgres](https://github.com/postgres/postgres) —
+  `src/backend/storage/buffer/bufmgr.c`,
+  `src/backend/storage/buffer/freelist.c`,
+  `src/include/storage/buf_internals.h`,
+  `src/include/storage/lwlock.h`. Local clone at `~/repos/postgres`.

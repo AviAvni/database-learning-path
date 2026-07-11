@@ -68,12 +68,12 @@ uniform data measures a different algorithm.
 
 ## Reading guides
 
-- [reading-gap.md](reading-gap.md) — the GAP suite: 6 kernels, 5 graphs, and the reference-code anchors
-- [reading-delta-stepping.md](reading-delta-stepping.md) — Meyer & Sanders + gapbs's thread-local bins
-- [reading-brandes.md](reading-brandes.md) — Brandes '01 + LAGraph's batched matrix formulation
-- [reading-ligra.md](reading-ligra.md) — edgeMap and the direction-switch threshold, generalized
-- [reading-louvain-leiden.md](reading-louvain-leiden.md) — modularity, Louvain's broken communities, Leiden's fix
-- [reading-lagraph-algos.md](reading-lagraph-algos.md) — FastSV7, six triangle-count formulations, and FalkorDB's `proc_pagerank.c` already doing M24
+- [reading-gap.md](reading-gap.md) — The GAP benchmark suite: five graphs so the wrong winner can't win
+- [reading-delta-stepping.md](reading-delta-stepping.md) — Δ-stepping: the dial between Dijkstra and Bellman-Ford
+- [reading-brandes.md](reading-brandes.md) — Brandes betweenness: restructure the sum, not the data structure
+- [reading-ligra.md](reading-ligra.md) — Ligra: two functions, every frontier algorithm
+- [reading-louvain-leiden.md](reading-louvain-leiden.md) — Louvain to Leiden: communities that stay connected
+- [reading-lagraph-algos.md](reading-lagraph-algos.md) — Analytics with four verbs: LAGraph's algorithm shelf
 - topic 20: `reading-lagraph.md` (BFS push/pull) and `reading-beamer-sc12.md` — direction switching's origin
 
 ## Experiments

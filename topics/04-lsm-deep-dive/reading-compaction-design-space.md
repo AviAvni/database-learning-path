@@ -1,8 +1,10 @@
-# Reading guide — "Constructing and Analyzing the LSM Compaction Design Space" (VLDB '21)
+# Compaction is four axes, not two strategies
 
-Sarkar, Papon, Staratzis, Athanassoulis. ~1.5 h. The taxonomy paper: compaction
-is not "leveled vs tiered" — it's four independent design axes. Read this LAST
-of the four papers; it organizes the other three.
+"Leveled vs tiered" is a false binary: a compaction policy is an independent
+choice on four design axes — trigger, layout, granularity, movement — and
+every system you've read in this topic sits somewhere in that grid. This is
+the taxonomy chapter; read it LAST of the four papers, because it organizes
+the other three.
 
 ## The four axes (§3 — the contribution)
 
@@ -52,3 +54,11 @@ leveled is (saturation, leveling, one-file, merge+trivial-move).
 
 Your notes contain the 5-system × 4-axis table and one prediction you could
 test with the mini-LSM.
+
+## References
+
+**Papers**
+- Sarkar, Papon, Staratzis, Athanassoulis — "Constructing and Analyzing
+  the LSM Compaction Design Space" (VLDB 2021) — §3 taxonomy and §5
+  findings are the keepers; §4's one-engine methodology is the Fair
+  Benchmarking lesson applied

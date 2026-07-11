@@ -1,10 +1,11 @@
-# Reading guide — Shapiro et al., "Conflict-free Replicated Data Types" (SSS 2011) + INRIA comprehensive study (RR-7506)
+# CRDT foundations: convergence without coordination
 
-The founding papers. SSS'11 is the 14-page theory; the INRIA technical
-report ("A comprehensive study of Convergent and Commutative Replicated
-Data Types") is the 50-page catalog you'll actually keep coming back to.
-Read SSS'11 §1-3 first, then treat the report as a reference for each
-structure you implement in `experiments/src/`.
+Consensus agrees on an order, then applies; CRDTs design the data so
+order doesn't matter, then never coordinate. This chapter distills the
+two founding documents — Shapiro et al.'s 14-page SSS'11 theory and the
+50-page INRIA catalog (RR-7506) you'll keep coming back to. Read SSS'11
+§1-3 first, then treat the report as a reference for each structure you
+implement in `experiments/src/`.
 
 ## The one picture
 
@@ -42,6 +43,28 @@ structure you implement in `experiments/src/`.
 | Report §4 | graphs! 2P2P-Graph and the remark that concurrent addEdge/removeVertex has *no* universally right answer — the dangling-edge problem M31 inherits |
 | Report §5 | garbage collection needs "stability" (Wuu & Bernstein) — ties to exercise 4 |
 
+The catalog's flagship (Report §3.3.5, our `orset.rs`) in one screen —
+every property SEC needs falls out of set union:
+
+```rust
+struct OrSet<T> { adds: HashMap<T, HashSet<Dot>>, removed: HashSet<Dot> }
+
+fn add(&mut self, x: T, dot: Dot) { self.adds.entry(x).or_default().insert(dot); }
+
+fn remove(&mut self, x: &T) {                 // kill only dots we have OBSERVED —
+    self.removed.extend(&self.adds[x]);       // a concurrent add's fresh dot
+}                                             // survives: add-wins
+
+fn contains(&self, x: &T) -> bool {
+    self.adds.get(x).is_some_and(|ds| ds.iter().any(|d| !self.removed.contains(d)))
+}
+
+fn merge(&mut self, other: &Self) {           // join = union of everything:
+    for (x, ds) in &other.adds { self.adds.entry(x.clone()).or_default().extend(ds); }
+    self.removed.extend(&other.removed);      // assoc + comm + idem ⇒ SEC for free
+}
+```
+
 ## Questions
 
 1. State the three clauses of SEC. Which clause does a Raft-replicated
@@ -62,3 +85,17 @@ structure you implement in `experiments/src/`.
    addEdge(u,v) ∥ removeVertex(u) is application-specific." Write the
    FalkorDB answer: which of hide/cascade/resurrect did `graph.rs`
    choose, and what would a Cypher user observe in each case?
+
+## References
+
+**Papers**
+- Shapiro, Preguiça, Baquero, Zawirski — "Conflict-free Replicated Data
+  Types" (SSS 2011) — the 14-page theory; read §1-3 first
+- Shapiro, Preguiça, Baquero, Zawirski — "A comprehensive study of
+  Convergent and Commutative Replicated Data Types" (INRIA RR-7506,
+  2011) — the 50-page catalog; use as a reference per structure, not a
+  cover-to-cover read
+
+**Code**
+- Paper-only chapter — the catalog's structures map one-to-one onto this
+  topic's `experiments/src/` stubs

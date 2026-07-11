@@ -1,9 +1,12 @@
-# Reading guide — "ClickHouse: Lightning Fast Analytics for Everyone" (VLDB '24) (~1 h)
+# ClickHouse: the case for brute force
 
-The system paper, 15 years in. Read it AFTER the MergeTree code guide —
-you'll recognize the mechanisms; the paper's value is the design
-RATIONALE and the parts you didn't read code for. Pair it with a local
-`clickhouse local` session and ClickBench.
+The system paper, 15 years in — the design rationale behind the
+mechanisms you just read in
+[reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md),
+plus the parts you didn't read code for (mutations, replication,
+scaling). Read it AFTER the code guide, paired with a local
+`clickhouse local` session and ClickBench; its two-sentence thesis is
+this topic's strongest counterpoint to index-everything instincts.
 
 ## Read for these arguments
 
@@ -66,3 +69,18 @@ You can give the two-sentence ClickHouse thesis (immutable sorted
 parts + merge-time work + brute-force vectorized scans; indexes only
 sparse), and you have ClickBench-on-DuckDB numbers recorded in
 notes.md.
+
+## References
+
+**Papers**
+- Schulze, Schreiber, Yatsishin, Dahimene, Milovidov — "ClickHouse:
+  Lightning Fast Analytics for Everyone" (VLDB 2024) — read for the
+  arguments above, not the mechanisms; skim the eval against your own
+  ClickBench numbers
+
+**Code**
+- [ClickHouse](https://github.com/ClickHouse/ClickHouse) — the code
+  side is covered by
+  [reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md);
+  [ClickBench](https://github.com/ClickHouse/ClickBench) for the
+  queries to run alongside

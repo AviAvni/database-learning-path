@@ -1,8 +1,10 @@
-# Reading guide — SuiteSparse:GraphBLAS internals ([`~/repos/GraphBLAS/Source/`](https://github.com/DrTimothyAldenDavis/GraphBLAS))
+# Inside SuiteSparse: format switching and the saxpy3 scheduler
 
-The code walk behind the TOMS papers: where format switches are
-decided, and the saxpy3 scheduler — the most database-executor-like
-piece of code in the library.
+The code walk behind the TOMS papers
+([reading-davis-toms19.md](reading-davis-toms19.md)): where format
+switches are decided, and the saxpy3 scheduler — the most
+database-executor-like piece of code in the library. Everything
+below is anchored into `Source/` of the SuiteSparse:GraphBLAS repo.
 
 ## Anchor map
 
@@ -73,6 +75,21 @@ Dispatch between them (GB_AxB_meta.c) weighs nnz(M) vs predicted
 saxpy flops — a cost-based optimizer decision (topic 10) made per
 multiply.
 
+```rust
+// dot3: the mask M is the outer loop — work ∝ nnz(M), a complexity
+// CLASS below computing A'*B and filtering afterward
+fn dot3(m: &Pattern, a_t: &Csr, b: &Csc, semiring: &Semiring) -> Coo {
+    let mut c = Coo::new();
+    for (i, j) in m.entries() {                    // one dot per MASK entry
+        // sparse dot = two-pointer intersect of the two patterns
+        if let Some(v) = sparse_dot(a_t.row(i), b.col(j), semiring) {
+            c.push(i, j, v);                       // (ANY monoid ⇒ sparse_dot
+        }                                          //  may stop at first hit)
+    }
+    c
+}
+```
+
 ## 4. What transfers to M20
 
 - Our stub SpGEMM = one coarse Gustavson task (dense SPA). The
@@ -103,3 +120,18 @@ multiply.
 5. Run gb_bench: at what RMAT scale does our dense-SPA Gustavson
    lose to the HashMap version (SPA = m×8B cold bytes per row team
    — when m outgrows L2, topic 13's blocking argument bites)?
+
+## References
+
+**Papers**
+- Davis — "Algorithm 1000: SuiteSparse:GraphBLAS" (ACM TOMS 2019)
+  — the companion paper; see
+  [reading-davis-toms19.md](reading-davis-toms19.md)
+
+**Code**
+- [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
+  `Source/convert/GB_conform.c`, `GB_conform_hyper.c`,
+  `GB_convert_sparse_to_bitmap_test.c`; `Source/mxm/GB_AxB_meta.c`,
+  `GB_AxB_saxpy3.c`, `GB_AxB_saxpy3_flopcount.c`, `GB_AxB_dot3.c` —
+  read the saxpy3 header comment (:22-60) twice; it's the scheduler
+  spec

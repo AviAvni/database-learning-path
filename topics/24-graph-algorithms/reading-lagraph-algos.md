@@ -1,12 +1,12 @@
-# Reading guide — LAGraph's analytics algorithms ([`~/repos/LAGraph/src/algorithm`](https://github.com/GraphBLAS/LAGraph))
+# Analytics with four verbs: LAGraph's algorithm shelf
 
-Topic 20's guide covered BFS and the framework; this one reads the
-ANALYTICS algorithms — CC, TC, BC, SSSP, PR — as answers to "what
-does this look like when the only verbs are mxv/mxm/semiring/mask".
-Plus the punchline: FalkorDB already ships these
-([`~/repos/FalkorDB/src/procedures/proc_pagerank.c:197`](https://github.com/FalkorDB/FalkorDB) calls
-`LAGr_PageRank`; `proc_betweenness.c`, `proc_cdlp.c` likewise) — M24
-is re-plumbing a pattern that exists, not inventing one.
+Topic 20's guide covered BFS and the framework; this chapter reads
+LAGraph's ANALYTICS algorithms — CC, TC, BC, SSSP, PR — as answers to
+"what does this look like when the only verbs are
+mxv/mxm/semiring/mask". Plus the punchline: FalkorDB already ships
+these (`proc_pagerank.c:197` calls `LAGr_PageRank`;
+`proc_betweenness.c`, `proc_cdlp.c` likewise) — M24 is re-plumbing a
+pattern that exists, not inventing one.
 
 ## LG_CC_FastSV7.c — connected components, algebraically
 
@@ -23,6 +23,23 @@ different mechanism — FastSV samples COLUMNS per row inside matrix
 ops (still bulk-synchronous), Afforest samples per-vertex neighbor
 OFFSETS with a union-find (asynchronous, per-edge early exit).
 Frontier-vs-algebra in one algorithm.
+
+One FastSV round, de-algebra'd — three bulk ops where union-find
+does per-edge pointer chases:
+
+```rust
+fn fastsv_round(a: &SparseMat, parent: &mut [u32], gp: &mut [u32]) -> bool {
+    // hooking: every vertex reads all neighbors' grandparents AT ONCE
+    let mngp = a.mxv_min_2nd(gp);              // mngp[v] = min gp[u] over u∈N(v)
+    let mut changed = false;
+    for v in 0..parent.len() {                 // shortcutting, elementwise
+        let m = mngp[v].min(gp[v]);
+        if m < parent[v] { parent[v] = m; changed = true; }
+    }
+    for v in 0..gp.len() { gp[v] = parent[parent[v] as usize]; } // = extract
+    changed
+}
+```
 
 ## LAGr_TriangleCount.c — six formulations of one count
 
@@ -85,3 +102,15 @@ top-k instead of full vectors?).
    enumerate the three options (flush first / run on main / run on
    main+DP-DM masked) and their consistency semantics (topic 8's
    read-your-writes for procedures).
+
+## References
+
+**Code**
+- [LAGraph](https://github.com/GraphBLAS/LAGraph) `src/algorithm/` —
+  `LG_CC_FastSV7.c`, `LAGr_TriangleCount.c`, `LAGr_PageRankGAP.c`,
+  `LAGr_SingleSourceShortestPath.c`, `LAGr_Betweenness.c`,
+  `LG_CC_Boruvka.c` — each file's header comment states the
+  formulation before the code
+- [FalkorDB](https://github.com/FalkorDB/FalkorDB)
+  `src/procedures/proc_pagerank.c` (:197 calls `LAGr_PageRank`),
+  `proc_betweenness.c`, `proc_cdlp.c` — M24's shape, already shipping

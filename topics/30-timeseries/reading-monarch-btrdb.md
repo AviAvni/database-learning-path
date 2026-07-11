@@ -1,9 +1,11 @@
-# Reading guide — Monarch (VLDB '20) + BtrDB (FAST '16): the two extremes
+# Monarch & BtrDB: the extremes that bracket the middle
 
-Papers: *Monarch: Google's Planet-Scale In-Memory Time Series Database*
-(VLDB 2020); *BtrDB: Optimizing Storage System Design for Timeseries
-Processing* (FAST 2016). No repo clones — read for the design points that
-bracket the Gorilla/Prometheus middle.
+Two design points far outside the Gorilla/Prometheus mainstream, read
+for what they prove is possible: Monarch shows what monitoring looks
+like when it must not depend on anything it monitors (planet-scale,
+memory-first, push-based), and BtrDB shows what happens when the *index
+is the downsampler* (query cost proportional to pixels, not samples).
+Paper-only chapter — there are no repo clones here.
 
 ## Monarch: what breaks at planetary scale
 
@@ -50,7 +52,21 @@ timestamps, queries like "plot 3 years at screen resolution" that touch
 - A time range at resolution r needs only the tree level whose node span
   ≈ r: **query cost ∝ pixels, not samples**. Downsampling isn't a batch
   job (prometheus recording rules, VM downsampling) — it's the *index
-  structure itself*, always current.
+  structure itself*, always current:
+
+  ```rust
+  // Descend only until a node's span fits under the requested resolution.
+  fn query(node: &Node, range: TimeRange, res_ns: u64, out: &mut Vec<Stats>) {
+      for child in node.children_overlapping(range) {
+          if child.span_ns() <= res_ns {
+              out.push(child.stats);            // precomputed min/mean/max/count —
+          } else {                              // never touch the raw samples
+              query(child, range, res_ns, out); // one of 64 ways, O(log₆₄ depth)
+          }
+      }
+  }
+  ```
+
 - Copy-on-write versioning: every insert creates a new root (topic 3's
   CoW B-tree); out-of-order and corrections are just versions, and
   changed-ranges between versions are computable — IVM-friendly (topic 27).
@@ -81,3 +97,17 @@ timestamps, queries like "plot 3 years at screen resolution" that touch
    this subgraph evolve" wants BtrDB-style multi-resolution over edge
    churn (edges-added-per-hour rollups). Sketch where an aggregate tree
    over the M27 changelog would live in FalkorDB.
+
+## References
+
+**Papers**
+- Adams et al. — "Monarch: Google's Planet-Scale In-Memory Time Series
+  Database" (VLDB 2020) — §1-3 for the memory-first/push/schema choices;
+  the query pushdown section pairs with topic 13
+- Andersen & Culler — "BTrDB: Optimizing Storage System Design for
+  Timeseries Processing" (FAST 2016) — short and dense; the aggregate
+  tree and CoW versioning are the whole paper
+
+**Code**
+- No repo clones — read both papers for the design points that bracket
+  the Gorilla/Prometheus middle

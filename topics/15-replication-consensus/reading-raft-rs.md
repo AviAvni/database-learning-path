@@ -1,9 +1,10 @@
-# Reading guide — tikv `raft-rs`
+# raft-rs: consensus with the I/O left out
 
-Clone: [`~/repos/raft-rs`](https://github.com/tikv/raft-rs) (`src/`). The production Raft that tikv and
-qdrant embed. The design worth stealing: the library owns ONLY the
-state machine — no threads, no I/O, no storage. You drive it with
-`tick()`/`step(msg)` and it hands you a `Ready` bundle of work to do.
+The production Raft that tikv and qdrant embed, and the design worth
+stealing: the library owns ONLY the state machine — no threads, no
+I/O, no storage. You drive it with `tick()`/`step(msg)` and it hands
+you a `Ready` bundle of work to do. That inversion is what makes
+consensus testable — and what our sim-based raft.rs stub imitates.
 
 ## The shape
 
@@ -70,6 +71,24 @@ as three lines of code. Question: probe/replicate/snapshot states in
 Progress — what problem does each state solve for a lagging
 follower?
 
+```rust
+// §5.4.2, executable: the majority-replicated index counts only if
+// the entry there is from MY term — older entries then ride along
+fn maybe_commit(&mut self) -> bool {
+    let mut matched: Vec<u64> =
+        self.progress.values().map(|p| p.matched).collect();
+    matched.sort_unstable_by(|a, b| b.cmp(a));       // descending
+    let quorum_idx = matched[self.quorum() - 1];     // majority-th highest
+    if quorum_idx > self.commit_index
+        && self.log.term_at(quorum_idx) == Some(self.term)
+    {
+        self.commit_index = quorum_idx;
+        return true;                                 // Fig 8 cannot happen
+    }
+    false
+}
+```
+
 ## 3. The Ready contract (`raw_node.rs:487-678`)
 
 The ordering rules are load-bearing:
@@ -111,3 +130,16 @@ Same invariants pinned by tests; ~10× less plumbing.
    pipelining, and what must you still NOT reorder?
 5. Map Ready → M15 stage 2: which parts of your WAL commit path
    play the roles of persist/send/apply/advance?
+
+## References
+
+**Papers**
+- The Raft paper itself is
+  [reading-raft-paper.md](reading-raft-paper.md) — Fig 2 is the spec
+  this code implements
+
+**Code**
+- [raft-rs](https://github.com/tikv/raft-rs) — `src/raw_node.rs` (the
+  Ready contract), `src/raft.rs` (the state machine; the anchor map
+  above), `src/tracker/progress.rs`; qdrant's embedding of it is
+  [reading-qdrant-consensus.md](reading-qdrant-consensus.md)

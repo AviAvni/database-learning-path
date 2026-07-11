@@ -1,10 +1,12 @@
-# Reading guide — "egg: Fast and Extensible Equality Saturation" (POPL 2021) + source
+# egg: equality saturation with deferred rebuilding
 
-Willard et al. Clone: [`~/repos/egg`](https://github.com/egraphs-good/egg) (read it fully — `src/` is
-~10K lines and half of that is `explain.rs`/tests). The paper's two
-contributions: **deferred rebuilding** (batch congruence repair) and
-**e-class analyses** (attach lattice facts like constant values to
-classes).
+egg is the e-graph library behind a wave of optimizer research —
+and behind our `eqsat.rs` stub. Its POPL 2021 paper makes two
+contributions worth reading the source for: **deferred rebuilding**
+(batch congruence repair instead of fixing invariants after every
+union) and **e-class analyses** (attach lattice facts like constant
+values to classes). The `src/` tree is ~10K lines and half of that
+is `explain.rs`/tests — you can read the core tonight.
 
 ## The data structure, bottom-up
 
@@ -30,6 +32,24 @@ batch of rule applications, then `rebuild()` repairs once:
   per-union repair:   union → fix parents → fix grandparents → …
   egg:                union, union, union, …  → rebuild (dedup work:
                       a class touched 10× is repaired once)
+```
+
+```rust
+fn union(&mut self, a: Id, b: Id) {
+    let root = self.unionfind.union(a, b);          // O(α) — and STOP:
+    self.pending.extend(self.classes[&root].parents()); // repair deferred
+}
+
+fn rebuild(&mut self) {
+    while let Some((node, class)) = self.pending.pop() {
+        let node = node.canonicalize(&self.unionfind); // re-canon children
+        if let Some(old) = self.memo.insert(node, class) {
+            // hashcons collision = two nodes became equal children-wise:
+            // a DISCOVERED congruence — union them, which refills pending
+            self.union(old, class);                    // hence: loop to fixpoint
+        }
+    }
+}
 ```
 
 Paper reports up to 88× from this alone. It is exactly the
@@ -71,3 +91,17 @@ discovered independently.
    measure in the stub)?
 5. Cascades memo vs e-graph: what does Cascades have that egg lacks
    (physical properties, promises), and vice versa (congruence)?
+
+## References
+
+**Papers**
+- Willsey, Nandi, Wang, Flatt, Tatlock, Panchekha — "egg: Fast and
+  Extensible Equality Saturation" (POPL 2021,
+  [arXiv:2004.03082](https://arxiv.org/abs/2004.03082)) — §2 is the
+  best e-graph intro in print; §3 deferred rebuilding, §4 analyses
+
+**Code**
+- [egg](https://github.com/egraphs-good/egg) `src/unionfind.rs`,
+  `src/egraph.rs` (add :970, union :1147, process_unions :1346,
+  rebuild :1416), `src/machine.rs`, `src/run.rs`, `src/extract.rs`
+  — read fully; skip `explain.rs` on the first pass

@@ -1,7 +1,10 @@
-# Reading redis `aof.c` / `rdb.c` — durability, FalkorDB edition (1.5 h)
+# Redis AOF & RDB: the command stream is the log
 
-Repo: [`~/repos/redis`](https://github.com/redis/redis). This is the durability FalkorDB actually has today —
-read it as the incumbent your M5 design competes with.
+Redis logs the *commands themselves* (AOF) and checkpoints by *forking* (RDB)
+— and since a graph module's data lives inside redis's keyspace, this is the
+durability FalkorDB actually has today. Read it as the incumbent your M5
+design competes with: what everysec's ack-before-durability really promises,
+and why AOF rewrite is an LSM compaction in disguise.
 
 ## 1. AOF = the command stream is the log
 
@@ -17,6 +20,25 @@ read it as the incumbent your M5 design competes with.
 - Group commit comparison: everysec is group commit with a *time* batch and
   the ack BEFORE the flush — postgres groups the flush but never acks early.
   Different contract, not just different tuning.
+
+The three contracts, side by side:
+
+```rust
+// flushAppendOnlyFile: the client was ACKED before any of this runs.
+fn flush_aof(&mut self, policy: Fsync) {
+    self.file.write_all(&self.aof_buf);          // into page cache only
+    self.aof_buf.clear();
+    match policy {
+        Fsync::Always => self.file.fdatasync(),  // durable before next ack: slow
+        Fsync::EverySec => {
+            if self.last_fsync.elapsed() >= Duration::from_secs(1) {
+                self.bio.submit(FsyncJob);       // background thread — main
+            }                                    // thread never touches the disk;
+        }                                        // window: up to ~2 s of ACKED writes
+        Fsync::No => {}                          // kernel decides; window unbounded
+    }
+}
+```
 
 ## 2. AOF rewrite — compacting a command log
 
@@ -62,3 +84,10 @@ GRAPH.QUERY commands. Questions that matter for M5:
 
 You can state each appendfsync policy's durability window from memory and
 explain AOF rewrite as compaction.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) — `src/aof.c` (feed, flush
+  policies, rewrite, multi-part manifest) and `src/rdb.c` (fork + COW
+  snapshot, CRC64 trailer). Local clone at `~/repos/redis`.

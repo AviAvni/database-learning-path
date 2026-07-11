@@ -1,10 +1,11 @@
-# Reading guide — "Efficiently Compiling Efficient Query Plans for Modern Hardware" (Neumann, VLDB '11)
+# Produce/consume: compile the pipeline, not the operators
 
-THE query-compilation paper. One claim: the iterator model's
-`next()`-per-tuple is dead weight on modern CPUs (virtual calls,
-cache-hostile hopping between operators), and the fix is to compile
-each *pipeline* into one loop where the tuple never leaves
-registers.
+THE query-compilation paper (Neumann, VLDB '11). One claim: the
+iterator model's `next()`-per-tuple is dead weight on modern CPUs
+(virtual calls, cache-hostile hopping between operators), and the
+fix is to compile each *pipeline* into one loop where the tuple
+never leaves registers. Everything else in this topic is a reaction
+to what this paper made possible — and to what it cost.
 
 ## 1. Why iterators lose (the paper's §2, topic 11 recap)
 
@@ -49,7 +50,28 @@ Cypher plan.
 
 The generator recurses; the *generated code* is a flat nested loop.
 Control flow is inverted vs Volcano: the scan is on the OUTSIDE
-(push), consumers are inlined inside. Mermaid of the inversion:
+(push), consumers are inlined inside.
+
+```rust
+// the codegen walk: each operator knows how to PRODUCE rows and how to
+// CONSUME one row from its child — the emitted code is one flat loop
+fn produce(op: &Op, g: &mut Codegen) {
+    match op {
+        Scan(t)         => { g.emit("for row in {t} {"); consume(parent(op), g); g.emit("}"); }
+        Filter(_, c)    => produce(c, g),          // filters produce via their child
+        HashJoin(b, p)  => { produce(b, g); produce(p, g); }   // two pipelines
+    }
+}
+fn consume(op: &Op, g: &mut Codegen) {
+    match op {
+        Filter(pred, _) => { g.emit("if {pred} {"); consume(parent(op), g); g.emit("}"); }
+        HashJoinBuild(_) => g.emit("ht.insert(row);"),  // breaker: the loop ends here
+        Output           => g.emit("emit(row);"),
+    }
+}
+```
+
+Mermaid of the inversion:
 
 ```mermaid
 flowchart LR
@@ -99,3 +121,14 @@ called from IR.
    does one-tuple-at-a-time compiled code serialize cache misses,
    and what did HyPer add to fix it (group prefetching / SIMD probe
    batching)?
+
+## References
+
+**Papers**
+- Neumann — "Efficiently Compiling Efficient Query Plans for Modern
+  Hardware" (VLDB 2011) — read whole; §2 the argument, §3
+  produce/consume, §4 the LLVM "cocktail"
+- Kersten et al. — "Everything You Always Wanted to Know About
+  Compiled and Vectorized Queries But Were Afraid to Ask"
+  (VLDB 2018) — the honest compiled-vs-vectorized comparison Q5
+  leans on (also cited in README §7)

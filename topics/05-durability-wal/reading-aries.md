@@ -1,9 +1,10 @@
-# Reading guide — ARIES (Mohan et al., TODS 1992)
+# ARIES: recovery when you escape nothing
 
-*ARIES: A Transaction Recovery Method Supporting Fine-Granularity Locking and
-Partial Rollbacks Using Write-Ahead Logging.* The most-cited recovery paper;
-70 pages. Strategy: read a summary first (Franklin's "Crash Recovery" chapter
-or CMU 15-445 recovery notes), then dip into the paper for §3, §6. Budget 3 h.
+Postgres escapes undo via MVCC, SQLite-WAL escapes redo via page images, LMDB
+escapes logging via COW — ARIES is the recovery method for engines that escape
+*nothing*: update-in-place, steal, no-force. It is the most-cited recovery
+paper and the vocabulary every other design in this topic is defined against;
+reading it tells you exactly what each escape hatch is worth.
 
 ## Why read it when postgres/turso don't do full ARIES
 
@@ -40,6 +41,26 @@ including doomed transactions, to restore the exact crash-moment state — THEN
 undo runs as ordinary, loggable transaction rollback. This is what makes
 recovery-during-recovery safe (crash during undo ⇒ CLRs ensure no double-undo).
 
+The three passes, as one function:
+
+```rust
+fn recover(log: &Log, ckpt: &Checkpoint) {
+    let (dpt, att) = analysis(log, ckpt);          // 1. who was dirty, who was active
+    for rec in log.from(dpt.min_rec_lsn()) {       // 2. REDO: repeat history —
+        if page_lsn(rec.page_id) < rec.lsn {       //    even losers' updates.
+            apply_redo(rec);                       //    pageLSN ≥ recLSN ⇒ skip:
+        }                                          //    idempotence by LSN compare
+    }
+    for txn in att.losers() {                      // 3. UNDO: ordinary rollback,
+        for rec in txn.updates_newest_first() {    //    but each undo is LOGGED
+            let clr = log.append_clr(rec);         //    as a redo-only CLR
+            clr.undo_next = rec.prev_lsn;          //    crash mid-undo? restart
+            apply_undo(rec);                       //    resumes at undo_next —
+        }                                          //    no double-undo, ever
+    }
+}
+```
+
 ## Read in this order
 
 1. A summary (above) until the three passes + CLRs feel obvious.
@@ -72,3 +93,12 @@ recovery-during-recovery safe (crash during undo ⇒ CLRs ensure no double-undo)
 
 You can fill the 2×2 steal/force matrix with (undo?, redo?) from memory and
 explain repeating history in two sentences.
+
+## References
+
+**Papers**
+- Mohan, Haderle, Lindsay, Pirahesh, Schwarz — "ARIES: A Transaction
+  Recovery Method Supporting Fine-Granularity Locking and Partial
+  Rollbacks Using Write-Ahead Logging" (ACM TODS 1992) — 70 pages; read a
+  summary first (Franklin's "Crash Recovery" chapter or CMU 15-445
+  recovery notes), then dip into §3 and §6, skim §10

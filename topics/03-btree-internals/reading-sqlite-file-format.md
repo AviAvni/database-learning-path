@@ -1,8 +1,10 @@
-# Reading guide — SQLite Database File Format (official doc)
+# The SQLite file format: decode a row by hand
 
-Doc: https://www.sqlite.org/fileformat2.html — the normative spec for what
-btree.c writes. ~1.5 h. Read it side-by-side with a real database file and a
-hex dump; that's the exercise.
+The normative spec for what btree.c writes — and the one document in this
+topic you read with a hex dump open beside it. After two codebases' worth of
+slotted pages, this chapter verifies your mental model against the official
+text and ends with the exercise that makes the format yours: labeling every
+byte of one cell in a real database file. ~1.5 h.
 
 ## Read in this order
 
@@ -15,6 +17,24 @@ hex dump; that's the exercise.
    — zero bytes of payload!) and the odd/even text/blob length encoding
    `(n−13)/2` / `(n−12)/2`.
 4. **§1.5 Pointer maps**, **§4.1 WAL vs rollback journal** — skim; WAL is topic 5.
+
+Every cell starts with varints, so carry the decoder in your head into the
+exercise:
+
+```rust
+// SQLite varint: 7 bits/byte, BIG-endian (unlike protobuf), max 9 bytes
+fn read_varint(buf: &[u8]) -> (u64, usize) {
+    let mut v = 0u64;
+    for i in 0..8 {
+        v = (v << 7) | (buf[i] & 0x7f) as u64;
+        if buf[i] < 0x80 {
+            return (v, i + 1);        // high bit clear = last byte
+        }
+    }
+    ((v << 8) | buf[8] as u64, 9)     // 9th byte contributes all 8 bits
+}
+// rowid 500 = 0x83 0x74 → (0b0000011 << 7) | 0b1110100 — find it in the dump
+```
 
 ## The exercise (30 min, do it)
 
@@ -47,3 +67,11 @@ If you can decode a row from a hex dump, the format is yours.
 ## Done when
 
 Your notes contain the annotated hex dump with every byte of one cell labeled.
+
+## References
+
+**Papers**
+- SQLite team — "The SQLite Database File Format" (official
+  documentation) — https://www.sqlite.org/fileformat2.html — the
+  normative spec for what btree.c writes; read side-by-side with a real
+  database file and a hex dump

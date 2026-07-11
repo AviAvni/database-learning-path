@@ -1,9 +1,10 @@
-# Reading guide — "Inverted Files for Text Search Engines" (Zobel & Moffat, CSUR 2006)
+# Inverted indexes: the whole design space in one survey
 
-The survey. 50 pages that compress 30 years of IR engineering into
-one coherent design space. Read it as "the B-tree paper" of text
-indexing: everything since (Lucene, tantivy, RediSearch) is an
-implementation of choices this paper enumerates.
+Zobel & Moffat's CSUR 2006 survey compresses 30 years of IR
+engineering into 50 coherent pages. Read it as "the B-tree paper"
+of text indexing: everything since (Lucene, tantivy, RediSearch) is
+an implementation of choices this paper enumerates — which makes it
+the right first chapter of this topic.
 
 ## The design space in one diagram
 
@@ -50,6 +51,25 @@ implementation of choices this paper enumerates.
   id — perfect early termination, terrible AND. Block-max WAND is
   doc-sorted lists with impact metadata bolted on blocks.
 
+TAAT in code — our `oracle_topk`, and the baseline every later
+chapter is trying to beat:
+
+```rust
+// term-at-a-time: walk each term's WHOLE list, accumulate per doc
+fn taat_topk(terms: &[PostingList], k: usize) -> Vec<(DocId, f32)> {
+    let mut acc: HashMap<DocId, f32> = HashMap::new();  // §6's accumulators
+    for t in terms {
+        for p in t.postings() {              // every posting, every term —
+            *acc.entry(p.doc).or_default()   //   no skipping possible
+                += bm25(t.idf, p.tf, p.doc_len);
+        }
+    }
+    top_k(acc, k)
+    // §6's insight: CAP the accumulator map (~1% of docs) and lose
+    // almost nothing — the 2006 answer to what WAND later solved exactly
+}
+```
+
 ## Questions (answer in notes.md)
 
 1. Delta+compress works because Zipf makes common-term gaps small.
@@ -68,3 +88,10 @@ implementation of choices this paper enumerates.
 5. The survey predates learned/neural retrieval entirely. Which of
    its cost models still bind a BM25+vector hybrid (M23), and which
    are obsoleted by the ANN side?
+
+## References
+
+**Papers**
+- Zobel, Moffat — "Inverted Files for Text Search Engines" (ACM
+  Computing Surveys 2006) — read §2-8 with the section map above;
+  §5 and §7 are where Lucene's architecture comes from

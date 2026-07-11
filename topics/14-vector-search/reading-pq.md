@@ -1,8 +1,11 @@
-# Reading guide — Product Quantization (Jégou, Douze, Schmid, PAMI '11)
+# Product quantization: 2^128 centroids in 16 bytes
 
-"Product Quantization for Nearest Neighbor Search." The paper that
-made billion-scale ANN affordable, and the "PQ" in IVF-PQ, DiskANN,
-and qdrant's `encoded_vectors_pq.rs`.
+The paper that made billion-scale ANN affordable — and the "PQ" in
+IVF-PQ, DiskANN, and qdrant's `encoded_vectors_pq.rs`. One move does
+all the work: quantize a PRODUCT of subspaces, so codebook size grows
+exponentially while storage stays linear. Topic 12's dictionary
+encoding, but the dictionary is learned and the code is a
+concatenation.
 
 ## 1. The core move: quantize a PRODUCT of subspaces
 
@@ -32,6 +35,21 @@ is LEARNED (k-means per subspace) and the code is a concatenation.
   distance ≈ m table lookups + adds. One approximation — strictly
   better recall for the same codes. Everyone ships ADC (qdrant's
   `EncodedQueryPQ`, encoded_vectors_pq.rs:39-41).
+
+```rust
+// ADC: pay m·256 exact sub-distances ONCE per query…
+fn adc_table(q: &[f32], cb: &Codebook) -> Vec<[f32; 256]> {
+    (0..cb.m).map(|j| {
+        let qj = &q[j * cb.sub_d..(j + 1) * cb.sub_d];
+        std::array::from_fn(|i| l2_sq(qj, cb.centroid(j, i)))
+    }).collect()          // [m × 256] f32 — small enough to live in L1
+}
+
+// …then EVERY candidate costs m byte-indexed lookups, zero float math
+fn adc_dist(code: &[u8], table: &[[f32; 256]]) -> f32 {
+    code.iter().zip(table).map(|(&c, t)| t[c as usize]).sum()
+}
+```
 
 The paper also derives the distance ESTIMATOR bias (ADC
 underestimates on average) and a correction — worth knowing it
@@ -77,3 +95,18 @@ form: subtract the predictable part, encode the residual cheaply.
    in FOR terms.
 5. SDC would let you precompute ALL tables once (no per-query work).
    Why does nobody care?
+
+## References
+
+**Papers**
+- Jégou, Douze, Schmid — "Product Quantization for Nearest Neighbor
+  Search" (IEEE TPAMI 2011) — §2 the quantizer, §3 SDC/ADC and the
+  estimator, §4 IVFADC; the paper everyone builds on
+- Ge, He, Ke, Sun — "Optimized Product Quantization" (CVPR 2013) —
+  optional; the rotation refinement worth knowing exists
+
+**Code**
+- [qdrant](https://github.com/qdrant/qdrant)
+  `lib/quantization/src/encoded_vectors_pq.rs` — the production ADC,
+  walked in
+  [reading-qdrant-quantization.md](reading-qdrant-quantization.md)

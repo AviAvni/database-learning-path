@@ -1,7 +1,10 @@
-# Reading pgwire (Rust) + qdrant's tonic setup (1.5 h)
+# pgwire & tonic: sessions, portals, and protocols you don't write
 
 Two contrasts with RESP: a protocol with *stateful sessions and streaming*
-(postgres wire), and a protocol you don't write at all (gRPC).
+(postgres wire, via the pgwire Rust crate), and a protocol you don't write at
+all (gRPC, via qdrant's tonic setup). Together they bracket RESP's design
+point — no handshake, no cursors, buffer-or-die — and fill in the
+design-space table M7 has to take a position on.
 
 ## 1. pgwire — [~/repos/pgwire](https://github.com/sunng87/pgwire)
 
@@ -27,6 +30,25 @@ The crate structure IS the protocol lesson:
 Read it asking: *where does session state live?* — pgwire forces a
 `ClientInfo` through every call; your RESP server keeps per-connection state
 implicitly in the task. Both are answers to "protocol = state machine".
+
+The extended-query state machine, distilled:
+
+```rust
+// The protocol IS a session state machine; portals are protocol-level
+// backpressure — a suspended query the client pulls N rows at a time.
+match msg {
+    Parse { name, sql }          => { self.stmts.insert(name, prepare(sql)?); }
+    Bind { portal, stmt, args }  => { self.portals.insert(portal, cursor(stmt, args)?); }
+    Execute { portal, max_rows } => {
+        let cur = self.portals.get_mut(&portal)?;
+        for row in cur.take(max_rows) { send(DataRow(row))?; }
+        if cur.done() { send(CommandComplete)?; }
+        else          { send(PortalSuspended)?; }   // client decides when to pull more
+    }
+    Sync => { self.close_txn_if_failed(); send(ReadyForQuery)?; }
+    _ => { /* Describe, Close, Flush … */ }
+}
+```
 
 ## 2. qdrant — [~/repos/qdrant](https://github.com/qdrant/qdrant)/src/tonic/
 
@@ -68,3 +90,13 @@ implicitly in the task. Both are answers to "protocol = state machine".
 
 You can fill the table's last row with committed answers for M7 and defend
 "RESP + explicit cursor commands" against "just use gRPC" for a graph DB.
+
+## References
+
+**Code**
+- [sunng87/pgwire](https://github.com/sunng87/pgwire) — `src/messages/`,
+  `src/api/query.rs`, `src/api/auth.rs`; the crate structure IS the
+  protocol lesson. Local clone at `~/repos/pgwire`.
+- [qdrant/qdrant](https://github.com/qdrant/qdrant) — `src/tonic/mod.rs`
+  (two servers, tower middleware) plus the generated services in the
+  `api/` crate. Local clone at `~/repos/qdrant`.

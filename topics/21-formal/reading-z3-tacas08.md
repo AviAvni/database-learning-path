@@ -1,7 +1,11 @@
-# Reading guide — "Z3: An Efficient SMT Solver" (TACAS 2008) + `src/ast/euf/`
+# Z3: SAT plus theories, with an e-graph at the core
 
-de Moura & Bjørner. The 4-page tool paper; the architecture is the
-point. Clone already at [`~/repos/z3`](https://github.com/Z3Prover/z3) (from topic 16).
+SMT is what turns "is this rewrite rule sound?" into a solver
+query. This chapter reads de Moura & Bjørner's 4-page TACAS 2008
+tool paper — the architecture is the point — alongside Z3's modern
+e-graph in `src/ast/euf/`, which turns out to be egg's data
+structure ([reading-egg-popl21.md](reading-egg-popl21.md)) built
+for search instead of rewriting.
 
 ## SMT in one diagram
 
@@ -23,6 +27,26 @@ DPLL(T): SAT core proposes a boolean assignment; theory solvers
 check its conjunction of atoms; on conflict they hand back a lemma
 that prunes the SAT search. Theories *cooperate* by exchanging
 equalities over shared terms (Nelson-Oppen).
+
+```rust
+// DPLL(T): the SAT core proposes, the theory solvers dispose
+fn smt_solve(mut clauses: Vec<Clause>, theories: &Theories) -> Result {
+    loop {
+        match sat_cdcl(&clauses) {
+            Unsat => return Unsat,               // even the skeleton is out
+            Sat(assignment) => {
+                // the boolean skeleton says: these theory atoms hold
+                match theories.check(assignment.atoms()) {
+                    Consistent(model) => return Sat(model),
+                    Conflict(lemma) => clauses.push(lemma),
+                    // the lemma ("¬(x≤3) ∨ ¬(x≥7)") prunes the SAT
+                    // search — theory knowledge flows back as clauses
+                }
+            }
+        }
+    }
+}
+```
 
 ## The e-graph, again — `src/ast/euf/`
 
@@ -72,3 +96,15 @@ incomplete-but-useful: instantiation is heuristic.
    (topic 11).
 5. E-matching triggers: why is trigger selection the "index choice"
    problem of SMT (too general = blowup, too specific = incomplete)?
+
+## References
+
+**Papers**
+- de Moura, Bjørner — "Z3: An Efficient SMT Solver" (TACAS 2008) —
+  4 pages; read all of it for the architecture diagram
+
+**Code**
+- [z3](https://github.com/Z3Prover/z3) `src/ast/euf/` —
+  `euf_egraph.h` (:23 cites egg's deferred repair, :91-96 the
+  `to_merge` worklist), `euf_enode.h`, `euf_etable.h`,
+  `euf_justification.h`, `euf_mam.h` (e-matching abstract machine)

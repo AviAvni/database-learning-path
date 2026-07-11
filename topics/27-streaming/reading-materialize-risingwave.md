@@ -1,12 +1,11 @@
-# Reading guide — Materialize & RisingWave: two production IVM architectures
+# Materialize vs RisingWave: two production IVM bets
 
-**Sources:**
-- [`~/repos/materialize/src/`](https://github.com/MaterializeInc/materialize) — compute (differential), persist (durable log), adapter
-- [`~/repos/risingwave/src/`](https://github.com/risingwavelabs/risingwave) — stream executors, Hummock state store
-- Materialize architecture docs (`doc/developer/` in-repo) — skim
-  "formalism" and "platform" docs
-
-Both sell "materialized views that stay fresh," built on opposite bets.
+Both systems sell "materialized views that stay fresh," built on
+opposite bets: Materialize productionizes differential dataflow (one
+delta algebra, arrangements in RAM), RisingWave hand-writes incremental
+executors with explicit state in an LSM on S3. Reading them side by
+side shows which parts of IVM are theory and which are operations —
+and which parts a single-writer graph engine gets for free.
 
 ## 1. Materialize: differential dataflow, productionized
 
@@ -76,3 +75,16 @@ For M27 inside FalkorDB, state lives in the same process as the graph.
 Name one thing that gets easier (no rehydration protocol) and one that
 gets harder (memory pressure from arrangements competes with the graph
 itself — who evicts?).
+
+## References
+
+**Code**
+- [materialize](https://github.com/MaterializeInc/materialize) `src/` —
+  compute (differential): `src/compute/src/render/join/delta_join.rs`,
+  `render/reduce.rs`, `src/compute/src/arrangement/`; persist (durable
+  log): `src/persist-client/`; plus the in-repo architecture docs
+  (`doc/developer/` — skim "formalism" and "platform")
+- [risingwave](https://github.com/risingwavelabs/risingwave) `src/` —
+  stream executors: `src/stream/src/executor/` (hash_join.rs,
+  barrier_align.rs, aggregate/, top_k/); the Op enum:
+  `common/src/array/stream_chunk.rs:45`; Hummock state store

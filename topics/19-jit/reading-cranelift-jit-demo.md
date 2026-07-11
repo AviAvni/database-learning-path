@@ -1,9 +1,11 @@
-# Reading guide — cranelift-jit-demo ([`~/repos/cranelift-jit-demo/src/jit.rs`](https://github.com/bytecodealliance/cranelift-jit-demo))
+# Cranelift in 461 lines: AST to function pointer
 
-The implementation manual for our stub. 461 lines that contain the
-entire cranelift JIT recipe: a toy language compiled to callable
-machine code. Read jit.rs top to bottom before touching
-experiments/src/jit.rs.
+The implementation manual for our stub: a toy language compiled to
+callable machine code, and the entire cranelift JIT recipe fits in
+one file. This chapter walks jit.rs top to bottom — read it before
+touching experiments/src/jit.rs, because every ceremony the stub
+needs (module lifetimes, SSA plumbing, the transmute contract)
+appears here first.
 
 ## Anchor map
 
@@ -45,6 +47,28 @@ long-lived containers, cheap per-function contexts, and an explicit
  5. module.finalize_definitions()          ← relocations patched
  6. module.get_finalized_function(id)      → *const u8   (:90)
  7. unsafe { mem::transmute::<_, fn(f64...)->f64>(ptr) }
+```
+
+The same ladder as our stub will run it:
+
+```rust
+// CLIF in, callable pointer out — the whole recipe
+fn compile(&mut self, expr: &Expr) -> fn(*const f64) -> f64 {
+    let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.b_ctx);
+    let block = b.create_block();
+    b.append_block_params_for_function_params(block);
+    b.switch_to_block(block);
+    b.seal_block(block);                          // one block: seal immediately
+    let row_ptr = b.block_params(block)[0];
+    let v = translate(&mut b, expr, row_ptr);     // the §3 table, recursively
+    b.ins().return_(&[v]);
+    b.finalize();
+    let id = self.module.declare_function("f", Linkage::Export, &sig)?;
+    self.module.define_function(id, &mut self.ctx)?;  // ← compilation happens
+    self.module.clear_context(&mut self.ctx);
+    self.module.finalize_definitions()?;              // ← relocations patched
+    unsafe { mem::transmute(self.module.get_finalized_function(id)) }
+}   // sound only while the JITModule lives — CompiledExpr must own it
 ```
 
 The pointer is valid as long as the JITModule lives — our
@@ -127,3 +151,10 @@ OUR loop (over rows) stays in Rust and gets rustc -O.
    Which subset of Cypher expressions compiles to this f64 scheme
    directly, and what's the fallback boundary (per-node fallback
    vs whole-expression bailout — pick one and defend it)?
+
+## References
+
+**Code**
+- [cranelift-jit-demo](https://github.com/bytecodealliance/cranelift-jit-demo)
+  — `src/jit.rs` — read it top to bottom; `src/frontend.rs` (the toy
+  parser) can be skipped, we already have `Expr`

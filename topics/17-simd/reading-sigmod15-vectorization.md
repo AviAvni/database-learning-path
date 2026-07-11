@@ -1,11 +1,12 @@
-# Reading guide — "Rethinking SIMD Vectorization for In-Memory Databases" (Polychroniou, Raghavan, Ross — SIGMOD '15)
+# SIMD for databases: two primitives, four operators
 
-The paper that turned "SIMD for databases" from folklore into a
-catalog. It vectorizes the FOUR fundamental operators — selection
-scan, hash probe, bloom filter, partition — and shows each is a
-composition of two primitives: **selective store** (compress) and
-**selective load / gather**. Read it as the spec for our
-`experiments/filter.rs` and for M17's engine kernels.
+Polychroniou, Raghavan & Ross's SIGMOD '15 paper turned "SIMD for
+databases" from folklore into a catalog. It vectorizes the FOUR
+fundamental operators — selection scan, hash probe, bloom filter,
+partition — and shows each is a composition of two primitives:
+**selective store** (compress) and **selective load / gather**. Read
+it as the spec for our `experiments/filter.rs` and for M17's engine
+kernels.
 
 ## The two primitives
 
@@ -59,7 +60,22 @@ INDEPENDENT probes, one per lane:
 ```
 
 Lanes finish at different times — the done-mask + refill pattern
-keeps all W lanes busy despite divergent probe lengths. This is
+keeps all W lanes busy despite divergent probe lengths.
+
+```rust
+// vertical probing: W INDEPENDENT probes in flight, refilled as they finish
+loop {
+    keys = selective_load(keys, input, done);  // finished lanes take new keys
+    let slot = gather(table, hash(keys) + bucket);  // ~1 cache access PER LANE
+    let hit   = slot.key.simd_eq(keys);
+    let empty = slot.simd_eq(EMPTY);
+    selective_store(out, hit, slot.val);       // compress matched lanes out
+    done   = hit | empty;
+    bucket = done.select(ZERO, bucket + 1);    // collided lanes probe on
+}
+```
+
+This is
 hashbrown's group probing turned 90°: hashbrown = SIMD *within* one
 probe, SIGMOD15 = SIMD *across* probes. Question: which does M11's
 hash join want, given batch sizes of 1024 and a table that misses
@@ -111,3 +127,11 @@ scatter moot.
 5. For M17: rank the four operators by expected engine-level win in
    our Cypher pipeline (filter, probe, partition, bloom) given M11's
    profile — where does Amdahl bite first?
+
+## References
+
+**Papers**
+- Polychroniou, Raghavan, Ross — "Rethinking SIMD Vectorization for
+  In-Memory Databases" (SIGMOD 2015) — §3 the gather cost model,
+  §4 selection, §5 probe, §6 partition; skim the AVX-512 forecast
+  knowing it came true

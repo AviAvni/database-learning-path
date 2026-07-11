@@ -1,8 +1,11 @@
-# Reading redis `zmalloc.c` (+ turso's page cache) — 1 h
+# zmalloc: memory management when there are no pages
 
-Repo: [`~/repos/redis`](https://github.com/redis/redis), file `src/zmalloc.c`. Short read; the lesson is what
-memory management means when there are no pages — plus a bonus: turso's
-CLOCK page cache in Rust, the closest existing code to your experiment.
+Redis has no buffer pool — no pages, no frames, no eviction hand. What it has
+instead is an allocation *ledger*: every malloc accounted on per-thread
+padded counters, `maxmemory` enforced against an allocator statistic, and
+key-level eviction after the fact. This chapter reads that ledger, plus a
+bonus: turso's CLOCK page cache in Rust, the closest existing code to your
+experiment.
 
 ## 1. zmalloc — allocation accounting, not caching
 
@@ -17,6 +20,26 @@ CLOCK page cache in Rust, the closest existing code to your experiment.
 - `update_zmalloc_stat_alloc` — :105–145: bump my thread's counter, and only
   *occasionally* (peak-check throttle :109–118) pay for the full sum.
 - `zmalloc` — :161–193: `malloc_usable_size` path vs prefix path.
+
+The ledger, in miniature:
+
+```rust
+// One counter per thread, each on its own cache line — a single global
+// fetch_add would put coherence traffic on EVERY malloc on EVERY core.
+#[repr(align(64))]
+struct Padded(AtomicI64);
+static USED: [Padded; MAX_THREADS] = /* … */;
+
+fn zmalloc(size: usize) -> *mut u8 {
+    let p = unsafe { malloc(size) };
+    let real = malloc_usable_size(p);          // jemalloc answers "how big is p?"
+    USED[thread_id()].0.fetch_add(real as i64, Relaxed);  // uncontended bump
+    p
+}
+fn used_memory() -> i64 {
+    USED.iter().map(|c| c.0.load(Relaxed)).sum()  // the SUM is paid on read,
+}                                                 // and reads are rare
+```
 
 This ledger is what `maxmemory` compares against — eviction (LRU/LFU over
 *keys*, not pages) triggers on an allocator statistic. The buffer-pool
@@ -59,3 +82,14 @@ build it (don't copy first):
 
 You can explain PREFIX_SIZE, why the counters are padded, and what active
 defrag can't touch — and you've compared your finished pool to turso's.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) — `src/zmalloc.c` (the ledger)
+  and `src/defrag.c` (cooperative userspace defragmentation). Local clone
+  at `~/repos/redis`.
+- [tursodatabase/turso](https://github.com/tursodatabase/turso) —
+  `core/storage/page_cache.rs`, a real Rust CLOCK to diff against your
+  experiment *after* you build it (don't copy first). Local clone at
+  `~/repos/turso`.

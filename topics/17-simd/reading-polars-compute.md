@@ -1,10 +1,11 @@
-# Reading guide — polars-compute kernels
+# polars-compute: shipping SIMD in stable Rust
 
-Clone: [`~/repos/polars`](https://github.com/pola-rs/polars) (`crates/polars-compute/src/`). The
-production-Rust answer to "how do I ship SIMD without a nightly
+The production-Rust answer to "how do I ship SIMD without a nightly
 compiler or per-CPU binaries": autovec-friendly scalar bodies,
 explicit `std::simd` where it pays, raw intrinsics only for the one
-instruction Rust can't reach (vpcompress).
+instruction Rust can't reach (vpcompress). This chapter walks the
+two kernels every engine needs — the reduction and the filter — as
+polars actually ships them.
 
 ## Anchor map
 
@@ -53,6 +54,20 @@ popcount. The compress instruction is the ONLY per-ISA part:
 The scalar fallback (scalar.rs:12) is itself branch-light: iterate
 SET BITS with trailing_zeros instead of testing every element —
 selectivity-adaptive for free (low selectivity = few iterations).
+
+```rust
+// one 64-element block per mask word; cost ∝ popcount, not 64
+fn filter_block(vals: &[T; 64], mut m: u64, out: &mut Vec<T>) {
+    while m > 0 {
+        let i = m.trailing_zeros() as usize;   // next surviving element
+        out.push(vals[i]);
+        m &= m - 1;                            // clear lowest set bit
+    }
+}
+// AVX-512 replaces the whole loop with one compress-store per vector:
+// _mm512_maskz_compress_epi32(mask, v); out_ptr += mask.count_ones();
+```
+
 Question: at 99% selectivity, which wins — bit-iteration or
 copy-everything-then-truncate? What does polars do for the
 mostly-true case (look for the `is_simple` / all-set fast path)?
@@ -87,3 +102,11 @@ right (compile / init / call)?
 5. For M17: polars chose NOT to use `std::simd` for filter, only
    intrinsics + scalar. Why does compress specifically defeat
    portable SIMD abstractions?
+
+## References
+
+**Code**
+- [polars](https://github.com/pola-rs/polars) —
+  `crates/polars-compute/src/` — start with `float_sum.rs` and
+  `filter/` (scalar.rs, avx512.rs, mod.rs); `min_max/` repeats the
+  same pattern if you want a second lap

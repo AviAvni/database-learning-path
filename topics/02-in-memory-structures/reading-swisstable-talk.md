@@ -1,9 +1,10 @@
-# Watching guide — Matt Kulukundis, "Designing a Fast, Efficient, Cache-friendly Hash Table, Step by Step" (CppCon 2017)
+# The SwissTable design walk: how benchmarks kill hash tables
 
-The SwissTable talk — how Google replaced `std::unordered_map` fleet-wide.
-~60 min video + 30 min notes. Watch *after* reading hashbrown
-([`reading-hashbrown.md`](reading-hashbrown.md)): the talk is the design
-narrative for the code you just read.
+How Google replaced `std::unordered_map` fleet-wide — told as a sequence of
+designs, each rejected by a measurement. This chapter is a watching guide for
+Kulukundis's CppCon talk: watch it *after* reading
+[`reading-hashbrown.md`](reading-hashbrown.md), because the talk is the design
+narrative for the code you just read. Budget ~60 min video + 30 min notes.
 
 ## Why watch a talk about a table you already read
 
@@ -64,3 +65,17 @@ Timestamps are approximate across uploads — navigate by slide titles instead:
 You can retell the rejected-design sequence (chaining → dense_hash_map →
 metadata bytes → SIMD groups) and give the one-line benchmark reason each step
 was taken.
+
+## References
+
+**Papers**
+- Kulukundis — "Designing a Fast, Efficient, Cache-friendly Hash Table,
+  Step by Step" (CppCon 2017 talk) —
+  [video](https://www.youtube.com/watch?v=ncHmEUmJZf4) — ~60 min;
+  timestamps vary across uploads, navigate by the slide titles listed
+  above
+
+**Code**
+- [hashbrown](https://github.com/rust-lang/hashbrown) — the Rust
+  incarnation of the final design; walked in
+  [reading-hashbrown.md](reading-hashbrown.md)

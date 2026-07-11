@@ -1,10 +1,11 @@
-# Reading guide — "A Faster Algorithm for Betweenness Centrality" (Brandes, J. Math. Sociology 2001)
+# Brandes betweenness: restructure the sum, not the data structure
 
-The paper that turned BC from O(n³) bookkeeping into O(V·E) — and the
-cleanest example of "restructure the sum, not the data structure".
-Our `bc::brandes` stub implements it against the O(n³) definitional
-oracle; gapbs `bc.cc` and LAGraph `LAGr_Betweenness.c` show the two
-production shapes.
+Betweenness centrality by definition is an all-pairs O(n³) sum; Brandes
+turned it into O(V·E) with one algebraic observation — and it's the
+cleanest example of speeding an algorithm up by restructuring the SUM
+rather than the data structure. Our `bc::brandes` stub implements it
+against the O(n³) definitional oracle; gapbs's `bc.cc` and LAGraph's
+`LAGr_Betweenness.c` show the two production shapes.
 
 ## The restructuring
 
@@ -25,6 +26,26 @@ production shapes.
 The recurrence is the entire paper — derive it once by hand
 (partition shortest s→t paths through v by v's DAG successor w; the
 1 accounts for t=w itself).
+
+The per-source backward sweep, transcribed:
+
+```rust
+// after a forward BFS from s: depth[], sigma[] (path counts),
+// and order = vertices sorted by depth
+fn accumulate(bc: &mut [f64], order: &[u32], g: &Csr,
+              depth: &[i32], sigma: &[f64]) {
+    let mut delta = vec![0.0; g.n];
+    for &w in order.iter().rev() {                    // deepest FIRST
+        for v in g.in_edges(w) {
+            if depth[v] + 1 == depth[w] {             // (v,w) is a DAG edge
+                delta[v] += sigma[v] / sigma[w]       // split w's paths...
+                          * (1.0 + delta[w]);         // ...the 1 = t=w itself
+            }
+        }
+        if w != s { bc[w as usize] += delta[w as usize]; }
+    }
+}
+```
 
 ## The two production shapes
 
@@ -74,3 +95,17 @@ code cannot (it would need 32 separate BFS queues).
    should `CALL algo.betweenness(samples: 32)` return when the graph
    changed under a delta matrix that hasn't been flushed (topic 20's
    wait) — flush first, or compute on the stale main matrix?
+
+## References
+
+**Papers**
+- Brandes — "A Faster Algorithm for Betweenness Centrality"
+  (J. Math. Sociology 2001) — the dependency recurrence is the whole
+  paper; derive it by hand once
+
+**Code**
+- [gapbs](https://github.com/sbeamer/gapbs) `src/bc.cc` — frontier
+  Brandes with the `succ` bitmap trick
+- [LAGraph](https://github.com/GraphBLAS/LAGraph)
+  `src/algorithm/LAGr_Betweenness.c` — batched-source matrix
+  formulation (:110-164)

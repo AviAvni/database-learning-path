@@ -1,8 +1,10 @@
-# Reading guide — "RocksDB: Evolution of Development Priorities" (TODS '21)
+# RocksDB's decade: write amp → space amp → CPU
 
-Dong, Kryczka, Jin, Stumm. ~1.5 h. Not a data-structures paper — a **10-years-
-of-production** paper. Read it for what benchmarks don't show: the priorities
-that only appear at fleet scale.
+Not a data-structures chapter — a **10-years-of-production** one. RocksDB's
+development priorities shifted three times in a decade, and every shift was
+driven by hardware economics rather than better algorithms. Read this for what
+benchmarks don't show: the failure modes, API regrets, and configuration
+sprawl that only appear at fleet scale.
 
 ## The arc (what to extract)
 
@@ -52,3 +54,11 @@ moment space amp mattered more — the RUM triangle steered by procurement.
 
 You can narrate the write-amp → space-amp → CPU priority arc with the hardware
 reason for each transition.
+
+## References
+
+**Papers**
+- Dong, Kryczka, Jin, Stumm — "RocksDB: Evolution of Development
+  Priorities in a Key-value Store Serving Large-scale Applications"
+  (ACM TODS 2021) — §4 (large-scale lessons) is the best section; §5's
+  2021-vintage future directions are checkable predictions for topic 28

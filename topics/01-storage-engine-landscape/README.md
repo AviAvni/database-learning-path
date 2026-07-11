@@ -113,30 +113,38 @@ Read the two Rust engines as protagonists, skim the other two for contrast:
 
 - **fjall** ([~/repos/fjall](https://github.com/fjall-rs/fjall)) — small, clean Rust LSM. Trace insert → journal → memtable
   → flush, and get → memtable → SSTs.
-  → guided walkthrough: [`reading-fjall.md`](reading-fjall.md)
+  → chapter: [`reading-fjall.md`](reading-fjall.md) — fjall: the LSM lifecycle in
+  clean Rust
 - **turso** ([~/repos/turso](https://github.com/tursodatabase/turso)) `core/storage/` — SQLite's B-tree re-implemented in Rust:
   slotted pages, cursor descent, balance, pager + WAL.
-  → guided walkthrough: [`reading-turso-btree.md`](reading-turso-btree.md)
+  → chapter: [`reading-turso-btree.md`](reading-turso-btree.md) — Turso's B-tree: the
+  canonical page engine, in Rust
 - **tidesdb** ([~/repos/tidesdb](https://github.com/tidesdb/tidesdb)) — LSM in plain C; nothing hidden behind abstractions.
   Skim to see memory ordering and disk layout made explicit.
-  → guided walkthrough: [`reading-tidesdb.md`](reading-tidesdb.md)
+  → chapter: [`reading-tidesdb.md`](reading-tidesdb.md) — tidesdb: the same LSM with
+  nothing abstracted away
 - **RocksDB** ([~/repos/rocksdb](https://github.com/facebook/rocksdb)) — don't read it yet; *orient* in it. Directory map for
   topic 4 and beyond.
-  → orientation: [`reading-rocksdb-layout.md`](reading-rocksdb-layout.md)
+  → chapter: [`reading-rocksdb-layout.md`](reading-rocksdb-layout.md) — RocksDB: buy
+  the map before walking the territory
 
 ## 6. Papers (4–5 h)
 
 - O'Neil et al., "The Log-Structured Merge-Tree" (1996) — the origin; read for the
   cost model, skim the component algebra.
-  → reading guide: [`reading-lsm-paper.md`](reading-lsm-paper.md)
+  → chapter: [`reading-lsm-paper.md`](reading-lsm-paper.md) — The LSM-tree: an IO
+  scheduling policy, not a data structure
 - Comer, "The Ubiquitous B-Tree" (1979) — still the cleanest B-tree intro ever written.
-  → reading guide: [`reading-comer-btree.md`](reading-comer-btree.md)
+  → chapter: [`reading-comer-btree.md`](reading-comer-btree.md) — The B-tree: the
+  memory hierarchy turned into a data structure
 - Athanassoulis et al., "Designing Access Methods: The RUM Conjecture" (EDBT 2016) —
   short, foundational framing paper.
-  → reading guide: [`reading-rum-conjecture.md`](reading-rum-conjecture.md)
+  → chapter: [`reading-rum-conjecture.md`](reading-rum-conjecture.md) — The RUM
+  conjecture: optimize two, pay with the third
 - Hellerstein, Stonebraker, Hamilton — "Architecture of a Database System" (2007) —
   read §1–2 + §6 now for the systems map; the rest is reference material for later topics.
-  → reading guide: [`reading-architecture-of-a-dbms.md`](reading-architecture-of-a-dbms.md)
+  → chapter: [`reading-architecture-of-a-dbms.md`](reading-architecture-of-a-dbms.md)
+  — Architecture of a DBMS: the five-box org chart
 
 ## 7. Experiment (in `experiments/`)
 

@@ -1,9 +1,10 @@
-# Reading guide — "Everything You Always Wanted to Know About Compiled and Vectorized Queries But Were Afraid to Ask" (VLDB '18) (~1.5 h)
+# Compiled vs vectorized: the fair fight ends in a near-tie
 
-Kersten et al. built BOTH engines — Typer (HyPer-style data-centric
-compilation) and Tectorwise (X100-style vectorization) — sharing
-everything else, then raced them. Fair benchmarking (topic 0 discipline)
-applied to the execution-model war.
+Kersten et al. (VLDB '18) built BOTH engines — Typer (HyPer-style
+data-centric compilation) and Tectorwise (X100-style vectorization) —
+sharing everything else, then raced them. Fair benchmarking (topic 0
+discipline) applied to the execution-model war; the residual differences,
+not the headline winner, are what decide M11 and M19.
 
 ## The two models, one query
 
@@ -80,3 +81,11 @@ That's what makes the comparison fair.
 You can argue BOTH sides for a graph engine in 3 sentences each, then
 commit to one (spoiler: the scorecard's memory-bound row + operational
 column point vectorized for M11; revisit at topic 19).
+
+## References
+
+**Papers**
+- Kersten, Leis, Kemper, Neumann, Pavlo, Boncz — "Everything You Always
+  Wanted to Know About Compiled and Vectorized Queries But Were Afraid
+  to Ask" (VLDB 2018) — ~1.5 h; the scorecard sections matter more than
+  the geometric means

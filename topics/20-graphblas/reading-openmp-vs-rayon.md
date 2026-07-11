@@ -1,9 +1,12 @@
-# Reading guide — parallelism: SuiteSparse's OpenMP vs rayon
+# Plan the work or steal it: SuiteSparse's OpenMP vs rayon
 
-Code: SuiteSparse `Source/mxm/GB_AxB_saxpy3.c`,
-`GB_AxB_saxpy3_slice_balanced.c`, `GB_AxB_saxpy3_flopcount.c`
-(all in [`~/repos/GraphBLAS`](https://github.com/DrTimothyAldenDavis/GraphBLAS)); rayon `rayon-core/src/join/mod.rs`
-and `rayon-core/src/registry.rs` ([`~/repos/rayon`](https://github.com/rayon-rs/rayon)).
+Two philosophies of parallelizing the same sparse multiply.
+SuiteSparse costs the work up front (a flopcount pre-pass) and
+slices it statically into OpenMP tasks; rayon skips the cost model
+and lets idle threads steal halves at runtime. M20's kernels must
+pick a side per kernel, so this chapter reads both schedulers —
+saxpy3's slicing code and rayon's `join` — as answers to the same
+skewed-row load-balance problem.
 
 ## Two answers to "who does which slice of the multiply?"
 
@@ -35,6 +38,26 @@ and `rayon-core/src/registry.rs` ([`~/repos/rayon`](https://github.com/rayon-rs/
 Same problem — power-law column weights mean equal-column-count
 slices are wildly unbalanced — solved with a cost model in one
 world and with theft in the other.
+
+rayon's entire scheduler contract fits in one function:
+
+```rust
+// join: run `left` inline, PUBLISH `right` for theft — recursion is the scheduler
+fn join<A, B>(left: A, right: B) {
+    let pending = my_deque.push(right);   // ~free if no thread is idle
+    left();                               // the caller does real work NOW
+    match my_deque.pop(pending) {
+        Some(right) => right(),           // nobody stole it — run it inline
+        None => {
+            // an idle worker took `right`; don't block — steal OTHER
+            // work until it finishes (skewed halves rebalance themselves)
+            steal_until_done(pending);
+        }
+    }
+}
+// vs saxpy3: nthreads = f(total_flops, chunk); tasks pre-sliced by flops —
+// the schedule is COSTED like a query plan, then frozen
+```
 
 ## What to read, in order
 
@@ -87,3 +110,15 @@ world and with theft in the other.
    what axis, does it need a flopcount-style pre-pass, and who owns
    the workspace? Write the four decisions in notes.md — that's the
    checklist item.
+
+## References
+
+**Code**
+- [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
+  `Source/mxm/GB_AxB_saxpy3.c` (the header comment is a scheduling
+  essay), `GB_AxB_saxpy3_slice_balanced.c`,
+  `GB_AxB_saxpy3_flopcount.c`
+- [rayon](https://github.com/rayon-rs/rayon)
+  `rayon-core/src/join/mod.rs` (:93 `join_context`),
+  `rayon-core/src/registry.rs` (:248 — one deque + `Stealer` per
+  worker)

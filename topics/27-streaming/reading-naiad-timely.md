@@ -1,10 +1,11 @@
-# Reading guide — Naiad & timely dataflow (SOSP '13 + timely code)
+# Naiad: the clock that unified batch, streaming, and iteration
 
-**Sources:**
-- Murray et al. — "Naiad: A Timely Dataflow System" (SOSP 2013) — read
-  §1-3 fully (the model), §4 (distributed progress) carefully, skim eval
-- [`~/repos/timely-dataflow/timely/src/`](https://github.com/TimelyDataflow/timely-dataflow) — the Rust reincarnation by the
-  same author (McSherry)
+Naiad's timely dataflow is one low-level model that expresses batch,
+streaming, AND incremental iterative computation — and the only new
+mechanism it needs is a smarter clock. This chapter reads the SOSP '13
+paper's progress-tracking protocol, then its Rust reincarnation
+(timely-dataflow, by the same author), which is the substrate
+differential dataflow builds on.
 
 ## 1. What problem Naiad actually solved
 
@@ -33,6 +34,23 @@ distributed refcount over the lattice.
 **Q1.** Why must loop ingress/egress/feedback nodes edit the timestamp
 (push a counter, pop it, increment it)? Show that without the feedback
 increment, could-result-in has a cycle and no frontier ever advances.
+
+The frontier advance, mechanically — progress is count arithmetic:
+
+```rust
+fn apply(counts: &mut BTreeMap<Time, i64>, changes: &[(Time, i64)])
+    -> Vec<Time> {                        // returns times the frontier passed
+    let before = frontier(counts);        // minimal times with count > 0
+    for &(t, delta) in changes {          // produced: +1, consumed: -1 —
+        *counts.entry(t).or_insert(0) += delta;   // may dip negative, sums safe
+        if counts[&t] == 0 { counts.remove(&t); }
+    }
+    let after = frontier(counts);
+    before.into_iter()                    // t left the frontier ⇒ PROVEN:
+        .filter(|t| after.iter().all(|f| !(f <= t)))   // nothing ≤ t can
+        .collect()                        //   ever arrive — finalize t
+}
+```
 
 ## 3. timely code anchors
 
@@ -72,3 +90,16 @@ commutative-counter arguments in topic 29's world.)
 events older than t-5s"); timely frontiers are *proofs*. What does each
 buy? Where does FalkorDB's single-writer serialization make the proof
 trivial? (That's why M27 can skip most of §4.)
+
+## References
+
+**Papers**
+- Murray, McSherry, Isaacs, Isard, Barham, Abadi — "Naiad: A Timely
+  Dataflow System" (SOSP 2013) — read §1-3 fully (the model), §4
+  (distributed progress) carefully, skim eval
+
+**Code**
+- [timely-dataflow](https://github.com/TimelyDataflow/timely-dataflow)
+  `timely/src/` — `progress/change_batch.rs`, `progress/frontier.rs`
+  (:380 `MutableAntichain`), `progress/reachability.rs`,
+  `progress/subgraph.rs`, `worker.rs` (:235 `step`)

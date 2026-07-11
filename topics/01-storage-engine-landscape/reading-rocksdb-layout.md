@@ -1,8 +1,10 @@
-# RocksDB — orientation map (don't read it yet)
+# RocksDB: buy the map before walking the territory
 
-Repo: [`~/repos/rocksdb`](https://github.com/facebook/rocksdb) (shallow @ 7c80a5a). This is not a walkthrough — it's the map
-you'll use in topic 4 (compaction), topic 6 (block cache), and topic 22 (db_bench).
-Budget: 30 min of `ls` and skimming headers.
+RocksDB is everything fjall and tidesdb do, ~50x larger — too big to read,
+too important to skip. This chapter is not a walkthrough but an orientation
+map: 30 minutes of `ls` and header-skimming now, so that when topic 4
+(compaction), topic 6 (block cache), and topic 22 (db_bench) ask "where does
+X live?", you already know which directory holds the answer.
 
 ## Directory map
 
@@ -44,3 +46,12 @@ Everything you traced in fjall/tidesdb exists here too, ~50x larger: journal ↔
 When topic 4 asks "how does leveled compaction pick files?", you should already know
 the answer lives in `db/compaction/` and version metadata in `db/version_set.h` —
 navigation cost paid once, here.
+
+## References
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb) (shallow clone @
+  `7c80a5a` at `~/repos/rocksdb`) — don't read it yet; orient with the
+  directory map above. Anchors: `db/db_impl/db_impl.h`,
+  `db/version_set.h`, `db/compaction/`, `table/block_based/`,
+  `memtable/skiplist.h`, `cache/lru_cache.h`

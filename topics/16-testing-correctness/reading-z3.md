@@ -1,11 +1,12 @@
-# Reading guide — Z3 (TACAS '08 + the codebase) and Cosette (CIDR '17)
+# Z3 & Cosette: testing every input at once
 
-Clone: [`~/repos/z3`](https://github.com/Z3Prover/z3) (`src/`). Paper: "Z3: An Efficient SMT Solver"
-(de Moura & Bjørner, TACAS '08 — 4 pages, read whole). Then
-"Cosette: An Automated Prover for SQL" (CIDR '17) for the
-DB application. Treat Z3 the way PLAN.md says: a masterclass
-high-performance search engine over LOGIC — the architecture rhymes
-with a query engine more than you'd expect.
+Everything else in this topic samples the input space; SMT quantifies
+over it — "does there EXIST a row where these two plans disagree?"
+UNSAT means the rewrite is proven for all databases. This chapter
+reads Z3 the way PLAN.md says to: as a masterclass high-performance
+search engine over LOGIC whose architecture rhymes with a query
+engine, then applies it Cosette-style to verify our topic-10 rewrite
+rules.
 
 ## SMT in one box
 
@@ -66,6 +67,21 @@ Kleene semantics — most real optimizer bugs (TLP's bread and
 butter) are exactly NULL-semantics violations, and Z3 finds them as
 SAT models in milliseconds.
 
+```rust
+// verify a rewrite for ALL rows by asking for ONE disagreeing row
+let a  = Int::fresh("a");  let a_null = Bool::fresh("a_null");
+let b  = Int::fresh("b");  let b_null = Bool::fresh("b_null");
+let row = Row { a, a_null, b, b_null };
+
+let p1 = compile(plan_before, &row);   // Kleene 3-valued AND/OR/NOT/cmp
+let p2 = compile(plan_after, &row);
+
+match solver.check(p1.keeps_row().xor(p2.keeps_row())) {
+    Unsat  => Proven,                  // no row distinguishes the plans
+    Sat(m) => Counterexample(m),       // the model IS the failing row
+}
+```
+
 ## Questions for notes.md
 
 1. TACAS '08: what does Z3 do with quantifiers (E-matching +
@@ -84,3 +100,18 @@ SAT models in milliseconds.
    (commute σ_p σ_q) and filter-past-projection. Write the symbolic
    encoding for each; which needs the (value, is_null) pair and
    which doesn't?
+
+## References
+
+**Papers**
+- de Moura & Bjørner — "Z3: An Efficient SMT Solver" (TACAS 2008)
+  — 4 pages, read whole
+- Chu, Wang, Weitz, Cheung, Suciu — "Cosette: An Automated Prover
+  for SQL" (CIDR 2017) — read for the K-relations encoding and the
+  SMT/Coq split; our use is the SMT half
+
+**Code**
+- [z3](https://github.com/Z3Prover/z3) — `src/` — start from
+  `src/solver/solver.h` and `src/smt/smt_context.h`, then the
+  tactic machinery in `src/tactic/` (tactics ARE query plans for
+  proofs)

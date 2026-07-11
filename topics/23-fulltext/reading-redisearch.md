@@ -1,11 +1,13 @@
-# Reading guide — RediSearch's inverted index, the Rust rewrite ([`~/repos/RediSearch/src/redisearch_rs/`](https://github.com/RediSearch/RediSearch))
+# RediSearch in Rust: a mutable inverted index
 
 Home turf: this is what FalkorDB delegates full-text to, and the
 interesting part is that the C core is being strangler-figged into
 Rust crates behind FFI (`c_entrypoint/inverted_index_ffi`,
 `varint_ffi`) — the exact migration pattern falkordb-rs-next-gen
-lives. Read `inverted_index` as a *mutable, in-memory* counterpart
-to tantivy's immutable segments.
+lives. Read the `inverted_index` crate as a *mutable, in-memory*
+counterpart to tantivy's immutable segments
+([reading-tantivy.md](reading-tantivy.md)): every design delta
+falls out of "updates must be cheap NOW".
 
 ## The structure (`inverted_index/src/index/core.rs`)
 
@@ -19,6 +21,28 @@ to tantivy's immutable segments.
 | `varint/src/lib.rs:98` `VarintEncode` | the wire format under most codecs |
 | `gc.rs` | garbage collection rewrites blocks to purge deleted docs — compaction for a mutable index; `gc_marker` tells live readers their cursor is stale |
 | `unique_id` (core.rs comment) | ABA detection: index freed + reallocated at same address ⇒ cursors notice via id mismatch — a very Redis-module concern |
+
+The write path in miniature (core.rs:229 + codec/mod.rs:28-44):
+
+```rust
+// append one posting: varint-encode the delta into the last block;
+// a delta the codec can't represent starts a NEW block at delta 0
+fn add<E: Encoder>(&mut self, doc_id: u64, rec: &Record) {
+    let block = self.blocks.last_mut().unwrap();
+    match E::delta(doc_id, block) {          // None ⇒ overflow for this codec
+        Some(delta) => {
+            E::write(&mut block.buffer, rec, delta);  // byte-at-a-time varint
+            block.last_doc_id = doc_id;
+            block.num_entries += 1;
+        }
+        None => {
+            self.blocks.push(IndexBlock::new(doc_id)); // chain a fresh block
+            self.add::<E>(doc_id, rec);                //   — simple, robust
+        }
+    }
+    self.n_unique_docs += 1;
+}
+```
 
 ## Design deltas vs tantivy (worth internalizing)
 
@@ -69,3 +93,12 @@ the concrete type once (`c_entrypoint/inverted_index_ffi`).
    you lift verbatim into falkordb-rs-next-gen, and where does the
    graph (node ids = doc ids, roaring hit-sets into masked mxv)
    change the design?
+
+## References
+
+**Code**
+- [RediSearch](https://github.com/RediSearch/RediSearch)
+  `src/redisearch_rs/` — `inverted_index/src/index/core.rs` (the
+  structure), `inverted_index/src/codec/` (eleven codecs, one
+  trait), `varint/src/lib.rs`, `inverted_index/src/gc.rs`, and the
+  FFI seam in `c_entrypoint/inverted_index_ffi`

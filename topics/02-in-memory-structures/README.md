@@ -119,24 +119,31 @@ control-byte designs make the *other* 79% (memory stalls) smaller too.
 ## 5. Code reading (4–6 h)
 
 - **redis `dict.c`** — the incremental rehash machine.
-  → guided walkthrough: [`reading-redis-dict.md`](reading-redis-dict.md)
+  → chapter: [`reading-redis-dict.md`](reading-redis-dict.md) — redis dict: rehashing
+  100M keys without stopping the world
 - **redis `t_zset.c`** — the skiplist behind sorted sets (spans + rank queries).
-  → guided walkthrough: [`reading-redis-skiplist.md`](reading-redis-skiplist.md)
+  → chapter: [`reading-redis-skiplist.md`](reading-redis-skiplist.md) — The redis
+  skiplist: spans make rank queries free
 - **hashbrown** — SwissTable in Rust: control bytes, NEON group probing.
-  → guided walkthrough: [`reading-hashbrown.md`](reading-hashbrown.md)
+  → chapter: [`reading-hashbrown.md`](reading-hashbrown.md) — hashbrown: the probe
+  loop the flamegraph couldn't show
 - **RocksDB `memtable/inlineskiplist.h`** — lock-free concurrent skiplist.
-  → guided walkthrough: [`reading-rocksdb-memtable.md`](reading-rocksdb-memtable.md)
+  → chapter: [`reading-rocksdb-memtable.md`](reading-rocksdb-memtable.md) —
+  InlineSkipList: lock-free by refusing to delete
 - **redis `rax.c`** — compressed radix tree (skim).
-  → guided walkthrough: [`reading-redis-rax.md`](reading-redis-rax.md)
+  → chapter: [`reading-redis-rax.md`](reading-redis-rax.md) — rax: a radix tree
+  packed into cache lines
 
 ## 6. Papers / talks (3–4 h)
 
 - Leis et al., "The Adaptive Radix Tree: ARTful Indexing for Main-Memory Databases"
   (ICDE 2013).
-  → reading guide: [`reading-art-paper.md`](reading-art-paper.md)
+  → chapter: [`reading-art-paper.md`](reading-art-paper.md) — ART: sorted like a
+  tree, probed like a hash table
 - Matt Kulukundis, "Designing a Fast, Efficient, Cache-friendly Hash Table, Step by
   Step" (CppCon 2017 — the SwissTable talk).
-  → watching guide: [`reading-swisstable-talk.md`](reading-swisstable-talk.md)
+  → chapter: [`reading-swisstable-talk.md`](reading-swisstable-talk.md) — The
+  SwissTable design walk: how benchmarks kill hash tables
 
 ## 7. Experiments (in `experiments/`)
 

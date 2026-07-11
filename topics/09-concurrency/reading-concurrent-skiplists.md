@@ -1,7 +1,10 @@
-# Reading guide — two concurrent skiplists: RocksDB (CAS) vs memgraph (lazy locking) (~2 h)
+# Two concurrent skiplists: CAS vs lazy locking
 
-Same structure, two schools. Read RocksDB first (you know this file from
-topic 2 — now the concurrency), then memgraph as the contrast.
+Same structure, two schools of coordination: RocksDB's memtable skiplist
+links nodes with per-level CAS and never deletes; memgraph's skiplist — the
+spine of its whole graph store — uses per-node spinlocks, state bits, and
+real deletion with GC. Read RocksDB first (you know this file from topic 2
+— now the concurrency), then memgraph as the contrast.
 
 ## 1. RocksDB InlineSkipList — CAS school
 [`~/repos/rocksdb/memtable/inlineskiplist.h`](https://github.com/facebook/rocksdb)
@@ -15,6 +18,20 @@ topic 2 — now the concurrency), then memgraph as the contrast.
   `compare_exchange_strong` per level. Insert per level: read pred/succ,
   set `new->next = succ` (relaxed — unpublished), CAS pred->next from
   succ to new; on failure re-find just that level and retry.
+
+```rust
+fn link_at_level(mut pred: &Node, new: &Node, lvl: usize) {
+    loop {
+        let succ = pred.next[lvl].load(Acquire);
+        new.next[lvl].store(succ, Relaxed);   // unpublished yet: plain write
+        if pred.next[lvl]
+            .compare_exchange(succ, new, Release, Relaxed) // publish
+            .is_ok() { return; }
+        pred = refind_pred(new.key, lvl);     // lost the race — re-find
+    }                                         // ONLY this level, then retry
+}
+```
+
 - `Splice` (:64): a cached array of (pred, succ) per level — the search
   is the expensive part, so sequential writers reuse the previous
   insert's splice (`Insert(key, splice, ...)` :1028, hint variant :113)
@@ -75,3 +92,16 @@ topic 2 — now the concurrency), then memgraph as the contrast.
 
 You can fill the table from memory and explain what each system's
 workload allowed it to NOT build.
+
+## References
+
+**Papers**
+- Herlihy, Lev, Luchangco, Shavit — "A Simple Optimistic Skiplist
+  Algorithm" (SIROCCO 2007) — the lazy-locking design memgraph implements
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb)
+  `memtable/inlineskiplist.h` — start at the :23 contract comment
+- [memgraph](https://github.com/memgraph/memgraph)
+  `src/utils/skip_list.hpp` — one header holds the list, the accessors,
+  and the GC

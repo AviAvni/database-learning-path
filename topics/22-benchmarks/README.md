@@ -69,10 +69,10 @@ selectivity* before implementing (topic 17 says: maybe nothing!).
 
 ## Reading guides
 
-- [reading-boncz-tpch.md](reading-boncz-tpch.md) — the choke-point paper, queries open
-- [reading-ycsb.md](reading-ycsb.md) — YCSB + the zipfian generator internals (go-ycsb)
-- [reading-oltpbench-tpcc.md](reading-oltpbench-tpcc.md) — OLTP-Bench/BenchBase + TPC-C's designed contention
-- [reading-duckdb-tpch.md](reading-duckdb-tpch.md) — dbgen as a table function; run real TPC-H here
+- [reading-boncz-tpch.md](reading-boncz-tpch.md) — TPC-H decoded: 22 queries, 28 choke points
+- [reading-ycsb.md](reading-ycsb.md) — YCSB: six mixes, five distributions, one Zipfian generator
+- [reading-oltpbench-tpcc.md](reading-oltpbench-tpcc.md) — TPC-C: contention by design (and the harness that runs it honestly)
+- [reading-duckdb-tpch.md](reading-duckdb-tpch.md) — dbgen as a table function: shipping a benchmark inside the engine
 - topic 0: `reading-fair-benchmarking.md` (DBTest '18) — methodology
 - topic 13: `reading-ldbc-snb.md` — SNB datagen + interactive driver
 - topic 10: `reading-leis-vldb15.md` analogue — JOB, real cardinalities

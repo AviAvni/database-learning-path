@@ -1,8 +1,10 @@
-# Reading turso's WAL — frames, checksum chain, checkpoint (1.5–2 h)
+# Turso's WAL: recovery is finding where the log ends
 
-Repo: [`~/repos/turso`](https://github.com/tursodatabase/turso). Files: `core/storage/wal.rs`,
-`core/storage/sqlite3_ondisk.rs`, `core/io/mod.rs`. This is SQLite's WAL mode
-in Rust — the design your experiment should steal most from.
+This is SQLite's WAL mode in Rust: commits append whole page images as frames,
+a chained checksum makes the log's valid prefix self-evident, and recovery has
+no redo or undo at all — it just decides where the log ends. Of the four
+durability designs in this topic, this is the one your experiment should steal
+most from.
 
 ## 1. The format — page images, not operations
 
@@ -57,6 +59,25 @@ No undo, no redo logic — recovery is *deciding where the log ends*. Compare
 postgres (redo required: its log holds deltas, not page images) and LMDB
 (nothing at all: the meta flip made commit atomic).
 
+The whole recovery, in one loop:
+
+```rust
+// Walk frames; the answer is the last valid COMMIT, not the last valid frame.
+fn recover(frames: &[Frame], hdr: &WalHeader) -> u64 {
+    let mut c = hdr.checksum;
+    let mut last_commit = 0;
+    for (i, f) in frames.iter().enumerate() {
+        if f.salts != hdr.salts { break; }     // stale frame from an old WAL generation
+        c = chain(c, f);                       // cumulative: one bad bit ends the log
+        if c != f.checksum { break; }          // torn frame ⇒ the cliff edge
+        if f.db_size != 0 {                    // commit frame
+            last_commit = i as u64 + 1;        // a half-written txn's frames stay
+        }                                      // present but UNREACHABLE
+    }
+    last_commit
+}
+```
+
 ## Questions to answer in notes.md
 
 1. Why do frames carry whole page images instead of deltas? Name the two
@@ -75,3 +96,10 @@ postgres (redo required: its log holds deltas, not page images) and LMDB
 You can narrate recovery over a WAL containing a torn frame mid-transaction
 and a complete-but-uncommitted transaction, and say what survives (everything
 up to the last valid commit frame; both damaged suffixes vanish).
+
+## References
+
+**Code**
+- [tursodatabase/turso](https://github.com/tursodatabase/turso) —
+  `core/storage/wal.rs`, `core/storage/sqlite3_ondisk.rs`,
+  `core/io/mod.rs`. Local clone at `~/repos/turso`.

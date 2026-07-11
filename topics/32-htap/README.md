@@ -79,10 +79,10 @@ delta matrices. Writes land append-friendly, reads merge, compaction folds.
 
 ## Reading guides
 
-1. `reading-tidb-htap.md` — TiDB VLDB'20: learner replicas, learner reads, one planner over two engines.
-2. `reading-tiflash-deltatree.md` — DeltaTree storage: delta+main, the merge, the delta index.
-3. `reading-hyper-hana.md` — the one-copy family: HyPer's fork() snapshots, HANA's delta+main.
-4. `reading-f1-lightning.md` — CDC-decoupled HTAP, the Özcan survey, the trilemma.
+1. [reading-tidb-htap.md](reading-tidb-htap.md) — TiDB HTAP: the columnar replica is a Raft learner.
+2. [reading-tiflash-deltatree.md](reading-tiflash-deltatree.md) — DeltaTree: columnar storage built for writes.
+3. [reading-hyper-hana.md](reading-hyper-hana.md) — HyPer & HANA: one copy serves both.
+4. [reading-f1-lightning.md](reading-f1-lightning.md) — F1 Lightning: HTAP without touching OLTP.
 
 ## Experiments
 

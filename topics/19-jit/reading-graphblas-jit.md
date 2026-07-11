@@ -1,4 +1,4 @@
-# Reading guide — SuiteSparse:GraphBLAS JIT ([`~/repos/GraphBLAS/Source/jitifyer/`](https://github.com/DrTimothyAldenDavis/GraphBLAS))
+# GraphBLAS JIT: compile once per semiring, cache forever
 
 The third grain of JIT. Postgres compiles per query; Umbra per
 pipeline; GraphBLAS compiles per *kernel specialization* — a
@@ -58,6 +58,21 @@ Umbra per query (µs), copy-and-patch per query (ns). GraphBLAS can
 afford a huge one-time cost because the key space is *small and
 stable* — type combos, not query texts.
 
+```rust
+// the load ladder: four caches, each with a longer lifetime
+fn get_kernel(problem: &Mxm) -> KernelFn {
+    let (hash, enc) = encodify(problem);       // SHAPE only — no data values
+    if let Some(f) = PREJIT.get(hash, &enc)   { return f; }  // in the binary
+    if let Some(f) = TABLE.lookup(hash, &enc) { return f; }  // this process
+    if let Some(so) = cache_dir_probe(hash)   { return dlopen_insert(so); }
+    critical_section(|| {                      // first time EVER: pay the compiler
+        write_c_from_template(&enc);           // #defines into jit_kernels/
+        invoke_cc_and_link();                  // ~100 ms - 1 s, once per combo
+        dlopen_insert(so_path(hash))
+    })
+}
+```
+
 ## 3. The encoding (GB_encodify_mxm.c)
 
 The cache key: a packed bit-field struct (`GB_jit_encoding`) —
@@ -112,3 +127,12 @@ ship the accumulated cache *compiled into* the next binary release
    `WHERE n.age > $p AND n.name = 'x'` are shape vs parameter, and
    what does getting this wrong cost (constant folded in → cache
    miss per literal value → compile storm)?
+
+## References
+
+**Code**
+- [GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) —
+  `Source/jitifyer/` (GB_jitifyer.c is the machine,
+  GB_encodify_mxm.c the cache key) and `Source/jit_kernels/` (the
+  templates the JIT instantiates); `GB_control.h` for the PreJIT
+  table

@@ -1,10 +1,10 @@
-# Reading guide — valkey `replication.c`
+# Valkey replication: ack first, replicate later
 
-Clone: [`~/repos/valkey`](https://github.com/valkey-io/valkey) (`src/replication.c`, ~5600 lines). The
-canonical async leader/follower design: ack the client immediately,
-ship the command stream best-effort, survive disconnects with a
-backlog. Everything Raft pays for, valkey skips — read it to see the
-price of each skip.
+The canonical async leader/follower design: ack the client
+immediately, ship the command stream best-effort, survive disconnects
+with a backlog. Everything Raft pays for, valkey skips — this chapter
+reads `replication.c` (~5600 lines, sliced by the anchor map) to see
+the price of each skip.
 
 ## The mental model
 
@@ -63,6 +63,20 @@ the new primary. Question: why is the pair (replid, offset) exactly
 Raft's (term, index) with weaker guarantees? What can it NOT detect
 that (prev_index, prev_term) can?
 
+```rust
+// PSYNC: (replid, offset) is (term, index) with the safety stripped —
+// a matching offset is ASSUMED to mean matching history, never checked
+fn try_partial_resync(&self, replid: &str, offset: u64) -> Sync {
+    let id_ok = replid == self.replid
+        || (replid == self.replid2 && offset <= self.second_replid_offset);
+    if id_ok && self.backlog.contains(offset) {
+        Sync::Continue(self.backlog.since(offset))   // replay the ring: cheap
+    } else {
+        Sync::Full(self.fork_rdb_snapshot())         // fork + RDB + stream
+    }
+}
+```
+
 ## 3. The replica handshake (`:3731+`)
 
 `REPL_STATE_CONNECT → CONNECTING → RECEIVE_PING_REPLY → ... →
@@ -104,3 +118,15 @@ replaces this entire dance, and what does it cost per write?
    snapshot discussion.
 5. For M15 stage 1: which parts of PSYNC do you keep (replid+offset,
    backlog ring, +CONTINUE/+FULLRESYNC) and which do you simplify?
+
+## References
+
+**Code**
+- [valkey](https://github.com/valkey-io/valkey) — `src/replication.c`
+  (~5600 lines; slice it with the anchor map above rather than reading
+  linearly) and `src/server.c` (`propagateNow`, the statement-rewrite
+  point)
+
+**Papers**
+- None — this is a pure code walk; the consensus counterpoint is
+  [reading-raft-paper.md](reading-raft-paper.md)

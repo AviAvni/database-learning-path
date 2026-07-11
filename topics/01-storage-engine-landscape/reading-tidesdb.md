@@ -1,8 +1,10 @@
-# Reading tidesdb — an LSM in plain C (skim)
+# tidesdb: the same LSM with nothing abstracted away
 
-Repo: [`~/repos/tidesdb`](https://github.com/tidesdb/tidesdb) (shallow clone). Skim-read: 1–2 h. The value here is seeing
-the same LSM machinery as fjall with *nothing* abstracted away — memory ordering,
-pointer arithmetic, and disk offsets are all in your face.
+The value of this skim (1–2 h) is seeing the machinery you just traced in
+fjall rendered in plain C, with *nothing* hidden — memory ordering, pointer
+arithmetic, and disk offsets are all in your face. Read it as a contrast
+exercise: match each fjall concept to its C twin and notice exactly what
+Rust's abstractions buy you, and what they conceal.
 
 ## Layout
 
@@ -34,7 +36,28 @@ tidesdb_sstable_get        tidesdb.c:9756    per level: bloom (9810) → block i
                                              binary search (9832) → scan blocks
 ```
 
-Exactly the README §1 LSM read diagram, one function per box.
+Exactly the README §1 LSM read diagram, one function per box. Which is to
+say, in code:
+
+```rust
+fn get(&self, key: &[u8]) -> Option<Val> {
+    if let Some(v) = self.txn_write_set.get(key) { return Some(v); } // own writes first
+    if let Some(v) = self.active_memtable.get(key) { return Some(v); }
+    for mt in self.immutable_memtables.newest_first() {              // refcount-pinned
+        if let Some(v) = mt.get(key) { return Some(v); }
+    }
+    for level in &self.levels {
+        for sst in level.newest_first() {
+            if !sst.bloom.might_contain(key) { continue; }  // skips MOST absent-key IO
+            let off = sst.block_index.binary_search(key)?;  // a raw file offset —
+            if let Some(v) = sst.read_block_at(off).find(key) {  // the disk format IS
+                return Some(v);                                  // the data structure
+            }
+        }
+    }
+    None    // read amp made concrete: every stop above was a potential miss
+}
+```
 
 ## Compaction
 
@@ -59,3 +82,11 @@ Exactly the README §1 LSM read diagram, one function per box.
 
 You've matched each fjall concept (journal, memtable, rotation, bloom, level) to its
 C twin and noticed the abstractions Rust buys you — and what they hide.
+
+## References
+
+**Code**
+- [tidesdb](https://github.com/tidesdb/tidesdb) — `tidesdb.c` (~38K
+  lines, the whole engine), `skip_list.c`, `block_manager.c`,
+  `bloom_filter.c` (~600 readable lines), `manifest.c` (shallow clone at
+  `~/repos/tidesdb`; skim-read, 1–2 h)

@@ -83,22 +83,22 @@ reads degrade forever. Stalls are the honest choice.
 ## 5. Code reading (5–7 h)
 
 - **lsm-tree crate** (the engine under fjall — read it all, it's small).
-  → guided walkthrough: [`reading-lsm-tree.md`](reading-lsm-tree.md)
+  → [`reading-lsm-tree.md`](reading-lsm-tree.md) — An LSM you can read whole: the lsm-tree crate
 - **RocksDB `db/compaction/` + `table/block_based/`** — the industrial version.
-  → guided walkthrough: [`reading-rocksdb-compaction.md`](reading-rocksdb-compaction.md)
+  → [`reading-rocksdb-compaction.md`](reading-rocksdb-compaction.md) — RocksDB compaction: scores, stalls, and the manifest
 
 ## 6. Papers (4–6 h)
 
 - "Monkey: Optimal Navigable Key-Value Store" (SIGMOD '17).
-  → reading guide: [`reading-monkey.md`](reading-monkey.md)
+  → [`reading-monkey.md`](reading-monkey.md) — Monkey: bloom bits where they pay
 - "Dostoevsky: Better Space-Time Trade-Offs for LSM-Tree Based Key-Value Stores
   via Adaptive Removal of Superfluous Merging" (SIGMOD '18).
-  → reading guide: [`reading-dostoevsky.md`](reading-dostoevsky.md)
+  → [`reading-dostoevsky.md`](reading-dostoevsky.md) — Dostoevsky: merge lazily, except at the last level
 - "RocksDB: Evolution of Development Priorities in a Key-value Store Serving
   Large-scale Applications" (TODS '21).
-  → reading guide: [`reading-rocksdb-tods.md`](reading-rocksdb-tods.md)
+  → [`reading-rocksdb-tods.md`](reading-rocksdb-tods.md) — RocksDB's decade: write amp → space amp → CPU
 - "Constructing and Analyzing the LSM Compaction Design Space" (VLDB '21).
-  → reading guide: [`reading-compaction-design-space.md`](reading-compaction-design-space.md)
+  → [`reading-compaction-design-space.md`](reading-compaction-design-space.md) — Compaction is four axes, not two strategies
 
 ## 7. Experiments (in `experiments/`)
 

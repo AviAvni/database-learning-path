@@ -1,10 +1,10 @@
-# Reading redis `dict.c` — the incremental rehash machine
+# redis dict: rehashing 100M keys without stopping the world
 
-Files: [`~/repos/redis/src/dict.c`](https://github.com/redis/redis), `src/dict.h`. Line numbers from the local clone.
-
-The problem this file solves: a hash table serving 100K ops/s cannot stop the world
-to rehash 100M entries. Redis's answer: keep **two tables** and migrate one bucket at
-a time, piggybacked on normal operations.
+A hash table serving 100K ops/s cannot stop the world to rehash 100M entries
+— the resulting p99.9 spike would be a service outage. This chapter walks
+redis's answer, the topic's first industrial latency fix: keep **two tables**
+and migrate one bucket at a time, piggybacked on normal operations. It is
+also the design you'll replicate in this topic's experiment.
 
 ## 1. The two-table struct
 
@@ -38,6 +38,30 @@ Read the whole function (~50 lines):
   scan unboundedly far — the amortization guarantee would silently break.)
 - Each migrated bucket's chain is walked and every entry re-hashed into ht[1]
   (dict.c:420–431). Note: entries move one *bucket* at a time, not one entry.
+
+The whole machine, distilled:
+
+```rust
+fn rehash_step(d: &mut Dict, mut buckets: usize) {
+    let mut empty_visits = buckets * 10;         // cap the sparse-table scan
+    while buckets > 0 && d.used[0] > 0 {
+        while d.ht[0].bucket(d.rehashidx).is_empty() {
+            d.rehashidx += 1;
+            empty_visits -= 1;
+            if empty_visits == 0 { return; }     // bounded work per op — the point
+        }
+        for entry in d.ht[0].take_bucket(d.rehashidx) {
+            let idx = entry.hash & d.mask[1];    // re-hash into the NEW table only
+            d.ht[1].push_bucket(idx, entry);
+        }
+        d.rehashidx += 1;
+        buckets -= 1;
+    }
+    if d.used[0] == 0 { d.swap_tables(); d.rehashidx = -1; }
+}
+// every dictAdd/dictFind calls rehash_step(d, 1) — and during the migration,
+// every lookup must check BOTH tables
+```
 
 ## 3. Who pays the rehash tax
 
@@ -82,3 +106,13 @@ latency requirements are part of the workload.
 
 You can implement the two-table scheme from memory — you'll do exactly that in this
 topic's experiment.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) `src/dict.c`, `src/dict.h` —
+  line numbers from the local clone; the `dictScan` comment
+  (dict.c:1518) is one of the great comments in open source
+- [valkey](https://github.com/valkey-io/valkey)
+  `deps/libvalkey/src/dict.c` — the single-table, full-rehash contrast
+  case

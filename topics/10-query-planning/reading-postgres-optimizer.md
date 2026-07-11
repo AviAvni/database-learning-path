@@ -1,8 +1,10 @@
-# Reading guide — postgres optimizer: 45 years of Selinger (~1.5 h)
+# Postgres's optimizer: Selinger '79, still in production
 
-Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), dir `src/backend/optimizer/`. Read for
-the join search skeleton and the honesty of the default constants —
-this is Selinger '79, still in production.
+Forty-five years on, postgres's join search is still Selinger's DP —
+level-by-level over relation sets, interesting orders kept as extra DP
+state, a genetic-algorithm escape hatch for big joins. Read it for the
+search skeleton and for the honesty of the default constants that run
+the world when stats are missing.
 
 ## 1. The skeleton (path/allpaths.c)
 
@@ -33,6 +35,22 @@ Textbook Selinger DP, level by level:
   predicate, unless forced into a cartesian product at the end.
 - Paths carry (startup_cost, total_cost) — LIMIT queries pick differently
   than full scans. Two costs per path is the underrated design decision.
+
+The DP cell keeps MULTIPLE surviving paths, not one — this is `add_path`,
+conceptually:
+
+```rust
+fn add_path(rel: &mut RelOptInfo, new: Path) {
+    let dominated = rel.paths.iter().any(|p|
+        p.total_cost <= new.total_cost
+        && p.startup_cost <= new.startup_cost   // LIMIT-friendly axis
+        && p.ordering.subsumes(&new.ordering)); // sorted output IS DP state
+    if !dominated {
+        rel.paths.retain(|p| !new.dominates(p));
+        rel.paths.push(new);   // a pricier-but-sorted path survives here,
+    }                          // to win later at a merge join or ORDER BY
+}
+```
 
 ## 3. The constants that run the world (include/utils/selfuncs.h)
 
@@ -65,3 +83,12 @@ exactly in that gap.
 You can walk standard_join_search for A⋈B⋈C on paper, keeping two paths
 per set (cheapest, interesting-order), and name the three default
 selectivities from memory.
+
+## References
+
+**Code**
+- [postgres](https://github.com/postgres/postgres) —
+  `src/backend/optimizer/`: `path/allpaths.c` (make_one_rel,
+  standard_join_search), `path/joinrels.c` (join_search_one_level),
+  plus `src/include/utils/selfuncs.h` for the default selectivities;
+  ~1.5 h

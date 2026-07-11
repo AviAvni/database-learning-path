@@ -1,9 +1,11 @@
-# Reading guide — arrow-rs + parquet-rs: the formats in Rust (~1.5 h)
+# Arrow & Parquet: the layout compute wants, the bytes disk wants
 
-Local clone: [`~/repos/arrow-rs`](https://github.com/apache/arrow-rs) (fresh shallow clone — one repo, both
-crates: `arrow-*` and `parquet/`). Read Arrow as "the layout kernels
-compute on" and Parquet as "the layout bytes rest in", then the
-boundary between them.
+Two open formats split the columnar world: Arrow is "the layout
+kernels compute on" (in memory, O(1) random access, almost no
+encoding), Parquet is "the layout bytes rest in" (on disk, encoded
+then block-compressed, stats for pruning). This chapter reads both
+from one Rust repo — arrow-rs ships both crates — and then the
+boundary between them, which is where engines actually differ.
 
 ## 1. Arrow: layout as contract
 
@@ -46,6 +48,29 @@ boundary between them.
 - `parquet/src/encodings/rle.rs:55/:342` — the hybrid encoder/decoder;
   `util/bit_util.rs:696` `get_batch` — unpack a batch of bit-packed
   values (the tight loop under everything).
+
+The hybrid's shape, decoded — each group's header low bit picks one of
+two worlds:
+
+```rust
+// parquet "RLE" is really RLE + bit-packing, alternating per group:
+// runs when the data repeats, packed literals when it doesn't
+fn decode_hybrid(r: &mut BitReader, width: u32, out: &mut Vec<u32>) {
+    while let Some(header) = r.read_uleb128() {
+        if header & 1 == 0 {
+            let count = header >> 1;                 // RLE group:
+            let value = r.read_le_bytes(width);      //   one value,
+            out.extend(repeat(value).take(count));   //   count copies
+        } else {
+            let literals = (header >> 1) * 8;        // bit-packed group:
+            for _ in 0..literals {                   //   8-value multiples,
+                out.push(r.read_bits(width));        //   width bits each
+            }
+        }
+    }
+}
+```
+
 - Two compression layers: encoding (semantic, scannable) THEN optional
   block compression (zstd/snappy over the encoded page). DuckDB skips
   the second layer for its own storage — random access again.
@@ -89,3 +114,19 @@ The choice of when to decode is the late-materialization decision:
 You can draw both hierarchies (buffers / file→rg→chunk→page), explain
 the two compression layers and why only one is scannable, and name
 where the Parquet→Arrow decode happens in polars vs DuckDB.
+
+## References
+
+**Papers**
+- Melnik et al. — "Dremel: Interactive Analysis of Web-Scale Datasets"
+  (VLDB 2010) — optional; the repetition/definition-level encoding for
+  nested data that Parquet adopted wholesale (skipped here — graphs
+  are flat)
+
+**Code**
+- [arrow-rs](https://github.com/apache/arrow-rs) — one repo, both
+  crates: `arrow-data/src/data.rs` (ArrayData, the layout contract),
+  `arrow-ipc/` (zero-copy shipping), `parquet/src/basic.rs`
+  (encodings), `parquet/src/encodings/rle.rs` + `util/bit_util.rs`
+  (the hybrid), `parquet/src/file/metadata/mod.rs` (footer stats); a
+  fresh shallow clone is enough

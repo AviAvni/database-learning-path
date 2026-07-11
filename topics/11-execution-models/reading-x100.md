@@ -1,8 +1,9 @@
-# Reading guide — "MonetDB/X100: Hyper-Pipelining Query Execution" (CIDR '05) (~1 h)
+# X100: the vectorization manifesto
 
-The vectorization manifesto. Twenty years old and it reads like the
-DuckDB design doc — because it is (Boncz co-authored both; DuckDB came
-out of the same CWI group).
+MonetDB/X100 (CIDR '05) is where vectorized execution was born — from a
+profiler, not a whiteboard. Twenty years old and it reads like the DuckDB
+design doc — because it is (Boncz co-authored both; DuckDB came out of
+the same CWI group).
 
 ## The setup: why were databases 100× slower than hand-written C?
 
@@ -44,6 +45,24 @@ achieves ON THE SAME DATA.
   happens per VECTOR, primitives are branch-free and auto-vectorizable.
   Templated combinatorics (types × ops) generate hundreds of them —
   DuckDB inherits this wholesale.
+
+```rust
+// a primitive: picked once at plan time, then runs branch-free per vector
+fn map_add_i64_vec(a: &[i64], b: &[i64], out: &mut [i64],
+                   sel: Option<&[u32]>) -> usize {
+    match sel {
+        None => { for i in 0..a.len() { out[i] = a[i] + b[i]; } a.len() }
+        Some(s) => {
+            for (o, &i) in s.iter().enumerate() {
+                out[o] = a[i as usize] + b[i as usize];
+            }
+            s.len()
+        }
+    }
+}   // interpretation: ONE dispatch per ~1000 values, not per value;
+    // ~1000 × 8 B per operand keeps the intermediates in L1
+```
+
 - Selection vectors appear here too: filters produce index lists;
   primitives take an optional sel.
 - IPC as the health metric, not just runtime: X100 runs at ~2 IPC where
@@ -69,3 +88,10 @@ achieves ON THE SAME DATA.
 
 You can draw the U-curve from memory with the two failure modes labeled,
 and explain why vector size is a CACHE parameter, not a tuning constant.
+
+## References
+
+**Papers**
+- Boncz, Zukowski, Nes — "MonetDB/X100: Hyper-Pipelining Query
+  Execution" (CIDR 2005) — ~1 h; the TPC-H Q1 profile and the
+  vector-size sweep figure are the two things to internalize

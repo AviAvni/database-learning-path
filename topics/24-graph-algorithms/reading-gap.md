@@ -1,4 +1,4 @@
-# Reading guide — "The GAP Benchmark Suite" (Beamer, Asanović, Patterson — arXiv:1508.03619) + gapbs ([`~/repos/gapbs`](https://github.com/sbeamer/gapbs))
+# The GAP benchmark suite: five graphs so the wrong winner can't win
 
 The yardstick for graph analytics: 6 kernels × 5 graphs, plus
 REFERENCE IMPLEMENTATIONS that are themselves state-of-the-art
@@ -61,3 +61,15 @@ the algorithms — each .cc file opens with a mini-paper.
 5. GAP has no Louvain/Leiden kernel. What makes community detection
    benchmark-hostile (hint: nondeterminism, tie-breaking,
    quality-vs-speed frontier)?
+
+## References
+
+**Papers**
+- Beamer, Asanović, Patterson — "The GAP Benchmark Suite"
+  ([arXiv:1508.03619](https://arxiv.org/abs/1508.03619)) — read for
+  the methodology: why these 5 graphs, why 64 trials from random
+  sources
+
+**Code**
+- [gapbs](https://github.com/sbeamer/gapbs) `src/` — each kernel's
+  header comment is a mini-paper; required reading before the code

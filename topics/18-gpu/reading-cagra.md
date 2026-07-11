@@ -1,9 +1,11 @@
-# Reading guide — CAGRA ("Highly Parallel Graph Construction for GPU ANN", ICDE '24) + cuVS code
+# CAGRA: HNSW rebuilt for warps
 
-Clone: [`~/repos/cuvs`](https://github.com/rapidsai/cuvs) (`cpp/src/neighbors/detail/cagra/`). Topic
-14's HNSW rebuilt from GPU-first principles: what does a
+Topic 14's HNSW rebuilt from GPU-first principles: what does a
 graph-traversal index look like when the executor is 32-wide warps
-instead of one pointer-chasing core?
+instead of one pointer-chasing core? The answer — flatten the levels,
+fix the degree, move the visited set into shared memory — is a case
+study in making an irregular algorithm regular enough for SIMT. The
+cuVS implementation is the code half of this chapter.
 
 ## Anchor map
 
@@ -66,7 +68,24 @@ ONE query:
 
 The greedy walk is still SEQUENTIAL across iterations — parallelism
 is WITHIN each step (32-64 distance computations at once) plus
-ACROSS queries (one CTA each, thousands resident). Question: batch
+ACROSS queries (one CTA each, thousands resident).
+
+```rust
+// one CTA per query; the walk is sequential, each STEP is parallel
+while !itopk.stable() {
+    let parents = itopk.best_unvisited(SEARCH_WIDTH);   // bitonic/radix topk
+    par_for lane in 0..(SEARCH_WIDTH * DEGREE) {        // one lane ≈ one neighbor
+        let v = graph[parents[lane / DEGREE]][lane % DEGREE];
+        // FIXED degree ⇒ this load is one coalesced pass, no load balancing
+        if visited.insert(v) {                          // shared-memory hashmap
+            dist[lane] = l2(query, data[v]);
+        }
+    }
+    itopk.merge(dist);                                  // shared-memory topk
+}
+```
+
+Question: batch
 size 1 uses a fraction of the device; batch 10K saturates it — how
 does that reshape M14's "QPS at recall" curve axes (GPU ANN is a
 THROUGHPUT device: latency per query barely improves, queries per
@@ -109,3 +128,17 @@ must first make the graph regular. FalkorDB's CSR adjacency is not
 5. For M14+M18: our rescore pipeline is exact-f32 over PQ
    candidates. Which half goes to GPU first, and what's the batch
    size per the crossover table you'll measure with l2_batch?
+
+## References
+
+**Papers**
+- Ootomo, Naruse, Nolet, Wang, Feher, Wang — "CAGRA: Highly Parallel
+  Graph Construction and Approximate Nearest Neighbor Search for
+  GPUs" (ICDE 2024,
+  [arXiv:2308.15136](https://arxiv.org/abs/2308.15136)) — §III for
+  build (NN-descent + pruning), §IV for the single-CTA search
+
+**Code**
+- [cuvs](https://github.com/rapidsai/cuvs) —
+  `cpp/src/neighbors/detail/cagra/` — the anchor map above is the
+  reading order; start from `search_single_cta_kernel.cuh`

@@ -1,7 +1,10 @@
-# Reading guide — "Direction-Optimizing Breadth-First Search" (Beamer, Asanović, Patterson, SC '12)
+# Direction-optimizing BFS: push until pull is cheaper
 
-The paper that made BFS a two-algorithm problem. Read with
-LAGraph's template open (reading-lagraph.md) — the 2012 idea ships
+Beamer's SC '12 paper made BFS a two-algorithm problem: push
+(frontier scans its out-edges) wins early, pull (unvisited vertices
+scan their in-edges) wins at the peak, and a two-threshold switch
+picks per level. Read with LAGraph's template open
+([reading-lagraph.md](reading-lagraph.md)) — the 2012 idea ships
 verbatim in the 2025 library, thresholds and all.
 
 ## 1. Top-down's waste (why push dies mid-search)
@@ -36,6 +39,23 @@ finds a frontier parent in O(1) expected probes:
 Pull needs: the REVERSE graph (CSC / AT — the memory-doubling
 question from topic 13 and Gunrock), and a dense frontier
 representation (bitmap — O(1) membership).
+
+```rust
+// pull: each UNVISITED vertex asks "is any of MY parents in the frontier?"
+fn bfs_pull_level(at: &Csr, frontier: &Bitmap, visited: &Bitmap) -> Bitmap {
+    let mut next = Bitmap::new(at.nrows);
+    for v in 0..at.nrows {
+        if visited.get(v) { continue; }
+        for &u in at.row(v) {          // v's in-edges (a row of AT)
+            if frontier.get(u) {
+                next.set(v);
+                break;                 // ANY monoid: first hit suffices —
+            }                          //   the early exit IS the speedup
+        }
+    }
+    next
+}
+```
 
 ## 3. The switch heuristic (the shipped numbers)
 
@@ -90,3 +110,20 @@ implements all three explicitly in ~100 lines.
    very late. Hypothesize why (switch-back cost includes rebuilding
    a SPARSE frontier from a bitmap — O(n) scan), and design the
    experiment that would confirm it.
+
+## References
+
+**Papers**
+- Beamer, Asanović, Patterson — "Direction-Optimizing
+  Breadth-First Search" (SC 2012) — §3-4 are the two algorithms and
+  the waste argument; §5's α/β tuning is the part LAGraph copied
+- Yang, Buluç, Owens — "Implementing Push-Pull Efficiently in
+  GraphBLAS" (ICPP 2018,
+  [arXiv:1804.03327](https://arxiv.org/abs/1804.03327)) — the
+  push=vxm / pull=mxv translation in §3
+
+**Code**
+- [LAGraph](https://github.com/GraphBLAS/LAGraph)
+  `src/algorithm/template/LG_BreadthFirstSearch_SSGrB_template.c` —
+  the shipped thresholds (:184-187) and switch logic (:243-292);
+  walked in [reading-lagraph.md](reading-lagraph.md)

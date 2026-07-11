@@ -1,9 +1,10 @@
-# Reading guide — "The Log-Structured Merge-Tree" (O'Neil, Cheng, Gawlick, O'Neil, 1996)
+# The LSM-tree: an IO scheduling policy, not a data structure
 
-The origin paper. Warning up front: **1996 LSM ≠ 2026 LSM.** The paper's C0/C1
-components are B-trees merged by "rolling merge"; modern LSMs (LevelDB lineage) use
-immutable sorted files + whole-file compaction. Read it for the *cost model* — that
-part is timeless — and translate the mechanism as you go.
+Where the origin of the LSM half of the topic's dichotomy gets read on its
+own terms. Warning up front: **1996 LSM ≠ 2026 LSM.** The paper's C0/C1
+components are B-trees merged by "rolling merge"; modern LSMs (LevelDB
+lineage) use immutable sorted files + whole-file compaction. Read it for the
+*cost model* — that part is timeless — and translate the mechanism as you go.
 
 ## Why it was written
 
@@ -25,6 +26,25 @@ C0 in-memory AVL/2-3 tree      →     memtable (skiplist)
 C1 on-disk B-tree              →     a level of immutable SSTs
 rolling merge cursor           →     compaction job
 filling disk pages ~100% full  →     SST blocks, sequentially written
+```
+
+   The whole 1996 idea fits in one loop — defer, batch, write sequentially,
+   and pay for it at read time:
+
+```rust
+fn insert(&mut self, k: Key, v: Val) {
+    self.wal.append(&k, &v);          // durability: a sequential append
+    self.c0.insert(k, v);             // C0: sorted tree in RAM (≈ memtable)
+    if self.c0.bytes() > THRESHOLD {
+        // rolling merge: drain C0 into C1 in key order — pages written
+        // sequentially, ~100% full; ONE batch amortizes thousands of inserts
+        merge_into(&mut self.c0, &mut self.c1);
+    }
+}
+
+fn get(&self, k: &Key) -> Option<Val> {
+    self.c0.get(k).or_else(|| self.c1.get(k))   // the read-amp tax: check
+}                                               // EVERY component, newest first
 ```
 
 3. **§3 (cost model)** — the payoff. The key result, in modern words: with batching,
@@ -53,3 +73,12 @@ filling disk pages ~100% full  →     SST blocks, sequentially written
 
 LSM is not a data structure, it's an *IO scheduling policy*: convert random writes
 into sequential ones by deferring and batching — and pay for it at read time.
+
+## References
+
+**Papers**
+- O'Neil, Cheng, Gawlick, O'Neil — "The Log-Structured Merge-Tree
+  (LSM-Tree)" (Acta Informatica 1996) —
+  [PDF](https://www.cs.umb.edu/~poneil/lsmtree.pdf) — read §1–3 in
+  order for the cost model; skim §4–6 and translate the mechanism to
+  modern terms as you go

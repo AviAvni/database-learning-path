@@ -1,8 +1,10 @@
-# Reading guide — Gustavson '78 + Buluç & Gilbert SpGEMM survey
+# Gustavson SpGEMM: one output row at a time
 
-"Two Fast Algorithms for Sparse Matrices" (Gustavson, TOMS 1978) —
-the 1978 paper every modern SpGEMM still implements — plus the
-Buluç/Gilbert framing of the design space.
+Every modern sparse-times-sparse multiply — saxpy3, cuSPARSE, our
+M20 stub — is still Gustavson's 1978 row-wise algorithm with a
+different accumulator. This chapter derives why row-wise is
+work-optimal, then uses Buluç & Gilbert's survey to map the whole
+design space onto one question: what data structure is the SPA?
 
 ## 1. The problem: C = A*B when everything is sparse
 
@@ -86,3 +88,16 @@ why every real implementation has the fine-task path.
    triangle counting `C<L>=L*L`: what does each formulation compute
    per wedge, and reconcile with LAGraph shipping BOTH Sandia_LL
    (saxpy) and Sandia_LUT (dot) as the fastest per-graph choices.
+
+## References
+
+**Papers**
+- Gustavson — "Two Fast Algorithms for Sparse Matrices:
+  Multiplication and Permuted Transposition" (ACM TOMS 1978) — the
+  row-wise algorithm + the symbolic/numeric two-phase; short and
+  readable
+- Buluç, Gilbert — "Parallel Sparse Matrix-Matrix Multiplication
+  and Indexing: Implementation and Experiments" (SIAM J. Sci.
+  Comput. 2012, [arXiv:1109.3739](https://arxiv.org/abs/1109.3739))
+  — the design-space framing: formulation × accumulator ×
+  parallelism

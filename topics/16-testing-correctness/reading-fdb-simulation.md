@@ -1,10 +1,13 @@
-# Reading guide — FoundationDB simulation & Antithesis
+# FoundationDB & Antithesis: the whole cluster in one thread
 
-Sources: FoundationDB's simulation docs
-(apple.github.io/foundationdb/testimony + the "Simulation and
-Testing" doc), the Flow language README in the FDB repo, and the
-Antithesis blog (antithesis.com/blog — by the FDB founders). No
-clone needed; this is a design-philosophy read.
+FoundationDB made the most radical testing bet in databases: design
+the entire distributed system so it can run — every node, disk, and
+network — inside one deterministic thread, then spend the saved
+debugging time injecting compressed chaos. This chapter walks that
+design philosophy, the Flow language that makes it possible, and
+Antithesis, where the same founders push the determinism boundary
+down to a hypervisor so unmodified systems get it for free. It's the
+"in the large" version of what our `dst.rs` stub does in miniature.
 
 ## The FDB bet
 
@@ -45,6 +48,26 @@ discipline raft-rs reaches by being sans-io (reading-raft-rs.md).
    (e.g., a read at version v sees all commits ≤ v) rather than
    specific outputs.
 
+The whole architecture reduces to a seeded event loop plus one macro:
+
+```rust
+// the "cluster" advances by popping the next event — no threads, no sleeps
+fn run(seed: u64) {
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let mut events = BinaryHeap::new();          // min-heap on fire_time
+    while let Some((t, ev)) = events.pop() {
+        clock.jump_to(t);                        // logical time TELEPORTS
+        for follow_up in step(ev, &mut rng) {    // deliver, drop, delay, corrupt…
+            events.push(follow_up);
+        }
+    }
+}
+
+fn buggify(rng: &mut impl Rng, p: f64) -> bool {
+    cfg!(simulation) && rng.random_bool(p)       // rare paths made common;
+}                                                // compiled out in production
+```
+
 The famous claim: FDB found so few bugs in production because the
 simulator ran *millions of cluster-years* of compressed chaos —
 CPU-bound, so faster than real time.
@@ -82,3 +105,19 @@ to explore deeper. turso runs its Dockerfile.antithesis image there.
 5. For M16: our engine already isolates IO behind traits (M5 WAL,
    M6 buffer pool). List the remaining nondeterminism sources to
    corral (threadpool from M9! HashMap iteration! rand in plans!).
+
+## References
+
+**Papers & docs**
+- FoundationDB — "Simulation and Testing" + "Testimony" docs
+  ([apple.github.io/foundationdb](https://apple.github.io/foundationdb/testimony.html))
+  — the design-philosophy source; no clone needed
+- Antithesis blog ([antithesis.com/blog](https://antithesis.com/blog))
+  — by the FDB founders; the deterministic-hypervisor generalization
+  and "multiverse debugging"
+
+**Code**
+- [foundationdb](https://github.com/apple/foundationdb) —
+  `flow/README.md` — the Flow language: actors + futures compiled to
+  deterministic state machines; skim for the `wait()`-yields-to-
+  scheduler discipline rather than the C++ details

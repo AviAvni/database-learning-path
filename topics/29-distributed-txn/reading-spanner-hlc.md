@@ -1,8 +1,13 @@
-# Reading guide — Spanner (OSDI '12), TrueTime, and CockroachDB's HLC answer
+# Spanner & HLC: timestamps without the oracle
 
-Papers: *Spanner: Google's Globally-Distributed Database* (OSDI '12);
-*Logical Physical Clocks* (Kulkarni et al., OPODIS '14 — the HLC paper).
-Code: [`~/repos/cockroach`](https://github.com/cockroachdb/cockroach) (`pkg/util/hlc/`, `pkg/kv/kvclient/kvcoord/`).
+Snapshot timestamps that respect real-time order are easy with a central
+oracle — and the oracle is a SPOF and a WAN round trip. This chapter reads
+the two production escapes side by side: Spanner buys a tiny clock-error
+bound ε with GPS and atomic clocks and then *sleeps it out* at commit,
+while CockroachDB accepts NTP-grade skew and pays with hybrid logical
+clocks plus uncertainty restarts at read time. The code walk is
+CockroachDB's `pkg/util/hlc` — the exact rules our `hlc.rs` stub
+implements.
 
 ## The problem both solve
 
@@ -36,6 +41,20 @@ two answers to "timestamps without the oracle."
    replication rather than removed.
 4. **Lock-free snapshot reads**: any replica can serve a read at `t` once
    its Paxos log is caught up past `t` — timestamps replace read locks.
+
+Commit-wait is the whole trick, and it fits in eight lines:
+
+```rust
+fn commit(txn: &mut Txn, tt: &TrueTime) -> Timestamp {
+    let s = tt.now().latest;               // commit_ts: an upper bound on true time
+    txn.paxos_apply_at(s);                 // replicate the writes (locks still held)
+    while tt.now().earliest <= s {         // COMMIT WAIT: sleep out the uncertainty
+        sleep(s - tt.now().earliest);      // ~2ε on average
+    }
+    txn.release_locks_and_ack(s);          // now every clock on earth has passed s,
+    s                                      // so any later txn anywhere gets ts > s
+}
+```
 
 ## HLC: the software substitute
 
@@ -100,3 +119,17 @@ patches the gap at read time with the **uncertainty interval**
 6. M29 mapping: FalkorDB won't have TrueTime. Between (a) a TSO à la
    TiKV's PD and (b) HLC + uncertainty restarts, which fits a
    single-region graph store, and what changes if we go multi-region?
+
+## References
+
+**Papers**
+- Corbett et al. — "Spanner: Google's Globally-Distributed Database"
+  (OSDI 2012) — §1-4 carry the TrueTime and commit-wait ideas; the
+  schema/evaluation sections are skimmable
+- Kulkarni et al. — "Logical Physical Clocks" (OPODIS 2014) — the HLC
+  paper; the send/recv rules and the bounded-drift theorem
+
+**Code**
+- [cockroach](https://github.com/cockroachdb/cockroach)
+  `pkg/util/hlc/hlc.go`, `pkg/kv/kvclient/kvcoord/` — the comment at
+  `hlc.go:42-47` on maxOffset-as-a-promise is the key design note

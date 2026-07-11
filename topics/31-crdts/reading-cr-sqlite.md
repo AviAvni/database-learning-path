@@ -1,10 +1,10 @@
-# Reading guide — cr-sqlite: a real database goes multi-master
+# cr-sqlite: a real database goes multi-master
 
-The other four guides are about *documents*. cr-sqlite
-([~/repos/cr-sqlite](https://github.com/vlcn-io/cr-sqlite)) is the one that answers this topic's database
-question: what does it take to bolt CRDT semantics onto a *relational*
-engine as a loadable extension — no fork, no new storage engine. This is
-the closest published prior art to M31's "active-active FalkorDB."
+The other guides in this topic are about *documents*. cr-sqlite is the
+one that answers the database question: what does it take to bolt CRDT
+semantics onto a *relational* engine as a loadable extension — no fork,
+no new storage engine. This is the closest published prior art to M31's
+"active-active FalkorDB."
 
 ## The one picture
 
@@ -29,6 +29,21 @@ the closest published prior art to M31's "active-active FalkorDB."
 - Deletes are tombstoned via a sentinel clock row; delete wins over
   concurrent column updates (a *remove-wins* choice — opposite of your
   OR-Set! worth pausing on).
+
+The per-cell merge rule, entire:
+
+```rust
+// One clock row per CELL: (pk, col) -> (col_version, db_version, site_id)
+fn merge_cell(local: &mut Cell, remote: &Cell) {
+    if remote.col_version > local.col_version {
+        *local = remote.clone();            // larger Lamport version wins
+    } else if remote.col_version == local.col_version
+        && sqlite_cmp(&remote.value, &local.value) == Ordering::Greater
+    {
+        *local = remote.clone();            // tie → compare the VALUES, not
+    }                                       // clocks or site ids: deterministic
+}                                           // convergence with zero clock trust
+```
 
 ## Code walk (core/rs/core/src/)
 
@@ -69,3 +84,15 @@ the closest published prior art to M31's "active-active FalkorDB."
    adds/removes, property LWW sets), what plays the role of db_version,
    and how does a peer apply a batch idempotently mid-crash? Sketch it
    against your `graph.rs` merge.
+
+## References
+
+**Papers**
+- None — the design lives in the cr-sqlite README and the vlcn.io docs;
+  James Long's "CRDTs for Mortals" talk is the closest lineage write-up
+  (same per-cell LWW with hybrid logical clocks instead of db_version)
+
+**Code**
+- [cr-sqlite](https://github.com/vlcn-io/cr-sqlite) `core/rs/core/src/`
+  — start at `local_writes/mod.rs` and `changes_vtab.rs`; the merge
+  rules are deceptively short

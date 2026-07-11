@@ -1,9 +1,10 @@
-# Reading guide — Postgres LLVM JIT ([`~/repos/postgres/src/backend/jit/llvm/`](https://github.com/postgres/postgres))
+# Postgres's LLVM JIT: why everyone sets jit=off
 
 The production cautionary tale. Postgres 11+ ships an LLVM JIT for
 *expressions and tuple deforming only* — the executor loop stays
 interpreted — and it is famous mostly for the advice "set jit=off".
-Read it to learn exactly where the spectrum bites.
+Read it to learn exactly where the compile-latency spectrum bites,
+and which half of the JIT (deforming) actually pays.
 
 ## Anchor map
 
@@ -37,6 +38,22 @@ each step to a basic block (opblocks, llvmjit_expr.c:302-307) and
 lets LLVM fold the dispatch away. Structurally the SAME translation
 our stub does for `Expr` → CLIF — postgres just starts from
 bytecode instead of an AST.
+
+```rust
+// llvm_compile_expr's shape: one basic block per interpreter step —
+// the dispatch the interpreter pays per step becomes a fallthrough
+let opblocks: Vec<Block> = state.steps.iter().map(|_| new_block()).collect();
+for (i, step) in state.steps.iter().enumerate() {
+    position_at(opblocks[i]);
+    match step.opcode {
+        EEOP_QUAL          => emit_cmp_and_branch(step, opblocks[step.jumpdone]),
+        EEOP_FUNCEXPR      => emit_direct_call(step.fn_addr, step.args),
+        EEOP_SCAN_FETCHSOME => emit_deform(tupledesc, step.last_attr),
+        // ... the giant switch mirrors execExprInterp.c case by case
+    }
+    emit_branch(opblocks[i + 1]);   // then LLVM folds blocks together
+}
+```
 
 ## 2. The cost model failure (the actual lesson)
 
@@ -107,3 +124,12 @@ dies. M19 note: cranelift's `JITModule` has the same
    Which is right for Cypher expressions, and what's the cache
    key (expression shape with constants as parameters — count how
    many distinct shapes a workload of 1000 queries has)?
+
+## References
+
+**Code**
+- [postgres](https://github.com/postgres/postgres) —
+  `src/backend/jit/llvm/` — llvmjit.c (lifecycle), llvmjit_expr.c
+  (the EEOP switch), llvmjit_deform.c (the underrated half); pair
+  with `src/backend/executor/execExprInterp.c` to see what each
+  EEOP block replaces, and `planner.c:699` for the gate

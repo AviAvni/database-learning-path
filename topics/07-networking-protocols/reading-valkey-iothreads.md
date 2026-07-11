@@ -1,10 +1,10 @@
-# Reading valkey's io-threads rework (1.5 h)
+# valkey io-threads: parallelize the majority, nothing else
 
-Repo: [`~/repos/valkey`](https://github.com/valkey-io/valkey). Files: `src/io_threads.c`, `src/memory_prefetch.c`,
-plus grep points in `networking.c`. This is the "great perf PRs to study"
-item — valkey 8 rewrote redis 6's io-threads and roughly doubled throughput.
+Valkey 8 rewrote redis 6's io-threads and roughly doubled throughput — while
+commands still execute on one thread with zero locks in the data structures.
 Read it as a case study in *what to parallelize when you refuse to lock the
-data structures*.
+data structures*: SPSC handoff, batch commit, and a prefetcher that turns
+pointer chases into a pipeline. This is the "great perf PRs to study" item.
 
 ## 0. The contract
 
@@ -52,6 +52,24 @@ executes them, it **prefetches the dict entries** the batch will touch:
           exec(A) hit, exec(B) hit, exec(C) hit               misses paid once
 ```
 
+The interleaving, made explicit:
+
+```rust
+// Walk every key's lookup path LEVEL BY LEVEL across the batch:
+// while A's bucket line is in flight, compute B's hash — the pointer
+// chase becomes a pipeline of overlapping misses, not a chain.
+fn prefetch_batch(dict: &Dict, batch: &[Command]) {
+    let hashes: Vec<u64> = batch.iter().map(|c| hash(c.key())).collect();
+    for &h in &hashes {
+        prefetch(dict.bucket_addr(h));          // level 1: all bucket lines
+    }
+    for &h in &hashes {
+        prefetch(dict.entry_addr(h));           // level 2: entries (buckets now warm)
+    }
+    // main thread then executes the batch: every lookup hits warm lines
+}
+```
+
 ## 3. What to steal for M7
 
 - SPSC per worker beats MPMC when you can dedicate pairs — in tokio terms:
@@ -80,3 +98,11 @@ executes them, it **prefetches the dict entries** the batch will touch:
 
 You can explain what valkey parallelized, what it deliberately didn't, and
 why the prefetcher is the same insight as topic 0's MLP experiment.
+
+## References
+
+**Code**
+- [valkey-io/valkey](https://github.com/valkey-io/valkey) —
+  `src/io_threads.c`, `src/memory_prefetch.c` (the file comment at :7
+  states the whole idea), plus the grep points in `src/networking.c`.
+  Local clone at `~/repos/valkey`.

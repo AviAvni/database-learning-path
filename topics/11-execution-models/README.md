@@ -140,12 +140,12 @@ IS the lesson. Predict the two ratios in notes.md first.
 
 | guide | what it walks |
 |---|---|
-| [reading-duckdb-execution.md](reading-duckdb-execution.md) | DataChunk/Vector/selection vectors, pipeline executor, join HT |
-| [reading-postgres-executor.md](reading-postgres-executor.md) | ExecProcNode Volcano + the computed-goto expression interpreter |
-| [reading-rust-execution-stack.md](reading-rust-execution-stack.md) | polars-stream morsels + SIMD kernels, DataFusion streams |
-| [reading-x100.md](reading-x100.md) | MonetDB/X100 (CIDR '05) — the vectorization manifesto |
-| [reading-compiled-vs-vectorized.md](reading-compiled-vs-vectorized.md) | VLDB '18 — the fair fight |
-| [reading-morsel-parallelism.md](reading-morsel-parallelism.md) | SIGMOD '14 — scheduling |
+| [reading-duckdb-execution.md](reading-duckdb-execution.md) | DuckDB's execution engine: 2048 rows at a time |
+| [reading-postgres-executor.md](reading-postgres-executor.md) | Volcano in production: postgres's executor, warts and wisdom |
+| [reading-rust-execution-stack.md](reading-rust-execution-stack.md) | Vectorized in Rust: polars-stream morsels and DataFusion streams |
+| [reading-x100.md](reading-x100.md) | X100: the vectorization manifesto |
+| [reading-compiled-vs-vectorized.md](reading-compiled-vs-vectorized.md) | Compiled vs vectorized: the fair fight ends in a near-tie |
+| [reading-morsel-parallelism.md](reading-morsel-parallelism.md) | Morsel-driven parallelism: workers pull, skew dissolves |
 
 Further references: "Photon" (SIGMOD 2022) — Databricks' vectorized
 C++ engine, notable for *why not compilation*: easier to build, debug,

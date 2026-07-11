@@ -1,10 +1,10 @@
-# Reading guide — DBSP (VLDB '23 best paper) + Feldera code
+# DBSP: incremental view maintenance as a calculus
 
-**Sources:**
-- Budiu, Chajed, McSherry, Ryzhyk, Tannen — "DBSP: Automatic Incremental
-  View Maintenance for Rich Query Languages" (VLDB 2023) — read §1-4
-  (the algebra), §5 (recursion) if the differential guide left questions
-- [`~/repos/feldera/crates/dbsp/src/`](https://github.com/feldera/feldera) — the production implementation
+The VLDB '23 best paper reduces incremental view maintenance to an
+algebra of four stream operators and two identities, so that
+incrementalizing ANY query becomes a mechanical rewrite. This chapter
+works through the algebra, then anchors it in Feldera's production
+Rust implementation, where every operator of the calculus is a file.
 
 ## 1. DBSP's move: make IVM a *calculus*, not a system
 
@@ -34,6 +34,22 @@ The chain rule is the paper's practical bombshell: you incrementalize
 operator-by-operator, so a whole SQL dialect (joins, aggregates, window
 functions, recursion) is covered by giving each primitive its ^Δ form
 once. That's Feldera's SQL-to-circuit compiler.
+
+The bilinear join's ^Δ form as an operator — note the state is
+exactly two integrals, one of them delayed (`z^-1`):
+
+```rust
+struct IncJoin { ia: ZSet, ib_delayed: ZSet }    // I(A), z^-1(I(B))
+
+fn step(&mut self, da: &ZSet, db: &ZSet) -> ZSet {
+    // (A⋈B)^Δ = ΔA ⋈ z^-1(I(B))  +  I(A) ⋈ ΔB
+    self.ia.merge(da);                           // integrate A first...
+    let out = join(da, &self.ib_delayed)         // ...ΔA sees B BEFORE this tick
+        .plus(&join(&self.ia, db));              // ΔB sees A including ΔA:
+    self.ib_delayed.merge(db);                   //   the ΔA⋈ΔB term, absorbed
+    out                                          // = the view delta, exactly
+}
+```
 
 **Q1.** Prove the bilinear rule from Q^Δ = D∘Q∘I by expanding
 I(a)[t]·I(b)[t] − I(a)[t−1]·I(b)[t−1]. Note where z^-1 appears — that's
@@ -88,3 +104,18 @@ linear count), mark which arrows carry deltas and which carry integrals,
 and identify what FalkorDB already stores (A, ΔA as delta matrices) vs
 what M27 must add (the arranged join state — nothing! wedges need only A
 itself: the integrals ARE the adjacency matrices).
+
+## References
+
+**Papers**
+- Budiu, Chajed, McSherry, Ryzhyk, Tannen — "DBSP: Automatic
+  Incremental View Maintenance for Rich Query Languages" (VLDB 2023,
+  [arXiv:2203.16684](https://arxiv.org/abs/2203.16684)) — read §1-4
+  (the algebra), §5 (recursion) if the differential guide left
+  questions
+
+**Code**
+- [feldera](https://github.com/feldera/feldera) `crates/dbsp/src/` —
+  the production implementation; `algebra/zset/`, `operator/z1.rs`,
+  `operator/integrate.rs`, `operator/differentiate.rs`,
+  `operator/join.rs`, `operator/delta0.rs` per the anchor table

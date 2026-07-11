@@ -1,8 +1,10 @@
-# Reading postgres `xlog.c` — guided skim (2 h)
+# postgres xlog: reserve-then-copy and the flush recheck
 
-Repo: [`~/repos/postgres`](https://github.com/postgres/postgres). Files: `src/backend/access/transam/xlog.c` (10,196
-lines — do NOT read linearly), `xloginsert.c`, `xlogrecovery.c`,
-`src/include/access/xlogrecord.h`. You're here for five mechanisms.
+Postgres's WAL is 10,000+ lines of C, but it earns its keep with five
+mechanisms: the back-linked record format, the reserve-then-copy insertion
+trick, group commit via a flush recheck, full-page writes after checkpoints,
+and fuzzy checkpointing with redo-only recovery. This chapter skims exactly
+those five — do NOT read the file linearly.
 
 ## 1. The record — xlogrecord.h:41–53
 
@@ -29,6 +31,20 @@ The heart: after acquiring the write lock, **recheck `LogwrtResult.Flush`**
 (:2885) — another backend probably flushed past your LSN while you waited;
 return without an fsync. `commit_delay`/`commit_siblings` (:2901–2906) add an
 optional pre-flush sleep to grow the batch. Your experiment reimplements this.
+
+Group commit is just that recheck:
+
+```rust
+fn xlog_flush(&self, upto: Lsn) {
+    if self.flushed_lsn() >= upto { return; }   // cheap check, no lock
+    let _g = self.write_lock.lock();            // maybe wait behind a flusher…
+    if self.flushed_lsn() >= upto { return; }   // …RECHECK: their fsync already
+                                                // covered our LSN — free ride
+    self.write_out_buffers_through(upto);
+    self.wal_file.fdatasync();                  // ONE fsync for every backend
+    self.advance_flushed_lsn();                 // that queued behind the lock
+}
+```
 
 ## 4. Full-page writes — xloginsert.c:621–700
 
@@ -71,3 +87,12 @@ separate sync call). Your fsync_ladder experiment measures exactly these.
 
 You can explain reserve-then-copy, the flush recheck, and needs_backup in
 three sentences total — those three lines are the file.
+
+## References
+
+**Code**
+- [postgres/postgres](https://github.com/postgres/postgres) —
+  `src/backend/access/transam/xlog.c` (10,196 lines — do NOT read
+  linearly), `src/backend/access/transam/xloginsert.c`,
+  `src/backend/access/transam/xlogrecovery.c`,
+  `src/include/access/xlogrecord.h`. Local clone at `~/repos/postgres`.

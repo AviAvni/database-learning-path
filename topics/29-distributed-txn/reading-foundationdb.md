@@ -1,8 +1,11 @@
-# Reading guide — FoundationDB (SIGMOD '21): the unbundled transaction
+# FoundationDB: the unbundled transaction
 
-Paper: *FoundationDB: A Distributed Unbundled Transactional Key Value
-Store*, SIGMOD 2021. Code: [`~/repos/foundationdb`](https://github.com/apple/foundationdb) (C++ with the Flow
-actor dialect — read for structure, not style).
+What if the transaction manager weren't a process at all, but a pipeline?
+FoundationDB decomposes commit into single-purpose roles — sequencer,
+resolvers, proxies, logs — batches everything, and turns failure handling
+into wholesale recovery instead of per-transaction repair. This chapter
+reads the SIGMOD '21 paper against the production tree; the code is C++
+in the Flow actor dialect — read it for structure, not style.
 
 ## The move: decompose the transaction itself
 
@@ -39,6 +42,22 @@ Percolator erased the coordinator; Spanner replicated it. FoundationDB
 - **The 5s window**: a txn older than the resolvers' memory can't be
   checked, so it's rejected — `transaction_too_old` is the protocol
   showing through the API.
+
+The resolver's entire job, in one screen — SI conflict checking over a
+short window of in-memory write history:
+
+```rust
+fn resolve(batch: &[Txn], commit_v: Version, writes: &mut VersionedRanges) -> Vec<bool> {
+    batch.iter().map(|txn| {
+        let ok = txn.read_ranges.iter()          // did anyone write what I read,
+            .all(|r| writes.newest_write_in(r) <= txn.read_version); // after I read it?
+        if ok {
+            writes.insert(&txn.write_ranges, commit_v); // haunt later txns for ~5s
+        }
+        ok    // false => abort: cheap, because nothing was written anywhere yet
+    }).collect()
+}
+```
 
 ## Code walk
 
@@ -97,3 +116,18 @@ Percolator erased the coordinator; Spanner replicated it. FoundationDB
    read/write sets of *graph elements* (nodes, edges, adjacency ranges).
    What is the graph analogue of a range conflict, and does a 2-hop
    traversal's read set even fit in a resolver's memory window?
+
+## References
+
+**Papers**
+- Zhou et al. — "FoundationDB: A Distributed Unbundled Transactional Key
+  Value Store" (SIGMOD 2021) — §2-4 for the architecture and recovery;
+  §5's simulation section pairs with topic 16
+
+**Code**
+- [foundationdb](https://github.com/apple/foundationdb)
+  `fdbserver/resolver/ConflictSet.cpp`,
+  `fdbserver/commitproxy/CommitProxyServer.cpp`,
+  `fdbserver/sequencer/masterserver.cpp`,
+  `fdbserver/resolver/ResolverBug.cpp` — C++ with the Flow actor
+  dialect; read for structure, not style

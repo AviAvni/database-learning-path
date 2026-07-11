@@ -1,13 +1,10 @@
-# Reading guide — LDBC SNB (the graph benchmark referee)
+# LDBC SNB: the graph benchmark referee
 
-Papers/specs:
-
-- Erling et al. — "The LDBC Social Network Benchmark: Interactive
-  Workload" (SIGMOD '15)
-- LDBC SNB specification (ldbcouncil.org/benchmarks/snb) — skim the
-  query set, read the data-generation section
-- Graphalytics (VLDB '16) is topic 24's referee; noted here for the
-  boundary
+A benchmark only referees if it forces the hard parts: updates flowing
+during reads, power-law data with real correlations, audited full
+disclosure. LDBC SNB is that referee for graph engines — this chapter
+maps its three workloads, why its correlated data generator is the
+whole point, and what M22's shootout should steal from the spec.
 
 ## Why this matters
 
@@ -74,3 +71,20 @@ lesson (uniform synthetic data hides planner sins) applied to graphs:
    model errors" — at which hop does estimation die?
 5. Which SNB scale factor fits in this Mac's RAM as (a) memgraph
    objects, (b) CSR, (c) Delta_Matrix? Rough per-edge byte estimates.
+
+## References
+
+**Papers**
+- Erling et al. — "The LDBC Social Network Benchmark: Interactive
+  Workload" (SIGMOD 2015)
+- LDBC SNB specification
+  ([ldbcouncil.org/benchmarks/snb](https://ldbcouncil.org/benchmarks/snb))
+  — skim the query set, read the data-generation section
+- Iosup et al. — "LDBC Graphalytics" (VLDB 2016) — topic 24's referee;
+  noted here for the boundary
+
+**Code**
+- [ldbc_snb_datagen_spark](https://github.com/ldbc/ldbc_snb_datagen_spark)
+  and the audited implementations under
+  [github.com/ldbc](https://github.com/ldbc) — the driver's
+  dependency-tracking is the part worth reading for M22

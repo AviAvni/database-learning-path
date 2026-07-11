@@ -1,13 +1,10 @@
-# Reading guide — Neon: pageserver & safekeepers (code walk)
+# Neon: page versions from WAL, branches for free
 
-**Sources:**
-- [`~/repos/neon/`](https://github.com/neondatabase/neon) — pageserver + safekeeper crates (Rust)
-- Neon architecture posts: "Architecture decisions in Neon", "Get page at
-  LSN" docs in `docs/` in-repo (skim `docs/pageserver-storage.md` &
-  `docs/walservice.md` equivalents if present)
-
-Aurora's idea, reimplemented for stock Postgres, in Rust, in the open. The
-best codebase to *read* for this topic.
+Aurora's idea, reimplemented for stock Postgres, in Rust, in the open —
+the best codebase to *read* for this topic. Compute streams WAL to a
+safekeeper quorum for durability; a pageserver indexes page versions by
+(key, LSN) and reconstructs any page at any LSN on demand, which is
+also why a branch costs O(1). This chapter walks both crates by anchor.
 
 ## 1. The data flow
 
@@ -41,6 +38,29 @@ level files of WAL records; image layers = the "compacted" form; GC =
 dropping history below the PITR horizon (respecting branch points!). Topic 4
 for the third time, after GIN pending lists and differential arrangements
 (topic 27 notes).
+
+GetPage@LSN, reduced to its loop — reconstruction plus the ancestor walk:
+
+```rust
+fn get_page(tl: &Timeline, key: Key, lsn: Lsn) -> Page {
+    let (mut tl, mut lsn) = (tl, lsn);
+    let mut deltas = vec![];
+    loop {
+        match tl.layers.search(key, lsn) {            // 2-D (key × LSN) search
+            Found::Image(img) => {                    // ONE image suffices...
+                return walredo(img, deltas);          // ...replay deltas on it
+            }                                         //    (REDO on the READ path)
+            Found::Delta(rec, below) => {             // collect, keep descending
+                deltas.push(rec); lsn = below;
+            }
+            Found::Nothing => {                       // not born on this timeline:
+                lsn = tl.ancestor_lsn.min(lsn);       // ask the parent, capped at
+                tl = tl.ancestor();                   //   the branch point
+            }
+        }
+    }
+}
+```
 
 **Q1.** `LayerMap::search` answers "newest layer that could hold (key,
 ≤ lsn)". Why does reconstruction need at most ONE image layer but possibly
@@ -77,3 +97,15 @@ down* (materialized) into child timelines by compaction over time. When
 would M28's graph branches need the same trick — what query pattern makes
 a 64-deep ancestor walk show up, and what's the graph equivalent of an
 image layer (a materialized matrix snapshot at the branch point)?
+
+## References
+
+**Code**
+- [neon](https://github.com/neondatabase/neon) — pageserver +
+  safekeeper crates (Rust); read path anchors in
+  `pageserver/src/pgdatadir_mapping.rs`, `tenant/timeline.rs`,
+  `tenant/layer_map.rs`, `tenant/storage_layer/`,
+  `pageserver/src/walredo.rs`; write path in `safekeeper/src/`
+- Neon architecture posts: "Architecture decisions in Neon", "Get page
+  at LSN" docs in `docs/` in-repo (skim `docs/pageserver-storage.md` &
+  `docs/walservice.md` equivalents if present)

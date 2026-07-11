@@ -1,9 +1,12 @@
-# Reading guide — qdrant `consensus.rs` (raft-rs embedded)
+# Qdrant's consensus: raft for metadata, replica sets for data
 
-Clone: [`~/repos/qdrant`](https://github.com/qdrant/qdrant) (`src/consensus.rs` + `lib/collection`). The
-architectural decision worth studying: qdrant runs Raft over cluster
-METADATA only — collection schemas, shard placement, peer membership.
-The vectors themselves replicate OUTSIDE raft.
+The architectural decision worth studying: qdrant runs Raft over
+cluster METADATA only — collection schemas, shard placement, peer
+membership. The vectors themselves replicate OUTSIDE raft, through
+replica sets with an ack-count knob. This chapter walks
+`src/consensus.rs` (the raft-rs driving loop from
+[reading-raft-rs.md](reading-raft-rs.md), in production) and the
+weaker data-path contract in `lib/collection`.
 
 ## The split
 
@@ -41,6 +44,28 @@ tolerate replica-set semantics with repair. Same call as kafka
 Exactly the raft-rs contract from reading-raft-rs.md, in production:
 a thread that selects over {incoming raft messages, proposal
 channel, tick timer}, calls `step`/`tick`, then `on_ready`.
+
+```rust
+// the whole of consensus.rs, condensed: raft-rs decides, this loop does
+fn run(&mut self) {
+    loop {
+        match self.select_with_timeout(TICK) {
+            Recv::RaftMsg(m)  => self.node.step(m).ok(),   // network in
+            Recv::Propose(op) => self.node.propose(vec![], op.encode()),
+            Recv::Timeout     => self.node.tick(),         // clock in
+        }
+        if !self.node.has_ready() { continue; }
+        let mut rd = self.node.ready();
+        self.storage.persist(rd.entries(), rd.hs());       // 1. fsync FIRST
+        self.transport.send(rd.take_messages());           // 2. then talk
+        for e in rd.take_committed_entries() {
+            self.topology.apply(e);      // 3. committed → cluster metadata
+        }
+        self.node.advance(rd);                             // 4. done
+    }
+}
+```
+
 Question: find where snapshots trigger — what happens when a new
 peer joins and the log has been compacted?
 
@@ -76,3 +101,12 @@ the raft-managed replica-state machine close, and which remains
    qdrant's?
 5. Where does qdrant persist the raft log and HardState? Find the
    Storage impl behind ConsensusStateRef.
+
+## References
+
+**Code**
+- [qdrant](https://github.com/qdrant/qdrant) — `src/consensus.rs`
+  (the driving loop; the anchor map above) and `lib/collection`
+  (shard replication, `write_consistency_factor`, replica states)
+- The library it embeds is [raft-rs](https://github.com/tikv/raft-rs)
+  — walked in [reading-raft-rs.md](reading-raft-rs.md)

@@ -1,9 +1,11 @@
-# Reading guide — qdrant's HNSW + filtered search
+# Qdrant's HNSW: filtered search is a planner problem
 
-Repo: [`~/repos/qdrant`](https://github.com/qdrant/qdrant), everything under
-`lib/segment/src/index/hnsw_index/`. This is production HNSW: the
-paper plus five years of scar tissue — and filtering, qdrant's
-actual specialty.
+Production HNSW: the paper plus five years of scar tissue — and
+filtering, qdrant's actual specialty. The payoff of this chapter is
+watching a query planner appear inside an index: estimate the
+filter's cardinality, then pick HNSW / brute force / ACORN per query,
+with the percolation threshold measured (not assumed) at build time.
+Everything lives under `lib/segment/src/index/hnsw_index/`.
 
 ## 1. The graph, split into build and serve shapes
 
@@ -89,3 +91,22 @@ MEASURED during build — topic 0 discipline inside an index builder.
 5. The build/serve split (Builder with RwLocks → frozen GraphLayers):
    map it onto topic 13's transient/persistent kuzu split and
    Delta_Matrix. What's the graph-index "flush"?
+
+## References
+
+**Papers**
+- Patel, Kraft, Guestrin, Zaharia — "ACORN: Performant and
+  Predicate-Agnostic Search Over Vector Embeddings and Structured
+  Data" (SIGMOD 2024,
+  [arXiv:2403.04871](https://arxiv.org/abs/2403.04871)) — optional;
+  the 2-hop-expansion idea qdrant adopted
+- The HNSW paper itself is
+  [reading-hnsw-paper.md](reading-hnsw-paper.md)
+
+**Code**
+- [qdrant](https://github.com/qdrant/qdrant) — everything under
+  `lib/segment/src/index/hnsw_index/`: `graph_layers_builder.rs`,
+  `graph_layers.rs`, `search_context.rs`, `visited_pool.rs`,
+  `hnsw/search.rs` (the per-query algorithm choice), `hnsw/build.rs`
+  (the percolation measurement), `graph_links.rs`,
+  `graph_layers_healer.rs`

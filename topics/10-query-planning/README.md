@@ -98,11 +98,11 @@ problem, different clothes (M10/M20 will meet it as nnz estimation).
 
 | Guide | What you'll trace |
 |---|---|
-| reading-duckdb-optimizer.md | the pass pipeline, filter pushdown, DP join enumeration with greedy fallback |
-| reading-postgres-optimizer.md | standard_join_search, geqo threshold, default selectivities |
-| reading-rust-planner-stack.md | sqlparser-rs Pratt parsing, DataFusion rule trait, polars pushdowns |
-| reading-selinger-cascades.md | the founding paper + the framework that generalized it |
-| reading-how-good-optimizers.md | VLDB'15 — the humbling numbers |
+| reading-duckdb-optimizer.md | The readable optimizer: DuckDB's pass pipeline and join-order DP |
+| reading-postgres-optimizer.md | Postgres's optimizer: Selinger '79, still in production |
+| reading-rust-planner-stack.md | The Rust planner stack: Pratt parsing, rule traits, lazy frames |
+| reading-selinger-cascades.md | Selinger and Cascades: the two optimizer architectures |
+| reading-how-good-optimizers.md | Cardinality is the whole ballgame: the JOB audit |
 
 Further references:
 - "Apache Calcite" (SIGMOD 2018) — the optimizer as a *library*

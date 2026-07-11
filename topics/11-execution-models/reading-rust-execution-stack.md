@@ -1,8 +1,9 @@
-# Reading guide — polars-stream + DataFusion: vectorized, in Rust (~1.5 h)
+# Vectorized in Rust: polars-stream morsels and DataFusion streams
 
-Local clones: [`~/repos/polars`](https://github.com/pola-rs/polars), [`~/repos/datafusion`](https://github.com/apache/datafusion). Two Rust answers to
-the same design questions DuckDB answered in C++ — and the closest
-templates for M11's runtime.
+Two Rust answers to the same design questions DuckDB answered in C++ —
+and the closest templates for M11's runtime. polars-stream makes morsels
+a first-class type driven by an async graph; DataFusion keeps Volcano's
+shape with a vector payload and async clothes.
 
 ## 1. polars-stream: morsels as a first-class type
 
@@ -59,6 +60,17 @@ templates for M11's runtime.
   group-by IS array arithmetic. This is exactly the shape your
   `vectorized.rs` group-by should have.
 
+```rust
+// group-by IS array arithmetic: intern keys → dense ids → flat states
+fn update_batch(&mut self, keys: &Column, vals: &[i64]) {
+    let gids = self.group_values.intern(keys); // ONE HT probe per row,
+    for (i, &g) in gids.iter().enumerate() {   // shared by all aggregates
+        self.sums[g] += vals[i];               // states are flat arrays
+        self.counts[g] += 1;                   // indexed by group id —
+    }                                          // no per-group heap objects
+}
+```
+
 ## The comparison that matters
 
 | | DuckDB | polars-stream | DataFusion |
@@ -91,3 +103,15 @@ templates for M11's runtime.
 You can name the batch unit + parallelism strategy of all three systems
 from the table WITHOUT the table, and describe the
 intern-then-flat-arrays group-by shape in two sentences.
+
+## References
+
+**Code**
+- [polars](https://github.com/pola-rs/polars) —
+  `crates/polars-stream/src/` (`morsel.rs`, `graph.rs`, `execute.rs`,
+  `nodes/`) and `crates/polars-compute/src/float_sum.rs` for what a
+  SIMD kernel actually looks like
+- [datafusion](https://github.com/apache/datafusion) —
+  `datafusion/physical-plan/src/execution_plan.rs` (the trait) and
+  `aggregates/` (`GroupedHashAggregateStream`, `group_values/`) — the
+  engine's heart; ~1.5 h for both

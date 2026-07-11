@@ -1,9 +1,11 @@
-# Code reading — redis `redis-benchmark.c`
+# redis-benchmark: a throughput tool wearing latency clothes
 
-Source: [`~/repos/redis/src/redis-benchmark.c`](https://github.com/redis/redis) (2028 lines, pinned at Redis 8.6.2 /
-`a176d1225`). One file, no dependencies beyond hiredis + the `ae` event loop — readable
-top to bottom in an evening. Study-guide questions: *how does it implement pipelining,
-and what does it get wrong about coordinated omission?*
+The load generator you'll imitate — and the mistake you'll avoid. In one
+dependency-free file, redis-benchmark shows a masterclass in cheap pipelining
+(one pre-built buffer, patched in place) and, in the same 2000 lines, the
+canonical case of coordinated omission: a closed loop that measures service
+time and calls it latency. Two questions drive the read: *how does it
+implement pipelining, and what does it get wrong about coordinated omission?*
 
 ## Structure
 
@@ -82,9 +84,41 @@ not against any intended schedule. Consequences, in Tene's terms:
 4. Small extra: `hdr_record_value` clamps at `CONFIG_LATENCY_HISTOGRAM_MAX_VALUE`
    (line 530) — the worst outliers are also truncated.
 
+Both loops, distilled to their timing skeletons — the entire bug and the
+entire fix is *where the clock starts*:
+
+```rust
+// closed loop (redis-benchmark): clock starts at SEND — a server stall
+// pauses the generator, so the requests that would have queued up behind
+// the stall are never sent, never measured.
+loop {
+    let start = now();
+    send_batch_and_wait_all_replies();
+    record(now() - start);              // one bad sample per stall
+}
+
+// open loop (the fix): clock starts at the INTENDED send time — the
+// schedule advances whether or not the server keeps up.
+let mut intended = now();
+loop {
+    intended += period;                 // target rate exists
+    wait_until(intended);
+    send_one();                         // reply handled async
+    on_reply(move |t| record(t - intended));  // queueing delay is visible
+}
+```
+
 ## Takeaway
 
 redis-benchmark is a *throughput* tool with percentile decoration: buffer-replication
 pipelining is a masterclass in doing the minimum work per event-loop tick, but the
 closed loop means its latency numbers systematically flatter the server under stress.
 For the capstone (M7+): keep the obuf trick, add an intended-send schedule.
+
+## References
+
+**Code**
+- [redis](https://github.com/redis/redis) `src/redis-benchmark.c` (2028
+  lines, pinned at Redis 8.6.2 / `a176d1225`) — one file, no dependencies
+  beyond hiredis + the `ae` event loop; readable top to bottom in an
+  evening

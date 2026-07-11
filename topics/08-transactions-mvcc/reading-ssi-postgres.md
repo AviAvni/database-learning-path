@@ -1,8 +1,10 @@
-# Reading guide — "Serializable Snapshot Isolation in PostgreSQL" (Ports & Grittner, VLDB '12) (~1.5 h)
+# SSI: serializable snapshot isolation without blocking anyone
 
-How postgres turned SI into SERIALIZABLE without locks blocking anyone.
-Prereq: the Berenson critique (you need write skew cold) and the Cahill
-'08 idea it productionizes.
+How postgres turned SI into SERIALIZABLE with passive markers instead of
+blocking locks — Ports & Grittner's VLDB '12 account of productionizing
+Cahill's dangerous-structure theorem. Prereq: the Berenson critique
+([reading-ansi-critique.md](reading-ansi-critique.md)) — you need write
+skew cold.
 
 ## The theory in one diagram
 
@@ -21,6 +23,20 @@ track rw-antidependency edges; when a txn accumulates BOTH an inbound and
 an outbound rw edge (it became a pivot), abort somebody. This is
 conservative — some aborted histories were actually fine (false positives)
 — but it never misses a real cycle.
+
+The whole detector, conceptually — two flags per transaction and one rule:
+
+```rust
+fn on_rw_antidependency(reader: TxnId, writer: TxnId, g: &mut ConflictGraph) {
+    g[reader].out_rw = true;             // reader ──rw──► writer
+    g[writer].in_rw = true;
+    for t in [reader, writer] {
+        if g[t].in_rw && g[t].out_rw {   // t became a pivot:
+            abort_someone(t, g);         //   T_in ─rw─► t ─rw─► T_out
+        }                                // conservative: false positives yes,
+    }                                    // missed cycles never
+}
+```
 
 Doctors write skew as the structure: T1 reads bob's row (later written by
 T2) ⇒ T1 ──rw──► T2; T2 reads alice's row (later written by T1) ⇒
@@ -70,3 +86,13 @@ T2 ──rw──► T1. A cycle of length 2 — each txn is a pivot.
 
 You can draw the dangerous structure from memory, place both write-skew
 txns on it, and answer Q4 — it decides how much of this paper M8 needs.
+
+## References
+
+**Papers**
+- Ports & Grittner — "Serializable Snapshot Isolation in PostgreSQL"
+  (VLDB 2012, [arXiv:1208.4179](https://arxiv.org/abs/1208.4179)) —
+  ~1.5 h; §4–§7 are the production engineering, §8 the honest costs
+- Cahill, Röhm, Fekete — "Serializable Isolation for Snapshot Databases"
+  (SIGMOD 2008) — the dangerous-structure theorem this paper
+  productionizes; the theorem statement is enough

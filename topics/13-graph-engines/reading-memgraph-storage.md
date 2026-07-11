@@ -1,15 +1,10 @@
-# Reading guide — memgraph's in-memory storage (skip lists + delta MVCC)
-
-Repo: [`~/repos/memgraph`](https://github.com/memgraph/memgraph) (cloned for topic 9). Focus:
-`src/storage/v2/`.
-
-## Why this matters
+# Memgraph: skip lists, edge vectors, delta MVCC
 
 memgraph is the "in-memory, pointer-rich, OLTP-first" corner of the
 design space: no CSR anywhere. It shows what you get when you optimize
 for concurrent mutation instead of scan bandwidth — and it reuses two
 things you've already read: the lazy-locking skip list (topic 9) and
-delta-chain MVCC (topic 8's N2O ordering).
+delta-chain MVCC (topic 8's N2O ordering). Focus: `src/storage/v2/`.
 
 ## 1. The vertex is the store
 
@@ -48,6 +43,21 @@ Readers walk `vertex.delta()` chains until they hit their snapshot;
 old deltas are GC'd. Per-vertex `RWSpinLock` + delta chain = writers
 don't block readers, exactly topic 8's design, at vertex granularity.
 
+```rust
+// N2O read: start from the newest (in-place) state and UNDO backwards
+// until the chain is old enough for this reader's snapshot
+fn read_vertex(v: &Vertex, snapshot_ts: u64) -> VertexView {
+    let mut view = v.current_state();            // newest version, in place
+    let mut d = v.delta_head();                  // PointerPack: flags in low bits
+    while let Some(delta) = d {
+        if delta.ts <= snapshot_ts { break; }    // committed before us: done
+        delta.undo(&mut view);                   // ADD_LABEL undoes REMOVE, etc.
+        d = delta.next();                        // older
+    }
+    view    // fresh readers pay 0 hops; laggards pay the chain — N2O's bet
+}
+```
+
 ## 3. What this architecture buys / costs
 
 ```
@@ -80,3 +90,11 @@ No batch-level structure to stream.
    16-byte triples with a pointer vs 8-byte offsets.)
 5. Sketch what an analytics query (PageRank) costs on this layout vs a
    matrix. Where does the memory bus time go?
+
+## References
+
+**Code**
+- [memgraph](https://github.com/memgraph/memgraph) (cloned for
+  topic 9) — `src/storage/v2/vertex.hpp` is the whole chapter in one
+  struct; the skip-list vertex store and delta GC are the topic-9
+  machinery reused

@@ -1,4 +1,4 @@
-# Reading guide — PyTorch Geometric's message-passing machinery ([`~/repos/pytorch_geometric`](https://github.com/pyg-team/pytorch_geometric))
+# PyTorch Geometric: one abstraction, the whole GNN literature
 
 Read PyG the way topic 20 read SuiteSparse: as an existence proof that
 one abstraction (here `MessagePassing`) covers a whole literature, and as
@@ -37,6 +37,21 @@ a "memory-efficient aggregation"; a database person calls it not
 materializing a join before a group-by. Same lesson as topic 20's masked
 SpGEMM never materializing L·U' (topic 24 TC).
 
+The COO path, de-tensored — see the m×d temp being born:
+
+```rust
+fn propagate_coo(edges: &[(u32, u32)], x: &Mat, msg: impl Fn(&[f32]) -> Vec<f32>)
+    -> Mat {
+    let mut tmp = Vec::with_capacity(edges.len());   // m×d — THE temporary
+    for &(src, _) in edges { tmp.push(msg(x.row(src))); }  // gather + message
+    let mut out = Mat::zeros(x.n, x.d);
+    for (&(_, dst), m) in edges.iter().zip(&tmp) {   // scatter-reduce by dst
+        out.row_mut(dst).add_assign(m);
+    }
+    out   // fused CSR path: spmm(adj_t, x) — same result, no tmp at all
+}
+```
+
 SDDMM is the other primitive: GAT's per-edge scores are dense-dense
 products sampled at A's nonzeros. DGL exposes it directly (`dgl.ops.gsddmm`);
 PyG hides it inside `edge_updater`. SpMM + SDDMM together span every
@@ -68,3 +83,13 @@ mainstream GNN — that's the entire kernel inventory M25 needs.
    topic 5's buffer-pool page pinning: what's the working set, who evicts?
 5. If M25 exposes ONE kernel to Cypher (`CALL algo.spmm`?), which PyG
    surface is the right shape to copy, and what stays engine-internal?
+
+## References
+
+**Code**
+- [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric) —
+  read in the table's order:
+  `torch_geometric/nn/conv/message_passing.py` (:39 base class, :421
+  `propagate`, :469-470 fuse check), `nn/conv/gcn_conv.py`,
+  `nn/conv/sage_conv.py`, `nn/conv/gat_conv.py`, `utils/_spmm.py`,
+  `nn/models/node2vec.py`, `loader/neighbor_loader.py`

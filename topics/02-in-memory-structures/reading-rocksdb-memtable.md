@@ -1,7 +1,11 @@
-# Reading RocksDB `InlineSkipList` — the lock-free memtable
+# InlineSkipList: lock-free by refusing to delete
 
-File: [`~/repos/rocksdb/memtable/inlineskiplist.h`](https://github.com/facebook/rocksdb). This is where LSM write throughput
-lives: every `Put` in half the industry lands in this structure. Budget: 1–2 h.
+This is where LSM write throughput lives: every `Put` in half the industry
+lands in this one header. Two ideas are the whole file — a node layout that
+puts the hot pointer and the key on the same cache line by indexing the tower
+*negatively*, and a concurrency contract kept simple by one workload
+restriction: memtables never delete, they freeze and drop wholesale. Budget:
+1–2 h.
 
 ## 1. The node layout trick — read this first
 
@@ -38,6 +42,27 @@ by an author who priced the cache lines.
   freed while readers run). Constraint-driven simplicity — the design lesson of the
   whole file.
 
+The concurrent insert, reduced to its CAS skeleton:
+
+```rust
+fn insert_concurrently(list: &SkipList, node: &Node, height: usize) {
+    let mut splice = list.find_splice(node.key());       // prev/next per level
+    for lvl in 0..height {                               // bottom-up: correctness
+        loop {                                           //   needs only level 0
+            node.set_next(lvl, splice.next[lvl]);        // prepare BEFORE publish
+            if splice.prev[lvl]
+                .cas_next(lvl, splice.next[lvl], node)   // release: key bytes are
+            {                                            //   visible before the link
+                break;
+            }
+            splice.recompute(lvl, node.key());           // lost the race — re-find
+        }                                                //   neighbors, retry
+    }
+}
+// a node linked at level 0 but not yet above is merely slower to find —
+// never incorrect. That asymmetry is what makes the lock-free version small.
+```
+
 ## 3. Supporting cast
 
 - `RandomHeight` — lines 559–573, branching factor 4, max 12 levels.
@@ -64,3 +89,12 @@ by an author who priced the cache lines.
 
 You can explain the negative-index tower AND why insert-only makes lock-free easy —
 these two ideas are the file.
+
+## References
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb)
+  `memtable/inlineskiplist.h` — the header comment (lines 31–33) states
+  the no-delete contract; also `memory/concurrent_arena.h:57–68`
+  (sharded arena) and `memtable/skiplistrep.cc` (the `MemTableRep`
+  plug-in point and its three siblings)

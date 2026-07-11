@@ -1,9 +1,11 @@
-# Reading guide — C-Store (VLDB '05) + "Integrating Compression and Execution" (SIGMOD '06) (~1.5 h)
+# C-Store: operate on compressed data
 
-The founding papers, read as a pair: C-Store proposes the architecture;
-the SIGMOD '06 paper (Abadi, Madden, Ferreira — same lab) proves the
-thesis this topic is named for: the executor should OPERATE ON
-compressed data, not just store it.
+Every system in this topic descends from two papers out of the same
+lab, read here as a pair: C-Store proposes the column-store
+architecture, and the SIGMOD '06 follow-up proves the thesis this
+topic is named for — the executor should OPERATE ON compressed data,
+not just store it. Twenty years on, the value is seeing which of the
+original bets survived, and in what disguise.
 
 ## C-Store: the architecture bets (VLDB '05)
 
@@ -54,6 +56,25 @@ Findings to internalize:
  process-compressed:       [scan runs/codes directly]      work per RUN / per code
 ```
 
+The whole thesis fits in one loop — a filtered SUM over RLE that never
+materializes a row:
+
+```rust
+struct Run { value: u64, len: u32 }
+
+// decompress-then-process is O(rows); this is O(runs).
+// sorted low-cardinality columns: runs ≪ rows, often by 1000x
+fn sum_where_gt(runs: &[Run], threshold: u64) -> u64 {
+    let mut sum = 0;
+    for r in runs {
+        if r.value > threshold {               // predicate: ONCE per run
+            sum += r.value * r.len as u64;     // aggregate: multiply, don't decode
+        }
+    }
+    sum
+}
+```
+
 ## Questions for notes.md
 
 1. SUM over RLE runs is O(runs). Which OTHER aggregates stay
@@ -77,3 +98,13 @@ Findings to internalize:
 You can state the SIGMOD '06 thesis in one sentence ("expose encoding
 properties to operators; execute per-run/per-code, decode losers
 never"), and map C-Store's four big bets to their modern descendants.
+
+## References
+
+**Papers**
+- Stonebraker et al. — "C-Store: A Column-oriented DBMS" (VLDB 2005)
+  — read for the architecture bets and which survived twenty years
+- Abadi, Madden, Ferreira — "Integrating Compression and Execution in
+  Column-Oriented Database Systems" (SIGMOD 2006) — the
+  compression-aware-execution experiment; internalize the findings list
+  above

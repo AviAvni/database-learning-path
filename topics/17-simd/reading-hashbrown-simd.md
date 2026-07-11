@@ -1,9 +1,11 @@
-# Reading guide — hashbrown `Group` + memchr `Vector` (the movemask story)
+# hashbrown & memchr: movemask without movemask
 
-Clone: [`~/repos/hashbrown`](https://github.com/rust-lang/hashbrown) (`src/control/group/`) and [`~/repos/memchr`](https://github.com/BurntSushi/memchr)
-(`src/vector.rs`). Two crates, one question: how do you get an x86
-`movemask` (one bit per lane) on ISAs that don't have it — and when
-should you not even try?
+Two crates, one question: how do you get an x86 `movemask` (one bit
+per lane) on ISAs that don't have it — and when should you not even
+try? hashbrown answers by shrinking the SwissTable group to 8 bytes
+so the comparison result already *is* the mask; memchr answers with
+the `vshrn` nibble-mask idiom. Between them sits the portability
+pattern every SIMD kernel layer copies.
 
 ## Anchor map
 
@@ -76,6 +78,23 @@ no false positives.
 Control bytes encode EMPTY=0xFF, DELETED=0x80, FULL=0..0x7f — all
 three predicates are single-instruction because the encoding puts
 the discriminator in the SIGN bit (neon.rs:85,94 use `vcltz`/`vcgez`).
+
+```rust
+// the probe loop at group granularity: ~3 instructions per 8-16 slots
+fn find(&self, hash: u64, key: &K) -> Option<usize> {
+    let (mut g, tag) = (h1(hash) & self.mask, h2(hash));  // 7-bit tag
+    loop {
+        let group = Group::load(&self.ctrl[g]);
+        let mut m = group.match_tag(tag);        // vceq + extract → BitMask
+        while let Some(i) = m.next_set() {       // trailing_zeros() >> 3
+            if self.slot(g + i).key == *key { return Some(g + i); }
+        }                                        // false positive? just loop
+        if group.match_empty().any() { return None; }  // EMPTY ends the probe
+        g = (g + GROUP_SIZE) & self.mask;        // (triangular in real code)
+    }
+}
+```
+
 Question: this is topic 2's hash table — rewrite your M2 probe loop's
 per-slot compare as a per-group `match_tag` and count instructions
 per probed slot.
@@ -114,3 +133,14 @@ times again). This is the shape for M17's kernel layer.
 5. Compile-time cfg (here) vs runtime detect (polars) vs init-time
    fn pointers (SimSIMD): which fits a Cypher engine that ships one
    binary to unknown ARM servers?
+
+## References
+
+**Code**
+- [hashbrown](https://github.com/rust-lang/hashbrown) —
+  `src/control/group/` — one file per backend (sse2/neon/generic);
+  the `cfg_if!` block in `mod.rs` and its "NEON wasn't worth it"
+  comment are the design doc
+- [memchr](https://github.com/BurntSushi/memchr) — `src/vector.rs`
+  (the `Vector` trait + NEON movemask idiom) and
+  `src/arch/generic/memchr.rs` (the 4× unrolled search loop)

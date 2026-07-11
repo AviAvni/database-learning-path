@@ -1,8 +1,10 @@
-# Reading guide — turso's deterministic simulator
+# turso's simulator: every failure is a u64 seed
 
-Clone: [`~/repos/turso`](https://github.com/tursodatabase/turso) (`testing/simulator/`, plus `fuzz/`). The most
-readable production DST codebase in Rust — read it as the reference
-implementation for our `dst.rs` stub and for M16.
+The most readable production DST codebase in Rust: seeded clock,
+fault-injecting IO, metamorphic properties, and a shrinker, all in
+one `testing/simulator/` tree. Read it as the reference
+implementation for our `dst.rs` stub and for M16 — every piece here
+has a miniature counterpart in the experiments.
 
 ## Layout
 
@@ -40,7 +42,26 @@ implementation for our `dst.rs` stub and for M16.
 ## 1. Time is an RNG stream (`clock.rs:25`)
 
 Every `now()` call advances the clock by `random_range(min_tick..
-max_tick)` — no wall clock anywhere. Question: why must `now()`
+max_tick)` — no wall clock anywhere.
+
+```rust
+// time is data: every now() consumes seeded randomness and ADVANCES
+struct SimClock {
+    curr: Duration,
+    rng: ChaCha8Rng,                 // portable, versioned — never the default RNG
+    min_tick: Duration,
+    max_tick: Duration,
+}
+
+impl SimClock {
+    fn now(&mut self) -> Instant {
+        self.curr += self.rng.random_range(self.min_tick..self.max_tick);
+        Instant::from(self.curr)     // monotone progress: timeout loops terminate
+    }
+}
+```
+
+Question: why must `now()`
 ADVANCE time rather than return a fixed value? (What loops forever
 if time never moves? Think timeout code.)
 
@@ -88,3 +109,12 @@ u64s. Compare: our topic 15 sim tests hardcode seeds 42/7/11/13.
    vs delta debugging)?
 5. For M16: which three properties from generation/property.rs port
    directly to Cypher? Sketch the graph equivalents.
+
+## References
+
+**Code**
+- [turso](https://github.com/tursodatabase/turso) —
+  `testing/simulator/` (clock/io/file fault injection, interaction
+  plans, properties, doublecheck, shrink) plus
+  `fuzz/fuzz_targets/expression.rs` for structured fuzzing via
+  `arbitrary` — clone it; the anchor map above is your reading order

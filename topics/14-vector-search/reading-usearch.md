@@ -1,16 +1,10 @@
-# Reading guide — usearch (compact HNSW, one header)
-
-Repo: [`~/repos/usearch`](https://github.com/unum-cloud/usearch), all of it in
-`include/usearch/index.hpp` (+ `index_dense.hpp` for the
-type-erased/quantized wrapper). C++ templates, but the structure is
-small enough to hold in your head — read it as the reference
-implementation for YOUR hnsw.rs.
-
-## Why this matters
+# usearch: HNSW with the fat trimmed
 
 qdrant's HNSW is production plumbing; usearch is the algorithm with
-the fat trimmed. Same paper, ~10× less code. The interesting part
-is the memory layout: one contiguous "tape" per node.
+the fat trimmed — same paper, ~10× less code, essentially all of it
+in one header. Read it as the reference implementation for YOUR
+hnsw.rs. The interesting part is the memory layout: one contiguous
+"tape" per node.
 
 ## 1. The node tape
 
@@ -31,6 +25,22 @@ Compare qdrant (per-level `Vec<Vec<_>>` in the builder, serialized
 compressed later) and neo4j's scattered records (topic 13): usearch
 picks "everything about a node in one place" — one pointer chase per
 node visit, then streaming.
+
+```rust
+// the tape: level header, then per-level slots preallocated to the
+// connectivity limit — neighbors(l) is offset arithmetic, not Vec hops
+struct NodeTape<'a> { bytes: &'a [u8] }   // one allocation per node
+
+impl NodeTape<'_> {
+    fn neighbors(&self, l: usize, m: usize, m0: usize) -> &[u32] {
+        let slot = |links: usize| (1 + links) * 4;       // count + ids
+        let start = 2 + if l == 0 { 0 }                  // 2 = level header
+                    else { slot(m0) + (l - 1) * slot(m) };
+        let cnt = read_u32(self.bytes, start) as usize;
+        cast_u32(&self.bytes[start + 4..start + 4 + cnt * 4])
+    }   // one miss to reach the tape; the rest prefetches
+}
+```
 
 ## 2. Defaults = the paper's advice, frozen
 
@@ -76,3 +86,16 @@ slot versioning in `index_dense.hpp`.
 5. For YOUR hnsw.rs: steal the tape or use `Vec<Vec<u32>>` per level?
    Decide, justify with expected access pattern, and note what M17's
    SIMD needs.
+
+## References
+
+**Papers**
+- Malkov, Yashunin — the HNSW paper
+  ([arXiv:1603.09320](https://arxiv.org/abs/1603.09320)) — gets its
+  own chapter: [reading-hnsw-paper.md](reading-hnsw-paper.md)
+
+**Code**
+- [usearch](https://github.com/unum-cloud/usearch) — all of it in
+  `include/usearch/index.hpp` (+ `index_dense.hpp` for the
+  type-erased/quantized wrapper); C++ templates, but small enough to
+  hold in your head

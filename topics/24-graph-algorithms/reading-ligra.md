@@ -1,4 +1,4 @@
-# Reading guide — "Ligra: A Lightweight Graph Processing Framework for Shared Memory" (Shun & Blelloch, PPoPP 2013) ([`~/repos/ligra`](https://github.com/jshun/ligra))
+# Ligra: two functions, every frontier algorithm
 
 Two functions — `vertexMap` and `edgeMap` — and every frontier
 algorithm in ~50 lines each (`apps/`). Ligra's contribution is
@@ -26,6 +26,28 @@ Anchors: `ligra/ligra.h:235-272` `edgeMapData` — the switch;
 `:238` the m/20 default threshold; `:59` `edgeMapDense` vs `:111`
 `edgeMapSparse`; `:85` `edgeMapDenseForward` (push in dense clothing,
 when early-exit doesn't apply).
+
+The switch, as code — everything else in Ligra is plumbing around it:
+
+```rust
+fn edge_map(g: &Graph, front: &VertexSubset, f: &impl Fn(u32, u32) -> bool)
+    -> VertexSubset {
+    if front.len() + front.out_degree_sum(g) > g.m / 20 {
+        // PULL: scan every vertex's IN-edges, early-exit once claimed
+        let mut next = DenseBits::new(g.n);
+        for v in 0..g.n {
+            for u in g.in_edges(v) {
+                if front.contains(u) && f(u, v) { next.set(v); break; }
+            }
+        }
+        next.into()
+    } else {
+        // PUSH: only frontier vertices' OUT-edges; f returns "v joins next"
+        front.iter().flat_map(|u| g.out_edges(u)
+             .filter(|&v| f(u, v)).map(move |v| v)).collect()
+    }
+}
+```
 
 ## Reading the apps (each is a one-pager)
 
@@ -74,3 +96,15 @@ case where they do.
    or a fixed algorithm menu like FalkorDB's procedures? What does
    Ligra's F-with-CAS cost a SAFE embedding (Rust: Send+Sync bounds,
    no UDF aborts mid-frontier)?
+
+## References
+
+**Papers**
+- Shun & Blelloch — "Ligra: A Lightweight Graph Processing Framework
+  for Shared Memory" (PPoPP 2013) — §3-4 for the two primitives and
+  the threshold; the apps section reads faster as code
+
+**Code**
+- [ligra](https://github.com/jshun/ligra) — `ligra/ligra.h`
+  (:235-272 `edgeMapData`, the switch) and `apps/` (each algorithm is
+  a one-pager)

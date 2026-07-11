@@ -1,10 +1,12 @@
-# Reading guide — sequence CRDTs in production: yrs (Yjs), diamond-types, Loro & Fugue
+# Sequence CRDTs: what a decade of engineering does to RGA
 
-Your `rga.rs` is the textbook version. These three codebases are what a
-decade of engineering does to it. Read in this order: yrs (the canonical
-Item/integrate design), diamond-types (same rule, radically different
-storage), Loro blogs + Fugue paper (fixing interleaving, plus the
-b-tree/rle machinery).
+Your `rga.rs` is the textbook version. The three production codebases
+here — yrs, diamond-types, Loro — all share its integration rule and
+disagree about everything else: storage layout, when the CRDT machinery
+runs at all, and how to stop two users' words interleaving. Read in this
+order: yrs (the canonical Item/integrate design), diamond-types (same
+rule, radically different storage), Loro blogs + Fugue paper (fixing
+interleaving, plus the b-tree/rle machinery).
 
 ## The one picture — three storage strategies, one integration rule
 
@@ -23,6 +25,23 @@ b-tree/rle machinery).
   loro          Fugue semantics on a generic-btree,    tree beats linked list
                 rle runs, fractional_index for         for random access;
                 (non-text) ordered containers          same origin-pair idea
+```
+
+The shared rule, at rga.rs granularity — everything else is storage:
+
+```rust
+// Insert after the parent, skipping concurrent siblings with a
+// larger id — the same deterministic scan on every replica.
+fn integrate(&mut self, el: Element) {
+    let mut pos = self.index_of(el.parent) + 1;
+    while let Some(sib) = self.elems.get(pos) {
+        if sib.parent != el.parent { break; }   // left the sibling block
+        if sib.dot > el.dot {                   // larger (counter, replica)
+            pos += 1;                           // sits closer to the parent —
+        } else { break; }                       // skip it (and its subtree,
+    }                                           // the detail rga.rs handles)
+    self.elems.insert(pos, el);                 // tombstones stay: deleted
+}                                               // elements still anchor children
 ```
 
 ## yrs walk ([~/repos/y-crdt](https://github.com/y-crdt/y-crdt))
@@ -93,3 +112,23 @@ faster load via its "shallow snapshot" encoding.
    sequence CRDT per string property worth it vs LWW-whole-string?
    Propose the cutover heuristic and what the write path stores in each
    mode (think: Loro's rle runs vs one register).
+
+## References
+
+**Papers**
+- Weidner & Kleppmann — "The Art of the Fugue: Minimizing Interleaving
+  in Collaborative Text Editing"
+  ([arXiv:2305.00583](https://arxiv.org/abs/2305.00583), 2023) — the
+  definition of maximal non-interleaving and the left+right origin rule
+
+**Code**
+- [y-crdt](https://github.com/y-crdt/y-crdt) `yrs/src/block.rs` — ID,
+  Item, and `Item::integrate` at :1415 are the canonical design
+- [diamond-types](https://github.com/josephg/diamond-types)
+  `src/listmerge/merge.rs`, `src/listmerge/yjsspan.rs` — the op-log-at-
+  rest, CRDT-only-on-merge architecture
+- [loro](https://github.com/loro-dev/loro)
+  `crates/loro-internal/src/{dag, diff_calc, handler, encoding}` plus
+  the standalone `fractional_index`, `generic-btree`, `rle` crates —
+  skim alongside the Loro blog posts ("Introduction to Loro's Rich Text
+  Format", "Movable Tree")

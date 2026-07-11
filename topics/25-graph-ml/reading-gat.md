@@ -1,4 +1,4 @@
-# Reading guide — "Graph Attention Networks" (Veličković et al., ICLR 2018) — GAT
+# GAT: when the edge weights are computed per query
 
 GCN's A_hat weights are structural constants (degree math). GAT makes
 them FUNCTIONS of the features on each edge — learned, per-edge, softmax-
@@ -28,6 +28,26 @@ message = `x_j * alpha` at :408. No `message_and_aggregate` — the fused
 SpMM path can't apply because the matrix values are recomputed per
 forward pass.
 
+The three kernels for one destination row, spelled out:
+
+```rust
+fn gat_row(a_t: &Csr, v: u32, wh: &Mat, a_src: &[f32], a_dst: &[f32]) -> Vec<f32> {
+    // SDDMM: dense scores, computed ONLY at A's nonzeros (in-edges of v)
+    let e: Vec<f32> = a_t.row(v)
+        .map(|u| leaky_relu(a_src[u as usize] + a_dst[v as usize])).collect();
+    // segmented softmax over the CSR row (max pass, then exp-sum pass)
+    let mx = e.iter().fold(f32::MIN, |m, &x| m.max(x));
+    let z: f32 = e.iter().map(|&x| (x - mx).exp()).sum();
+    // SpMM with the fresh weights — this row of A exists only for this query
+    let mut out = vec![0.0; wh.d];
+    for ((u, _), &ev) in a_t.row(v).zip(&e) {
+        let alpha = (ev - mx).exp() / z;
+        for k in 0..wh.d { out[k] += alpha * wh.row(u)[k]; }
+    }
+    out
+}
+```
+
 ## Why databases should care
 
 - The sparse-softmax is a segmented reduction over CSR rows — same shape
@@ -56,3 +76,16 @@ forward pass.
    would expose it (edges with attention > t)?
 5. For M25: is GAT worth engine support at all, or is GCN/SAGE + the
    vector index the 95% case? Argue from the kernel inventory each needs.
+
+## References
+
+**Papers**
+- Veličković, Cucurull, Casanova, Romero, Liò, Bengio — "Graph
+  Attention Networks" (ICLR 2018,
+  [arXiv:1710.10903](https://arxiv.org/abs/1710.10903)) — §2.1 is the
+  layer; the rest is evaluation
+
+**Code**
+- [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric)
+  `torch_geometric/nn/conv/gat_conv.py` — score split :392, segmented
+  softmax :404, message :408; note the absent `message_and_aggregate`

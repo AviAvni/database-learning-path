@@ -179,13 +179,16 @@ flowchart LR
 
 - **criterion**: read `analysis/mod.rs` + how it uses warmup and outlier classification.
   Question to answer: why does it report a confidence interval rather than a minimum?
-  → guided walkthrough: [`reading-criterion.md`](reading-criterion.md)
+  → chapter: [`reading-criterion.md`](reading-criterion.md) — How criterion turns noise
+  into a number you can trust
 - **redis `redis-benchmark.c`**: how does it implement pipelining? What does it get
   wrong about coordinated omission?
-  → guided walkthrough: [`reading-redis-benchmark.md`](reading-redis-benchmark.md)
+  → chapter: [`reading-redis-benchmark.md`](reading-redis-benchmark.md) —
+  redis-benchmark: a throughput tool wearing latency clothes
 - **RocksDB `tools/db_bench_tool.cc`** (skim): note the workload flags — this is the
   vocabulary of storage benchmarking (`fillseq`, `readrandom`, `overwrite`...).
-  → guided walkthrough: [`reading-rocksdb-db-bench.md`](reading-rocksdb-db-bench.md)
+  → chapter: [`reading-rocksdb-db-bench.md`](reading-rocksdb-db-bench.md) — db_bench:
+  the shared vocabulary of storage benchmarking
 
 ## 6. Reading / watching
 
@@ -194,9 +197,11 @@ flowchart LR
 - Raasveldt, Holanda, Gubner, Mühleisen — "Fair Benchmarking Considered Difficult:
   Common Pitfalls in Database Performance Testing" (DBTest '18, from the DuckDB authors)
   — the DB-specific companion to this topic's §1.
-  → reading guide: [`reading-fair-benchmarking.md`](reading-fair-benchmarking.md)
+  → chapter: [`reading-fair-benchmarking.md`](reading-fair-benchmarking.md) — Fair
+  benchmarking: eight ways a system comparison lies
 - "What Every Programmer Should Know About Memory" (Drepper) — §3–4 only, skim the rest.
-  → reading guide: [`reading-drepper.md`](reading-drepper.md)
+  → chapter: [`reading-drepper.md`](reading-drepper.md) — CPU caches and TLBs: the
+  constants aged, the structure didn't
 
 ## 7. Experiments (in `experiments/`)
 

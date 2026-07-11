@@ -1,10 +1,10 @@
-# Reading guide — "Better bitmap performance with Roaring bitmaps" (Chambi, Lemire, Kaser, Godin — arXiv:1603.06549)
+# Roaring bitmaps: no single set representation wins
 
-The set-representation that ate the world: Lucene doc-id sets, Spark,
-ClickHouse, Druid, Pilosa — and the `postings::Roaring` stub. The
-insight is that NO single representation wins: sorted arrays win
-sparse, bitmaps win dense, so partition the space and choose per
-chunk.
+The set representation that ate the world: Lucene doc-id sets,
+Spark, ClickHouse, Druid, Pilosa — and the `postings::Roaring`
+stub. The insight is that NO single representation wins: sorted
+arrays win sparse, bitmaps win dense, so partition the 32-bit space
+into 64K chunks and choose per chunk.
 
 ## The layout
 
@@ -30,6 +30,27 @@ chunk.
 |---|---|---|
 | **array** | two-pointer merge (galloping when sizes differ ≥64×) | probe each u16 into the bitmap: O(|array|) word tests |
 | **bitmap** | ← same, swapped | 1024 word-wise AND/OR + popcount to pick the OUTPUT container type |
+
+```rust
+// the whole design in one match: kernel AND output type chosen per chunk
+fn and(a: &Container, b: &Container) -> Container {
+    match (a, b) {
+        (Array(x), Array(y))  => two_pointer(x, y),     // gallop if ≥64× skew
+        (Array(x), Bitmap(y)) =>                        // probe the small side
+            Array(x.iter().copied().filter(|&v| y.get(v)).collect()),
+        (Bitmap(x), Bitmap(y)) => {
+            let mut w = [0u64; 1024];
+            let mut card = 0u32;
+            for i in 0..1024 {
+                w[i] = x.words[i] & y.words[i];
+                card += w[i].count_ones();      // popcount FUSED into the AND
+            }
+            if card <= 4096 { to_array(&w) } else { Bitmap(w) }
+        }
+        (Bitmap(_), Array(_)) => and(b, a),     // commute to the probe case
+    }
+}
+```
 
 Two details that carry the performance:
 - **output container choice**: bitmap∩bitmap may produce a sparse
@@ -74,3 +95,15 @@ feeding a graph traversal), not the RANKING lane.
    traversal. What conversion does FalkorDB pay today going
    RediSearch → node-id set → GraphBLAS vector, and what would a
    native roaring-masked mxv save?
+
+## References
+
+**Papers**
+- Chambi, Lemire, Kaser, Godin — "Better bitmap performance with
+  Roaring bitmaps" (Software: Practice & Experience 2016,
+  [arXiv:1402.6407](https://arxiv.org/abs/1402.6407)) — the
+  array/bitmap containers and the kernel matrix (§3)
+- Lemire, Ssi-Yan-Kai, Kaser — "Consistently faster and smaller
+  compressed bitmaps with Roaring" (SPE 2016,
+  [arXiv:1603.06549](https://arxiv.org/abs/1603.06549)) — adds the
+  run container and the SIMD kernels

@@ -1,11 +1,10 @@
-# Reading guide — Kafka & the log as the database (NetDB '11)
+# Kafka: the log is the database
 
-**Sources:**
-- Kreps, Narkhede, Rao — "Kafka: a Distributed Messaging System for Log
-  Processing" (NetDB 2011) — 7 pages, read whole
-- Kreps — "The Log: What every software engineer should know about
-  real-time data's unifying abstraction" (2013 blog) — the ideology; read
-  after the paper
+Before any view can be maintained incrementally, the changes have to
+live somewhere with the right guarantees — and Kafka is the industry's
+answer. This chapter reads the 2011 paper's design bets (all still
+load-bearing) and Kreps' "the log is the database" ideology as the
+substrate every IVM system in this topic tails.
 
 ## 1. Why this paper is in the IVM topic
 
@@ -76,3 +75,12 @@ style — they rebuild), or (b) per-query result deltas (Materialize
 SUBSCRIBE style)? What does (b) require the server to persist if a
 subscriber disconnects for an hour — and where's the retention-window
 trade from §2 hiding in your answer?
+
+## References
+
+**Papers**
+- Kreps, Narkhede, Rao — "Kafka: a Distributed Messaging System for
+  Log Processing" (NetDB 2011) — 7 pages, read whole
+- Kreps — "The Log: What every software engineer should know about
+  real-time data's unifying abstraction" (2013 blog) — the ideology;
+  read after the paper

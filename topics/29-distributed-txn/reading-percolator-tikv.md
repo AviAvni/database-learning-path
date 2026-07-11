@@ -1,8 +1,11 @@
-# Reading guide — Percolator (OSDI '10) + TiKV's Rust implementation
+# Percolator: 2PC with the coordinator erased
 
-Paper: *Large-scale Incremental Processing Using Distributed Transactions and
-Notifications*, Peng & Dabek, OSDI 2010. Code: [`~/repos/tikv`](https://github.com/tikv/tikv)
-(`src/storage/txn/` and `src/storage/mvcc/`).
+Textbook 2PC blocks when the coordinator dies holding everyone's locks.
+Percolator's answer is to make the coordinator unnecessary: transaction
+fate lives *in the data itself*, at one primary key, where any reader can
+resolve it. This chapter walks the paper's protocol and TiKV's Rust
+reimplementation together — the protocol our `percolator.rs` stub
+implements.
 
 ## Why this pairing
 
@@ -45,6 +48,25 @@ sequenceDiagram
     Note over P: THE COMMIT POINT — one atomic write
     C--)S: commit secondaries (async, crash-safe)
     Note over S: a reader who finds this lock<br/>checks the PRIMARY to decide fate
+```
+
+The two phases, end to end — note where the single atomic commit point is:
+
+```rust
+fn commit_txn(c: &mut Cluster, writes: &[(Key, Val)]) -> Result<()> {
+    let start_ts = c.tso.next();
+    let primary = &writes[0].0;
+    for (k, v) in writes {                        // PHASE 1: prewrite everything —
+        c.shard(k).prewrite(k, v, primary, start_ts)?;  // fails on ANY lock or
+    }                                             // any commit_ts > start_ts
+    let commit_ts = c.tso.next();
+    c.shard(primary)                              // THE COMMIT POINT: write record
+        .commit(primary, start_ts, commit_ts)?;   // + drop lock, one atomic write
+    for (k, _) in &writes[1..] {                  // secondaries are lazy; a crash
+        let _ = c.shard(k).commit(k, start_ts, commit_ts); // here is harmless —
+    }                                             // readers roll them forward
+    Ok(())
+}
 ```
 
 Failure rules (paper §2.2, our `resolve_lock` recipe):
@@ -105,3 +127,16 @@ Failure rules (paper §2.2, our `resolve_lock` recipe):
    reads nodes on shards it never prewrites. Does Percolator's snapshot
    `get` suffice for consistent multi-shard *reads*, and what does the TSO
    become in that design?
+
+## References
+
+**Papers**
+- Peng & Dabek — "Large-scale Incremental Processing Using Distributed
+  Transactions and Notifications" (OSDI 2010) — §2 is the protocol; the
+  observer/notification half is skippable for this topic
+
+**Code**
+- [tikv](https://github.com/tikv/tikv) `src/storage/txn/` and
+  `src/storage/mvcc/` — start at `txn/actions/prewrite.rs` and
+  `commit.rs`; the extra arguments over the paper are the decade of
+  hardening

@@ -1,4 +1,4 @@
-# Reading guide — GraphRAG-SDK with systems eyes ([`~/repos/GraphRAG-SDK/graphrag_sdk`](https://github.com/FalkorDB/GraphRAG-SDK))
+# GraphRAG-SDK: a RAG pipeline read as a workload spec
 
 Your own SDK, re-read as a database workload spec. Every Python line here
 is a feature request against FalkorDB: what it does client-side in
@@ -75,3 +75,12 @@ only text embeddings need the round-trip.
    pattern? recall@k of the index?)?
 5. M25 acceptance test: pattern + similarity in one query, verified
    against this SDK's answers on the same data — sketch it.
+
+## References
+
+**Code**
+- [GraphRAG-SDK](https://github.com/FalkorDB/GraphRAG-SDK)
+  `src/graphrag_sdk/` — `storage/vector_store.py` (the DB contract),
+  `retrieval/strategies/relationship_expansion.py`,
+  `retrieval/strategies/multi_path.py`, `retrieval/router.py`; read
+  each as a feature request against the engine

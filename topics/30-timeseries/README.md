@@ -76,10 +76,10 @@ map (the cardinality bomb, counted).
 
 ## 4. Reading guides
 
-- [reading-gorilla.md](reading-gorilla.md) — the paper + prometheus's xor.go, bit by bit
-- [reading-prometheus-tsdb.md](reading-prometheus-tsdb.md) — head/WAL/blocks/postings/OOO: a full TSDB in readable Go
-- [reading-victoriametrics-influx.md](reading-victoriametrics-influx.md) — VM's LSM take + InfluxDB 3's everything-is-Parquet-on-S3
-- [reading-monarch-btrdb.md](reading-monarch-btrdb.md) — planet-scale push metrics + the aggregate-tree outlier
+- [reading-gorilla.md](reading-gorilla.md) — Gorilla: compress by predicting
+- [reading-prometheus-tsdb.md](reading-prometheus-tsdb.md) — Prometheus TSDB: an LSM with time as the key
+- [reading-victoriametrics-influx.md](reading-victoriametrics-influx.md) — VictoriaMetrics & InfluxDB 3: two rebuttals to Prometheus
+- [reading-monarch-btrdb.md](reading-monarch-btrdb.md) — Monarch & BtrDB: the extremes that bracket the middle
 
 ## 5. Cross-topic threads
 

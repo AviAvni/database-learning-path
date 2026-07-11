@@ -1,9 +1,9 @@
-# Reading guide — "node2vec: Scalable Feature Learning for Networks" (Grover & Leskovec, KDD 2016)
+# node2vec: the neighborhood is a query, p and q are its knobs
 
-Read it as a *sampling-strategy* paper: the contribution is not the
-learning (that's word2vec, untouched) but a parameterized family of
-neighborhood definitions. A database person should recognize the move:
-"what is a node's context?" is a query, and p/q are its knobs.
+Read node2vec as a *sampling-strategy* paper: the contribution is not
+the learning (that's word2vec, untouched) but a parameterized family
+of neighborhood definitions. A database person should recognize the
+move: "what is a node's context?" is a query, and p/q are its knobs.
 
 ## The walk bias (§3.2 — the whole paper is this figure)
 
@@ -50,6 +50,21 @@ sampling that doesn't. Fixes:
 - or accept first-order walks (DeepWalk) — on many benchmarks the p/q
   gain is small; know what you're buying.
 
+One biased step via rejection, the whole mechanism:
+
+```rust
+fn step(g: &Csr, t: u32, v: u32, p: f64, q: f64, rng: &mut Rng) -> u32 {
+    let w_max = 1f64.max(1.0 / p).max(1.0 / q);
+    loop {
+        let x = g.neighbors(v).choose(rng);        // uniform proposal, O(1)
+        let w = if x == t { 1.0 / p }              // return to t
+                else if g.has_edge(t, x) { 1.0 }   // mutual neighbor: dist 1
+                else { 1.0 / q };                  // away: dist 2 from t
+        if rng.f64() < w / w_max { return x; }     // accept ∝ true bias —
+    }                                              //   no per-edge alias table
+}
+```
+
 ## Engine-side notes
 
 - Walks are embarrassingly parallel and CSR-native — a database can
@@ -78,3 +93,16 @@ sampling that doesn't. Fixes:
    walks_per_node, dim, window, negs, epochs, lr, seed) belong in the
    API, and which should be fixed opinions? Compare FalkorDB's
    proc_pagerank arg surface (topic 24).
+
+## References
+
+**Papers**
+- Grover & Leskovec — "node2vec: Scalable Feature Learning for
+  Networks" (KDD 2016,
+  [arXiv:1607.00653](https://arxiv.org/abs/1607.00653)) — §3.2 (the
+  walk bias) is the whole paper; §3.1 is inherited word2vec
+
+**Code**
+- [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric)
+  `torch_geometric/nn/models/node2vec.py` — `loss` (:135-160) is a
+  direct SGNS transcription; walks are a custom op (:64)

@@ -1,10 +1,10 @@
-# Reading guide — TiFlash DeltaTree: columnar storage built for writes
-
-Code: [~/repos/tiflash](https://github.com/pingcap/tiflash), `dbms/src/Storages/DeltaMerge/`.
+# DeltaTree: columnar storage built for writes
 
 Columnar formats hate point-writes (topic 12: rewrite the column or eat
-fragmentation). TiFlash must apply an OLTP write stream *continuously* to
-columnar data. DeltaTree is the answer, and you already know its shape:
+fragmentation), yet TiFlash must apply an OLTP write stream
+*continuously* to columnar data. DeltaTree — the engine under
+`dbms/src/Storages/DeltaMerge/` in the TiFlash tree — is the answer, and
+you already know its shape:
 
 ```
    Raft log records
@@ -33,6 +33,27 @@ This is the fourth time you've met this diagram: topic 4's LSM
 stable matrices), and now `replica.rs` — your `delta: Vec<LogRec>` is the
 MemTableSet, `main_*` columns are the stable layer, `merge_delta()` is
 `segmentMergeDelta`.
+
+The read path is a two-way merge, delta shadowing stable per key:
+
+```rust
+// One Segment: a delta over a stable, both covering one key range.
+fn scan(seg: &Segment, out: &mut ColumnBatch) {
+    let mut stable = seg.stable.iter().peekable();   // sorted, one version per key
+    let mut delta = seg.delta.iter_sorted().peekable(); // sorted via the DeltaIndex —
+    loop {                                           // without it, every scan
+        match (stable.peek(), delta.peek()) {        // re-sorts the delta
+            (Some(s), Some(d)) if d.key <= s.key => {
+                if d.key == s.key { stable.next(); } // delta version shadows stable
+                out.push(delta.next().unwrap());
+            }
+            (Some(_), _) => out.push(stable.next().unwrap()),
+            (None, Some(_)) => out.push(delta.next().unwrap()),
+            (None, None) => return,
+        }
+    }
+}
+```
 
 ## Anchors, in reading order
 
@@ -74,3 +95,16 @@ MemTableSet, `main_*` columns are the stable layer, `merge_delta()` is
    for adjacency. What is the delta *index* analogue — what structure
    would let algebraic scans consume stable+pending without materializing
    the merge?
+
+## References
+
+**Papers**
+- None dedicated — the design is described in the storage section of
+  Huang et al., "TiDB: A Raft-based HTAP Database" (VLDB 2020); the rest
+  lives in code comments
+
+**Code**
+- [tiflash](https://github.com/pingcap/tiflash)
+  `dbms/src/Storages/DeltaMerge/` — start at `DeltaMergeStore.h` and
+  `Segment.h`; the delta layer (`Delta/`) and `DeltaIndex/` are the
+  parts your `replica.rs` deliberately lacks

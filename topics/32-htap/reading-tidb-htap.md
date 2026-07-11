@@ -1,15 +1,17 @@
-# Reading guide — TiDB: a Raft-based HTAP database (VLDB 2020)
+# TiDB HTAP: the columnar replica is a Raft learner
 
-Paper: "TiDB: A Raft-based HTAP Database", Huang et al., VLDB 2020.
-Code: [~/repos/tidb](https://github.com/pingcap/tidb) (planner), [~/repos/tiflash](https://github.com/pingcap/tiflash) (learner reads).
+TiDB's fix for the interference you measured in bench lane 1 is
+separation *inside* the consensus group: a columnar copy that receives
+the Raft log but never votes. This chapter pairs the VLDB '20 paper with
+the two code paths that carry the design — TiFlash's learner read
+(freshness as a wait) and TiDB's planner (one optimizer pricing two
+engines).
 
 ## The one move
 
-TiDB's answer to the interference you measured in bench lane 1 is
-*separation inside the consensus group*: the columnar copy is a *Raft
-learner* — it receives the log like any follower but never votes, so
-adding it costs no write-quorum latency and its scans touch OLTP nodes
-zero times.
+The columnar copy is a *Raft learner* — it receives the log like any
+follower but never votes, so adding it costs no write-quorum latency and
+its scans touch OLTP nodes zero times.
 
 ```
    client writes                        analytical query
@@ -28,6 +30,21 @@ the current commit index, then blocks until the local region has applied
 that far, with `waitIndexTimeout` at `:61` (and the wait-index timestamps
 at `:66-68`). Your `learner.rs::read_wait` is this function reduced to
 arithmetic; bench lane 3 is its wait distribution.
+
+```rust
+// doLearnerRead, reduced: freshness = read-index + wait-for-apply
+fn learner_read(region: &Region, leader: &Leader, timeout: Duration) -> Option<Snapshot> {
+    let commit_idx = leader.read_index();       // "how far is committed, right now?"
+    let deadline = Instant::now() + timeout;
+    while region.applied_index() < commit_idx { // block until local apply catches up
+        if Instant::now() > deadline {
+            return None;                        // caller falls back to the leader:
+        }                                       // safe but expensive
+        wait_for_apply_progress();
+    }
+    Some(region.snapshot_at(commit_idx))        // now as fresh as any leader read
+}
+```
 
 ## One planner, two engines
 
@@ -61,3 +78,19 @@ mix both. That's the planner deciding the trilemma point per query.
 6. **M32 mapping**: FalkorDB has no Raft group (until M15). Which piece
    substitutes for the commit index in M32's `read_wait` — and what is
    the "leader" the router must ask?
+
+## References
+
+**Papers**
+- Huang et al. — "TiDB: A Raft-based HTAP Database" (VLDB 2020) — the
+  learner architecture and the freshness argument; the DeltaTree storage
+  appendix pairs with
+  [reading-tiflash-deltatree.md](reading-tiflash-deltatree.md)
+
+**Code**
+- [tidb](https://github.com/pingcap/tidb)
+  `pkg/planner/core/find_best_task.go` — one optimizer pricing TiKV vs
+  TiFlash paths together
+- [tiflash](https://github.com/pingcap/tiflash)
+  `dbms/src/Storages/KVStore/Read/LearnerRead.cpp` — `doLearnerRead`,
+  freshness as a wait with a timeout

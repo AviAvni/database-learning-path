@@ -1,9 +1,10 @@
-# Reading guide — the Rust planner stack: sqlparser-rs, DataFusion, polars (~1.5 h)
+# The Rust planner stack: Pratt parsing, rule traits, lazy frames
 
-Three local clones: [`~/repos/sqlparser-rs`](https://github.com/apache/datafusion-sqlparser-rs), [`~/repos/datafusion`](https://github.com/apache/datafusion),
-[`~/repos/polars`](https://github.com/pola-rs/polars). Read for the RUST-shaped answers — you'll use
-sqlparser-rs directly in the experiments, and M10's Cypher planner will
-face every design choice DataFusion made.
+Three codebases, three Rust-shaped answers: sqlparser-rs (the parser
+you'll use directly in the experiments), DataFusion's rules-as-a-trait
+optimizer, and polars' rewrites-only lazy frames. M10's Cypher planner
+will face every design choice DataFusion made — read for the shapes,
+not the SQL details.
 
 ## 1. sqlparser-rs — Pratt parsing (src/parser/mod.rs)
 
@@ -17,6 +18,20 @@ face every design choice DataFusion made.
   `get_next_precedence` (:1449) > my precedence, consume infix". This is
   the 30-line answer to expression grammars that would take 40 grammar
   rules; steal it for Cypher expressions in M10.
+
+```rust
+fn parse_subexpr(&mut self, min_prec: u8) -> Expr {
+    let mut lhs = self.parse_prefix();          // literal, ident, unary, (…)
+    loop {
+        let prec = self.get_next_precedence();  // 0 if next isn't infix
+        if prec <= min_prec { return lhs; }     // caller binds tighter: stop
+        let op = self.next_token();
+        let rhs = self.parse_subexpr(prec);     // recurse with MY precedence:
+        lhs = Expr::binary(lhs, op, rhs);       // higher-prec ops bind first,
+    }                                           // left-assoc falls out of <=
+}
+```
+
 - Note the `Dialect` trait plumbing — one AST, many SQLs; the AST types
   in `src/ast/` are the de-facto Rust standard (DataFusion consumes them
   directly).
@@ -69,3 +84,15 @@ face every design choice DataFusion made.
 You can parse an expression with Pratt precedence on paper, and argue
 rules-as-trait-with-fixpoint vs ordered-pass-pipeline for M10 (pick one,
 justify in notes.md).
+
+## References
+
+**Code**
+- [sqlparser-rs](https://github.com/apache/datafusion-sqlparser-rs) —
+  `src/parser/mod.rs` (parse_subexpr is the heart), `src/ast/`
+- [datafusion](https://github.com/apache/datafusion) —
+  `optimizer/src/optimizer.rs` (OptimizerRule trait + fixpoint driver),
+  then skim the one-file-per-rule menu
+- [polars](https://github.com/pola-rs/polars) —
+  `crates/polars-plan/src/plans/optimizer/` — read the directory listing
+  as much as the code; what's MISSING is the lesson

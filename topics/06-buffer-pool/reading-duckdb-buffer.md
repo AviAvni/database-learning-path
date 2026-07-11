@@ -1,13 +1,11 @@
-# Reading DuckDB's buffer manager (1.5 h)
-
-Repo: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Files: `src/storage/buffer/buffer_pool.cpp`,
-`src/storage/standard_buffer_manager.cpp`,
-`src/include/duckdb/storage/buffer/buffer_pool.hpp`,
-`src/include/duckdb/storage/buffer/block_handle.hpp`.
+# DuckDB's buffer pool: eviction by queue of hints
 
 The interesting contrast with postgres: no fixed frame array, no CLOCK —
 blocks are heap-allocated, tracked by `shared_ptr`, and eviction is a
-concurrent FIFO queue of *hints*.
+concurrent FIFO queue of *hints* that are allowed to go stale. Re-pinning
+never removes a queue entry; it invalidates one, and dead nodes get swept in
+bulk. Mark now, collect later — the amortization move again, this time inside
+the replacement policy itself.
 
 ## 1. BlockHandle — the unit of residency
 
@@ -36,6 +34,24 @@ concurrent FIFO queue of *hints*.
  it INVALIDATES it with a seq bump and re-enqueues later.
  → same amortization move as topic 2's incremental rehash and topic 4's
    tombstones: mark now, collect in bulk later.
+```
+
+The eviction loop is mostly corpse-skipping:
+
+```rust
+fn evict_until(&self, needed: usize) -> bool {
+    let mut freed = 0;
+    while freed < needed {
+        let Some(node) = self.queue.pop() else { return false };
+        let Some(block) = node.block.upgrade() else { continue };  // weak_ptr: block
+                                                                   // already gone
+        if node.seq != block.eviction_seq.load() { continue; }     // DEAD: re-pinned
+                                                                   // since enqueue
+        if !block.can_unload() { continue; }                       // pinned right now
+        freed += block.unload();          // write to temp file if no disk home
+    }
+    true
+}
 ```
 
 ## 3. Memory reservations — standard_buffer_manager.cpp
@@ -72,3 +88,13 @@ buffer pool doubles as the spill mechanism. Postgres spills per-operator
 
 You can explain a dead node, the 4096-insert purge cadence, and why re-pin
 never touches the queue — and name the postgres structure each replaces.
+
+## References
+
+**Code**
+- [duckdb/duckdb](https://github.com/duckdb/duckdb) —
+  `src/storage/buffer/buffer_pool.cpp`,
+  `src/storage/standard_buffer_manager.cpp`,
+  `src/include/duckdb/storage/buffer/buffer_pool.hpp`,
+  `src/include/duckdb/storage/buffer/block_handle.hpp`. Local clone at
+  `~/repos/duckdb`.

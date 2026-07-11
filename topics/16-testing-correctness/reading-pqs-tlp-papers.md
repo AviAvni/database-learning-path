@@ -1,13 +1,12 @@
-# Reading guide — the PQS & TLP papers
+# PQS & TLP: solving the test-oracle problem twice
 
-Two papers, one author (Manuel Rigger, with Zhendong Su):
-
-- "Testing Database Engines via Pivoted Query Synthesis" (OSDI '20)
-- "Finding Bugs in Database Systems via Query Partitioning" —
-  Ternary Logic Partitioning (OOPSLA '20)
-
-Read PQS first; TLP is partly a response to PQS's costs. Pair with
-reading-sqlancer.md — the code makes the papers concrete.
+Random query generation was stuck for decades on one question: you
+can generate a million queries, but who knows the right answers?
+Manuel Rigger and Zhendong Su answered it twice in one year — PQS by
+verifying a single pre-chosen row, TLP by making the DBMS check
+itself. Read PQS first; TLP is partly a response to PQS's costs.
+Pair with [reading-sqlancer.md](reading-sqlancer.md) — the code makes
+the papers concrete.
 
 ## PQS (OSDI '20)
 
@@ -33,6 +32,18 @@ the DBMS's semantics (dialect-specific NULL rules, casts, collation
 wrap `IS NULL`. Question: why does rectification make EVERY randomly
 generated expression usable rather than discarding the ~2/3 that
 aren't TRUE?
+
+```rust
+// rectify: ANY random predicate becomes TRUE-on-the-pivot
+fn rectify(p: Expr, pivot: &Row) -> Expr {
+    match eval3(&p, pivot) {      // eval under the DBMS's OWN dialect rules
+        True  => p,
+        False => not(p),
+        Null  => is_null(p),      // SQL's third value gets its own wrapper
+    }
+}
+// then: pivot ∉ result(SELECT * FROM t WHERE rectify(p, pivot)) → BUG
+```
 
 Results to internalize: ~100 bugs across SQLite/MySQL/Postgres in
 ~4 months, most in SQLite — which then fixed its test suite. Note
@@ -86,3 +97,18 @@ live in.
 5. For M16: pick the first three TLP recombinations to implement
    for Cypher (WHERE / count(*) / collect?) and write the ⊎ for
    each.
+
+## References
+
+**Papers**
+- Rigger & Su — "Testing Database Engines via Pivoted Query
+  Synthesis" (OSDI 2020,
+  [arXiv:2001.04174](https://arxiv.org/abs/2001.04174)) — the
+  rectified-queries section is the algorithmic core
+- Rigger & Su — "Finding Bugs in Database Systems via Query
+  Partitioning" (OOPSLA 2020) — Ternary Logic Partitioning; read
+  after PQS
+
+**Code**
+- [sqlancer](https://github.com/sqlancer/sqlancer) — both papers as
+  running code; walked in [reading-sqlancer.md](reading-sqlancer.md)

@@ -1,8 +1,12 @@
-# Reading guide — YCSB (SoCC 2010) + go-ycsb generators
+# YCSB: six mixes, five distributions, one Zipfian generator
 
-Cooper et al.'s "Benchmarking Cloud Serving Systems with YCSB" — the
-paper that standardized KV benchmarking. Read alongside
-[`~/repos/go-ycsb`](https://github.com/pingcap/go-ycsb) (the Go port; structure mirrors the Java original).
+Cooper et al.'s SoCC 2010 paper standardized KV benchmarking by
+factoring a workload into an operation mix times a key
+distribution — and its θ=0.99 Zipfian generator is the skew behind
+nearly every KV paper since (our `zipf.rs` stub reimplements it
+from the go-ycsb port). This chapter covers both the factoring and
+the generator's math, plus the traps to know before citing a YCSB
+number.
 
 ## The design: workloads = mix × distribution
 
@@ -31,6 +35,25 @@ The most-copied benchmark code in existence — our `zipf.rs` stub:
 | :125-132 | `zetaStatic` — the O(n) sum; incremental recompute when item count GROWS (:135-147), full recompute (slow, warned) when it shrinks |
 | :150-163 | the sampler: two fast paths (`uz < 1` → rank 0, `< 1+0.5^θ` → rank 1), else `n·(ηu − η + 1)^α` |
 | `scrambled_zipfian.go` | fnv64(rank) % n — same skew, scattered hot keys |
+
+The sampler, transcribed (zipfian.go:150-163):
+
+```rust
+fn next(&mut self, rng: &mut Rng) -> u64 {
+    let u = rng.f64();
+    let uz = u * self.zetan;             // zetan = Σ 1/i^θ — O(n), computed ONCE
+    if uz < 1.0 { return 0; }            // fast path: THE hottest key
+    if uz < 1.0 + 0.5f64.powf(self.theta) { return 1; }
+    // general case: inverse-CDF approximation, rank from one pow()
+    let rank = (self.n as f64
+        * (self.eta * u - self.eta + 1.0).powf(self.alpha)) as u64;
+    rank                                  // alpha = 1/(1-θ)
+}
+
+fn next_scrambled(&mut self, rng: &mut Rng) -> u64 {
+    fnv64(self.next(rng)) % self.n       // same skew, hot keys NOT ids 0,1,2…
+}
+```
 
 Why scrambling matters: plain zipfian's hot keys are ids 0,1,2,… —
 adjacent, so they share cache lines/pages/shards, and you accidentally
@@ -65,3 +88,16 @@ benchmark spatial locality instead of skew. Scrambled spreads them.
 5. Workload D's "latest" distribution: why is passing a plain
    zipfian to a growing keyspace subtly wrong (hint: zetan
    staleness, go-ycsb :135)?
+
+## References
+
+**Papers**
+- Cooper, Silberstein, Tam, Ramakrishnan, Sears — "Benchmarking
+  Cloud Serving Systems with YCSB" (SoCC 2010) — §3-4 (the
+  mix×distribution factoring); the eval section is dated
+
+**Code**
+- [go-ycsb](https://github.com/pingcap/go-ycsb)
+  `pkg/generator/zipfian.go`, `scrambled_zipfian.go`,
+  `workloads/workloada` — the Go port; structure mirrors the Java
+  original

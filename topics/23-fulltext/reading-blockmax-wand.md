@@ -1,7 +1,11 @@
-# Reading guide — "Faster Top-k Document Retrieval Using Block-Max Indexes" (Ding & Suel, SIGIR 2011)
+# Block-max WAND: skip everything that provably can't win
 
-The paper our `wand::wand_topk` stub implements. Prereq: the original
-WAND (Broder et al., CIKM 2003) — read its §2 first, it's 3 pages.
+Top-k retrieval doesn't need to score every document — only the
+ones whose score *upper bound* beats the current k-th best. That
+one observation (WAND, CIKM 2003) plus per-block score ceilings
+(Ding & Suel, SIGIR 2011) is what our `wand::wand_topk` stub
+implements. Prereq: read the original WAND paper's §2 first — it's
+3 pages.
 
 ## WAND in one picture
 
@@ -22,6 +26,31 @@ WAND (Broder et al., CIKM 2003) — read its §2 first, it's 3 pages.
 
 The magic: correctness needs only *upper bounds*. WAND returns the
 EXACT top-k (safe-to-k) while scoring a fraction of the docs.
+
+One round of the loop, in code:
+
+```rust
+// θ = current k-th best score; upper bounds make skipping SAFE
+fn wand_round(cursors: &mut [Cursor], theta: f32) -> Option<DocId> {
+    cursors.sort_by_key(|c| c.doc());               // by current doc id
+    let mut ub = 0.0;
+    let pivot = cursors.iter().position(|c| {
+        ub += c.term_max_score;                     // accumulate ceilings
+        ub > theta                                  // first cursor to cross θ
+    })?;                                            // none crosses ⇒ done
+    let pivot_doc = cursors[pivot].doc();           // no doc < pivot_doc can win
+
+    if cursors[..=pivot].iter().all(|c| c.doc() == pivot_doc) {
+        // block-max refinement (the 2011 part): if Σ current BLOCK maxima
+        // ≤ θ, this pivot is a false positive — jump past
+        // min(last_doc_in_block) without decompressing anything
+        Some(pivot_doc)                             // else: score it fully
+    } else {
+        cursors[0].seek(pivot_doc);                 // skip docs, never score
+        None
+    }
+}
+```
 
 ## Block-max: the 2011 upgrade
 
@@ -82,3 +111,20 @@ their metadata; tantivy's is `postings/skip.rs:175`
 5. Deletes-as-bitmap (Lucene liveDocs, RediSearch GC): a block's
    max_score may belong to a deleted doc. Is WAND still exact?
    What's the merge-time fix?
+
+## References
+
+**Papers**
+- Broder, Carmel, Herscovici, Soffer, Zien — "Efficient Query
+  Evaluation using a Two-Level Retrieval Process" (CIKM 2003) —
+  read §2 first (3 pages): the pivot idea
+- Ding, Suel — "Faster Top-k Document Retrieval Using Block-Max
+  Indexes" (SIGIR 2011) — §4 (shallow vs deep pointer movement) and
+  §5's numbers
+
+**Code**
+- [tantivy](https://github.com/quickwit-oss/tantivy)
+  `src/query/boolean_query/block_wand_union.rs` (:8-24
+  `find_pivot_doc`), `block_wand_intersection.rs`,
+  `src/postings/skip.rs` (:175 `block_max_score`, :186
+  `last_doc_in_block`) — the paper, shipped

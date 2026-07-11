@@ -1,10 +1,9 @@
-# Reading guide — postgres lwlock.c: a production rwlock (~1.5 h)
+# One word, one CAS, one queue: postgres's production rwlock
 
-Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), file `src/backend/storage/lmgr/lwlock.c`.
-This is the latch under every buffer, WAL insert, and proc-array scan you
-met in topics 5–8. One u32 of state, a CAS fast path, and a wait queue —
-read it as the reference answer to "how do I build a fair rwlock that
-doesn't melt at 128 cores".
+lwlock.c is the latch under every buffer, WAL insert, and proc-array scan
+you met in topics 5–8. One u32 of state, a CAS fast path, and an intrusive
+wait queue — read it as the reference answer to "how do I build a fair
+rwlock that doesn't melt at 128 cores".
 
 ## 1. The packed state word (:49, :96–118)
 
@@ -44,6 +43,21 @@ goes through here.
   release between attempt and enqueue leaves you sleeping forever (lost
   wakeup). `LWLockDequeueSelf` :1061 handles the "won on the recheck"
   undo. This pattern (test, enqueue, re-test) is THE lesson of the file.
+
+```rust
+fn acquire(lock: &LwLock, mode: Mode) {
+    loop {
+        if try_cas(lock, mode) { return; }  // fast path: one CAS, no queue
+        queue_self(lock);                   // slow: enqueue FIRST...
+        if try_cas(lock, mode) {            // ...then attempt AGAIN —
+            dequeue_self(lock);             // a release may have slipped in
+            return;                         // between attempt and enqueue
+        }
+        sleep_until_woken();                // safe now: our queue entry is
+    }                                       // visible, releaser must wake us
+}
+```
+
 - `LWLockRelease` :1767 → `LWLockWakeup` :904: wakes the queue head; a
   released shared lock wakes waiting readers as a batch, and
   RELEASE_OK prevents wakeup storms.
@@ -70,3 +84,10 @@ goes through here.
 
 You can draw the full acquire path — fast CAS, queue, recheck, sleep,
 wakeup — from memory, and name the race each step exists to close.
+
+## References
+
+**Code**
+- [postgres](https://github.com/postgres/postgres)
+  `src/backend/storage/lmgr/lwlock.c` — ~1.5 h; start at the state-word
+  definitions (:49, :96–118), then `LWLockAttemptLock` and `LWLockAcquire`

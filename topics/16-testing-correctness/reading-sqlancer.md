@@ -1,9 +1,11 @@
-# Reading guide — SQLancer (the oracle base classes)
+# SQLancer: 450+ bugs from three tiny oracles
 
-Clone: [`~/repos/sqlancer`](https://github.com/sqlancer/sqlancer) (`src/sqlancer/common/oracle/`). 450+
-bugs in SQLite/MySQL/Postgres/DuckDB/CockroachDB from three tiny
-oracles. Read the base classes, not the per-DBMS adapters — each
-oracle's core check is a handful of lines.
+SQLancer turned the PQS/TLP papers into running code and found 450+
+bugs in SQLite/MySQL/Postgres/DuckDB/CockroachDB — and each oracle's
+core check is a handful of lines. This chapter walks the oracle base
+classes (`src/sqlancer/common/oracle/`), not the per-DBMS adapters;
+the comparative table at the end is what you carry into M16's Cypher
+oracles.
 
 ## Anchor map
 
@@ -48,6 +50,21 @@ evaluator is wrong?
 No evaluator needed — the DB is checked against ITSELF. The 3-way
 split exists because SQL is three-valued: WHERE keeps only TRUE
 rows, so FALSE and NULL rows must land in the other partitions.
+
+```rust
+// TLP: no ground truth needed — the DB is its own oracle
+fn tlp_check(db: &Db, q: &Query, p: &Pred) -> Result<(), Bug> {
+    let whole = db.run(q);                          // SELECT * FROM t …
+    let mut parts = db.run(&q.filter(p));           // WHERE p
+    parts.extend(db.run(&q.filter(&not(p))));       // WHERE NOT p
+    parts.extend(db.run(&q.filter(&is_null(p))));   // WHERE p IS NULL ← 3-valued!
+    if multiset(&whole) != multiset(&parts) {
+        return Err(Bug::PartitionMismatch);         // optimizer changed RESULTS
+    }
+    Ok(())
+}
+```
+
 Extensions in the codebase: TLP for aggregates (SUM over partitions
 must sum), DISTINCT, GROUP BY. Question: why does TLP need the
 partitioning predicate p to be deterministic and side-effect free —
@@ -90,3 +107,17 @@ They compose: run all three on the same generated schema/data
 5. Cypher TLP for M16: partition `MATCH (a)-[e]->(b) WHERE p` — what
    plays the role of NULL in a graph pattern (missing property!),
    and what's the union assertion?
+
+## References
+
+**Papers**
+- Rigger & Su — the PQS (OSDI 2020) and TLP (OOPSLA 2020) papers
+  behind these classes — see
+  [reading-pqs-tlp-papers.md](reading-pqs-tlp-papers.md)
+
+**Code**
+- [sqlancer](https://github.com/sqlancer/sqlancer) —
+  `src/sqlancer/common/oracle/` — read the base classes
+  (`PivotedQuerySynthesisBase`, `TLPWhereOracle`,
+  `TernaryLogicPartitioningOracleBase`, `NoRECOracle`), not the
+  per-DBMS adapters

@@ -1,10 +1,11 @@
-# Reading guide — Snowflake (SIGMOD '16) + Building a Database on S3 (SIGMOD '08)
+# Snowflake and the 2008 S3 paper: immutability dissolves the walls
 
-**Sources:**
-- Dageville et al. — "The Snowflake Elastic Data Warehouse" (SIGMOD 2016)
-  — read §1-4.
-- Brantner, Florescu, Graf, Kossmann, Kraska — "Building a Database on S3"
-  (SIGMOD 2008) — read §1-3 + §5; it's the prescient one.
+A pair of papers, eight years apart, that bracket the "database on
+object storage" question: one catalogues every pathology honestly, the
+other quietly ticks the whole checklist by making the data immutable
+and hoisting the mutable bit into a small metadata service. Between
+them sits this topic's core design move — and Q1 tracks which
+pathologies S3 itself has since fixed.
 
 ## 1. Why these two together
 
@@ -75,3 +76,11 @@ snapshots of the graph + a version manifest" instead of replicating the
 live engine. Which graph representations tolerate immutable ~16 MB chunks
 well (edge lists / CSR segments, topic 2) and which don't (in-place
 delta-mutated matrices)? One paragraph in notes.md.
+
+## References
+
+**Papers**
+- Dageville et al. — "The Snowflake Elastic Data Warehouse"
+  (SIGMOD 2016) — read §1-4
+- Brantner, Florescu, Graf, Kossmann, Kraska — "Building a Database on
+  S3" (SIGMOD 2008) — read §1-3 + §5; it's the prescient one

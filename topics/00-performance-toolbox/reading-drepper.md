@@ -1,7 +1,11 @@
-# Reading — Drepper, "What Every Programmer Should Know About Memory" (2007)
+# CPU caches and TLBs: the constants aged, the structure didn't
 
-PDF: https://people.freebsd.org/~lstewart/articles/cpumemory.pdf (~114 pages — read
-§3–§4 properly, skim §6, skip the rest; the study guide's advice stands).
+Every latency table in topic 0 §2 is a compressed version of one 2007 paper —
+Drepper's "What Every Programmer Should Know About Memory". This chapter is a
+reading lens for its two load-bearing sections: §3 (why misses cost what they
+cost) and §4 (why a TLB miss is pointer chasing in silicon). The DDR2 numbers
+are stale; the cache-organization math, the prefetching rules, and the
+measurement methodology behind `cache_ladder` are forever.
 
 ## What's stale vs. what's forever
 
@@ -35,6 +39,24 @@ filter on one 8-byte column, 128 B cache lines (M-series):
 
 row layout:  line = [ a │ b  c  d  e  f  g ... padding ... ]   use 8 B / 128 B → 94% wasted
 col layout:  line = [ a  a  a  a  a  a  a  a  a  a  a  a  a  a  a  a ]   use 128 B → 0% wasted
+```
+
+The measurement engine behind Fig 3.4 (and behind `cache_ladder`) is a
+pointer chase through a shuffled ring — every load *depends* on the previous
+one, so latency can't hide behind memory-level parallelism:
+
+```rust
+// ring[i] holds the index of the next element to visit (a shuffled cycle).
+// Because address N+1 is unknown until load N retires, ns/step == the raw
+// latency of whatever level the working set lands in — L1, L2, SLC, DRAM.
+fn chase(ring: &[usize], steps: usize) -> usize {
+    let mut i = 0;
+    for _ in 0..steps {
+        i = ring[i];            // serialized miss: nothing to prefetch
+    }
+    i                           // return it so the loop isn't dead code
+}
+// grow ring.len() from 16 KB to 512 MB and plot ns/step → the plateaus
 ```
 
 
@@ -78,3 +100,11 @@ the intellectual ancestor of blocked/vectorized execution (topic 11).
 Every table in topic 0 §2 is a compressed version of this paper. Drepper's method —
 plot access cost against working-set size and *explain every inflection* — is the
 habit; the numbers you regenerate yourself on your own machine.
+
+## References
+
+**Papers**
+- Drepper — "What Every Programmer Should Know About Memory" (Red Hat,
+  2007) — [PDF](https://people.freebsd.org/~lstewart/articles/cpumemory.pdf)
+  (~114 pages — read §3–§4 properly, skim §6, skip the rest; the study
+  guide's advice stands)

@@ -1,8 +1,11 @@
-# Reading guide — "Dostoevsky" (SIGMOD '18)
+# Dostoevsky: merge lazily, except at the last level
 
-Dayan & Idreos. *Better Space-Time Trade-Offs for LSM-Tree Based Key-Value
-Stores via Adaptive Removal of Superfluous Merging.* ~1.5 h. Monkey optimized
-the filters; Dostoevsky optimizes the **merging itself**.
+Monkey optimized the filters; Dostoevsky optimizes the **merging itself** — by
+noticing that most of leveled compaction's work is "superfluous" (the paper's
+word). Point lookups and space amp are dominated by the largest level, write
+amp by the upper levels, so the right move is to tier the top and level the
+bottom. This chapter builds that argument and the Fluid-LSM dial that
+generalizes it.
 
 ## The insight in one table
 
@@ -36,6 +39,24 @@ tier the top, level the bottom. **Fluid LSM** generalizes with two knobs
 (K = runs allowed at upper levels, Z = runs at the largest) and picks them per
 workload — leveled (K=Z=1) and tiered (K=Z=T−1) become endpoints of a dial.
 
+The whole family is one compaction chooser with two thresholds:
+
+```rust
+// K = max runs at upper levels, Z = max runs at the largest level.
+// K=Z=1 ⇒ leveled; K=Z=T−1 ⇒ tiered; K=T−1, Z=1 ⇒ lazy leveling.
+fn choose(&self, v: &Version) -> Choice {
+    for lvl in 0..v.last_level() {
+        if v.runs(lvl) > self.k {                 // upper levels: tolerate K runs
+            return Choice::MergeRunsInto(lvl + 1);
+        }
+    }
+    if v.runs(v.last_level()) > self.z {          // largest level: tolerate Z
+        return Choice::MergeLastLevel;            // T paid once, here
+    }
+    Choice::DoNothing
+}
+```
+
 ## Reading order
 
 1. §2 — the cost table (Table 1). Reproduce it for yourself for T=10, L=3:
@@ -62,3 +83,11 @@ workload — leveled (K=Z=1) and tiered (K=Z=T−1) become endpoints of a dial.
 You can reproduce Table 1 from memory for the three strategies (writes, point
 reads, space) and say in one sentence why "merge lazily except the last level"
 dominates.
+
+## References
+
+**Papers**
+- Dayan & Idreos — "Dostoevsky: Better Space-Time Trade-Offs for LSM-Tree
+  Based Key-Value Stores via Adaptive Removal of Superfluous Merging"
+  (SIGMOD 2018) — §2's cost table (Table 1) IS the paper; §3 for the lazy
+  leveling analysis, §4 for Fluid LSM (skim the solver, keep the knobs)

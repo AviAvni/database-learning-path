@@ -1,14 +1,13 @@
-# Reading guide — worst-case optimal joins (AGM bound, Generic Join, EmptyHeaded)
+# Worst-case optimal joins: intersect, don't enumerate
 
-Papers (no repo for this one — kuzu's Intersect is the code anchor):
-
-- Atserias, Grohe, Marx — "Size Bounds and Query Plans for Relational
-  Joins" (FOCS '08) — the AGM bound
-- Ngo, Ré, Rudra — "Skew Strikes Back: New Developments in the Theory
-  of Join Algorithms" (SIGMOD Record '13) — the readable survey; read
-  THIS one
-- Aberger et al. — "EmptyHeaded: A Relational Engine for Graph
-  Processing" (SIGMOD '16)
+For cyclic patterns, binary join plans are asymptotically wrong — they
+can overshoot the true output size by a √m factor, and no join order
+fixes it, because the operator SET is the problem. This chapter covers
+the AGM bound that proves it, the Generic Join algorithm that fixes it,
+and the intersection kernels that make the fix fast. Pure paper
+material — the code anchor is kuzu's Intersect operator
+([reading-kuzu.md](reading-kuzu.md)) and FalkorDB's masked matrix
+multiply ([reading-graphblas-internals.md](reading-graphblas-internals.md)).
 
 ## 1. Why binary joins are asymptotically wrong
 
@@ -43,6 +42,24 @@ by any prefix — i.e. sorted adjacency = CSR slices. Intersection of
 two sorted lists sized d1 ≤ d2: merge O(d1+d2) or galloping
 O(d1 log d2) — skew (supernodes) decides which.
 
+```rust
+// the inner kernel of every WCOJ engine: sorted-set intersection.
+// galloping wins when d1 ≪ d2 — on power-law graphs (leaf ∩ supernode)
+// that's the common case, and skew is exactly what WCOJ defends against
+fn intersect(small: &[u32], big: &[u32], out: &mut Vec<u32>) {
+    let mut lo = 0;
+    for &x in small {                                  // O(d1 log d2)
+        let mut step = 1;                              // exponential probe…
+        while lo + step < big.len() && big[lo + step] < x { step *= 2; }
+        let end = (lo + step + 1).min(big.len());
+        match big[lo..end].binary_search(&x) {         // …binary-search the bracket
+            Ok(i) => { out.push(x); lo += i + 1; }
+            Err(i) => lo += i,
+        }
+    }
+}
+```
+
 ## 3. EmptyHeaded and the matrix connection
 
 EmptyHeaded compiled queries to set intersections over a trie/CSR-like
@@ -76,3 +93,22 @@ three syntaxes:
 5. M10 planner question: how would YOUR optimizer decide binary-join
    vs intersect for a pattern — what's the detectable trigger?
    (Cyclicity of the pattern graph.)
+
+## References
+
+**Papers**
+- Atserias, Grohe, Marx — "Size Bounds and Query Plans for Relational
+  Joins" (FOCS 2008) — the AGM bound
+- Ngo, Ré, Rudra — "Skew Strikes Back: New Developments in the Theory
+  of Join Algorithms" (SIGMOD Record 2013,
+  [arXiv:1310.3314](https://arxiv.org/abs/1310.3314)) — the readable
+  survey; read THIS one
+- Aberger et al. — "EmptyHeaded: A Relational Engine for Graph
+  Processing" (SIGMOD 2016) — the hardware-conscious intersection
+  kernels
+
+**Code**
+- No repo for this chapter — the code anchors are
+  [kuzu](https://github.com/kuzudb/kuzu)'s Intersect operator
+  ([reading-kuzu.md](reading-kuzu.md)) and FalkorDB's masked mxm
+  ([reading-graphblas-internals.md](reading-graphblas-internals.md))

@@ -92,11 +92,11 @@ timestamp machinery — see reading-differential-dataflow.md §4 for why.
 
 ## Reading guides
 
-- [reading-naiad-timely.md](reading-naiad-timely.md) — Naiad SOSP'13 + timely progress tracking
-- [reading-differential-dataflow.md](reading-differential-dataflow.md) — CIDR'13 + arrange/join_traces/iterate code
-- [reading-dbsp.md](reading-dbsp.md) — DBSP VLDB'23 + Feldera circuit code
-- [reading-materialize-risingwave.md](reading-materialize-risingwave.md) — two production architectures compared
-- [reading-kafka-log.md](reading-kafka-log.md) — NetDB'11 + the log as the database
+- [reading-naiad-timely.md](reading-naiad-timely.md) — Naiad: the clock that unified batch, streaming, and iteration
+- [reading-differential-dataflow.md](reading-differential-dataflow.md) — Differential dataflow: retractions that survive recursion
+- [reading-dbsp.md](reading-dbsp.md) — DBSP: incremental view maintenance as a calculus
+- [reading-materialize-risingwave.md](reading-materialize-risingwave.md) — Materialize vs RisingWave: two production IVM bets
+- [reading-kafka-log.md](reading-kafka-log.md) — Kafka: the log is the database
 
 Further references: "MillWheel" (VLDB 2013) — where *watermarks* (low
 watermarks over event time) entered production streaming; the

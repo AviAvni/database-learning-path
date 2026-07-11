@@ -1,8 +1,12 @@
-# Reading guide — DuckDB's TPC-H extension (`extension/tpch/`)
+# dbgen as a table function: shipping a benchmark inside the engine
 
-How a modern engine ships a benchmark as a built-in — and the fastest
-way to get real TPC-H numbers on this machine (no CLI install needed;
-`pip install duckdb` or the Rust crate both carry the extension).
+How a modern engine ships TPC-H as a built-in: DuckDB vendors the
+official dbgen, wraps it in a table function, and stores the
+reference answers next to the queries — so every benchmark run is
+also a correctness test. It's also the fastest way to get real
+TPC-H numbers on this machine (no CLI install needed;
+`pip install duckdb` or the Rust crate both carry the extension),
+which is what the questions below ask you to do.
 
 ## Layout ([`~/repos/duckdb/extension/tpch/`](https://github.com/duckdb/duckdb))
 
@@ -61,3 +65,11 @@ Q9 or optimizer studies. Scope your generator to your question.
    lesson does the number reproduce?
 5. Sketch M22's `CALL ldbc_datagen(sf=1)` equivalent for the
    capstone: what determinism/answer-shipping properties must it keep?
+
+## References
+
+**Code**
+- [duckdb](https://github.com/duckdb/duckdb) `extension/tpch/` —
+  `tpch_extension.cpp` (the table-function plumbing), `dbgen/` (the
+  vendored TPC-official C code), `dbgen/queries/`,
+  `dbgen/answers/`, `tpch_config.py`

@@ -1,8 +1,10 @@
-# Reading guide — "How Good Are Query Optimizers, Really?" (Leis et al., VLDB '15) (~1.5 h)
+# Cardinality is the whole ballgame: the JOB audit
 
-The humbling paper. They built the Join Order Benchmark (JOB) — 113
-queries over IMDB, REAL correlated data instead of TPC-H's synthetic
-uniformity — and audited every layer of the classical optimizer stack.
+The humbling paper. Leis et al. (VLDB '15) built the Join Order Benchmark
+(JOB) — 113 queries over IMDB, REAL correlated data instead of TPC-H's
+synthetic uniformity — and audited every layer of the classical optimizer
+stack. The verdict reorders this whole topic: cardinality error dwarfs
+cost-model error dwarfs search-space limits.
 
 ## The experimental design (worth copying forever)
 
@@ -23,6 +25,18 @@ fair-benchmarking discipline of topic 0, applied to a brain.)
   with join count: median q-error at 6 joins reaches 10²–10⁴ across all
   tested systems (postgres, and commercial A/B/C); underestimation
   dominates (independence assumption multiplies toward zero).
+
+```rust
+// the estimator every audited system runs, and why it under-shoots
+fn estimate_join_card(tables: &[Table], preds: &[EquiPred]) -> f64 {
+    let mut card: f64 = tables.iter().map(|t| t.rows as f64).product();
+    for p in preds {
+        card /= p.ndv_left.max(p.ndv_right) as f64;  // uniformity: 1/NDV
+    }   // each predicate applied INDEPENDENTLY — on correlated data the
+    card // true overlap is larger, so factors compound toward zero
+}
+```
+
 - TPC-H hides this: uniform, independent, synthetic → estimates look
   fine. JOB's correlated real data (actors↔genres↔years) breaks them.
   **Benchmark data distribution is part of the benchmark.**
@@ -65,3 +79,11 @@ fair-benchmarking discipline of topic 0, applied to a brain.)
 
 You can rank cardinality/cost/search by measured impact, explain WHY
 independence fails low, and have the graph-JOB sketch in notes.md.
+
+## References
+
+**Papers**
+- Leis, Gubichev, Mirchev, Boncz, Kemper, Neumann — "How Good Are Query
+  Optimizers, Really?" (VLDB 2015) — ~1.5 h; the methodology (§2–3) is
+  worth as much as the findings — injecting ground truth per layer
+  isolates the blame

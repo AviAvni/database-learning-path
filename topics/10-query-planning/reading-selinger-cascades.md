@@ -1,8 +1,10 @@
-# Reading guide — Selinger '79 + Cascades '95: the two architectures (~2 h)
+# Selinger and Cascades: the two optimizer architectures
 
 Two papers, 16 years apart, that define the design space every optimizer
-lives in. Read Selinger closely (it's short and shockingly modern), then
-Cascades for the generalization.
+lives in: Selinger '79 invented cost-based join search as bottom-up DP;
+Graefe's Cascades '95 turned the whole optimization process into rules
+firing in a memo. Read Selinger closely (it's short and shockingly
+modern), then Cascades for the generalization.
 
 ## 1. "Access Path Selection in a Relational DBMS" (Selinger et al., SIGMOD '79)
 
@@ -22,6 +24,25 @@ System R's optimizer. Nearly everything survives:
   last. Complexity: the famous "n joins considered in O(2ⁿ)-ish sets".
 - **Nested queries** (§6): correlated subqueries re-evaluated per row —
   the pre-decorrelation world DuckDB's deliminator escapes.
+
+The DP, as code — best plan for a set composed from best plans of subsets:
+
+```rust
+fn best_plan(rels: RelSet, memo: &mut HashMap<RelSet, Plan>) -> Plan {
+    if let Some(p) = memo.get(&rels) { return p.clone(); }
+    let mut best = Plan::infinite_cost();
+    for r in rels.iter() {
+        let rest = rels.without(r);
+        if !has_join_predicate(rest, r) { continue; }  // defer cartesians
+        let p = cheapest_join(best_plan(rest, memo), access_paths(r));
+        if p.cost < best.cost { best = p; }            // left-deep: (n−1) ⋈ 1
+        // Selinger also keeps the cheapest plan per INTERESTING ORDER here —
+        // a pricier-but-sorted subplan can win at a later merge join
+    }
+    memo.insert(rels, best.clone());
+    best
+}
+```
 
 Reading exercise: their example query (§5's OPTIMAL plans tables) —
 follow the DP tables by hand once; it's the same table your
@@ -76,3 +97,12 @@ vs Selinger:
 
 You can run Selinger's DP on a 3-table join by hand, and describe a memo
 group's contents for the same query in Cascades terms.
+
+## References
+
+**Papers**
+- Selinger, Astrahan, Chamberlin, Lorie, Price — "Access Path Selection
+  in a Relational Database Management System" (SIGMOD 1979) — read it
+  all; it's short, and §4's selectivity factors + §5's DP are the core
+- Graefe — "The Cascades Framework for Query Optimization" (IEEE Data
+  Engineering Bulletin 1995) — the memo, rules, and top-down task model

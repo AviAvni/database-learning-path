@@ -1,9 +1,13 @@
-# Reading guide — the query-language landscape: GQL, SQL/PGQ, SPARQL, Gremlin, Datalog
+# Graph query languages: semantics, not syntax
 
-Papers: "Graph Pattern Matching in GQL and SQL/PGQ" (Deutsch et al.,
-SIGMOD 2022); "G-CORE: A Core for Future Graph Query Languages" (SIGMOD
-2018); GQL overview at gqlstandards.org. Concrete grammar to keep open:
-kuzu `src/antlr4/Cypher.g4` (690 lines — a full Cypher in one file).
+Six languages query graphs, and the differences that matter are not
+surface syntax but three fault lines: data model, matching semantics,
+and composability. The same two-hop pattern returns three different
+counts depending on semantics the language may not even let you spell.
+This chapter maps the family tree — Cypher through GQL (the first new
+ISO database language since SQL) — and what each language lets a
+planner do; keep kuzu's `src/antlr4/Cypher.g4` open as the concrete
+grammar (a full Cypher in 690 lines).
 
 ## One pattern, three answers
 
@@ -82,3 +86,18 @@ graph TD
    path patterns + explicit path-mode. Sketch the enum/struct for a
    path pattern that can represent Cypher's `[*1..5]` AND GQL's
    `ALL ACYCLIC (a)(-[:R]->){1,5}(b)` without a parser rewrite.
+
+## References
+
+**Papers**
+- Deutsch et al. — "Graph Pattern Matching in GQL and SQL/PGQ"
+  (SIGMOD 2022, [arXiv:2112.06217](https://arxiv.org/abs/2112.06217))
+  — the matching-semantics-as-parameter argument
+- Angles et al. — "G-CORE: A Core for Future Graph Query Languages"
+  (SIGMOD 2018, [arXiv:1712.01550](https://arxiv.org/abs/1712.01550))
+  — the research consensus GQL absorbed
+- GQL overview at [gqlstandards.org](https://www.gqlstandards.org)
+
+**Code**
+- [kuzu](https://github.com/kuzudb/kuzu) `src/antlr4/Cypher.g4` — a
+  full Cypher grammar in one 690-line file; keep it open while reading

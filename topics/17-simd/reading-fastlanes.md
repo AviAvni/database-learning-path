@@ -1,11 +1,12 @@
-# Reading guide — FastLanes ("The FastLanes Compression Layout", VLDB '23)
+# FastLanes: bit-unpacking at memory bandwidth
 
-Azim Afroozeh & Peter Boncz. Topic 12 decoded bit-packed integers
-one value at a time; this paper redesigns the STORAGE LAYOUT so that
-decoding any bit width is the same straight-line SIMD kernel — no
-shuffles, no per-width special cases — and hits memory bandwidth on
-every ISA from NEON to AVX-512, *including scalar code that
-autovectorizes*.
+Topic 12 decoded bit-packed integers one value at a time; FastLanes
+(Afroozeh & Boncz) redesigns the STORAGE LAYOUT so that decoding any
+bit width is the same straight-line SIMD kernel — no shuffles, no
+per-width special cases — and hits memory bandwidth on every ISA
+from NEON to AVX-512, *including scalar code that autovectorizes*.
+The punchline for this whole topic: layout, not intrinsics, is the
+win.
 
 ## 1. The problem with sequential bit-packing (topic 12's layout)
 
@@ -41,6 +42,24 @@ kernel is the same for NEON's 128-bit vectors, AVX-512's 512-bit, or
 a u64 scalar loop — the vector width just decides how many of the
 1024 virtual lanes you process per instruction. Wider ISA = same
 code, fewer iterations.
+
+```rust
+// 1024 values as 16 u64 lanes advancing in LOCKSTEP — every lane runs the
+// identical shift+mask, which is all autovectorization needs to see
+fn unpack(planes: &[[u64; 16]], w: u32, out: &mut [[u64; 16]; 64]) {
+    let mask = (1u64 << w) - 1;
+    let (mut word, mut shift) = (0usize, 0u32);
+    for group in out.iter_mut() {
+        for lane in 0..16 {                 // ← the vectorized dimension
+            group[lane] = (planes[word][lane] >> shift) & mask;
+        }
+        shift += w;
+        if shift + w > 64 { word += 1; shift = 0; }
+        // (real FastLanes stitches the boundary bits with one extra
+        //  OR instead of padding — still the same shift for ALL lanes)
+    }
+}
+```
 
 ## 3. The unified transposed order
 
@@ -96,3 +115,16 @@ exactly there?
    w=4 sequential. Predict GB/s scalar vs NEON before running
    simd_bench — then reconcile with FastLanes' claim that layout,
    not intrinsics, is the win.
+
+## References
+
+**Papers**
+- Afroozeh & Boncz — "The FastLanes Compression Layout: Decoding
+  > 100 Billion Integers per Second with Scalar Code" (VLDB 2023)
+  — read §3-4 for the interleaved layout and the unified transposed
+  order; the eval confirms the autovectorization claim
+
+**Code**
+- [FastLanes](https://github.com/cwida/FastLanes) — CWI's reference
+  implementation of the layout (optional; the paper's kernels are
+  self-contained)

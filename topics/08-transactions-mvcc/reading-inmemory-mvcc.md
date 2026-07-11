@@ -1,8 +1,10 @@
-# Reading guide — Hekaton (SIGMOD '13) + "An Empirical Evaluation of In-Memory MVCC" (Wu et al., VLDB '17) (~2.5 h)
+# In-memory MVCC: timestamps as locks, and the design-space price list
 
-Read Hekaton first (a design), then Wu/Pavlo (the design SPACE with
-benchmark-backed prices). Together they answer: what does MVCC look like
-when the disk-era assumptions are deleted?
+What does MVCC look like when the disk-era assumptions are deleted?
+Hekaton (SIGMOD '13) answers with one design — no locks, no latches, no
+pages; Wu & Pavlo's VLDB '17 evaluation answers with the whole design
+SPACE, benchmark-backed prices attached. Read Hekaton first (a design),
+then Wu/Pavlo (the menu).
 
 ## Hekaton — MVCC with no locks, no latches, no pages
 
@@ -35,6 +37,26 @@ Key moves to internalize:
 4. **Cooperative GC**: any thread that walks past a version older than the
    oldest active read_ts unlinks it. No vacuum process; the workload
    cleans itself in proportion to how much it reads.
+
+The visibility test is one range check — except either field may still
+hold a txn-id, and then the reader chases the writer's state:
+
+```rust
+fn visible(v: &Version, read_ts: u64, txns: &TxnTable) -> bool {
+    let begin = match v.begin_ts {
+        Stamp(ts) => ts,
+        TxnId(id) => match txns.state(id) {
+            Committing { commit_ts } => commit_ts, // take a commit DEPENDENCY:
+            _ => return false,                     // I abort if the writer does
+        },
+    };
+    let end = match v.end_ts {
+        Stamp(ts) => ts,       // superseded at ts
+        TxnId(_) => u64::MAX,  // being updated — still the latest for readers
+    };
+    begin <= read_ts && read_ts < end
+}
+```
 
 Contrast postgres on every axis: ts vs xid+clog+hint-bits; validation vs
 SIREAD; cooperative GC vs vacuum; new-to-old chains vs t_ctid old-to-new.
@@ -76,3 +98,13 @@ layer > protocol. (The RUM triangle strikes again.)
 
 You can fill the 5-axis table from memory and place postgres, Hekaton,
 and your M8 design in it — one row each.
+
+## References
+
+**Papers**
+- Diaconu, Freedman, Ismert, Larson, Mittal, Stonecipher, Verma, Zwilling
+  — "Hekaton: SQL Server's Memory-Optimized OLTP Engine" (SIGMOD 2013) —
+  ~1.5 h; the version format and commit processing sections carry it
+- Wu, Arulraj, Lin, Xian, Pavlo — "An Empirical Evaluation of In-Memory
+  Multi-Version Concurrency Control" (VLDB 2017) — ~1 h; read it as a
+  menu with prices, the tables and §6 graphs carry the message

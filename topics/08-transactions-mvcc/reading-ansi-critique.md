@@ -1,8 +1,11 @@
-# Reading guide — "A Critique of ANSI SQL Isolation Levels" (Berenson et al., SIGMOD '95) (~1.5 h)
+# Isolation levels, made rigorous: history patterns and write skew
 
-The paper that made isolation rigorous — and, accidentally, the paper that
-NAMED snapshot isolation and its flaw, seven years before anyone shipped a
-fix. Read it before the SSI paper or the SSI paper won't land.
+Berenson et al.'s SIGMOD '95 critique is the paper that made isolation
+rigorous — and, accidentally, the paper that NAMED snapshot isolation and
+its flaw, seven years before anyone shipped a fix. This chapter replaces
+ANSI's ambiguous prose phenomena with precise history patterns, then uses
+them to place SI in the hierarchy — above repeatable read, incomparable to
+serializable. Read it before the SSI chapter or that one won't land.
 
 ## The setup
 
@@ -72,3 +75,11 @@ Oracle shipped SI *as* "serializable" for years. Postgres called it
 
 You can define SI in one sentence of history notation and name the exact
 anomaly that separates it from serializable — without looking.
+
+## References
+
+**Papers**
+- Berenson, Bernstein, Gray, Melton, O'Neil, O'Neil — "A Critique of ANSI
+  SQL Isolation Levels" (SIGMOD 1995,
+  [arXiv:cs/0701157](https://arxiv.org/abs/cs/0701157)) — ~1.5 h; §3's
+  history notation and §4's SI definition are the core

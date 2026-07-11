@@ -1,8 +1,11 @@
-# Reading guide — BtrBlocks (SIGMOD '23) + FSST (VLDB '20) (~1.5 h)
+# FSST & BtrBlocks: compress harder, stay random-access
 
-Two papers from the same group (Leis et al. — the VLDB '15 / LeanStore
-people), both about squeezing more out of LIGHTWEIGHT encodings. Read
-FSST first (it's a component), then BtrBlocks (the composition).
+Dictionary encoding dedups whole strings; LZ catches partial overlap
+but kills random access. FSST closes that gap — LZ4-class ratios on
+similar-but-distinct strings with every single string decodable alone —
+and BtrBlocks (same group, three years later) shows what happens when
+you cascade such encodings recursively and pick per block by sampling.
+Read FSST first (it's a component), then BtrBlocks (the composition).
 
 ## FSST: Fast Static Symbol Table (VLDB '20)
 
@@ -26,6 +29,27 @@ whole block to read one string).
   history window like LZ. This single property is why DuckDB ships it
   as a storage encoding and a VECTOR TYPE (FSST_VECTOR, topic 11) —
   compressed strings flow through the executor.
+
+```rust
+// FSST decode: a table lookup per code, NO history window —
+// which is exactly why one string decodes without its neighbors
+fn decode(codes: &[u8], sym: &[[u8; 8]; 255], len: &[u8; 255]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < codes.len() {
+        match codes[i] {
+            255 => { out.push(codes[i + 1]); i += 2; }   // escape: literal byte
+            c => {
+                let n = len[c as usize] as usize;        // symbol = 1..8 bytes
+                out.extend_from_slice(&sym[c as usize][..n]);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+```
+
 - Symbol table construction: iterative — start with single bytes,
   repeatedly extend/merge symbols scoring by (frequency × length) gain,
   on a SAMPLE. A greedy-with-restarts search, bounded iterations.
@@ -84,3 +108,21 @@ can do much better if the format may choose AGGRESSIVELY per block.
 You can explain FSST in three sentences (symbol table, 1-byte codes,
 random access), BtrBlocks in two (sample per block, cascade), and
 argue when each beats plain dictionary + zstd.
+
+## References
+
+**Papers**
+- Boncz, Neumann, Leis — "FSST: Fast Random Access String Compression"
+  (VLDB 2020) — the scheme, the table-construction search, and the
+  table of where it loses
+- Kuschewski, Sauerwein, Alhomssi, Leis — "BtrBlocks: Efficient
+  Columnar Compression for Data Lakes" (SIGMOD 2023) — the sampling
+  argument and the cascade; same group as the VLDB '15 / LeanStore
+  papers
+
+**Code**
+- [fsst](https://github.com/cwida/fsst) — the authors' reference
+  implementation; [btrblocks](https://github.com/maxi-k/btrblocks) —
+  the paper's artifact (both optional — DuckDB's `fsst.cpp` in
+  [reading-duckdb-compression.md](reading-duckdb-compression.md) is the
+  production integration)

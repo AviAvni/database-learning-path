@@ -1,9 +1,11 @@
-# Reading guide — Mojo's `SIMD[type, width]` (and what std::simd wants to be)
+# Mojo's `SIMD[type, width]`: width as a type parameter
 
-Sources: Modular's Mojo stdlib docs for `SIMD`, and the "Matrix
-Multiplication in Mojo" blog arc (matmul.mojo). No clone needed —
-read this guide for the language-design angle: what does SIMD look
-like when the TYPE SYSTEM, not a library, owns it?
+What does SIMD look like when the TYPE SYSTEM, not a library, owns
+it? In Mojo, scalars are literally width-1 vectors, and vector width
+is a compile-time parameter you abstract over — the ergonomic ceiling
+that `std::simd` and `wide` approximate from below. Read this chapter
+for the language-design angle; it's the contrast that explains why
+our Rust experiments hand-write what Mojo's `vectorize` generates.
 
 ## 1. The ladder of SIMD ergonomics
 
@@ -100,3 +102,12 @@ width is parametric. Our experiments walk the same rungs by hand.
 5. For M17: our engine will hardcode NEON width 4. Write the one
    sentence justifying that (deployment target) and the one-line
    escape hatch if SVE servers arrive.
+
+## References
+
+**Papers & docs**
+- Modular — Mojo stdlib docs for `SIMD`
+  ([docs.modular.com](https://docs.modular.com/mojo/stdlib/builtin/simd/))
+  — the parametric type itself; no clone needed
+- Modular — the "Matrix Multiplication in Mojo" blog arc
+  (matmul.mojo) — the ×2000-to-tiled progression walked in §3

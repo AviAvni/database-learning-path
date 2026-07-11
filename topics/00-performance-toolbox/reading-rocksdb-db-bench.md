@@ -1,9 +1,11 @@
-# Code reading — RocksDB `tools/db_bench_tool.cc`
+# db_bench: the shared vocabulary of storage benchmarking
 
-Source: [`~/repos/rocksdb/tools/db_bench_tool.cc`](https://github.com/facebook/rocksdb) (~10,400 lines, shallow clone @
-`7c80a5a`). **Do not read this linearly** — it's a flag-driven monolith. The study
-guide's goal is the *vocabulary*: these workload names and flags are the lingua franca
-of storage benchmarking (LevelDB inherited → RocksDB extended → every LSM paper since).
+`fillseq`, `readrandom`, `readwhilewriting` — these workload names started in
+LevelDB, were extended by RocksDB, and now appear in every LSM paper since.
+This chapter is a skim route through the 10,000-line tool that defines them:
+the goal is the *vocabulary* and the measurement shape, not the harness code.
+Name your own benchmarks in this language and your numbers become comparable
+to two decades of published results.
 
 ## Skim route (30–60 min)
 
@@ -21,6 +23,26 @@ of storage benchmarking (LevelDB inherited → RocksDB extended → every LSM pa
 | 6088 | `class KeyGenerator` — how UNIQUE_RANDOM permutes the key space |
 
 ## The vocabulary worth memorizing
+
+Under every workload name sits the same skeleton — pick an integer, format
+it as a fixed-width key (`GenerateKeyFromInt` :3802, `WriteMode` :5869,
+`KeyGenerator` :6088):
+
+```rust
+// every fill* workload reduces to how the next integer is chosen
+fn next_key(mode: WriteMode, i: u64, n: u64, rng: &mut Rng, perm: &[u64]) -> Key {
+    let int = match mode {
+        WriteMode::Sequential   => i,                // fillseq: in-order, no
+                                                     //   compaction debt
+        WriteMode::Random       => rng.next() % n,   // fillrandom/overwrite:
+                                                     //   duplicates → garbage
+                                                     //   → compaction pressure
+        WriteMode::UniqueRandom => perm[i as usize], // pre-shuffled permutation:
+                                                     //   random order, no dups
+    };
+    generate_key_from_int(int)                       // zero-padded fixed width
+}
+```
 
 - **`fillseq`** — sequential-order load. Fast path for an LSM (no compaction debt);
   papers use it to build the DB before the real test.
@@ -74,3 +96,16 @@ db_bench's value is the workload taxonomy, not the harness. When topic 4 (LSM) a
 (backend shootout) arrive, name capstone benches in this vocabulary (`fillseq`,
 `readrandom`, `readwhilewriting`) so numbers are comparable against published RocksDB
 results.
+
+## References
+
+**Papers**
+- Cao, Dong, Vemuri, Du — "Characterizing, Modeling, and Benchmarking
+  RocksDB Key-Value Workloads at Facebook" (FAST 2020) — the measured
+  production distributions behind `mixgraph`; optional, skim §4-5
+
+**Code**
+- [rocksdb](https://github.com/facebook/rocksdb) `tools/db_bench_tool.cc`
+  (~10,400 lines, shallow clone @ `7c80a5a`) — **do not read this
+  linearly**; it's a flag-driven monolith — follow the skim route table
+  above (30–60 min)

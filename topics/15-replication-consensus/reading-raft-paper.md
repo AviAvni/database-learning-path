@@ -1,14 +1,11 @@
-# Reading guide — "In Search of an Understandable Consensus Algorithm" (Raft, USENIX ATC '14)
-
-Ongaro & Ousterhout. Read the extended version (the ATC paper is a
-cut-down of the tech report). ~18 pages, but §5 is the whole game.
-
-## Why this paper
+# Raft: logs converge by construction
 
 Paxos won the theory; Raft won the industry (etcd, tikv, CockroachDB,
 consul, qdrant's metadata, ...). The pitch is *decomposition*: leader
 election, log replication, and safety as separable concerns, plus a
 strong-leader design that forbids the log-repair cases Paxos allows.
+Read the extended version — the ATC '14 paper is a cut-down of the
+tech report; ~18 pages, but §5 is the whole game.
 
 ```
  Paxos:  any replica can propose → logs converge by proof gymnastics
@@ -57,6 +54,30 @@ the same (index, term) they are identical up to that index. Question:
 why must a follower *truncate* conflicting entries rather than skip
 them? Construct the divergent-log picture from Fig 7.
 
+The follower side, in full:
+
+```rust
+// the consistency check — Log Matching by induction, one RPC at a time
+fn handle_append(&mut self, m: AppendEntries) -> bool {
+    if m.term < self.term { return false; }           // stale leader: fenced
+    match self.log.get(m.prev_index) {
+        None => false,                                // hole → leader backs up
+        Some(e) if e.term != m.prev_term => false,    // divergent history
+        _ => {
+            for (i, new) in m.entries.iter().enumerate() {
+                let idx = m.prev_index + 1 + i as u64;
+                if self.log.term_at(idx) != Some(new.term) {
+                    self.log.truncate(idx);           // conflicting suffix DIES
+                    self.log.push(new.clone());       // (it was never committed)
+                }
+            }
+            self.commit_index = m.leader_commit.min(self.log.last_index());
+            true
+        }
+    }
+}
+```
+
 ## §5.4 — Safety (the part that matters)
 
 Two mechanisms, and both are needed:
@@ -99,3 +120,18 @@ writes here.
    why the term?)
 5. Map to valkey: which Raft properties does async replication give
    up, and what do you get back for each?
+
+## References
+
+**Papers**
+- Ongaro, Ousterhout — "In Search of an Understandable Consensus
+  Algorithm" (USENIX ATC 2014) — read the extended version (the tech
+  report); §5 twice, Fig 2 printed, Fig 8 worked by hand
+- Ongaro — "Consensus: Bridging Theory and Practice" (Stanford PhD
+  dissertation, 2014) — optional; the long-form version with the
+  membership-change fixes
+
+**Code**
+- The production implementation is
+  [raft-rs](https://github.com/tikv/raft-rs) — walked in
+  [reading-raft-rs.md](reading-raft-rs.md)

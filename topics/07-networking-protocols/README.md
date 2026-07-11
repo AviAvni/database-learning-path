@@ -108,27 +108,29 @@ object, not a string table. And streaming is client-driven: after `RUN`,
 records flow only when the client asks (`PULL {n:1000}`) — backpressure
 designed in, not bolted on (section 4's problem, solved at the protocol
 layer). Versioned handshake: 4 bytes magic `0x6060B017` + four proposed
-versions; the server picks. → guide:
-[`reading-bolt-packstream.md`](reading-bolt-packstream.md)
+versions; the server picks. →
+[`reading-bolt-packstream.md`](reading-bolt-packstream.md) — Bolt &
+PackStream: the graph in the type system
 
 ## 6. Code reading (5–7 h)
 
 - **redis `ae.c` + `networking.c`** — the loop, the parse path, pending
-  writes. → guide: [`reading-redis-ae-networking.md`](reading-redis-ae-networking.md)
+  writes. → [`reading-redis-ae-networking.md`](reading-redis-ae-networking.md) — The redis event loop: pipelining for free
 - **valkey io-threads rework** — SPSC job queues, command-batch prefetch.
-  → guide: [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md)
+  → [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md) — valkey io-threads: parallelize the majority, nothing else
 - **pgwire (Rust) + qdrant's tonic setup** — what a protocol crate looks
-  like; gRPC as the anti-RESP. → guide: [`reading-pgwire-qdrant.md`](reading-pgwire-qdrant.md)
+  like; gRPC as the anti-RESP. → [`reading-pgwire-qdrant.md`](reading-pgwire-qdrant.md) — pgwire & tonic: sessions, portals, and protocols you don't write
 - **FalkorDB's removed Bolt server** — `git show 0b11a00b3^:src/bolt/` (it
   was deleted in #2170; the tree one commit back is a complete, compact
-  Bolt 5.x implementation). → guide: [`reading-bolt-packstream.md`](reading-bolt-packstream.md)
+  Bolt 5.x implementation). → [`reading-bolt-packstream.md`](reading-bolt-packstream.md) — Bolt & PackStream: the graph in the type system
 
 ## 7. Reading (2–3 h)
 
 - "The C10K problem" (Kegel) — the historical why of event loops.
-  → guide: [`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md)
-  (covers Glauber Costa's thread-per-core essays + valkey multithreading
-  blog posts in the same guide)
+  → [`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md) —
+  C10K to thread-per-core: what is a server thread for? (covers Glauber
+  Costa's thread-per-core essays + valkey multithreading blog posts in the
+  same guide)
 
 ## 8. Experiments (in `experiments/`)
 

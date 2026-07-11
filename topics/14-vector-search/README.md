@@ -111,14 +111,14 @@ similarity = the anchor-selection problem again.
 
 ## Reading guides
 
-| guide | what it walks |
+| guide | chapter |
 |---|---|
-| [reading-hnsw-paper.md](reading-hnsw-paper.md) | the paper: level distribution, heuristic, ef/M — with the skip-list lens |
-| [reading-qdrant-hnsw.md](reading-qdrant-hnsw.md) | GraphLayers/Builder, visited pool, filtered search: percolation + ACORN + plain fallback |
-| [reading-qdrant-quantization.md](reading-qdrant-quantization.md) | u8/PQ/binary encoders, oversample+rescore plumbing |
-| [reading-usearch.md](reading-usearch.md) | compact HNSW: one tape per node, 40-line core, defaults that match the paper |
-| [reading-pq.md](reading-pq.md) | Jégou PAMI'11: subspace k-means, ADC lookup tables |
-| [reading-diskann.md](reading-diskann.md) | Vamana robust prune, SSD layout, PQ-in-RAM steering |
+| [reading-hnsw-paper.md](reading-hnsw-paper.md) | HNSW: a skip list in metric space |
+| [reading-qdrant-hnsw.md](reading-qdrant-hnsw.md) | Qdrant's HNSW: filtered search is a planner problem |
+| [reading-qdrant-quantization.md](reading-qdrant-quantization.md) | The quantization ladder: shrink, search, rescore |
+| [reading-usearch.md](reading-usearch.md) | usearch: HNSW with the fat trimmed |
+| [reading-pq.md](reading-pq.md) | Product quantization: 2^128 centroids in 16 bytes |
+| [reading-diskann.md](reading-diskann.md) | DiskANN: one SSD read per hop |
 
 (helix-db was on the menu but its public repo now ships only
 CLI/SDKs — engine source no longer readable; qdrant + usearch cover

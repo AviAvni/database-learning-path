@@ -1,10 +1,11 @@
-# Reading fjall — a clean Rust LSM
+# fjall: the LSM lifecycle in clean Rust
 
-Repo: [`~/repos/fjall`](https://github.com/fjall-rs/fjall) (shallow clone). Line numbers from the clone; expect drift.
-
-fjall is the *keyspace/journal/scheduling* layer; the actual tree (memtable, SSTs,
-blooms, block index) lives in the external `lsm-tree` crate (Cargo.toml:29). Reading
-fjall shows you the LSM *lifecycle*; topic 4 descends into `lsm-tree` itself.
+The LSM protagonist of this topic — a codebase small enough that insert-to-SST
+is traceable in an afternoon, and layered well enough to steal from. fjall is
+the *keyspace/journal/scheduling* layer; the actual tree (memtable, SSTs,
+blooms, block index) lives in the external `lsm-tree` crate (Cargo.toml:29).
+Reading fjall shows you the LSM *lifecycle*; topic 4 descends into `lsm-tree`
+itself.
 
 ## Layout
 
@@ -34,6 +35,22 @@ flowchart LR
     C -- over limit --> R["request_rotation<br/>mod.rs:818"]
     R --> S["inner_rotate_memtable<br/>mod.rs:727<br/>seal + enqueue flush"]
     S --> F["flush::run<br/>flush/worker.rs:12<br/>memtable → SST"]
+```
+
+De-sugared, the function is the topic's write-path diagram in ten lines:
+
+```rust
+fn insert(&self, key: &[u8], value: &[u8]) -> Result<()> {
+    let journal = self.journal.lock();          // journal lock BEFORE memtable —
+    journal.write_raw(key, value)?;             //   replay order must equal apply order
+    journal.persist(self.durability)?;          // fsync per policy, not per write
+    let bytes = self.tree.insert(key, value);   // memtable: sorted, in RAM
+    self.write_buffer.fetch_add(bytes);         // atomic accounting → backpressure
+    if self.memtable_over_size_limit() {
+        self.rotate_memtable();                 // seal it + enqueue flush task —
+    }                                           //   event-driven, no polling
+    Ok(())
+}
 ```
 
 Questions to answer while reading:
@@ -79,3 +96,14 @@ layering to steal for the capstone's storage crate.
 
 You can narrate insert-to-SST without looking, and you know which decisions live in
 fjall vs `lsm-tree`.
+
+## References
+
+**Code**
+- [fjall](https://github.com/fjall-rs/fjall) — `src/keyspace/mod.rs`
+  (write/read paths), `src/journal/writer.rs`, `src/flush/worker.rs`,
+  `src/compaction/worker.rs` (shallow clone at `~/repos/fjall`; line
+  numbers from the clone — expect drift)
+- the external [`lsm-tree`](https://github.com/fjall-rs/lsm-tree) crate
+  holds the actual tree (memtable, SSTs, blooms, block index) — topic 4's
+  territory

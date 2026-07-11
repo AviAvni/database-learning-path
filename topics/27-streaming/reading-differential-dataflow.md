@@ -1,11 +1,11 @@
-# Reading guide — Differential dataflow (CIDR '13 + the code)
+# Differential dataflow: retractions that survive recursion
 
-**Sources:**
-- McSherry, Murray, Isaacs, Isard — "Differential Dataflow" (CIDR 2013) —
-  short; read all of it, twice
-- [`~/repos/differential-dataflow/differential-dataflow/src/`](https://github.com/TimelyDataflow/differential-dataflow) — the modern
-  Rust implementation
-- `examples/bfs.rs` — 40 lines that do what our reach.rs stub cannot
+Differential dataflow is the system that made incremental computation
+work *inside* iteration: deltas carry lattice timestamps, so deleting
+an input edge correctly retracts everything derived through it, round
+by round. This chapter reads the short CIDR '13 paper alongside the
+modern Rust code — arrangements, join_traces, iterate — which our
+topic-27 stubs are simplified excerpts of.
 
 ## 1. The delta discipline
 
@@ -92,3 +92,16 @@ monotone inserts only. The point of reading the real thing is to see
 *what the generality costs* (arrangements, lattice times, compaction) and
 what it buys (retractions inside recursion — the thing none of our stubs
 can do).
+
+## References
+
+**Papers**
+- McSherry, Murray, Isaacs, Isard — "Differential Dataflow"
+  (CIDR 2013) — short; read all of it, twice
+
+**Code**
+- [differential-dataflow](https://github.com/TimelyDataflow/differential-dataflow)
+  `differential-dataflow/src/` — `consolidation.rs`,
+  `operators/arrange/arrangement.rs`, `operators/join.rs`,
+  `operators/iterate.rs`; plus `examples/bfs.rs` — 40 lines that do
+  what our reach.rs stub cannot

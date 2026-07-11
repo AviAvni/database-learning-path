@@ -1,7 +1,10 @@
-# Reading guide — "Monkey: Optimal Navigable Key-Value Store" (SIGMOD '17)
+# Monkey: bloom bits where they pay
 
-Dayan, Athanassoulis, Idreos. ~2 h. The paper that turned bloom-filter sizing
-from folklore ("10 bits/key everywhere") into an optimization problem.
+"10 bits/key everywhere" was folklore; Monkey turned bloom-filter sizing into
+an optimization problem and won ~2× fewer wasted IOs from the *same* DRAM.
+This chapter derives the allocation rule — FPR proportional to level size, so
+bits/key *decrease* toward the bottom — and sets up the per-level-bits
+experiment in the mini-LSM.
 
 ## The setup
 
@@ -28,6 +31,20 @@ Spending a bit at a small level buys the same FPR drop for T× fewer keys —
 i.e., T× cheaper. Optimum: FPRs proportional to level size ⇒ bits/key
 *decreasing* geometrically toward the bottom; the bottom level may get ~0
 (its "filter" is the fact that every lookup ends there anyway).
+
+The whole allocation, as the closed form your mini-LSM can call:
+
+```rust
+// Pick a total zero-result FPR budget; hand each level a share
+// PROPORTIONAL TO ITS SIZE, then convert fpr → bits/key.
+fn monkey_alloc(level_keys: &[u64], total_fpr: f64) -> Vec<f64> {
+    let n: u64 = level_keys.iter().sum();
+    level_keys.iter().map(|&nk| {
+        let fpr = total_fpr * nk as f64 / n as f64;   // p_i ∝ level size
+        -fpr.ln() / (LN_2 * LN_2)                     // bits/key: fpr ≈ e^(−bits·ln²2)
+    }).collect()                                      // small levels get MORE bits/key
+}
+```
 
 ## Reading order
 
@@ -56,3 +73,11 @@ i.e., T× cheaper. Optimum: FPRs proportional to level size ⇒ bits/key
 You can state the allocation rule ("equal *marginal* IO saved per bit ⇒ FPR
 proportional to level size") and back it with the measured table from your
 mini-LSM.
+
+## References
+
+**Papers**
+- Dayan, Athanassoulis, Idreos — "Monkey: Optimal Navigable Key-Value
+  Store" (SIGMOD 2017) — §1–2 for the LSM cost model, §4 for the
+  allocation argument; skim §5 (Dostoevsky does the merging co-tuning
+  better) and §6 for the ~2× lookup improvement at equal memory

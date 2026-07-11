@@ -1,8 +1,9 @@
-# Reading guide — DuckDB `src/execution/`: the vectorized reference (~2 h)
+# DuckDB's execution engine: 2048 rows at a time
 
-Local clone: [`~/repos/duckdb`](https://github.com/duckdb/duckdb). Read in this order: the vector types (the
-data plane), then the pipeline executor (the control plane), then the
-join hash table (where the tricks pay off).
+The vectorized reference, in production C++. Read in this order: the
+vector types (the data plane), then the pipeline executor (the control
+plane), then the join hash table (where the tricks pay off) — every
+X100 idea from this topic's papers appears here with a file:line.
 
 ## 1. Vectors and chunks (the data plane)
 
@@ -28,6 +29,18 @@ join hash table (where the tricks pay off).
   `SelectionVector`: the filter-without-copying mechanism. A kernel takes
   `(Vector, sel, count)`; a filter's whole output is a new sel over the
   same buffers.
+
+```rust
+// every kernel takes (data, sel, count); a filter's OUTPUT is a new sel
+fn filter_lt(v: &[i64], t: i64, sel: &[u32], out_sel: &mut [u32]) -> usize {
+    let mut n = 0;
+    for &i in sel {
+        out_sel[n] = i;                    // branch-free: write always,
+        n += (v[i as usize] < t) as usize; // advance only on match
+    }
+    n   // survivor count — the data vectors are untouched, zero copies
+}
+```
 
 Question to hold: every kernel must handle
 {flat, constant, dictionary}². How does DuckDB avoid writing 9 loops per
@@ -92,3 +105,13 @@ builds, sorts). Each pipeline = source → streaming operators → sink.
 You can draw a pipeline for `SELECT k, SUM(v) FROM t JOIN s ... GROUP BY k`
 (two pipelines, which is the sink of which), and explain selection
 vectors + the salt trick in two sentences each.
+
+## References
+
+**Code**
+- [duckdb](https://github.com/duckdb/duckdb) — the data plane:
+  `src/include/duckdb/common/vector_size.hpp`,
+  `enums/vector_type.hpp`, `types/data_chunk.hpp`,
+  `types/selection_vector.hpp`; the control plane:
+  `src/parallel/pipeline.cpp`, `src/parallel/pipeline_executor.cpp`;
+  the payoff: `src/execution/join_hashtable.cpp`; ~2 h

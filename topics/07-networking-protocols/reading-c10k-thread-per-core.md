@@ -1,7 +1,11 @@
-# Reading guide — C10K, valkey multithreading posts, thread-per-core (2 h)
+# C10K to thread-per-core: what is a server thread for?
 
 Three readings spanning 1999→2024, one thread: *what should a server thread
-be responsible for?*
+be responsible for?* Kegel's C10K catalog explains why event loops became the
+default, valkey's 8.0 posts show disciplined Amdahl analysis parallelizing
+exactly the profiled majority, and Glauber Costa's thread-per-core essays
+take the radical endpoint — share nothing between cores. Together they span
+the shared↔sharded plane M7 must position itself in.
 
 ## 1. "The C10K problem" — Dan Kegel (kegel.com/c10k.html)
 
@@ -78,3 +82,16 @@ The radical position: don't share ANYTHING between cores.
 
 You can place redis, valkey 8, tokio, and DragonflyDB in the
 shared↔sharded / loop↔threads plane and argue M7's position in it.
+
+## References
+
+**Papers**
+- Dan Kegel — "The C10K problem" (kegel.com/c10k.html, 1999–2003) — skim
+  the I/O-strategy section, skip the dated driver patches
+- Valkey blog — the 8.0 performance/multithreading series
+  (valkey.io/blog) — read after
+  [reading-valkey-iothreads.md](reading-valkey-iothreads.md) for the
+  measured story
+- Glauber Costa — thread-per-core essays ("The reactor pattern is dead,
+  long live the reactor"; the Seastar/ScyllaDB shard-per-core posts and
+  later Glommio writing)

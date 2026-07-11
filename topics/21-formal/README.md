@@ -120,11 +120,11 @@ proptest (topic 16).
 
 ## Reading guides
 
-- [reading-aws-cacm15.md](reading-aws-cacm15.md) — why AWS specs in TLA+ (the motivation paper)
-- [reading-egg-popl21.md](reading-egg-popl21.md) — egg paper + full source walkthrough
-- [reading-z3-tacas08.md](reading-z3-tacas08.md) — Z3 architecture + euf e-graph anchors
-- [reading-tlaplus-raft.md](reading-tlaplus-raft.md) — Specifying Systems pt I + Ongaro's raft.tla
-- [reading-lean-perceus.md](reading-lean-perceus.md) — Immutable Beans + Perceus (the Lean runtime)
+- [reading-aws-cacm15.md](reading-aws-cacm15.md) — Why AWS writes TLA+: exhaustively testable pseudo-code
+- [reading-egg-popl21.md](reading-egg-popl21.md) — egg: equality saturation with deferred rebuilding
+- [reading-z3-tacas08.md](reading-z3-tacas08.md) — Z3: SAT plus theories, with an e-graph at the core
+- [reading-tlaplus-raft.md](reading-tlaplus-raft.md) — A spec is a state machine: TLA+ through raft.tla
+- [reading-lean-perceus.md](reading-lean-perceus.md) — Perceus: reference counting precise enough to reuse memory
 
 ## Experiments
 

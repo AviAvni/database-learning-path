@@ -1,9 +1,11 @@
-# Reading guide — VictoriaMetrics + InfluxDB 3 (IOx): two rebuttals to Prometheus
+# VictoriaMetrics & InfluxDB 3: two rebuttals to Prometheus
 
-Code: [`~/repos/VictoriaMetrics`](https://github.com/VictoriaMetrics/VictoriaMetrics) (Go), [`~/repos/influxdb`](https://github.com/influxdata/influxdb) (Rust — the
-repo is InfluxDB 3, the productized IOx). Same problem, two opposite
-bets: VM doubles down on a custom LSM; InfluxDB 3 deletes the custom
-engine and rebuilds on Parquet + object storage (topic 28's stack).
+Same problem as prometheus, two opposite bets. VictoriaMetrics doubles
+down on a custom LSM — tighter codecs, explicit parts and merges, its
+own format end to end. InfluxDB 3 (the productized IOx, in Rust) deletes
+the custom engine entirely and rebuilds on Parquet + object storage —
+topic 28's stack wearing a TSDB hat. Reading them together shows which
+parts of a TSDB are essential and which are just a storage engine.
 
 ## VictoriaMetrics: the LSM said out loud
 
@@ -23,7 +25,22 @@ engine and rebuilds on Parquet + object storage (topic 28's stack).
   decimal.go). Contrast Gorilla: byte-aligned varints, batch-friendly,
   SIMD-able — and `precisionBits` makes it **optionally lossy** (drop
   mantissa bits below the precision you care about). Gorilla is exact;
-  VM lets you buy ratio with honesty about float noise.
+  VM lets you buy ratio with honesty about float noise. The shape:
+
+  ```rust
+  // floats already scaled to i64 via decimal encoding
+  fn nearest_delta2(vals: &[i64], precision_bits: u8, out: &mut Vec<u8>) {
+      let (mut prev, mut prev_delta) = (vals[0], 0i64);
+      for &v in &vals[1..] {
+          let delta = v - prev;
+          let dod = delta - prev_delta;               // same predictor as Gorilla…
+          let dod = trim_precision(dod, precision_bits); // …but LOSSY on purpose:
+          out.extend(zigzag_varint(dod));             // drop bits below the noise floor
+          prev_delta = delta; prev = v;               // byte-aligned varints, not a
+      }                                               // bitstream => batch/SIMD friendly
+  }
+  ```
+
 - `lib/storage/index_db.go:124` — tagFilters→metricIDs cache in front of
   the label index: selector evaluation is expensive enough at VM's
   cardinality targets to warrant a query-shaped cache, invalidated on
@@ -90,3 +107,18 @@ engine and rebuilds on Parquet + object storage (topic 28's stack).
    Parquet-on-object-store (IOx-style, M28 already built the substrate).
    Which do you pick for `MATCH ... AT TIME t` and why does the answer
    differ for hot recent history vs year-old history?
+
+## References
+
+**Papers**
+- None — both systems are documented in code and blog posts rather than
+  papers; the IOx design discussions on the InfluxData blog are the
+  closest thing to a paper for the Parquet bet
+
+**Code**
+- [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics)
+  (Go) — `lib/storage/partition.go`, `lib/encoding/nearest_delta2.go`,
+  `lib/storage/index_db.go`, `lib/storage/dedup.go`
+- [influxdb](https://github.com/influxdata/influxdb) (Rust — the repo
+  is InfluxDB 3, the productized IOx) — `influxdb3_wal/src/lib.rs`,
+  `influxdb3_write/src/write_buffer/queryable_buffer.rs`

@@ -1,9 +1,10 @@
-# Reading guide — postgres executor: Volcano, warts and wisdom (~1 h)
+# Volcano in production: postgres's executor, warts and wisdom
 
-Local clone: [`~/repos/postgres`](https://github.com/postgres/postgres), dir `src/backend/executor/`. Read it as
-the honest per-tuple baseline your benchmark's `volcano.rs` models — and
-for the one place postgres already fought back (the expression
-interpreter).
+Tuple-at-a-time execution, still shipping: postgres's executor is the
+honest per-tuple baseline your benchmark's `volcano.rs` models. Read it
+for the two dispatch costs — a function pointer per plan node per tuple,
+an opcode per expression step — and for the one place postgres already
+fought back (the computed-goto expression interpreter).
 
 ## 1. ExecProcNode: the iterator model in one function pointer
 
@@ -41,6 +42,23 @@ then interpreted:
   "linearize the expression" half of vectorization — it just still
   applies it one tuple at a time.
 
+```rust
+// expressions compile to FLAT STEPS, then interpret — once per tuple
+fn interp(steps: &[Step], row: &Row, regs: &mut [Datum]) -> Datum {
+    let mut ip = 0;
+    loop {
+        match steps[ip].op {           // in C: goto *dispatch[op] — each
+            FetchAttr(a, r) => regs[r] = row.attr(a),   // opcode SITE gets
+            AddI64(x, y, r) => regs[r] = regs[x] + regs[y], // its own branch-
+            GtI64(x, y, r)  => regs[r] = (regs[x] > regs[y]).into(), // predictor
+            Done(r)         => return regs[r],              // entry
+        }
+        ip += 1;
+    }
+}
+// vectorization = the SAME flat steps, applied per 2048 rows instead
+```
+
 ```
  tree-walk interpreter      linear-step interpreter     vectorized kernel
  (recursive, per tuple)     (flat, per tuple)           (flat, per 2048)
@@ -77,3 +95,11 @@ then interpreted:
 You can explain the two dispatch costs (node-level ExecProcNode,
 step-level opcode) and name the mitigation for each (vectorization /
 computed goto + JIT).
+
+## References
+
+**Code**
+- [postgres](https://github.com/postgres/postgres) —
+  `src/backend/executor/`: `execProcnode.c` (the dispatch),
+  `execExprInterp.c` (the computed-goto interpreter — read the :14
+  header comment first), plus `src/include/executor/executor.h`; ~1 h
