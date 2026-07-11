@@ -38,7 +38,7 @@ understand a mechanism you have not built and benchmarked.**
 
 ## Milestone map
 
-See `PROGRESS.md` for status. Milestones M0–M20 map 1:1 to curriculum topics 0–20 in
+See `PROGRESS.md` for status. Milestones M0–M22 map 1:1 to curriculum topics 0–22 in
 `PLAN.md` — each topic's "Capstone milestone" line defines the scope.
 
 Workspace is created at M0 (topic 0). Nothing lives here until then.

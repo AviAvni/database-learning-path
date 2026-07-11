@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-21 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+23 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -218,6 +218,26 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Papers:** Davis "Algorithm 1000: SuiteSparse:GraphBLAS" (TOMS'19) + the v2 update (TOMS'23), Gustavson '78 (two-pointer SpGEMM), Buluç & Gilbert SpGEMM survey, Beamer "Direction-Optimizing BFS" (SC'12), GraphBLAS C API spec (read cover to cover once).
 - **Build & bench:** implement CSR SpMV and Gustavson SpGEMM in Rust; bench vs SuiteSparse on the same matrices (SuiteSparse Matrix Collection); implement direction-optimizing BFS with masks; measure where hypersparse representation pays off.
 - **Capstone M20:** replace `minidb`'s M13 adjacency-list graph engine with your own sparse-matrix kernels; benchmark both on LDBC queries — a FalkorDB-vs-neo4j architecture shootout inside your own codebase.
+
+## 21. Formal Methods & Verification
+
+**Why:** Testing (topic 16) finds bugs you imagined; formal methods find the ones you didn't. AWS, MongoDB, and CockroachDB all spec their protocols in TLA+. Also: e-graphs are quietly powering modern query optimizers.
+
+- **Concepts:** SAT → SMT (DPLL(T), theories), Z3's architecture (tactics, e-matching, the congruence closure e-graph), TLA+ & PlusCal (specify, then let TLC model-check), safety vs liveness, refinement, equality saturation with e-graphs (egg) for rewrite-rule optimizers, lightweight formal methods (spec only the scary parts), protocol testing languages (P, Ivy) as a lighter alternative.
+- **Read code:** Z3 internals (`src/smt/`, the e-graph — a high-performance search engine over logic), egg (Rust equality saturation — read fully, it's small), published TLA+ specs: Raft (Ongaro's), MongoDB replication, CockroachDB's specs repo.
+- **Papers:** "How Amazon Web Services Uses Formal Methods" (CACM'15 — the motivation paper), "egg: Fast and Extensible Equality Saturation" (POPL'21), "Z3: An Efficient SMT Solver" (TACAS'08), Lamport's "Specifying Systems" (part I) + the TLA+ video course, "Cosette" (CIDR'17 — revisit from topic 16).
+- **Build & bench:** write a TLA+ spec of `minidb`'s WAL-replication protocol (topic 15) and model-check it — then remove an ack and watch TLC find the data-loss trace; build an expression-rewrite pass with egg and compare plans vs your hand-ordered rules from topic 10.
+- **Capstone M21:** TLA+ spec of `minidb` replication (or MVCC visibility) checked by TLC in CI; optional egg-based rewrite stage in the planner.
+
+## 22. Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC & Friends
+
+**Why:** The industry's shared yardsticks — and their hidden messages. Knowing *what each query actually stresses* turns benchmarks from marketing into engineering tools.
+
+- **Concepts:** OLTP vs OLAP benchmark design, TPC-C (contention, think times, and why nobody runs it honestly), TPC-H choke-point analysis (which of the 22 queries stress joins vs aggregation vs expression eval), TPC-DS, Join Order Benchmark (JOB — real data, real cardinality pain), SSB, YCSB workloads A–F & Zipfian skew, LDBC SNB + Graphalytics (graph), ann-benchmarks (vector), ClickBench, fair-benchmarking methodology & benchmarketing sins, scale factors and data generators.
+- **Read code/run:** DuckDB's built-in TPC-H/TPC-DS extensions, BenchBase (CMU), HammerDB, `dbgen`/`dsdgen`, LDBC SNB datagen + driver, go-ycsb/memtier.
+- **Papers:** "TPC-H Analyzed: Hidden Messages and Lessons Learned" (Boncz — the choke-point paper, read alongside running it), "Fair Benchmarking Considered Difficult" (DBTest'18), "OLTP-Bench" (VLDB'13), "How Good Are Query Optimizers, Really?" (VLDB'15 — the JOB paper, revisit), LDBC SNB paper.
+- **Build & bench:** run TPC-H SF10 on DuckDB and postgres, profile three choke-point queries and explain the gap; run YCSB against redis and your topic-7 RESP server; run LDBC SNB interactive on FalkorDB vs neo4j and analyze where each wins.
+- **Capstone M22:** standing benchmark suite for `minidb` — YCSB workloads, a TPC-H query subset, micro-LDBC graph queries, ann-benchmarks recall/QPS — with regression tracking across capstone milestones.
 
 ---
 

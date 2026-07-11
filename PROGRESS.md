@@ -25,6 +25,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 18 | GPU Acceleration for Databases | todo | |
 | 19 | JIT & Query Compilation | todo | |
 | 20 | Sparse Linear Algebra & GraphBLAS Internals | todo | |
+| 21 | Formal Methods & Verification | todo | |
+| 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | todo | |
 
 ## Capstone milestones
 
@@ -51,6 +53,8 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M18 GPU backend (experimental) | 18 | todo |
 | M19 cranelift expression JIT | 19 | todo |
 | M20 sparse-matrix graph engine vs M13 shootout | 20 | todo |
+| M21 TLA+ spec checked in CI | 21 | todo |
+| M22 standing benchmark suite + regression tracking | 22 | todo |
 
 ## Session log
 
