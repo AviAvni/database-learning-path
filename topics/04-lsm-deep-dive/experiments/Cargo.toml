@@ -1,0 +1,14 @@
+[package]
+name = "topic04-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+lz4_flex = "0.11"
+rand = "0.8"
+tempfile = "3"
+
+[[bin]]
+name = "write_amp"
+path = "src/bin/write_amp.rs"
