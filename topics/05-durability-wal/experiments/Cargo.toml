@@ -1,0 +1,26 @@
+[package]
+name = "durability-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hdrhistogram = "7"
+rand = "0.8"
+tempfile = "3"
+libc = "0.2"
+crc32fast = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bin]]
+name = "fsync_ladder"
+path = "src/bin/fsync_ladder.rs"
+
+[[bin]]
+name = "crash_test"
+path = "src/bin/crash_test.rs"
+
+[[bench]]
+name = "commit_throughput"
+harness = false
