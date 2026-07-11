@@ -80,6 +80,38 @@ the same intersection.
 - The benchmark's real value: audited implementations + a spec that
   forces update handling (no read-only CSR cheating).
 
+## 6. The query-language landscape
+
+Six languages, three real fault lines — data model, matching semantics,
+composability:
+
+| | model | matching | composable? | pushdown-friendly? |
+|---|---|---|---|---|
+| Cypher/openCypher | property graph | homomorphism, rel-trail for var-length | weak (`CALL {}` bolted on) | good |
+| GQL (ISO 39075:2024) | property graph | configurable: ALL/TRAIL/ACYCLIC + quantified path patterns | graph tables | good |
+| SQL/PGQ | property graph *inside* SQL | GQL's MATCH in `GRAPH_TABLE(...)` | full SQL | inherits SQL |
+| SPARQL | RDF triples | homomorphism (BGP) | subqueries | union-heavy plans |
+| Gremlin | property graph | imperative traversal | pipelines | almost none — you ARE the plan |
+| Datalog | relations | homomorphism + fixpoint | **total** — rules feed rules | recursion-native |
+
+The trap: **the same pattern returns different answers per language**.
+`(a)-[]->(b)-[]->(c)` under homomorphism lets `a=c` (Cypher: yes, nodes
+may repeat); isomorphism forbids repeating nodes; trail forbids
+repeating *edges* (Cypher's var-length `[*]`). Count 2-paths in a
+triangle and you get three different numbers. GQL makes the mode
+explicit syntax; Cypher hard-codes a hybrid — a semantics decision
+disguised as a default.
+
+RDF's edge-property hole: triples have no place for `since: 2019` on
+`:alice :knows :bob` — you reify (a statement-node per edge, 4 triples)
+or use RDF-star. Property graphs made the edge a first-class citizen;
+that single modeling choice is most of why they won the app market.
+
+GQL is the first new ISO database language since SQL (1987). Its
+quantified path patterns (`(a) (-[:KNOWS]->){1,5} (b)`) and path modes
+are the parts worth building into an AST *now* — hence M13's rule below.
+→ guide: [`reading-query-languages.md`](reading-query-languages.md)
+
 ## Experiments (`experiments/`)
 
 2-hop neighborhood (distinct nodes at distance 1 or 2, excluding self)
@@ -109,6 +141,7 @@ over three representations, same power-law graph:
 | [reading-kuzu.md](reading-kuzu.md) | columnar CSR node groups, Intersect/WCOJ, factorization (CIDR '23) |
 | [reading-wcoj.md](reading-wcoj.md) | AGM bound, Generic Join, EmptyHeaded |
 | [reading-ldbc-snb.md](reading-ldbc-snb.md) | SNB workloads, what to steal for the M22 benchmark |
+| [reading-query-languages.md](reading-query-languages.md) | Cypher vs GQL vs SQL/PGQ vs SPARQL vs Gremlin vs Datalog — semantics, not syntax |
 
 ## Capstone M13
 
@@ -127,3 +160,7 @@ core will replace (and be measured against):
       measurement
 - [ ] record the update-pain notes: what a CSR/matrix core must solve
       (delta overlay design → M20)
+- [ ] language rule: target openCypher now, but keep the AST GQL-shaped —
+      quantified path patterns and an explicit path-mode field
+      (ALL/TRAIL/ACYCLIC) as first-class — so M10's parser survives GQL
+      compatibility without a rewrite

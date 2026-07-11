@@ -90,6 +90,38 @@ exponential search from the predicted slot). The honest question our bench
 asks: does PGM's 167→~100 ns win survive keys that aren't uniform, and
 does ALEX survive adversarial inserts? (Predict in notes.md first.)
 
+## Geo indexes: 2D keys through 1D indexes
+
+Same theme as learned indexes — encode structure into the key. Redis/
+valkey GEO is not a spatial index at all: it's a **52-bit interleaved
+geohash stored as a zset score**. Bit-interleave lat/lon
+(`interleave64`, geohash.c:52 — the Morton/Z-order trick with magic
+masks), and prefix-similar codes = spatially-near points, so a bounding
+box becomes a handful of zset RANGE queries
+(`scoresOfGeoHashBox`, geo.c:338: score range = hashcode << shift to
+hashcode+1 << shift). GEOSEARCH = pick a cell size covering the radius
+(`geohashEstimateStepsByRadius`, geohash_helper.c:64), scan the cell +
+its 8 neighbors (`membersOfAllNeighbors`, geo.c:375), then exact
+haversine post-filter — a candidate-generation + verification pattern,
+exactly like a bloom filter's "maybe" answer.
+
+```
+ the menu:
+ Z-order/geohash   interleave bits; 1D-index reuse   discontinuities at
+                   (zset, B-tree, anything)          cell boundaries
+ Hilbert curve     better locality (no big jumps)    costlier encode
+ R-tree            bounding-box tree (Guttman'84);   overlap ⇒ multi-path
+                   PostGIS via GiST                  descent; R* splits
+ S2 / H3           sphere-native cells (Google/Uber) discrete cells only,
+                   hierarchy = prefix                great for sharding
+```
+
+The deep lesson: postgres didn't hardcode any of these — GiST is an
+*extensible* index AM (topic 26's indexam guide) where R-tree is just
+one `picksplit`/`penalty` implementation. Geohash-in-a-zset is the
+opposite move: zero new index structures, reuse what you have.
+→ guide: [`reading-geo-indexes.md`](reading-geo-indexes.md)
+
 ## The stubs (experiments/)
 
 | stub | contract |
@@ -110,6 +142,7 @@ SIMD over roaring-rs.
 - [reading-hyperloglog.md](reading-hyperloglog.md) — HLL in Practice + redis hyperloglog.c
 - [reading-learned-indexes.md](reading-learned-indexes.md) — Kraska'18 → PGM → ALEX (both repos)
 - [reading-roaring-internals.md](reading-roaring-internals.md) — SPE'18 + roaring-rs (extends topic 23's guide)
+- [reading-geo-indexes.md](reading-geo-indexes.md) — valkey GEO (geohash-in-a-zset), Z-order vs Hilbert vs R-tree vs S2/H3
 - [reading-postgres-indexam.md](reading-postgres-indexam.md) — nbtree/GIN/BRIN as the classical baseline
 
 ## Cross-topic links

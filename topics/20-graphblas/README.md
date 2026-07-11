@@ -121,7 +121,58 @@ same read-merge, same deferred compaction, same "don't block the
 writer" motive. Guide:
 [reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md).
 
-## 6. Where the other topics plug in
+## 6. Parallelism: OpenMP inside SuiteSparse, rayon in Rust
+
+SuiteSparse parallelizes with OpenMP, and the *scheduling decisions
+are explicit code*, not `#pragma omp parallel for` sprinkled around:
+
+```
+ saxpy3 (GB_AxB_saxpy3.c:22-48):
+   B's vectors ──► coarse tasks   (one thread OWNS whole columns)
+              └──► fine tasks     (a TEAM shares one fat column,
+                                   atomics on the workspace)
+   how many threads? not "all of them":
+   flopcount pre-pass  ──►  nthreads = GB_nthreads(total_flops,
+                                         chunk, nthreads_max)
+                            (GB_AxB_saxpy3_slice_balanced.c:418)
+   tiny multiply ⇒ 1 thread — the parallelism is COSTED like a
+   query plan, using the same flopcount that sizes hash tables
+```
+
+Even the flopcount pass itself is parallel
+(`#pragma omp parallel for schedule(dynamic,1)` —
+GB_AxB_saxpy3_flopcount.c:219). The philosophy: **static
+work-partitioning from a cost estimate**, balanced up front
+(target task size, slice_balanced.c:456), because the cost model
+is cheap and accurate (flops are countable for SpGEMM).
+
+The Rust translation is rayon, and it inverts the philosophy:
+
+| | OpenMP (SuiteSparse) | rayon |
+|---|---|---|
+| unit | task list built up front | `join(a, b)` recursive split |
+| balance | pre-computed from flopcount | work-stealing (crossbeam_deque) |
+| thread count | costed per-operation | pool-global, steal if idle |
+| skew handling | fine tasks + atomics | idle threads steal halves |
+| code | ~500 lines of slicing | `par_iter().map(...)` |
+
+rayon's `join` (rayon-core/src/join/mod.rs:93) pushes the second
+closure onto the calling thread's deque and runs the first inline;
+an idle thread steals the pushed half (registry.rs:248 — a
+`crossbeam_deque::Stealer` per worker). Work-stealing makes the
+flopcount pre-pass *optional*: skewed rows (RMAT's heavy tail) get
+split and stolen dynamically. The price: stealing has per-task
+overhead, so you still chunk (`with_min_len`) — a cost decision
+OpenMP-SuiteSparse made statically.
+
+No native-Rust GraphBLAS exists: `rustgraphblas` and
+`graphblas_sparse_linear_algebra` are FFI bindings over SuiteSparse
+(you inherit its OpenMP). A pure-Rust kernel core — M20 — parallelizes
+with rayon and must answer saxpy3's questions itself: when is one
+thread right, and who owns the workspace?
+→ guide: [`reading-openmp-vs-rayon.md`](reading-openmp-vs-rayon.md)
+
+## 7. Where the other topics plug in
 
 - SpGEMM hash-vs-Gustavson = topic 8's hash-vs-sort aggregation
   choice, per task.
@@ -157,6 +208,9 @@ cargo run --release --bin gb_bench
       delta_mxm fold) replacing the M13 adjacency core
 - [ ] LDBC bench vs reference `graph/src/graph/graphblas` layer;
       direction-optimizing BFS parity with LAGraph's α/β thresholds
+- [ ] parallelize the kernels with rayon; document each OpenMP→rayon
+      mapping decision (task slicing vs work-stealing, workspace
+      ownership, when one thread wins) in notes.md
 
 ## Reading order
 
@@ -166,3 +220,5 @@ cargo run --release --bin gb_bench
 4. reading-beamer-sc12.md — direction-optimizing BFS
 5. reading-lagraph.md — the algorithms as executable linear algebra
 6. reading-falkordb-delta-matrix.md — then implement the stubs
+7. reading-openmp-vs-rayon.md — saxpy3's OpenMP scheduling vs rayon
+   work-stealing, before parallelizing the M20 kernels

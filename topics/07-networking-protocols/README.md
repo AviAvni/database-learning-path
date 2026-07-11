@@ -91,7 +91,27 @@ graph = one keyspace entry ⇒ module-level locking is the concurrency story.
   Simple/Extended Query dance with per-portal row limits — the protocol
   itself has backpressure hooks RESP lacks.
 
-## 5. Code reading (5–7 h)
+## 5. Bolt: the third answer (RESP vs pgwire vs Bolt)
+
+Three protocols, three answers to the same three questions:
+
+| | framing | typing | streaming |
+|---|---|---|---|
+| RESP | length-prefixed text markers | strings + ints (client re-parses) | none — full reply or die |
+| pgwire | typed binary messages | per-column OIDs, text/binary | portal row limits (pull-ish) |
+| Bolt | chunked messages of PackStream structs | full type system incl. Node/Relationship/Path on the wire | **explicit pull**: client sends `PULL {n}` / `DISCARD` |
+
+Bolt is what a protocol looks like when the *data model* lives in the
+protocol: PackStream has markers for maps, lists — and graph types
+(Node 0x4E, Relationship 0x52, Path 0x50), so a driver hands you a graph
+object, not a string table. And streaming is client-driven: after `RUN`,
+records flow only when the client asks (`PULL {n:1000}`) — backpressure
+designed in, not bolted on (section 4's problem, solved at the protocol
+layer). Versioned handshake: 4 bytes magic `0x6060B017` + four proposed
+versions; the server picks. → guide:
+[`reading-bolt-packstream.md`](reading-bolt-packstream.md)
+
+## 6. Code reading (5–7 h)
 
 - **redis `ae.c` + `networking.c`** — the loop, the parse path, pending
   writes. → guide: [`reading-redis-ae-networking.md`](reading-redis-ae-networking.md)
@@ -99,15 +119,18 @@ graph = one keyspace entry ⇒ module-level locking is the concurrency story.
   → guide: [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md)
 - **pgwire (Rust) + qdrant's tonic setup** — what a protocol crate looks
   like; gRPC as the anti-RESP. → guide: [`reading-pgwire-qdrant.md`](reading-pgwire-qdrant.md)
+- **FalkorDB's removed Bolt server** — `git show 0b11a00b3^:src/bolt/` (it
+  was deleted in #2170; the tree one commit back is a complete, compact
+  Bolt 5.x implementation). → guide: [`reading-bolt-packstream.md`](reading-bolt-packstream.md)
 
-## 6. Reading (2–3 h)
+## 7. Reading (2–3 h)
 
 - "The C10K problem" (Kegel) — the historical why of event loops.
   → guide: [`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md)
   (covers Glauber Costa's thread-per-core essays + valkey multithreading
   blog posts in the same guide)
 
-## 7. Experiments (in `experiments/`)
+## 8. Experiments (in `experiments/`)
 
 1. **`src/resp.rs`** — RESP2 parser/encoder (your build; tests fix the
    format incl. partial-input resumption — the hard part of any wire parser).
@@ -117,13 +140,15 @@ graph = one keyspace entry ⇒ module-level locking is the concurrency story.
    `-P 64` against (a) your server, (b) real redis on this Mac. Flamegraph
    your server under load; name the top 3 entries.
 
-## 8. Capstone milestone M7 (in `../../capstone/`)
+## 9. Capstone milestone M7 (in `../../capstone/`)
 
 - [ ] RESP server exposing `GRAPH.QUERY` / `GRAPH.RO_QUERY`, wire-compatible
       with falkordb-py (the client must not know it's not FalkorDB).
 - [ ] Bench falkordb-py against yours vs real FalkorDB; document the gap.
 - [ ] Decide + write down: single loop, io-threads, or thread-per-core — and
       what your choice serializes.
+- [ ] Stretch: a Bolt listener on a second port so neo4j drivers connect —
+      PackStream encoding of the graph result types (Node/Relationship/Path).
 
 ## Done when
 
