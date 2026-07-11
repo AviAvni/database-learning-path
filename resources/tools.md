@@ -40,6 +40,7 @@
 | SQLancer | logic-bug finding in SQL engines |
 | Jepsen + elle | distributed consistency checking (topic 15) |
 | TLA+ / PlusCal | model checking protocols (optional, topic 15/16) |
+| Z3 (via `z3` crate) | SMT solving: prove query rewrites equivalent, check invariants (topic 16) |
 | strace / dtruss | verify what syscalls actually happen (fsync lies) |
 
 ## Rust crates that recur

@@ -173,10 +173,10 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 
 **Why:** The topic that separates hobby DBs from production DBs. Turso and FoundationDB made this their identity.
 
-- **Concepts:** deterministic simulation testing (DST), fault injection, property-based testing (proptest), fuzzing (cargo-fuzz/AFL), metamorphic testing (SQLancer's pivoted queries / TLP), Jepsen & elle (checking linearizability), model checking with TLA+ (taste of).
-- **Read code:** turso's simulator + DST setup (they blog about it), FoundationDB simulation docs, SQLancer, antithesis blog posts, redis `test/` harness.
-- **Papers:** "Testing Database Engines via Pivoted Query Synthesis" (OSDI'20), "Finding Logic Bugs via TLP" (OOPSLA'20), Jepsen analyses (pick redis-raft and a graph DB one).
-- **Build & bench:** add proptest model-checking to `minidb` (ops vs an in-memory model oracle); build a mini DST harness (simulated clock + fault-injecting IO layer); fuzz your SST/page parsers.
+- **Concepts:** deterministic simulation testing (DST), fault injection, property-based testing (proptest), fuzzing (cargo-fuzz/AFL), metamorphic testing (SQLancer's pivoted queries / TLP), Jepsen & elle (checking linearizability), model checking with TLA+ (taste of), SMT solvers (Z3): proving query rewrites equivalent (Cosette-style), checking optimizer rules and constraint/invariant satisfiability.
+- **Read code:** turso's simulator + DST setup (they blog about it), FoundationDB simulation docs, SQLancer, antithesis blog posts, redis `test/` harness, Z3 (`z3.rs` bindings; skim the tactic/solver architecture — treat Z3 itself as a masterclass codebase: it's a high-performance search engine over logic).
+- **Papers:** "Testing Database Engines via Pivoted Query Synthesis" (OSDI'20), "Finding Logic Bugs via TLP" (OOPSLA'20), Jepsen analyses (pick redis-raft and a graph DB one), "Z3: An Efficient SMT Solver" (TACAS'08), "Cosette: An Automated Prover for SQL" (CIDR'17).
+- **Build & bench:** add proptest model-checking to `minidb` (ops vs an in-memory model oracle); build a mini DST harness (simulated clock + fault-injecting IO layer); fuzz your SST/page parsers; use Z3 to verify two of your topic-10 rewrite rules are equivalent (and to find a counterexample when you break one on purpose).
 - **Capstone M16:** full DST + crash-recovery + property test suite over `minidb`. Graduation.
 
 ## 17. SIMD & Hardware-Conscious Data Processing

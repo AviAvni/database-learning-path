@@ -48,3 +48,4 @@ Clone the ones in active use to `~/repos/`.
 | [ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse) | C++ | columnar OLAP at the extreme; read specific MergeTree parts only |
 | [unum-cloud/usearch](https://github.com/unum-cloud/usearch) | C++ | compact single-header HNSW — topic 14 |
 | [DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) | C | SuiteSparse internals — go deeper than the API you already use |
+| [Z3Prover/z3](https://github.com/Z3Prover/z3) | C++ | SMT solver: query-equivalence proving, invariant checking (topic 16); also a perf-engineering masterclass |
