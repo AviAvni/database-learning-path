@@ -1,0 +1,25 @@
+[package]
+name = "topic02-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hashbrown = "0.15"
+crossbeam-skiplist = "0.1"
+hdrhistogram = "7"
+rand = "0.8"
+rand_distr = "0.4"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "structures"
+harness = false
+
+[[bin]]
+name = "rehash_spike"
+path = "src/bin/rehash_spike.rs"
+
+[profile.bench]
+debug = true
