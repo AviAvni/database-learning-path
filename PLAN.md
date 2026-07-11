@@ -17,7 +17,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** `criterion.rs` internals (how it fights noise), RocksDB `db_bench`, redis `redis-benchmark.c`.
 - **Papers/reading:** "Systems Performance" (Gregg) ch. 1–2; Andrei Pavlo's benchmarking lecture (CMU 15-721); "How NOT to Measure Latency" (Tene talk).
 - **Build & bench:** Rust bench harness comparing `Vec` scan vs `HashMap` lookup vs `BTreeMap` across sizes; produce flamegraphs; observe cache-line effects (seq vs random access).
-- **Capstone milestone M0:** scaffold `minidb` workspace + criterion bench harness + YCSB-style workload generator.
+- **Capstone milestone M0:** scaffold the `falkordb-scratch` workspace + criterion bench harness + graph workload generator; record baseline numbers from the real falkordb-rs-next-gen to chase.
 
 ## 1. Storage Engine Landscape: B-Tree vs LSM
 
@@ -27,7 +27,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** fjall (small, clean Rust LSM), turso (`core/storage/` — SQLite-style B-tree in Rust), tidesdb (C LSM), RocksDB high-level layout.
 - **Papers:** "The LSM-Tree" (O'Neil '96), "The Ubiquitous B-Tree" (Comer '79), "Designing Access Methods: The RUM Conjecture" (2016), "Architecture of a Database System" (Hellerstein/Stonebraker).
 - **Build & bench:** benchmark fjall vs a raw B-tree (e.g. `redb`/sled) on write-heavy vs read-heavy vs scan workloads; explain results in terms of amplification.
-- **Capstone M1:** define `minidb`'s `StorageEngine` trait (get/put/scan/delete) — engines get swapped under it later.
+- **Capstone M1:** define the storage-backend abstraction (compare with the reference's `graph/src/storage/backend.rs` *after* designing yours) — in-memory first, persistent backends swap in later.
 
 ## 2. In-Memory Structures: Hash Tables, Skip Lists, Tries
 
@@ -37,7 +37,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** redis `dict.c` (incremental rehash!) + valkey's changes, redis `t_zset.c` (skiplist), hashbrown, RocksDB `memtable/` (concurrent skiplist), redis `rax.c` (radix tree).
 - **Papers:** "The Adaptive Radix Tree" (Leis ICDE'13), Google SwissTable talk (CppCon 2017).
 - **Build & bench:** implement a skip list and an incremental-rehash hash table in Rust; bench vs `hashbrown` and `crossbeam-skiplist`; measure rehash latency spikes vs redis-style incremental approach.
-- **Capstone M2:** in-memory engine for `minidb` (hash index + ordered skiplist index).
+- **Capstone M2:** attribute store + string pool + node/edge ID datablocks (hash index + interning) — the reference's `attribute_store.rs`/`string_pool.rs`, your way.
 
 ## 3. B-Tree Internals & Paged Storage
 
@@ -47,7 +47,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** turso `core/storage/btree.rs` + pager (Rust re-implementation of SQLite — ideal), SQLite `btree.c` (the classic), LMDB `mdb.c` (COW).
 - **Papers:** "Modern B-Tree Techniques" (Graefe — the survey), SQLite file-format doc.
 - **Build & bench:** implement a slotted-page disk B+tree in Rust (fixed 4KB pages); bench point lookups & range scans vs `redb`; try prefix truncation and measure.
-- **Capstone M3:** disk-backed B+tree engine behind the `StorageEngine` trait.
+- **Capstone M3:** disk-backed B+tree backend for properties + range indexes behind the storage abstraction.
 
 ## 4. LSM-Tree Deep Dive
 
@@ -57,7 +57,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** fjall (read it ALL — it's small), RocksDB `db/compaction/`, `table/block_based/`.
 - **Papers:** "Monkey: Optimal Navigable Key-Value Store" (SIGMOD'17), "Dostoevsky" (SIGMOD'18), RocksDB paper (TODS'21), "Constructing and Analyzing the LSM Compaction Design Space" (VLDB'21).
 - **Build & bench:** implement a mini-LSM (memtable + SSTs + leveled compaction + bloom filters) — optionally follow skyzh/mini-lsm course; measure write amp with different compaction strategies.
-- **Capstone M4:** LSM engine as third `StorageEngine`; benchmark all three engines against each other.
+- **Capstone M4:** LSM-backed alternative persistence (graph snapshots as SSTs); benchmark B+tree vs LSM backends on graph mutation + bulk-load workloads.
 
 ## 5. Durability: WAL, fsync, Crash Recovery
 
@@ -67,7 +67,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** postgres `xlog.c` (skim, it's huge), turso WAL, redis AOF (`aof.c`) vs RDB, RocksDB WAL.
 - **Papers:** "ARIES" (Mohan '92 — read a summary first, then the paper), "Scalability of write-ahead logging on multicore" (Aether, VLDB'10).
 - **Build & bench:** add WAL + crash recovery to your B+tree; write a crash-injection test (kill -9 mid-write, verify recovery); bench fsync-per-commit vs group commit vs O_DIRECT.
-- **Capstone M5:** WAL + recovery for `minidb`; crash-injection test suite.
+- **Capstone M5:** WAL + crash recovery for graph mutations (contrast with FalkorDB's reliance on redis RDB/AOF); crash-injection test suite.
 
 ## 6. Buffer Pool & Memory Management
 
@@ -77,7 +77,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** postgres `bufmgr.c` + CLOCK sweep, redis `zmalloc.c`, DuckDB buffer manager, LeanStore (C++).
 - **Papers:** "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR'22), "LeanStore" (ICDE'18), "Virtual-Memory Assisted Buffer Management" (vmcache, SIGMOD'23).
 - **Build & bench:** build a buffer pool (CLOCK) for the B+tree; bench vs mmap on datasets larger than RAM; reproduce mmap's write-back unpredictability.
-- **Capstone M6:** buffer pool under the B+tree engine.
+- **Capstone M6:** buffer pool under the persistent backends — graphs larger than RAM.
 
 ## 7. Networking, Protocols & Event Loops
 
@@ -87,7 +87,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** redis `ae.c` + `networking.c`, valkey's io-threads rework (great perf PRs to study), `pgwire` (Rust crate), qdrant's gRPC/tonic setup.
 - **Papers/reading:** "The C10K problem", valkey blog posts on multithreading perf, Glauber Costa on thread-per-core.
 - **Build & bench:** implement a RESP server in Rust (tokio) speaking GET/SET; bench with `redis-benchmark` and `memtier_benchmark` against real redis; find your bottleneck with flamegraphs.
-- **Capstone M7:** `minidb` gets a RESP-compatible server front-end.
+- **Capstone M7:** RESP server exposing `GRAPH.QUERY`/`GRAPH.RO_QUERY` — wire-compatible with existing FalkorDB clients; bench with falkordb-py against the real thing.
 
 ## 8. Transactions & MVCC
 
@@ -97,7 +97,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** postgres `heapam.c` + visibility rules (`HeapTupleSatisfiesMVCC`), surrealdb transaction layer, RocksDB `utilities/transactions/`.
 - **Papers:** "A Critique of ANSI SQL Isolation Levels" (Berenson '95), "Serializable Snapshot Isolation in PostgreSQL" (VLDB'12), "An Empirical Evaluation of In-Memory MVCC" (Wu/Pavlo VLDB'17), "Hekaton" (SIGMOD'13).
 - **Build & bench:** implement MVCC with snapshot isolation over your KV engine; write tests that demonstrate (and then prevent) write skew; bench txn throughput vs a single global lock.
-- **Capstone M8:** MVCC transactions in `minidb`.
+- **Capstone M8:** MVCC graph — copy-on-write + versioned reads (design yours, then study the reference's `mvcc_graph.rs`/`cow.rs`).
 
 ## 9. Concurrency: Latches, Lock-Free & Epochs
 
@@ -107,7 +107,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** crossbeam-epoch, RocksDB concurrent memtable inserts, memgraph skip-list, postgres lwlock.c.
 - **Papers:** "The Bw-Tree" (ICDE'13) + "Building a Bw-Tree Takes More Than Just Buzz Words" (SIGMOD'18 — the reality check), "Optimistic Lock Coupling" (Leis).
 - **Build & bench:** make your skip list concurrent (epoch reclamation); bench scaling 1→16 threads; compare mutex-sharded vs lock-free; measure with `perf c2c` for false sharing.
-- **Capstone M9:** concurrent access to `minidb` engines; multi-threaded server.
+- **Capstone M9:** threadpool + concurrent readers with single writer; parallel query execution (compare with the reference's `threadpool.rs` design).
 
 ## 10. Query Engines I: Parsing, Planning, Optimization
 
@@ -117,7 +117,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** DuckDB `src/optimizer/` (readable!), postgres `optimizer/` (join search), sqlparser-rs, datafusion optimizer, polars lazy-frame optimizer (`crates/polars-plan/`).
 - **Papers:** "Access Path Selection" (Selinger '79 — the founding paper), "How Good Are Query Optimizers, Really?" (VLDB'15 — humbling), "The Cascades Framework" (Graefe '95).
 - **Build & bench:** write a mini planner: parse SQL subset → logical plan → apply pushdown + join reordering; verify plans change with table sizes; compare against DuckDB's `EXPLAIN`.
-- **Capstone M10:** simple query language + planner for `minidb`.
+- **Capstone M10:** Cypher-subset parser + binder + logical plan tree + rewrite rules (the reference's `parser/` + `planner/` — including its optimizer dir — are your after-the-fact mirror).
 
 ## 11. Query Engines II: Execution Models
 
@@ -127,7 +127,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** DuckDB `src/execution/` (vectors, pipelines), polars streaming engine + SIMD compute kernels (`crates/polars-compute/`), datafusion (Arrow-based), postgres `executor/` (classic Volcano).
 - **Papers:** "MonetDB/X100: Hyper-Pipelining Query Execution" (CIDR'05), "Everything You Always Wanted to Know About Compiled and Vectorized Queries" (VLDB'18), "Morsel-Driven Parallelism" (SIGMOD'14).
 - **Build & bench:** implement the same aggregation query (scan+filter+group-by) three ways: tuple-at-a-time, vectorized (1024-row batches), and with SIMD; bench — the gap is the whole lesson.
-- **Capstone M11:** vectorized executor for `minidb` queries.
+- **Capstone M11:** vectorized runtime: batched rows + operator pipeline + expression eval (mirror of `runtime/batch.rs`, `vectorized.rs`, `eval.rs`).
 
 ## 12. Columnar Storage & Analytics
 
@@ -137,7 +137,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** DuckDB `src/storage/compression/`, ClickHouse `MergeTree/` (parts, granules, sparse index — pick narrow slices), polars (Arrow memory layout in practice), arrow-rs, parquet-rs.
 - **Papers:** "C-Store" (VLDB'05), "Integrating Compression and Execution in Column-Oriented Database Systems" (SIGMOD'06), "BtrBlocks" (SIGMOD'23), "FSST" (VLDB'20), "ClickHouse: Lightning Fast Analytics for Everyone" (VLDB'24).
 - **Build & bench:** implement RLE + dictionary + bit-packing encoders; bench scan speed on encoded vs raw data (decompression can be *faster* than reading raw — verify); run ClickBench queries on DuckDB and profile.
-- **Capstone M12:** columnar table format + zone-map pruning in `minidb`.
+- **Capstone M12:** columnar attribute storage + zone-map pruning for property filters.
 
 ## 13. Graph Engines (Home Turf, Deeper)
 
@@ -147,7 +147,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** SuiteSparse:GraphBLAS internals (you know the API — go deeper into masks/complement handling), neo4j record format (`kernel/impl/store/`), memgraph `storage/v2/`, kuzu (WCOJ + columnar graph — very relevant).
 - **Papers:** "GraphBLAS: SuiteSparse" (Davis, TOMS), "Kùzu: A Database Management System For 'Beyond Relational' Workloads" (CIDR'23), "EmptyHeaded" (worst-case optimal joins on graphs), LDBC SNB spec.
 - **Build & bench:** implement 2-hop neighborhood query over CSR vs adjacency-list vs GrB sparse matrix; bench on LDBC-scale data; compare with FalkorDB and neo4j on the same query.
-- **Capstone M13:** property-graph layer on `minidb` (nodes/edges over the KV engine) + basic pattern matching.
+- **Capstone M13:** first graph core: adjacency-list/CSR node+edge store with basic pattern matching — the deliberately-naive baseline that M20's sparse-matrix core will replace (and be measured against).
 
 ## 14. Vector Search
 
@@ -157,7 +157,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** qdrant `lib/segment/` (HNSW + filtering + quantization), helix-db vector side, usearch (compact HNSW).
 - **Papers:** "HNSW" (arXiv:1603.09320), "Product Quantization" (Jégou PAMI'11), "DiskANN" (NeurIPS'19), qdrant blog on filtered HNSW.
 - **Build & bench:** implement HNSW in Rust from the paper; measure recall@10 vs QPS curves against qdrant on ann-benchmarks datasets (sift-1m); add scalar quantization, re-measure.
-- **Capstone M14:** vector index type in `minidb` — making it officially multi-model (KV + graph + vector).
+- **Capstone M14:** vector index on node properties + distance kernels (the reference's `vec_distance.rs` territory).
 
 ## 15. Replication, Consensus & Distribution
 
@@ -167,7 +167,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** valkey `replication.c` + cluster, qdrant raft-based consensus (`consensus/`), openraft or tikv/raft-rs, surrealdb+tikv layering.
 - **Papers:** "In Search of an Understandable Consensus Algorithm" (Raft, ATC'14), "ZooKeeper" or "Viewstamped Replication Revisited" (for contrast), Kleppmann DDIA ch. 5, 8, 9 (read thoroughly).
 - **Build & bench:** implement Raft leader election + log replication (or work through the raft-rs / talent-plan labs); inject partitions and observe; measure replication-lag impact of fsync policies.
-- **Capstone M15:** replicate `minidb`'s WAL to a follower node; then upgrade to Raft.
+- **Capstone M15:** ship the WAL to a follower node; then upgrade to Raft.
 
 ## 16. Testing & Correctness Engineering
 
@@ -176,8 +176,8 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Concepts:** deterministic simulation testing (DST), fault injection, property-based testing (proptest), fuzzing (cargo-fuzz/AFL), metamorphic testing (SQLancer's pivoted queries / TLP), Jepsen & elle (checking linearizability), model checking with TLA+ (taste of), SMT solvers (Z3): proving query rewrites equivalent (Cosette-style), checking optimizer rules and constraint/invariant satisfiability.
 - **Read code:** turso's simulator + DST setup (they blog about it), FoundationDB simulation docs, SQLancer, antithesis blog posts, redis `test/` harness, Z3 (`z3.rs` bindings; skim the tactic/solver architecture — treat Z3 itself as a masterclass codebase: it's a high-performance search engine over logic).
 - **Papers:** "Testing Database Engines via Pivoted Query Synthesis" (OSDI'20), "Finding Logic Bugs via TLP" (OOPSLA'20), Jepsen analyses (pick redis-raft and a graph DB one), "Z3: An Efficient SMT Solver" (TACAS'08), "Cosette: An Automated Prover for SQL" (CIDR'17).
-- **Build & bench:** add proptest model-checking to `minidb` (ops vs an in-memory model oracle); build a mini DST harness (simulated clock + fault-injecting IO layer); fuzz your SST/page parsers; use Z3 to verify two of your topic-10 rewrite rules are equivalent (and to find a counterexample when you break one on purpose).
-- **Capstone M16:** full DST + crash-recovery + property test suite over `minidb`. Graduation.
+- **Build & bench:** add proptest model-checking to the capstone (graph ops vs an in-memory model oracle); build a mini DST harness (simulated clock + fault-injecting IO layer); fuzz your parsers (Cypher + page/SST decoders); use Z3 to verify two of your topic-10 rewrite rules are equivalent (and to find a counterexample when you break one on purpose).
+- **Capstone M16:** openCypher TCK subset runner as the correctness oracle + DST harness + fuzzers (the reference's `fuzz/` and `tck_done.txt` show the bar). Graduation of the correctness spine.
 
 ## 17. SIMD & Hardware-Conscious Data Processing
 
@@ -187,7 +187,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** polars `crates/polars-compute/` kernels, simdjson (the masterclass — read with the paper), hashbrown SIMD group probing, DuckDB compressed-scan kernels, usearch/SimSIMD distance functions, memchr crate, Mojo stdlib + Modular's matmul optimization blog series.
 - **Papers:** "Rethinking SIMD Vectorization for In-Memory Databases" (SIGMOD'15), "Parsing Gigabytes of JSON per Second" (simdjson, VLDB'19), "The FastLanes Compression Layout" (VLDB'23).
 - **Build & bench:** write filter-selection and dot-product kernels four ways: naive scalar, autovectorized, `std::simd`, NEON intrinsics; bench with `perf stat` (IPC, vector-lane utilization); then SIMD-ize a bit-packing decoder and compare against topic 12's scalar version; port one kernel to Mojo and compare both the numbers and the code you had to write.
-- **Capstone M17:** SIMD-accelerated kernels in `minidb`'s vectorized executor + vector-index distance functions; keep scalar fallbacks and a bench comparing them.
+- **Capstone M17:** SIMD-accelerated kernels in the vectorized runtime + vector-distance functions; keep scalar fallbacks and a bench comparing them.
 
 ## 18. GPU Acceleration for Databases
 
@@ -197,7 +197,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** cuVS/RAFT (vector search kernels), libcudf (GPU columnar ops), Gunrock or GraphBLAST (graph frontier expansion), HeavyDB query compilation to GPU, Rust: `wgpu` compute examples, `cudarc`.
 - **Papers:** "A Study of the Fundamental Performance Characteristics of GPUs and CPUs for Database Analytics" (Crystal, SIGMOD'20), "Billion-scale similarity search with GPUs" (Faiss, arXiv:1702.08734), "Gunrock" (PPoPP'16), "CAGRA: Highly Parallel Graph Construction for GPU ANN" (ICDE'24).
 - **Build & bench:** implement filter+aggregate and batch vector-distance as wgpu compute shaders (runs on Apple Silicon Metal); bench vs your topic-17 SIMD kernels *including transfer time* — find the crossover batch size where GPU wins; run BFS via SpMV on GPU vs SuiteSparse CPU.
-- **Capstone M18:** experimental GPU backend for one `minidb` hot path (vector distance scoring or columnar aggregate) behind a feature flag, with CPU-vs-GPU crossover benchmark.
+- **Capstone M18:** experimental GPU backend for one hot path (SpMV traversal or vector distance scoring) behind a feature flag, with CPU-vs-GPU crossover benchmark.
 
 ## 19. JIT & Query Compilation
 
@@ -207,7 +207,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** SQLite `vdbe.c` (bytecode design), postgres `src/backend/jit/llvm/`, cranelift-jit examples, SuiteSparse:GraphBLAS JIT kernel generation (`Source/jit*`), DuckDB's *absence* of a JIT (find the discussions — vectorization as the counter-argument).
 - **Papers:** "Efficiently Compiling Efficient Query Plans for Modern Hardware" (Neumann, VLDB'11 — the paper), "Tidy Tuples and Flying Start" (Umbra, VLDBJ'21), "Copy-and-Patch Compilation" (OOPSLA'21), "Adaptive Execution of Compiled Queries" (ICDE'18), "Everything You Always Wanted to Know About Compiled and Vectorized Queries" (VLDB'18 — re-read after topic 11).
 - **Build & bench:** JIT-compile filter expressions with cranelift; three-way bench: AST-walking interpreter vs vectorized (topic 11 kernel) vs JIT — including compile time; find the query length/selectivity crossover where each wins.
-- **Capstone M19:** cranelift expression JIT in `minidb` with interpreter fallback and a compile-time budget heuristic.
+- **Capstone M19:** cranelift JIT for Cypher expressions (vs the `eval.rs`-style interpreter) with fallback and a compile-time budget heuristic.
 
 ## 20. Sparse Linear Algebra & GraphBLAS Internals (Deep Home Turf)
 
@@ -217,7 +217,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** SuiteSparse:GraphBLAS internals — format-switch heuristics, `GB_AxB_*` SpGEMM variants, mask handling; LAGraph algorithm implementations (BFS, triangle counting, PageRank); FalkorDB's own delta-matrix layer with fresh eyes.
 - **Papers:** Davis "Algorithm 1000: SuiteSparse:GraphBLAS" (TOMS'19) + the v2 update (TOMS'23), Gustavson '78 (two-pointer SpGEMM), Buluç & Gilbert SpGEMM survey, Beamer "Direction-Optimizing BFS" (SC'12), GraphBLAS C API spec (read cover to cover once).
 - **Build & bench:** implement CSR SpMV and Gustavson SpGEMM in Rust; bench vs SuiteSparse on the same matrices (SuiteSparse Matrix Collection); implement direction-optimizing BFS with masks; measure where hypersparse representation pays off.
-- **Capstone M20:** replace `minidb`'s M13 adjacency-list graph engine with your own sparse-matrix kernels; benchmark both on LDBC queries — a FalkorDB-vs-neo4j architecture shootout inside your own codebase.
+- **Capstone M20:** the heart: your own sparse-matrix/GraphBLAS-subset kernels + delta matrices replace the M13 adjacency-list core; benchmark both on LDBC queries, and against the reference's `graph/src/graph/graphblas` layer.
 
 ## 21. Formal Methods & Verification
 
@@ -226,8 +226,8 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Concepts:** SAT → SMT (DPLL(T), theories), Z3's architecture (tactics, e-matching, the congruence closure e-graph), TLA+ & PlusCal (specify, then let TLC model-check), safety vs liveness, refinement, equality saturation with e-graphs (egg) for rewrite-rule optimizers, lightweight formal methods (spec only the scary parts), protocol testing languages (P, Ivy) as a lighter alternative, theorem proving with Lean 4 (proofs vs model checking — and Lean's runtime itself: Perceus reference counting, functional-but-in-place updates, a systems-performance story in its own right).
 - **Read code:** Z3 internals (`src/smt/`, the e-graph — a high-performance search engine over logic), egg (Rust equality saturation — read fully, it's small), published TLA+ specs: Raft (Ongaro's), MongoDB replication, CockroachDB's specs repo, Lean 4 (`leanprover/lean4` — the compiler/runtime in `src/runtime/`, and how mathlib scales proof search).
 - **Papers:** "How Amazon Web Services Uses Formal Methods" (CACM'15 — the motivation paper), "egg: Fast and Extensible Equality Saturation" (POPL'21), "Z3: An Efficient SMT Solver" (TACAS'08), Lamport's "Specifying Systems" (part I) + the TLA+ video course, "Cosette" (CIDR'17 — revisit from topic 16), "Counting Immutable Beans" + "Perceus: Garbage-Free Reference Counting" (the Lean/Koka runtime papers).
-- **Build & bench:** write a TLA+ spec of `minidb`'s WAL-replication protocol (topic 15) and model-check it — then remove an ack and watch TLC find the data-loss trace; build an expression-rewrite pass with egg and compare plans vs your hand-ordered rules from topic 10; in Lean 4, formalize and prove a small invariant (e.g., your B+tree ordering property or skiplist level distribution) — taste the proof-vs-test trade-off.
-- **Capstone M21:** TLA+ spec of `minidb` replication (or MVCC visibility) checked by TLC in CI; optional egg-based rewrite stage in the planner.
+- **Build & bench:** write a TLA+ spec of the capstone's WAL-replication protocol (topic 15) and model-check it — then remove an ack and watch TLC find the data-loss trace; build an expression-rewrite pass with egg and compare plans vs your hand-ordered rules from topic 10; in Lean 4, formalize and prove a small invariant (e.g., your B+tree ordering property or a delta-matrix merge property) — taste the proof-vs-test trade-off.
+- **Capstone M21:** TLA+ spec of the MVCC visibility rules (or replication) checked by TLC in CI; Lean proof of a delta-matrix invariant; optional egg-based rewrite stage in the planner.
 
 ## 22. Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC & Friends
 
@@ -237,7 +237,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code/run:** DuckDB's built-in TPC-H/TPC-DS extensions, BenchBase (CMU), HammerDB, `dbgen`/`dsdgen`, LDBC SNB datagen + driver, go-ycsb/memtier.
 - **Papers:** "TPC-H Analyzed: Hidden Messages and Lessons Learned" (Boncz — the choke-point paper, read alongside running it), "Fair Benchmarking Considered Difficult" (DBTest'18), "OLTP-Bench" (VLDB'13), "How Good Are Query Optimizers, Really?" (VLDB'15 — the JOB paper, revisit), LDBC SNB paper.
 - **Build & bench:** run TPC-H SF10 on DuckDB and postgres, profile three choke-point queries and explain the gap; run YCSB against redis and your topic-7 RESP server; run LDBC SNB interactive on FalkorDB vs neo4j and analyze where each wins.
-- **Capstone M22:** standing benchmark suite for `minidb` — YCSB workloads, a TPC-H query subset, micro-LDBC graph queries, ann-benchmarks recall/QPS — with regression tracking across capstone milestones.
+- **Capstone M22:** standing benchmark suite — LDBC SNB interactive, graph micro-benches, ann-benchmarks recall/QPS — with regression tracking across milestones, and a three-way shootout: `falkordb-scratch` vs falkordb-rs-next-gen vs FalkorDB.
 
 ## 23. Full-Text Search & Inverted Indexes (Elasticsearch / Lucene / tantivy)
 
@@ -247,7 +247,7 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Read code:** tantivy (Rust, the best read — postings, FST dictionary, block-max WAND), Lucene core (`codecs/`, segment merging), RediSearch (redis-module perspective you know), quickwit (tantivy over object storage), Elasticsearch mostly at the architecture-docs level.
 - **Papers:** "Inverted Files for Text Search Engines" (Zobel & Moffat, CSUR'06 — the survey), BM25 origins (Robertson & Zaragoza "The Probabilistic Relevance Framework"), "Faster Top-k Document Retrieval Using Block-Max Indexes" (SIGIR'11), "Roaring Bitmaps" (arXiv:1603.06549).
 - **Build & bench:** build a mini inverted index in Rust: tokenize → posting lists → BM25 → top-k with block-max WAND; bench vs tantivy on a Wikipedia dump; compare roaring vs raw-vec posting lists for AND/OR queries.
-- **Capstone M23:** full-text index in `minidb` + hybrid search fusing BM25 with the M14 vector index (RRF).
+- **Capstone M23:** full-text index on node/edge properties + hybrid search fusing BM25 with the M14 vector index (RRF) — what FalkorDB delegates to RediSearch, built in.
 
 ---
 

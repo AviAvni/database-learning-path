@@ -29,34 +29,34 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | todo | |
 | 23 | Full-Text Search & Inverted Indexes | todo | |
 
-## Capstone milestones
+## Capstone milestones (falkordb-rs-next-gen from scratch)
 
 | Milestone | Depends on topic | Status |
 |-----------|------------------|--------|
-| M0 workspace + bench harness | 0 | todo |
-| M1 StorageEngine trait | 1 | todo |
-| M2 in-memory engine | 2 | todo |
-| M3 B+tree engine | 3 | todo |
-| M4 LSM engine + engine shootout | 4 | todo |
-| M5 WAL + recovery | 5 | todo |
+| M0 workspace + bench harness + reference baselines | 0 | todo |
+| M1 storage-backend abstraction | 1 | todo |
+| M2 attribute store + string pool + datablocks | 2 | todo |
+| M3 B+tree backend (properties + range indexes) | 3 | todo |
+| M4 LSM backend + backend shootout | 4 | todo |
+| M5 WAL + crash recovery | 5 | todo |
 | M6 buffer pool | 6 | todo |
-| M7 RESP server | 7 | todo |
-| M8 MVCC transactions | 8 | todo |
-| M9 multi-threaded engine/server | 9 | todo |
-| M10 query language + planner | 10 | todo |
-| M11 vectorized executor | 11 | todo |
-| M12 columnar tables | 12 | todo |
-| M13 graph layer | 13 | todo |
-| M14 vector index | 14 | todo |
+| M7 RESP server (GRAPH.QUERY wire-compatible) | 7 | todo |
+| M8 MVCC copy-on-write graph | 8 | todo |
+| M9 threadpool + parallel execution | 9 | todo |
+| M10 Cypher parser + binder + planner | 10 | todo |
+| M11 vectorized runtime | 11 | todo |
+| M12 columnar attribute storage | 12 | todo |
+| M13 naive adjacency graph core (baseline) | 13 | todo |
+| M14 vector index + distance kernels | 14 | todo |
 | M15 replication → Raft | 15 | todo |
-| M16 DST + property tests | 16 | todo |
-| M17 SIMD executor + distance kernels | 17 | todo |
+| M16 openCypher TCK runner + DST + fuzzing | 16 | todo |
+| M17 SIMD kernels | 17 | todo |
 | M18 GPU backend (experimental) | 18 | todo |
-| M19 cranelift expression JIT | 19 | todo |
-| M20 sparse-matrix graph engine vs M13 shootout | 20 | todo |
-| M21 TLA+ spec checked in CI | 21 | todo |
-| M22 standing benchmark suite + regression tracking | 22 | todo |
-| M23 full-text index + hybrid search (BM25 + vector) | 23 | todo |
+| M19 Cypher expression JIT | 19 | todo |
+| M20 sparse-matrix/delta-matrix core (the heart) | 20 | todo |
+| M21 TLA+ spec + Lean invariant proof | 21 | todo |
+| M22 LDBC suite + 3-way FalkorDB shootout | 22 | todo |
+| M23 full-text index + hybrid search | 23 | todo |
 
 ## Session log
 
