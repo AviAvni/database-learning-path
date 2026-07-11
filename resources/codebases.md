@@ -61,3 +61,6 @@ Clone the ones in active use to `~/repos/`.
 | [slatedb/slatedb](https://github.com/slatedb/slatedb) | Rust | LSM directly on object storage — small, modern (topic 28) |
 | [prometheus/prometheus](https://github.com/prometheus/prometheus) | Go | `tsdb/`: readable time-series storage (topic 30) |
 | [influxdata/influxdb](https://github.com/influxdata/influxdb) | Rust | IOx: DataFusion+Parquet+object storage combined (topics 11/12/28/30) |
+| [RoaringBitmap/CRoaring](https://github.com/RoaringBitmap/CRoaring) | C | compressed bitmaps: container switching, SIMD set ops (topics 23, 26) |
+| [automerge/automerge](https://github.com/automerge/automerge) | Rust | CRDT engine — state/op-based, columnar op storage (topic 31) |
+| [loro-dev/loro](https://github.com/loro-dev/loro) | Rust | fast modern CRDT engine, great perf blog posts (topic 31) |

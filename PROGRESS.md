@@ -35,6 +35,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 28 | Cloud-Native & Disaggregated Storage | todo | |
 | 29 | Distributed Transactions | todo | |
 | 30 | Time-Series Engines | todo | |
+| 31 | CRDTs & Multi-Master Replication | todo | |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -71,6 +72,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M28 tiered object storage + graph branching | 28 | todo |
 | M29 cross-shard transactions + pattern matching | 29 | todo |
 | M30 temporal graph + time-travel queries | 30 | todo |
+| M31 active-active graph (CRDT merge) | 31 | todo |
 
 ## Session log
 

@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-31 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+32 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -273,11 +273,11 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 
 **Why:** Indexes are bets — you pay write amplification for read speed. And the probabilistic structures (bloom filters, HLL — redis's PFCOUNT is one) buy huge wins by being *slightly wrong*.
 
-- **Concepts:** secondary index design and its write cost, composite/covering indexes & index-only scans, hash vs B-tree vs bitmap vs BRIN (≈ zone maps), partial & expression indexes, index maintenance under MVCC (postgres HOT, index bloat), index selection ("what-if" analysis), **learned indexes** (RMI, ALEX, PGM — do they survive contact with updates?); probabilistic filters: bloom filter math (FPR vs bits/key), blocked bloom (cache-line friendly), cuckoo, xor, ribbon filters (RocksDB's evolution); sketches: HyperLogLog (dense/sparse), count-min, t-digest, top-k.
-- **Read code:** postgres index access methods (`nbtree/`, `gin/`, `brin/`), RocksDB `util/bloom*` + ribbon filter, redis `hyperloglog.c` (the dense/sparse encoding dance — a classic), RedisBloom module, PGM-index and ALEX repos.
-- **Papers:** "The Case for Learned Index Structures" (SIGMOD'18), "ALEX" (SIGMOD'20), "The PGM-index" (VLDB'20), "Cuckoo Filter: Practically Better Than Bloom" (CoNEXT'14), "Xor Filters" (JEA'20), "Ribbon Filter" (arXiv:2103.02515), "HyperLogLog in Practice" (Google, EDBT'13).
-- **Build & bench:** implement blocked-bloom, cuckoo, and xor filters — bench FPR vs bits-per-key vs lookup latency in one chart; implement HLL and verify the error bound empirically against exact counts; race a PGM-index against your M3 B+tree on sorted keys, then add updates and watch the story change.
-- **Capstone M26:** secondary range indexes maintained under MVCC + bloom filters in the LSM backend + HLL fast path for approximate `count(DISTINCT ...)` in Cypher.
+- **Concepts:** secondary index design and its write cost, composite/covering indexes & index-only scans, hash vs B-tree vs bitmap vs BRIN (≈ zone maps), partial & expression indexes, index maintenance under MVCC (postgres HOT, index bloat), index selection ("what-if" analysis), **learned indexes** (RMI, ALEX, PGM — do they survive contact with updates?); **compressed bitmaps**: roaring internals (array/bitmap/run containers, galloping intersection), WAH/EWAH ancestry, SIMD-accelerated set operations, where they power real systems (Lucene doc sets, ClickHouse, Druid, Pilosa); succinct structures (rank/select, Elias-Fano encoding of sorted IDs — postings and adjacency lists both); probabilistic filters: bloom filter math (FPR vs bits/key), blocked bloom (cache-line friendly), cuckoo, xor, ribbon filters (RocksDB's evolution); sketches: HyperLogLog (dense/sparse), count-min, t-digest, top-k.
+- **Read code:** postgres index access methods (`nbtree/`, `gin/`, `brin/`), RocksDB `util/bloom*` + ribbon filter, redis `hyperloglog.c` (the dense/sparse encoding dance — a classic), RedisBloom module, CRoaring + roaring-rs (container switching, SIMD intersections), Lucene `RoaringDocIdSet`, PGM-index and ALEX repos.
+- **Papers:** "The Case for Learned Index Structures" (SIGMOD'18), "ALEX" (SIGMOD'20), "The PGM-index" (VLDB'20), "Better bitmap performance with Roaring bitmaps" (SPE'16) + "Roaring Bitmaps: Implementation of an Optimized Software Library" (SPE'18), "Cuckoo Filter: Practically Better Than Bloom" (CoNEXT'14), "Xor Filters" (JEA'20), "Ribbon Filter" (arXiv:2103.02515), "HyperLogLog in Practice" (Google, EDBT'13).
+- **Build & bench:** implement a mini roaring bitmap (three container types + adaptive switching) and bench intersect/union vs `roaring-rs` and a plain `HashSet<u32>` across densities — find where each container wins; implement blocked-bloom, cuckoo, and xor filters — bench FPR vs bits-per-key vs lookup latency in one chart; implement HLL and verify the error bound empirically; race a PGM-index against your M3 B+tree, then add updates and watch the story change.
+- **Capstone M26:** secondary range indexes maintained under MVCC + bloom filters in the LSM backend + roaring bitmaps for label/type filtering in pattern matching + HLL fast path for approximate `count(DISTINCT ...)` in Cypher.
 
 ## 27. Streaming & Incremental View Maintenance
 
@@ -319,10 +319,19 @@ Order is a recommendation. Topics 0–6 are the foundation; after that, jump aro
 - **Build & bench:** implement the Gorilla codec (delta-of-delta + XOR floats) in Rust; bench compression ratio and decode throughput on real metrics (node_exporter dumps) vs Parquet+zstd; handle out-of-order writes and measure the cost.
 - **Capstone M30:** temporal graph support — edge/property history with Gorilla-compressed values and time-travel pattern matching (`MATCH ... AT TIME t`).
 
+## 31. CRDTs & Multi-Master Replication
+
+**Why:** The anti-consensus: let replicas diverge and merge deterministically. Redis Enterprise's active-active CRDB is built on this — an active-active *graph* is a genuinely hard, genuinely interesting design problem.
+
+- **Concepts:** strong eventual consistency, state-based vs op-based CRDTs, the classics (G-Counter, PN-Counter, LWW-Register, OR-Set), causality tracking (vector clocks, dots), sequence CRDTs (RGA, Fugue — why collaborative text is the hard case), JSON/tree CRDTs and the move-operation problem, when CRDTs beat consensus and when they quietly lose data (LWW's lie), local-first software, graph CRDTs: OR-Set nodes/edges + LWW property maps, and the dangling-edge problem.
+- **Read code:** automerge (Rust), loro (Rust — fast, modern engine), yrs (Yjs port), cr-sqlite (CRDT layer bolted onto SQLite — instructive architecture), diamond-types.
+- **Papers:** "Conflict-free Replicated Data Types" (Shapiro et al., SSS'11 — the founding paper + the INRIA comprehensive study), "A Conflict-Free Replicated JSON Datatype" (Kleppmann & Beresford '17), "A Highly-Available Move Operation for Replicated Trees" (Kleppmann '21), "Local-First Software" (Onward! '19), Loro/Fugue blog series on sequence CRDT performance.
+- **Build & bench:** implement PN-Counter and OR-Set, property-test convergence (proptest: any permutation of concurrent ops merges to the same state — a beautiful proptest target); bench automerge vs loro on the editing-trace benchmarks; design a graph CRDT on paper first: what happens to an edge when one replica deletes its endpoint?
+- **Capstone M31:** active-active mode — two masters accepting writes, OR-Set nodes/edges + LWW properties, deterministic merge; contrast its guarantees and latency with the M15 Raft path on the same workload.
+
 ---
 
 ## After the plan (ideas backlog)
 
 - HTAP architectures (TiDB/TiFlash)
 - FPGA / SmartNIC / computational storage offload (beyond GPU)
-- CRDTs & local-first sync (interesting contrast to consensus)
