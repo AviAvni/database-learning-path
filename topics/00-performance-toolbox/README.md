@@ -92,15 +92,18 @@ before believing a conclusion.
   → guided walkthrough: [`reading-criterion.md`](reading-criterion.md)
 - **redis `redis-benchmark.c`**: how does it implement pipelining? What does it get
   wrong about coordinated omission?
+  → guided walkthrough: [`reading-redis-benchmark.md`](reading-redis-benchmark.md)
 - **RocksDB `tools/db_bench_tool.cc`** (skim): note the workload flags — this is the
   vocabulary of storage benchmarking (`fillseq`, `readrandom`, `overwrite`...).
+  → guided walkthrough: [`reading-rocksdb-db-bench.md`](reading-rocksdb-db-bench.md)
 
 ## 6. Reading / watching
 
 - Brendan Gregg, *Systems Performance* ch. 1–2 (methodologies — USE method).
-- Gil Tene, "How NOT to Measure Latency" (talk).
+- Gil Tene, "How NOT to Measure Latency" (talk) — lessons captured in [`notes.md`](notes.md).
 - CMU 15-721, benchmarking + profiling lecture.
 - "What Every Programmer Should Know About Memory" (Drepper) — §3–4 only, skim the rest.
+  → reading guide: [`reading-drepper.md`](reading-drepper.md)
 
 ## 7. Experiments (in `experiments/`)
 
