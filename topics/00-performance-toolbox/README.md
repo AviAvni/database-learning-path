@@ -89,6 +89,7 @@ before believing a conclusion.
 
 - **criterion**: read `analysis/mod.rs` + how it uses warmup and outlier classification.
   Question to answer: why does it report a confidence interval rather than a minimum?
+  → guided walkthrough: [`reading-criterion.md`](reading-criterion.md)
 - **redis `redis-benchmark.c`**: how does it implement pipelining? What does it get
   wrong about coordinated omission?
 - **RocksDB `tools/db_bench_tool.cc`** (skim): note the workload flags — this is the
