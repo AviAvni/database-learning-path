@@ -36,6 +36,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | 29 | Distributed Transactions | todo | |
 | 30 | Time-Series Engines | todo | |
 | 31 | CRDTs & Multi-Master Replication | todo | |
+| 32 | HTAP Architectures | todo | |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -73,6 +74,7 @@ Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
 | M29 cross-shard transactions + pattern matching | 29 | todo |
 | M30 temporal graph + time-travel queries | 30 | todo |
 | M31 active-active graph (CRDT merge) | 31 | todo |
+| M32 HTAP: changelog-fed analytical replica + freshness-bound routing | 32 | todo |
 
 ## Session log
 
