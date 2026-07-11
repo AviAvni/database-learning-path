@@ -101,7 +101,9 @@ before believing a conclusion.
 
 - Brendan Gregg, *Systems Performance* ch. 1–2 (methodologies — USE method).
 - Gil Tene, "How NOT to Measure Latency" (talk) — lessons captured in [`notes.md`](notes.md).
-- CMU 15-721, benchmarking + profiling lecture.
+- Raasveldt, Holanda, Gubner, Mühleisen — "Fair Benchmarking Considered Difficult:
+  Common Pitfalls in Database Performance Testing" (DBTest '18, from the DuckDB authors)
+  — the DB-specific companion to this topic's §1.
 - "What Every Programmer Should Know About Memory" (Drepper) — §3–4 only, skim the rest.
   → reading guide: [`reading-drepper.md`](reading-drepper.md)
 
