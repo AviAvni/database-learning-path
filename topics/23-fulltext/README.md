@@ -26,7 +26,7 @@ rewritten in Rust, and its inverted index crate is readable tonight.
 
 ```mermaid
 graph LR
-    subgraph write path — Lucene/tantivy segments = LSM
+    subgraph WP["write path — Lucene/tantivy segments = LSM"]
         W["docs"] --> MB["in-RAM segment<br/>(memtable)"] --> F["flush: immutable<br/>segment on disk"]
         F --> MP["merge policy<br/>(log-size tiers = compaction)"]
     end

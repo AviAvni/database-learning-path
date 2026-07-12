@@ -22,10 +22,10 @@ beat the frontier-based (GAP/Ligra) one? M24 turns the answer into a
 
 ```mermaid
 graph LR
-    subgraph frontier world — gapbs, Ligra
+    subgraph FW["frontier world — gapbs, Ligra"]
         F["explicit worklists,<br/>atomics (CAS on depths),<br/>direction switching"]
     end
-    subgraph algebraic world — LAGraph over GraphBLAS
+    subgraph AW["algebraic world — LAGraph over GraphBLAS"]
         A["frontier = sparse vector,<br/>step = masked mxv/mxm,<br/>semiring picks the algorithm"]
     end
     F ---|"same asymptotics,<br/>different constants +<br/>parallelism story"| A
