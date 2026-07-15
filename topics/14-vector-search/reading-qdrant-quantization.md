@@ -2,29 +2,56 @@
 
 Topic 12's thesis — compression IS performance — with a new twist:
 here compression is LOSSY, so the system needs machinery to claw the
-recall back (oversample + rescore). This chapter climbs qdrant's
-three-rung ladder (scalar u8, PQ, binary) and the pipeline that makes
-lossy codes safe; that pipeline shape is what M14 copies. The
-encoders live in their own crate, `lib/quantization/src/`; the wiring
-into search is `lib/segment/src/vector_storage/quantized/`.
+recall back. This chapter climbs qdrant's three-rung ladder step by
+step — why lossy codes pay, scalar u8 and the score-without-decode
+trick, PQ, binary — and ends with the oversample+rescore pipeline
+that makes lossy codes safe; that pipeline shape is what M14 copies.
+The encoders live in their own crate, `lib/quantization/src/`; the
+wiring into search is `lib/segment/src/vector_storage/quantized/`.
 
-## 1. Scalar u8 (`encoded_vectors_u8.rs`)
+## The problem in one sentence
 
-The affine trick: store `alpha`/`offset` (:86-87), quantize
-`i = (value - offset) / alpha` (:95). The clever part is scoring
-WITHOUT decode — expand the dot product:
+A million 1536-d f32 embeddings is **6 GB** of vectors that every
+HNSW hop pokes at random, so bytes-per-vector is the real cost unit
+— but every byte saved is precision lost, and distances computed on
+compressed codes return the *wrong nearest neighbors* unless
+something puts the recall back.
+
+## The concepts, step by step
+
+### Step 1 — the ladder: three compression rungs, one recall knob
+
+Lossy vector compression trades bytes for distance accuracy, and
+qdrant ships three rungs — the topic README's table:
+
+| scheme | bytes/dim (f32=4) | distance on encoded | recall cost |
+|---|---|---|---|
+| scalar u8 | 1 | integer dot + affine postprocess | tiny |
+| PQ (m chunks × 256 centroids) | ~0.06–0.5 | LUT sums — d/m table lookups | real |
+| binary | 1 bit | XOR + popcount | big, needs rescore |
+
+Two things make the rungs *fast* rather than merely small. First,
+distance must be computable ON the codes — decoding to f32 per
+candidate would eat the savings. Second, moving fewer bytes is
+itself the speedup: HNSW is memory-bound, so 4× smaller codes ≈ 4×
+more of the index in cache. The recall each rung loses is recovered
+by one shared mechanism — Step 5's pipeline — which is why the
+riskier rungs are usable at all.
+
+### Step 2 — scalar u8: the affine trick, and scoring without decode
+
+Scalar quantization maps each f32 dimension to one byte through an
+affine transform: store a shared `alpha` (scale) and `offset`
+(encoded_vectors_u8.rs:86-87), encode `i = (value - offset) / alpha`
+(:95) — 4× fewer bytes, ~256 distinguishable values per dimension.
+The clever part is scoring WITHOUT decode — expand the dot product
+algebraically:
 
 ```
  dot(q, v) ≈ Σ (α·qᵢ + off)(α·vᵢ + off)
            = α² Σ qᵢvᵢ  +  α·off·(Σqᵢ + Σvᵢ)  +  d·off²
              ↑ integer dot     ↑ per-vector precomputed sums
 ```
-
-`postprocess_score` (:61, :100) applies the affine correction using
-per-vector offsets stored alongside the codes. Integer dot on u8 =
-4× fewer bytes moved AND SIMD-friendlier (topic 17 will vectorize
-exactly this). Quantile-based range (`quantile.rs`) clips outliers
-so alpha isn't wasted on the tails.
 
 ```rust
 // score u8 codes WITHOUT decoding: integer dot + affine correction
@@ -38,41 +65,56 @@ fn dot_u8(q: &Encoded, v: &Encoded, alpha: f32, off: f32, d: usize) -> f32 {
 }
 ```
 
-## 2. Product quantization (`encoded_vectors_pq.rs`)
+`postprocess_score` (:61, :100) applies the affine correction using
+per-vector sums stored alongside the codes. The payoff is double:
+4× fewer bytes moved AND an integer inner loop that vectorizes
+beautifully (topic 17 will SIMD exactly this). One refinement:
+`quantile.rs` picks the encoding range from quantiles rather than
+min/max, so one outlier dimension doesn't waste alpha on the tails.
+Recall cost: tiny — which is why u8 is the default rung for HNSW.
 
-- `:30` `CENTROIDS_COUNT = 256` — one byte per chunk, by
-  construction; `:27-29` k-means over a 10K sample (BtrBlocks-style
-  sampling, topic 12), max 100 iterations
-- `:32` `EncodedVectorsPQ` — codes = chunk-wise centroid ids;
-  `:46` `Metadata.centroids`
-- `:39-41` `EncodedQueryPQ` — THE trick (ADC): per query, precompute
-  a `[chunks × 256]` table of distances from each query sub-vector
-  to every centroid; scoring a vector = d/chunk_size table lookups +
-  adds, no float math per candidate
+### Step 3 — product quantization: bytes per vector, not per dimension
 
-PQ trades multiply-adds for L1-resident lookups. Note what it does
-to HNSW: distances become approximate EVERYWHERE, so graph
-traversal itself degrades — which is why qdrant defaults to scalar
-for HNSW and PQ mostly for memory-starved setups.
+PQ (the full derivation is [reading-pq.md](reading-pq.md); here,
+the qdrant-shaped summary) splits the vector into m chunks and
+replaces each chunk with the id of its nearest learned centroid —
+`CENTROIDS_COUNT = 256` (encoded_vectors_pq.rs:30) so each chunk
+codes as exactly one byte. Codebooks come from k-means over a 10K
+sample (:27-29 — BtrBlocks-style sampling, topic 12), max 100
+iterations. Scoring uses ADC (asymmetric distance computation):
+`EncodedQueryPQ` (:39-41) precomputes a `[chunks × 256]` table of
+exact sub-distances per query; each candidate then costs
+d/chunk_size table lookups + adds, no float math (:32
+`EncodedVectorsPQ` holds the codes, :46 `Metadata.centroids` the
+codebooks).
 
-## 3. Binary (`encoded_vectors_binary.rs`)
+PQ trades multiply-adds for L1-resident lookups and reaches
+16–64× compression. The cost surfaces in the graph: distances
+become approximate EVERYWHERE, so HNSW traversal itself degrades —
+wrong distances mean wrong hops, and errors compound along the walk
+— which is why qdrant defaults to scalar for HNSW and PQ mostly for
+memory-starved setups (question 2).
 
-- `:26` `EncodedVectorsBin`, one bit per dim (sign)
-- `:144` `xor_popcnt` — Hamming distance as XOR + popcount, with
-  SSE/NEON paths (:165-190): 32× compression, distances in a few
-  cycles
-- only sane with **rescoring**, and mainly for high-d embeddings
-  where signs carry most of the angle information
+### Step 4 — binary: one bit per dimension
 
-## 4. Oversample + rescore (the recall clawback)
+The bottom rung keeps only the sign of each dimension:
+`EncodedVectorsBin` (encoded_vectors_binary.rs:26), 32× compression.
+Distance collapses to Hamming distance (the count of differing
+bits), computed as XOR + popcount — `xor_popcnt` (:144) with
+SSE/NEON paths (:165-190): a 1536-d comparison becomes ~48 64-bit
+XOR+popcount ops, a few cycles total. The recall cost is big by
+construction — 1 bit can't rank close neighbors — so binary is only
+sane WITH rescoring (Step 5), and mainly for high-d embeddings
+(1024-d+) where sign patterns carry most of the angle information.
 
-`lib/segment/src/index/hnsw_index/hnsw/search.rs:57`
-`get_oversampled_top` — search the quantized index for
-`top × oversampling`, then rescore that shortlist with original f32
-vectors and cut to `top`. Late materialization (topic 12): cheap
-representation for the scan, expensive one only for survivors.
-`quantized_scorer_builder.rs` picks the scorer; storage variants
-(RAM/mmap/chunked) live next to it.
+### Step 5 — oversample + rescore: the recall clawback
+
+The shared safety net: search the quantized index for MORE than you
+need, then re-rank the shortlist with the exact vectors.
+`get_oversampled_top`
+(lib/segment/src/index/hnsw_index/hnsw/search.rs:57) fetches
+`top × oversampling` candidates using the cheap codes, rescores that
+shortlist with original f32 vectors, and cuts to `top`:
 
 ```
  query ──► HNSW over u8/PQ/bin codes ──► top·x candidates
@@ -80,6 +122,41 @@ representation for the scan, expensive one only for survivors.
                                             ▼
                                           top k
 ```
+
+The arithmetic that makes it free-ish: at top=10, oversampling 4×
+means exactly 40 f32 distance computations per query — noise next to
+the ~thousands of code-distance computations the traversal did. The
+quantization error only has to keep the true neighbors *inside the
+top 40*, a far weaker demand than ranking them correctly. This is
+late materialization (topic 12): cheap representation for the scan,
+expensive one only for survivors. `quantized_scorer_builder.rs`
+picks the scorer per collection config; storage variants
+(RAM/mmap/chunked) live next to it.
+
+## Where each step lives in the code
+
+Encoders (`lib/quantization/src/`):
+
+- **Step 2 — scalar**: `encoded_vectors_u8.rs` — `:86-87`
+  alpha/offset, `:95` the quantize expression, `:61/:100`
+  `postprocess_score`; `quantile.rs` — the outlier-clipping range.
+- **Step 3 — PQ**: `encoded_vectors_pq.rs` — `:30` CENTROIDS_COUNT,
+  `:27-29` the k-means sample, `:32` EncodedVectorsPQ, `:39-41`
+  EncodedQueryPQ (the ADC table), `:46` Metadata.centroids.
+- **Step 4 — binary**: `encoded_vectors_binary.rs` — `:26`
+  EncodedVectorsBin, `:144` xor_popcnt, `:165-190` the SSE/NEON
+  paths.
+
+Wiring (`lib/segment/src/`):
+
+- **Step 5 — the pipeline**: `index/hnsw_index/hnsw/search.rs:57`
+  `get_oversampled_top`;
+  `vector_storage/quantized/quantized_scorer_builder.rs` (scorer
+  selection) and the RAM/mmap/chunked storage variants beside it.
+
+Read order: `encoded_vectors_u8.rs` end to end first (it's the
+smallest and carries the score-without-decode idea), then
+`get_oversampled_top`, then PQ/binary as variations.
 
 ## Questions (answer in notes.md)
 

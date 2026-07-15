@@ -3,16 +3,31 @@
 Jepsen believes nothing you tell it: it drives real concurrent
 clients against a real cluster while breaking the network, records
 the history, and only afterwards decides whether that history was
-even possible under the claimed consistency model. The checker is
-the hard part — this chapter covers elle's trick for making it
-polynomial, plus two analyses worth reading in full: Redis-Raft
-(the catalog of consensus-plumbing bugs) and Dgraph (the graph-DB
-cautionary tale).
+even possible under the claimed consistency model. Before the
+analyses, this chapter builds the machinery step by step — the
+black-box method, why checking a history is NP-complete, and elle's
+workload-design trick that makes anomalies show up as graph cycles —
+then routes you through two reports worth reading in full:
+Redis-Raft (the catalog of consensus-plumbing bugs) and Dgraph (the
+graph-DB cautionary tale).
 
-## The method
+## The problem in one sentence
 
-Jepsen is black-box and brutal: real cluster, real network, real
-clients.
+Databases routinely claim "serializable" or "linearizable" and lose
+acked writes the first time a network partition lands mid-failover —
+Jepsen's redis-raft analysis alone found acked-write loss in a
+system built directly on the Raft paper's math.
+
+## The concepts, step by step
+
+### Step 1 — the method: real cluster, real faults, recorded history
+
+Jepsen is black-box testing: it needs no source code, no
+instrumentation — just client access to an unmodified binary running
+on a real cluster. It spawns concurrent clients issuing operations,
+while a **nemesis** process injects real environmental faults, and
+records everything into a **history** — a timestamped log of every
+operation's start, end, and result:
 
 ```
  generators → concurrent client ops (read/write/cas/txn)
@@ -23,24 +38,45 @@ clients.
             → checker: is this history linearizable / serializable?
 ```
 
-The checker is the hard part. Linearizability checking is
-NP-complete in general (Knossos exploded on long histories); elle
-is the escape.
+Note the fault menu is topic 15's failure catalog made physical:
+iptables rules for partitions, SIGSTOP for the process that's alive
+but not responding (the GC-pause / VM-migration stand-in a crash
+doesn't model).
 
-## elle's trick
+### Step 2 — the checker problem: verifying a history is the hard part
 
-Don't check arbitrary histories — DESIGN the workload so the
-serialization graph is recoverable:
+**Linearizability** (every operation appears to take effect
+atomically at some instant between its start and end) sounds
+checkable — but given a history of concurrent operations, deciding
+whether *any* legal ordering explains it is NP-complete in general:
+each concurrent window multiplies the orderings to try. Jepsen's
+first checker, Knossos, did exactly this search and exploded on long
+histories — histories had to stay short, which is the opposite of
+what fault-finding wants. elle is the escape.
 
-- ops are list-appends: `append(k, v)` with unique v, reads return
-  the whole list
-- a read of `[1,3]` on k tells you: 1 preceded 3 (ww), this read
-  saw 3 (wr), and any txn appending 4 comes after (rw, inferred)
-- build the dependency graph from these facts; **a cycle = an
-  isolation anomaly**, and the cycle TYPE names it (G0 dirty write,
-  G1c cyclic info flow, G-single = read skew...)
+### Step 3 — elle's trick: design the workload so dependencies are visible
 
-The whole checker, structurally:
+Don't check arbitrary histories — DESIGN the operations so the
+outcome itself reveals what ordered what. elle's workload is
+**list-append**: every write is `append(k, v)` with a globally
+unique v, and every read returns the *entire list* for k. Now a
+single read of `[1,3]` on k is loaded with facts: 1 preceded 3
+(a write-write dependency, **ww**), this read saw 3's write (a
+write-read dependency, **wr**), and any transaction appending 4
+must come after this read (a read-write anti-dependency, **rw**,
+inferred). Plain registers (get/set of a single value) hide all of
+this — each write destroys the evidence of the previous one; lists
+keep the whole lineage.
+
+### Step 4 — the serialization graph: a cycle IS an anomaly
+
+Collect those ww/wr/rw facts into a directed graph over transactions
+(the **serialization graph** — an edge T1 → T2 means T1 must come
+before T2 in any serial order). If the graph has a cycle, no serial
+order exists — and the cycle's *edge types* name the anomaly from
+the isolation literature: G0 (dirty write, ww cycle), G1c (cyclic
+information flow), G-single (read skew), pure-rw cycles (write
+skew). The whole checker, structurally:
 
 ```rust
 // a read of k = [1, 3] by txn T makes dependency edges OBSERVABLE:
@@ -59,15 +95,17 @@ fn check(history: &History) -> Result<(), Cycle> {
 }
 ```
 
-Polynomial time, and the counterexample is human-readable ("this
-txn read state that implies it ran both before and after that
-one"). Question: why do unique values + list semantics make wr/ww
-edges *directly observable* where plain registers hide them?
+Cycle detection is polynomial — the NP-complete search of Step 2 is
+gone, bought entirely by Step 3's workload design. And the
+counterexample is human-readable ("this txn read state that implies
+it ran both before and after that one"). Question: why do unique
+values + list semantics make wr/ww edges *directly observable* where
+plain registers hide them?
 
-## The redis-raft analysis (2020)
+### Step 5 — what the method finds: redis-raft, 2020
 
-Read for the catalog of consensus-integration bugs — none were in
-the Raft paper's math, ALL were in the plumbing:
+The Redis-Raft analysis is the catalog of consensus-*integration*
+bugs — none were in the Raft paper's math, ALL were in the plumbing:
 
 - acked writes lost on failover (stale-leader window)
 - reads served by deposed leaders (no ReadIndex — topic 15 §4!)
@@ -82,7 +120,9 @@ The Dgraph analysis is the graph-DB cautionary tale: per-key Raft
 groups + cross-group txns = lost writes and read skew — a preview
 of topic 29's distributed-transaction problems.
 
-## Jepsen vs DST (the comparison that matters for M16)
+### Step 6 — Jepsen vs DST: complements, not competitors
+
+The comparison that matters for M16:
 
 | | Jepsen | DST (turso/FDB) |
 |---|---|---|
@@ -92,8 +132,24 @@ of topic 29's distributed-transaction problems.
 | finds | integration + env bugs | logic bugs, deep interleavings |
 | checker | elle (history-based) | model/invariant (state-based) |
 
-They're complements: DST explores deeper, Jepsen believes nothing
-you told it.
+DST explores deeper (millions of seeded interleavings), Jepsen
+believes nothing you told it (real kernel, real network, real
+binary). A serious engine wants both: the bug classes barely
+overlap.
+
+## How to read the analyses (with the concepts in hand)
+
+1. **elle paper (VLDB 2020)** — read §on the dependency-graph
+   construction with Steps 3–4 in hand; the anomaly taxonomy section
+   is a topic-8 isolation refresher with better names.
+2. **"Redis-Raft 1b3fbf6" (2020)** — read in full. For every finding,
+   identify which Step 4 edge types formed the cycle, and which
+   plumbing layer (election, log, membership) produced it.
+3. **"Dgraph 1.0.2" (2018)** — read as the graph-DB case: watch how
+   per-key Raft groups turn single-system anomalies into
+   distributed-transaction ones.
+4. **elle README** — the anomaly taxonomy (G0/G1/G2) is the fastest
+   refresher when the reports start naming cycles.
 
 ## Questions for notes.md
 

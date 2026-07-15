@@ -5,46 +5,59 @@ Node, Relationship, and Path on the wire as first-class types, and makes
 result streaming client-driven — backpressure IS the protocol. The reference
 implementation here is FalkorDB's own Bolt 5.x server, complete until #2170
 removed it (2026-07-08): read it frozen in time with
-`git show 0b11a00b3^:src/bolt/<file>` in `~/repos/FalkorDB`.
+`git show 0b11a00b3^:src/bolt/<file>` in `~/repos/FalkorDB`. This chapter
+builds the protocol step by step — the serialization format, the graph
+types, the message vocabulary, the pull-based streaming — before walking the
+C files.
 
-## The shape of a Bolt session
+## The problem in one sentence
 
-```
-client                                server
-  │ 0x60 0x60 0xB0 0x17 + 4 versions   │  handshake: bolt_api.c:803,
-  ├────────────────────────────────────►│  version pick :845-864
-  │◄──────────────── chosen version ────┤  (5.1..5.7 accepted)
-  │ HELLO {auth...}          0x01       │
-  │◄─────────────── SUCCESS  0x70 ──────┤
-  │ RUN "MATCH..." {} {}     0x10       │  bolt_api.c:721
-  │◄─────────────── SUCCESS {fields} ───┤  (query ran; no rows sent!)
-  │ PULL {n: 1000}           0x3F       │  bolt_api.c:726
-  │◄─────────────── RECORD × n  0x71 ───┤  client-driven streaming:
-  │◄─────────────── SUCCESS {has_more}──┤  backpressure IS the protocol
-  │ DISCARD                  0x2F       │  (or: stop paying for rows)
-```
+A graph query returns nodes, relationships, and paths — typed, structured
+values — but RESP can only say "array of arrays of strings", so every
+FalkorDB client library re-parses nested arrays into graph objects by
+convention; and if the result is 10M rows, RESP's server must buffer all of
+them, because the client has no way to say "give me 1,000 at a time."
 
-Every message and value is one PackStream **structure**: a marker byte
-`0xB0+size` (bolt.c:36), a tag byte (the `BST_*` enum, bolt.h:27), then
-fields. The whole message vocabulary — HELLO/RUN/PULL/DISCARD, and the
-*data* types Node 0x4E / Relationship 0x52 / Path 0x50 — lives in one
-enum. RESP has no equivalent: a FalkorDB RESP reply encodes a node as
-nested arrays the client library must re-interpret; Bolt puts the graph
-in the type system.
+## The concepts, step by step
 
-## PackStream in one sitting (bolt.c)
+### Step 1 — the two problems Bolt exists to solve
 
-- Markers: NULL 0xC0 (bolt.c:11), tiny-string base 0x80 (:21), structure
-  base 0xB0 (:36) — high nibble = type, low nibble = size for "tiny"
-  variants.
-- `bolt_reply_int` (bolt.c:133) picks tiny-int/int8/16/32/64 by value —
-  varint-by-cases, biased so -16..127 costs one byte.
-- `bolt_reply_structure` (:250), lists (:198), maps (:225): everything
-  nests; a Path is a structure of lists of Node/Relationship structures.
-- Compare topic 7 §1: RESP optimizes the *parser* (scan for \r\n);
-  PackStream optimizes the *type round-trip* (marker dispatch table).
+Bolt is Neo4j's binary protocol, and it differs from RESP in exactly the
+two places the problem statement names. First, **typing**: the wire format
+(PackStream, Steps 3–4) has markers for maps, lists, and *graph types* —
+Node, Relationship, Path — so a driver hands you a graph object, not a
+string table to re-interpret. Second, **streaming**: after a query runs,
+records flow only when the client asks for them (`PULL {n}`, Step 5) —
+backpressure designed in, not bolted on (topic 7 §4's problem, solved at
+the protocol layer).
 
-The marker scheme, as an encoder:
+Why it matters: these are the two axes of the RESP/pgwire/Bolt table in
+topic 7 §5 — Bolt is what a protocol looks like when the *data model* lives
+in the protocol.
+
+### Step 2 — the handshake: version negotiation in 20 bytes
+
+A Bolt connection opens with the client sending 4 magic bytes
+`0x60 0x60 0xB0 0x17` (so a server can tell Bolt from a stray HTTP request
+on byte 1) plus four *proposed* protocol versions, 4 bytes each; the server
+answers with the one version it picks, and every byte after that is spoken
+in it. FalkorDB's implementation accepts 5.1..5.7 (bolt_api.c:803, version
+pick :845–864, clamped to that range). Compare RESP, where versioning is an
+optional in-band `HELLO 2|3` command — question 3 asks which design a proxy
+can transparently downgrade.
+
+### Step 3 — PackStream: type in the high nibble, size in the low
+
+**PackStream** is Bolt's serialization format — think binary JSON with an
+extension point. Every value starts with a **marker byte**: the high nibble
+says the type, and for "tiny" variants the low nibble carries the size, so
+small values cost one marker byte total. From the FalkorDB source
+(bolt.c): NULL is 0xC0 (:11), tiny-string base 0x80 (:21) — so a 5-char
+string is marker 0x85 + 5 bytes.
+
+Integers are varint-by-cases: `bolt_reply_int` (bolt.c:133) picks
+tiny-int/int8/16/32/64 by value, biased so the common range -16..127 costs
+exactly one byte:
 
 ```rust
 // High nibble = type, low nibble = size for "tiny" variants; ints are
@@ -64,17 +77,98 @@ fn write_struct_header(out: &mut Vec<u8>, n_fields: u8, tag: u8) {
 }                                // then the fields follow, each PackStream-encoded
 ```
 
-## Server-side mechanics worth stealing
+Compare topic 7 §1: RESP optimizes the *parser* (scan for \r\n);
+PackStream optimizes the *type round-trip* (marker dispatch table).
 
-- `BoltRequestHandler` (bolt_api.c:670): one dispatch switch over
-  `BST_*` — the protocol state machine is ~10 cases.
-- RUN executes the query but replies only metadata (:467-482); records
-  flow in the PULL handler (:504-521) — result *materialization* and
-  result *transport* are decoupled server-side too.
+### Step 4 — structures: one mechanism for messages AND graph types
+
+PackStream's extension point is the **structure**: a marker byte
+`0xB0 + n_fields` (bolt.c:36), then a **tag byte** naming what the
+structure *is*, then that many fields, each PackStream-encoded and
+arbitrarily nested (lists :198, maps :225, structures :250 in bolt.c).
+
+The elegant part: one tag enum (`BST_*`, bolt.h:27) covers both the
+protocol's *messages* — HELLO 0x01, RUN 0x10, PULL 0x3F, RECORD 0x71 — and
+its *data types* — Node 0x4E, Relationship 0x52, Path 0x50. A Path is a
+structure of lists of Node/Relationship structures; a RUN message is a
+structure of (query string, params map, extra map). RESP has no
+equivalent: a FalkorDB RESP reply encodes a node as nested arrays the
+client library must re-interpret; Bolt puts the graph in the type system.
+
+### Step 5 — RUN/PULL: the client drives the stream
+
+Bolt splits "execute" from "fetch". `RUN` executes the query, and the
+server replies only metadata (`SUCCESS {fields}` — column names, **no rows
+sent!**). Rows flow only in response to `PULL {n: 1000}` — n RECORDs, then
+`SUCCESS {has_more: true}` — and the client either PULLs again or sends
+`DISCARD` (stop paying for rows it doesn't want). The whole session:
+
+```
+client                                server
+  │ 0x60 0x60 0xB0 0x17 + 4 versions   │  handshake: bolt_api.c:803,
+  ├────────────────────────────────────►│  version pick :845-864
+  │◄──────────────── chosen version ────┤  (5.1..5.7 accepted)
+  │ HELLO {auth...}          0x01       │
+  │◄─────────────── SUCCESS  0x70 ──────┤
+  │ RUN "MATCH..." {} {}     0x10       │  bolt_api.c:721
+  │◄─────────────── SUCCESS {fields} ───┤  (query ran; no rows sent!)
+  │ PULL {n: 1000}           0x3F       │  bolt_api.c:726
+  │◄─────────────── RECORD × n  0x71 ───┤  client-driven streaming:
+  │◄─────────────── SUCCESS {has_more}──┤  backpressure IS the protocol
+  │ DISCARD                  0x2F       │  (or: stop paying for rows)
+```
+
+This is a pull-based cursor *in the protocol* — pgwire's portal
+(Execute {max_rows} / PortalSuspended) rediscovered, with the client
+explicitly naming its batch size. The cost: between RUN and the final PULL,
+the server holds a suspended result — state per open cursor (question 1:
+what does 10K idle cursors cost?).
+
+One framing detail: PackStream values have no overall message-length
+prefix, so messages are wrapped in **chunks** — 2-byte length headers, a
+0x0000 chunk as terminator. Chunking lets the server start transmitting a
+RECORD before knowing the full message size — it streams records as it
+produces them (question 2).
+
+### Step 6 — the server side: one switch, two decouplings
+
+The FalkorDB implementation shows how little a Bolt server core is:
+
+- `BoltRequestHandler` (bolt_api.c:670): one dispatch switch over the
+  `BST_*` message tags — the protocol state machine is ~10 cases.
+- RUN executes the query but replies only metadata (:467–482); records
+  flow in the PULL handler (:504–521) — result *materialization* and
+  result *transport* are decoupled server-side too, mirroring Step 5's
+  wire-level split.
 - `ws_handshake` (bolt_api.c:831): the same port sniffs and upgrades
   WebSocket — that's how browser clients speak Bolt.
 - It's all inside a Redis module: the Bolt socket bypasses RESP entirely
   and injects work into the same executor — two protocols, one engine.
+
+Why it matters for M7: the stretch goal is exactly this shape — a Bolt
+listener beside your RESP one, sharing the executor and result set
+(question 6).
+
+## Where each step lives in the code
+
+All in the removed `src/bolt/` tree — read frozen in time with
+`git show 0b11a00b3^:src/bolt/<file>` in `~/repos/FalkorDB`:
+
+| Anchor | What | Step |
+|--------|------|------|
+| bolt_api.c:803, :845–864 | handshake magic + version pick (5.1..5.7) | 2 |
+| bolt.c:11, :21, :36 | markers: NULL 0xC0, tiny-string 0x80, structure 0xB0 | 3 |
+| bolt.c:133 — `bolt_reply_int` | varint-by-cases integers | 3 |
+| bolt.c:198 / :225 / :250 | lists, maps, `bolt_reply_structure` | 4 |
+| bolt.h:27 — `BST_*` enum | messages + Node 0x4E / Relationship 0x52 / Path 0x50 | 4 |
+| bolt_api.c:721 / :726 | RUN and PULL entry points | 5 |
+| bolt_api.c:670 — `BoltRequestHandler` | the ~10-case dispatch switch | 6 |
+| bolt_api.c:467–482 / :504–521 | RUN replies metadata; PULL streams records | 6 |
+| bolt_api.c:831 — `ws_handshake` | WebSocket sniff-and-upgrade | 6 |
+
+Suggested route: bolt.h (the enum, Step 4) → bolt.c top-down (markers →
+ints → containers, Steps 3–4) → bolt_api.c following one session in the
+Step 5 diagram's order.
 
 ## Questions
 

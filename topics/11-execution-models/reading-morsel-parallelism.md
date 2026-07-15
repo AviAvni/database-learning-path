@@ -4,13 +4,35 @@ Leis et al. (SIGMOD '14, HyPer group) — the scheduling half of the modern
 engine: this topic's other papers decide the INNER loop; this one decides
 how 8+ cores share it. The idea fits in a sentence — workers pull small
 work units instead of receiving static partitions — and everything else
-falls out of it.
+falls out of it. This chapter builds the six concepts behind that
+sentence, then routes you through the paper.
 
-## The problem with plan-driven parallelism
+## The problem in one sentence
 
-The classical approach (Volcano "exchange" operators): the OPTIMIZER
-picks a degree of parallelism, inserts exchange operators that
-partition data between static worker sets.
+Split one query across 8 cores by statically giving each core 1/8 of the
+data, and one skewed partition leaves 7 cores idle while 1 grinds — the
+query runs at 1/8 speed exactly when parallelism was supposed to pay.
+
+## The concepts, step by step
+
+### Step 1 — the classical answer: exchange operators and static partitions
+
+Volcano-era parallelism (the "exchange" model): the OPTIMIZER picks a
+**degree of parallelism** (DOP — the number of threads working on the
+query) at plan time, and inserts **exchange operators** — special plan
+nodes that split data into static partitions, run copies of the plan
+fragment on each, and merge results. Parallelism lives *in the plan*.
+Three costs follow directly: the DOP is frozen at optimize time while
+the machine's load changes per second; exchange operators materialize
+and copy rows between workers; and the plan itself explodes into
+parallel variants the optimizer must now reason about.
+
+### Step 2 — the failure mode: skew strands workers
+
+**Skew** (some partitions having far more work than others — a hot key
+range, a filter that passes 90% in one region and 1% elsewhere) breaks
+static partitioning: the thread holding the hot partition grinds while
+the other N−1 finish and idle. The whole comparison in one table:
 
 ```
  exchange model                        morsel model
@@ -24,25 +46,21 @@ partition data between static worker sets.
  plan explosion (parallel variants)    one plan, parallelism is runtime
 ```
 
-## The design
+You already measured this without naming it: topic 9's scaling.rs —
+static key-range split vs the shootout's shared-queue pulling.
 
-- **Morsel** = ~100K tuples. Workers grab one, run the WHOLE pipeline on
-  it (scan → filter → probe → partial-agg), grab the next.
-- **Dispatcher**: a queue of morsels per pipeline; pipelines with
-  dependencies (build before probe) gate on completion events.
-- **NUMA awareness**: morsels are placed on sockets; a worker prefers
-  local morsels, steals remote ones only when starved. Intermediate
-  results stay socket-local because the same thread runs all operators.
-- **Elasticity**: since workers commit only to one morsel at a time, the
-  engine can change effective DOP mid-query (new query arrives → workers
-  finish their morsel and switch). Compare: canceling a static-partition
-  plan mid-flight.
-- Shared state is confined to pipeline BREAKERS: thread-local partial
-  hash tables merged at pipeline end (or a shared global HT with atomic
-  inserts for the build — they use the latter, lock-free, topic 9's
-  toolbox).
+### Step 3 — the morsel: work units small enough to rebalance
 
-The worker loop IS the design:
+The fix inverts control: instead of *assigning* data to workers, workers
+**pull**. A **morsel** is a small run of input (~100K tuples); a
+dispatcher keeps a queue of them per pipeline (a pipeline being the
+chain of operators between materialization points — see the DuckDB
+guide); each worker grabs one morsel, runs it through the WHOLE pipeline
+(scan → filter → probe → partial aggregate), then grabs the next.
+Pipelines with dependencies (build before probe) gate on completion
+events. Skew now dissolves by construction — a slow morsel just means
+that worker pulls fewer; there is no partition to be stuck with. The
+worker loop IS the design:
 
 ```rust
 fn worker(dispatcher: &Dispatcher, ht: &BuildHt) {
@@ -57,15 +75,64 @@ fn worker(dispatcher: &Dispatcher, ht: &BuildHt) {
 }
 ```
 
-## Where you've already seen it
+Morsel size is a trade: too small and per-morsel scheduling overhead
+dominates; too big and you're back to coarse partitions that can't
+rebalance (question 1 below).
 
-- DuckDB: row-group (122880) work units + `MaxThreads` on sources —
+### Step 4 — NUMA awareness: run the pipeline where the data lives
+
+On multi-socket machines, memory is **NUMA** (non-uniform memory access:
+each socket has local RAM, and touching another socket's RAM costs ~2×
+the latency and shares an interconnect). The morsel design absorbs this
+with one preference rule: morsels are *placed* on sockets, and a worker
+prefers pulling morsels local to its socket, stealing remote ones only
+when starved (`dispatcher.pull(my_socket())` above). Because the same
+thread runs the whole pipeline on its morsel, intermediate results stay
+socket-local automatically — no exchange operator ever ships them
+across the interconnect.
+
+### Step 5 — elasticity: the commit unit is one morsel
+
+Since a worker commits to only one morsel at a time, the engine can
+change effective DOP *mid-query*: a new query arrives, and workers
+simply finish their current ~100K-row morsel (a millisecond or two) and
+switch queues. Compare canceling or rebalancing a static-partition plan
+mid-flight — the partition is the commit unit, and it's the whole
+input/DOP. "Elasticity" means precisely this: **commit granularity = one
+morsel**.
+
+### Step 6 — shared state only at pipeline breakers
+
+Within a morsel, a worker touches only its own data — zero
+synchronization. Sharing is confined to pipeline BREAKERS (the
+materializing sinks): for aggregation, either thread-local partial hash
+tables merged at pipeline end (the `combine` call above), or one shared
+global hash table with atomic inserts for the join build — the paper
+uses the latter, lock-free (topic 9's toolbox). Which of the two wins
+depends on group count: 64 groups fit in every thread's cache and merge
+in microseconds; 64M groups make merging cost real (question 2).
+
+## How to read the paper (with the concepts in hand)
+
+~1 h. §2–3 for the design, skim the NUMA eval if you live on a laptop.
+
+- **§1–2** — the case against exchange (Steps 1–2) and the morsel
+  design (Step 3). The figures showing per-socket morsel queues are
+  Steps 3–4 in one picture.
+- **§3 — the core**: dispatcher, pipeline gating, the NUMA preference
+  rule (Step 4), elasticity (Step 5), and the lock-free shared build HT
+  (Step 6).
+- **§4–5 (evaluation)** — skim unless you have sockets; note the skew
+  experiments confirming Step 2's failure mode and its dissolution.
+
+Where you've already seen the idea shipped:
+
+- DuckDB: row-group (122880 rows) work units + `MaxThreads` on sources —
   morsels without the NUMA half (laptops don't have sockets).
 - polars-stream: `Morsel` + `MorselSeq` + source tokens — morsels with
-  explicit ordering and backpressure.
-- Your topic 9 scaling.rs: static key-range split vs the shootout's
-  shared-queue pulling — you measured the skew-stranding effect without
-  naming it.
+  explicit ordering and backpressure (reading-rust-execution-stack.md).
+- Your topic 9 scaling.rs: you measured the skew-stranding effect
+  without naming it.
 
 ## Questions for notes.md
 

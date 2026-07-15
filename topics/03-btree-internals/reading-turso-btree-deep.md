@@ -3,19 +3,31 @@
 Topic 1's turso chapter traced the cursor/seek/insert surface; this one
 descends into the page mechanics that surface glossed over — the freeblock
 chain, the exact overflow-spill formulas, the resumable balance state
-machines, varints, and the whole-page freelist. Budget: 2–3 h across
-`core/storage/btree.rs`, `sqlite3_ondisk.rs`, and `pager.rs`.
+machines, varints, and the whole-page freelist. This chapter builds each
+mechanism step by step, then maps every step to its anchors. Budget: 2–3 h
+across `core/storage/btree.rs`, `sqlite3_ondisk.rs`, and `pager.rs`.
 
-## 1. Slotted page operations
+## The problem in one sentence
 
-- Header parsing: `btree.rs:76–124` (offsets in README §1).
-- **Free-slot search**: `btree.rs:7592–7680` — `find_free_slot()` walks the
-  freeblock chain (each freeblock: 2B next-ptr + 2B size, threaded through the
-  content area). Minimum slot 4 bytes; smaller leftovers become the header's
-  `fragmented_bytes` counter.
-- **Defragment**: `btree.rs:8273–8444` — fast path when ≤2 freeblocks, slow path
-  compacts everything. Question while reading: what triggers defrag, and why is
-  it correct to move cells but never the pointer array?
+A **4,096-byte** page must absorb variable-length rows — up to and including
+a 100 KB payload — plus arbitrary deletes and re-inserts, forever, without
+the on-disk format ever needing a special case: freeblocks, overflow chains,
+and 3-sibling balancing are the entire toolkit.
+
+## The concepts, step by step
+
+### Step 1 — the freeblock chain: free space is a linked list in the dead bytes
+
+When a cell (one row's on-disk container) is deleted, its bytes become a
+**freeblock** — a hole inside the page, threaded into a linked list *through
+the dead space itself*: each freeblock's first 4 bytes hold a 2-byte pointer
+to the next freeblock and its own 2-byte size. Allocation for a new cell is
+first-fit down that chain.
+
+Two rules keep the bookkeeping in 4 bytes: a freeblock must be at least
+**4 bytes** (smaller leftovers can't hold the next-pointer + size), and those
+too-small scraps are instead counted in the page header's
+`fragmented_bytes` counter.
 
 The freeblock walk, distilled — first-fit through a linked list threaded
 through the dead space itself:
@@ -42,30 +54,90 @@ fn find_free_slot(page: &mut Page, need: usize) -> Option<u16> {
 }
 ```
 
-## 2. Overflow — the exact SQLite formulas
+Why it matters: deletes cost 2 bytes of pointer-array edit plus threading one
+hole — the cleanup is deferred to Step 2, and paid only when space actually
+runs short.
 
-- Thresholds: `btree.rs:9019–9042` —
-  `max_local(index) = (usable−12)·64/255 − 23`, `max_local(table) = usable − 35`,
-  `min_local = (usable−12)·32/255 − 23`.
-- Spill rule: `sqlite3_ondisk.rs:2130–2148` — keep
-  `min_local + (payload − min_local) % (usable − 4)` bytes local.
-- Chain format: `sqlite3_ondisk.rs:951–961` — last 4 local bytes = next overflow
-  page number (0 terminates).
-- Why 64/255 and 32/255? Work it out: they bound local payload so a page always
-  fits ≥4 cells — fanout survives fat keys.
+### Step 2 — defragmentation: compact the holes when first-fit fails
 
-## 3. Balance — the state machines
+**Defragmentation** rewrites all live cells contiguously at the page's end,
+zeroing the freeblock chain and the fragment counter — turning many scattered
+holes into one usable gap. Turso has a fast path when there are ≤2
+freeblocks and a slow path that compacts everything.
 
-Turso's twist on SQLite: balancing is a **resumable state machine** (`IOResult`)
-instead of synchronous recursion, because every page touch may yield for async IO.
+Question to hold while reading: what triggers defrag, and why is it correct
+to move cells but never the pointer array? (The pointer array *is* the sorted
+index — cells are only ever reached through it, so rewriting cell offsets in
+place is invisible to every reader of the page.)
 
-- `balance_root()` — `btree.rs:4774–4852`: root overflow ⇒ copy root into a new
-  child, root becomes interior pointing at it (tree grows up).
-- `balance_non_root()` — `btree.rs:2995–4087`: the ≤3-sibling pool-and-
-  redistribute. Sibling pick at :3305–3375 (left preferred, dividers pulled from
-  parent into the pool); redistribution + new-sibling creation at :3430–3680.
-- Trigger: insert overflows the page (`btree.rs:2903` — split path after
-  `split_cell()` can't fit).
+Why it matters: defrag is O(page size) — the fee for Step 1's cheap deletes,
+charged rarely and all at once.
+
+### Step 3 — varints and the record format
+
+A **varint** is an integer encoded in 1–9 bytes, 7 bits per byte, big-endian
+(most significant group first), high bit meaning "more bytes follow" — the
+9th byte, if reached, carries a full 8 bits (max 9 bytes for a u64). Small
+numbers (short lengths, low rowids) cost 1 byte instead of 8.
+
+On top of varints sits the **record** — the encoding of one row: a
+header-size varint, then one **serial type** varint per column (a single
+number encoding both the column's type AND its byte length), then the raw
+values. Serial types are why pages are schema-less: any page can be decoded
+with no schema in hand.
+
+Why it matters: every cell begins with varints, and every balance or
+overflow computation below starts by decoding them.
+
+### Step 4 — the four cell formats
+
+There are two b-trees (table trees keyed by rowid, index trees keyed by
+column values) times two page levels (interior, leaf), giving exactly four
+cell layouts:
+
+- table interior: `child u32 ∥ rowid varint` — no payload at all;
+- table leaf: `size ∥ rowid ∥ payload`;
+- index interior: `child ∥ size ∥ payload` — the full key rides along;
+- index leaf: `size ∥ payload`.
+
+Note: **no prefix/suffix truncation anywhere** — turso (like SQLite) stores
+full keys. That's your experiment's opening. Why it matters: table interior
+cells are ~13 bytes, so table trees have enormous fanout; index interior
+cells carry whole keys, so fat keys directly cost fanout (question 1 below).
+
+### Step 5 — overflow: the exact spill formulas
+
+When a payload is too big for its page, the excess **overflows** into a
+chain of dedicated overflow pages, each holding a 4-byte next-page number
+followed by payload bytes (0 terminates the chain); only a prefix of the
+payload stays "local" in the cell. The thresholds are exact formulas:
+
+- `max_local(index) = (usable−12)·64/255 − 23`,
+  `max_local(table) = usable − 35`,
+  `min_local = (usable−12)·32/255 − 23`;
+- spill rule: keep `min_local + (payload − min_local) % (usable − 4)` bytes
+  local — sized so the *last* overflow page is exactly full;
+- chain format: the last 4 local bytes = next overflow page number
+  (0 terminates).
+
+Why 64/255 and 32/255? Work it out: they bound local payload so a page
+always fits **≥4 cells** — fanout survives fat keys. That's the whole point:
+overflow trades extra page reads for one value against tree height for
+everyone.
+
+### Step 6 — balance as a resumable state machine
+
+**Balancing** is what runs when an insert overflows a page: pool the cells
+of the overfull page, up to two siblings, and the divider cells between them
+(the parent's separator entries), then redistribute evenly. Turso's twist on
+SQLite: balancing is a **resumable state machine** (`IOResult`) instead of
+synchronous recursion, because every page touch may yield for async IO.
+
+- `balance_root()`: root overflow ⇒ copy root into a new child, root becomes
+  interior pointing at it (tree grows up).
+- `balance_non_root()`: the ≤3-sibling pool-and-redistribute — sibling pick
+  prefers the left neighbor, dividers are pulled from the parent into the
+  pool, and redistribution may mint one new sibling.
 
 ```
  balance_non_root, 2 siblings + overfull page:
@@ -77,29 +149,54 @@ instead of synchronous recursion, because every page touch may yield for async I
                      redistribute evenly ⇒ 2–4 pages, new dividers up
 ```
 
-## 4. Varints and the record format
+Why it matters: pooling ≤3 siblings bounds the work per balance while
+leaving pages fuller than a naive half/half split — and the state-machine
+shape forces every intermediate state to be resumable (question 3 below asks
+what invariant that requires).
 
-- `read_varint` / `write_varint` — `sqlite3_ondisk.rs:1304–1336 / 1379–1421`:
-  7 bits/byte big-endian, 9th byte carries a full 8 bits (max 9 bytes for u64).
-- Record: header-size varint, then per-column **serial type** varints, then the
-  values (`sqlite3_ondisk.rs:1101–1237`). Serial types encode type AND length in
-  one number — schema-less pages.
+### Step 7 — the freelist: recycling whole pages
 
-## 5. Freelist (whole-page recycling)
+Separately from Step 1's *within-page* holes, whole pages freed by drops and
+balances go on the **freelist** — a chain of **trunk pages**, each holding a
+next-trunk u32, a leaf-count u32, and then an array of free page numbers
+(the "leaves" are just free page IDs, never read).
 
-- Trunk page: `sqlite3_ondisk.rs:89–93` — next-trunk u32, leaf-count u32, then
-  leaf page numbers. Leaves are just free page IDs.
-- `allocate_page()` — `pager.rs:5250–5448`: pop a leaf; if trunk empty, the trunk
-  page ITSELF becomes the allocated page. `add_page_to_freelist()` —
+Allocation pops a leaf number off the current trunk; when a trunk runs
+empty, the trunk page ITSELF becomes the allocated page — the list consumes
+its own skeleton. Freeing appends to the trunk (or starts a new one).
+
+Why it matters: the file never shrinks on delete; it recycles. This is the
+page-granularity mirror of the freeblock story, and the structure your
+capstone's pager will need too.
+
+## Where each step lives in the code
+
+Line numbers drift — navigate by symbol name.
+
+- **Step 1 — slotted page + freeblocks**: header parsing `btree.rs:76–124`
+  (offsets in README §1); `find_free_slot()` — `btree.rs:7592–7680` walks the
+  freeblock chain (each freeblock: 2B next-ptr + 2B size, threaded through
+  the content area). Minimum slot 4 bytes; smaller leftovers become the
+  header's `fragmented_bytes` counter.
+- **Step 2 — defragment**: `btree.rs:8273–8444` — fast path when ≤2
+  freeblocks, slow path compacts everything.
+- **Step 3 — varints + records**: `read_varint` / `write_varint` —
+  `sqlite3_ondisk.rs:1304–1336 / 1379–1421`; record decoding (header-size
+  varint, per-column serial-type varints, then values) —
+  `sqlite3_ondisk.rs:1101–1237`.
+- **Step 4 — cell formats**: structs `sqlite3_ondisk.rs:775–812`, parsing
+  :826–930.
+- **Step 5 — overflow**: thresholds `btree.rs:9019–9042`; spill rule
+  `sqlite3_ondisk.rs:2130–2148`; chain format `sqlite3_ondisk.rs:951–961`.
+- **Step 6 — balance**: `balance_root()` — `btree.rs:4774–4852`;
+  `balance_non_root()` — `btree.rs:2995–4087`, sibling pick at :3305–3375
+  (left preferred, dividers pulled from parent into the pool),
+  redistribution + new-sibling creation at :3430–3680. Trigger: insert
+  overflows the page (`btree.rs:2903` — split path after `split_cell()`
+  can't fit).
+- **Step 7 — freelist**: trunk page format `sqlite3_ondisk.rs:89–93`;
+  `allocate_page()` — `pager.rs:5250–5448`; `add_page_to_freelist()` —
   `pager.rs:5101–5145`.
-
-## 6. Cell formats
-
-Table interior `child u32 ∥ rowid varint`; table leaf `size ∥ rowid ∥ payload`;
-index interior `child ∥ size ∥ payload`; index leaf `size ∥ payload`
-(structs `sqlite3_ondisk.rs:775–812`, parsing :826–930). Note: **no prefix/suffix
-truncation anywhere** — turso (like SQLite) stores full keys. That's your
-experiment's opening.
 
 ## Questions to answer in notes.md
 

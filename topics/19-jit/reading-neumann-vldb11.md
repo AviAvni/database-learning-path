@@ -5,9 +5,27 @@ iterator model's `next()`-per-tuple is dead weight on modern CPUs
 (virtual calls, cache-hostile hopping between operators), and the
 fix is to compile each *pipeline* into one loop where the tuple
 never leaves registers. Everything else in this topic is a reaction
-to what this paper made possible — and to what it cost.
+to what this paper made possible — and to what it cost. This chapter
+builds the paper's five concepts one at a time — where iterator
+overhead actually comes from, what a pipeline is, how a tree walk
+generates a flat loop — then hands you the reading route.
 
-## 1. Why iterators lose (the paper's §2, topic 11 recap)
+## The problem in one sentence
+
+In the iterator model, producing ONE tuple costs a virtual call plus
+branch mispredictions plus a memory round-trip *per operator* —
+dozens of instructions of pure bookkeeping around ~1 instruction of
+useful work — and this paper deletes the bookkeeping entirely by
+generating a fresh loop of machine code per query.
+
+## The concepts, step by step
+
+### Step 1 — why iterators lose (the paper's §2, topic 11 recap)
+
+The Volcano/iterator model runs a query plan as a tree of operators,
+each exposing `next()` — "give me your next tuple" — so the plan
+executes by the root repeatedly pulling one tuple up through every
+operator. Elegant, composable, and priced per tuple:
 
 ```
  Volcano: each next() =  virtual call + branch mispredicts
@@ -17,12 +35,33 @@ to what this paper made possible — and to what it cost.
  compiled  fix:  eliminate — there is no interpreter at runtime
 ```
 
-The paper's Figure 1 point: operator boundaries in Volcano are also
-*data* boundaries (tuple goes to memory between operators). Compiled
-pipelines keep the current tuple in CPU registers across all
-operators of the pipeline.
+A **virtual call** (an indirect function call through a pointer,
+because which operator is downstream is only known at runtime) costs
+~20+ cycles when mispredicted, and it recurs per tuple per operator.
+Topic 11's vectorization divides that constant by 1024; this paper's
+move is to make it zero.
 
-## 2. Pipelines and pipeline breakers (the core vocabulary)
+### Step 2 — the deeper cost: operator boundaries are DATA boundaries
+
+The paper's Figure 1 point: in Volcano, a tuple physically travels —
+each operator reads it from memory, works, and hands a pointer up,
+so the tuple visits memory between every pair of operators. The
+alternative: if the code for scan, filter, and join is fused into
+one loop, the current tuple's fields live in **CPU registers** (the
+~16 general-purpose + 32 vector slots that cost 0 cycles to access)
+from the moment the scan loads them to the moment the pipeline ends.
+No loads, no stores, no cache traffic for intermediate hops. That is
+the performance prize the whole paper is engineered around — and its
+limit is register count (question 4).
+
+### Step 3 — pipelines and pipeline breakers (the core vocabulary)
+
+A **pipeline** is a maximal stretch of a query plan through which a
+tuple can flow without being parked in a data structure. A
+**pipeline breaker** is any operator that must *materialize* — see
+all its input before emitting anything: a hash-join build, a sort, a
+group-by table. Breakers cut the plan into pipelines, and each
+pipeline becomes exactly one generated loop:
 
 ```
         ⋈ (hash)
@@ -32,12 +71,18 @@ operators of the pipeline.
       scan S
 ```
 
-A *pipeline breaker* is any operator that must materialize (hash
-build, sort, group-by table). Everything between breakers becomes
-one generated loop. Question 1 below asks you to do this for a
-Cypher plan.
+Why it matters: the breaker is where tuples must leave registers for
+memory anyway — so it is the natural boundary of compilation, and
+(later, in Umbra) the natural boundary for swapping code versions
+mid-query. Question 1 below asks you to do this for a Cypher plan.
 
-## 3. Produce/consume — codegen by tree walk
+### Step 4 — produce/consume: a tree walk that emits a flat loop
+
+The code generator gives every operator two methods: `produce()` —
+"emit code that produces your rows" — and `consume()` — "emit the
+code that receives one row from your child". The generator recurses
+through the plan tree *once at compile time*; what it emits has no
+tree left in it, just nested control flow:
 
 ```
  produce(op):  "generate code that produces op's rows"
@@ -47,10 +92,6 @@ Cypher plan.
  filter.consume()    → emit:   if p(row) {  join.consume()  }
  join.consume(build) → emit:     ht.insert(row)
 ```
-
-The generator recurses; the *generated code* is a flat nested loop.
-Control flow is inverted vs Volcano: the scan is on the OUTSIDE
-(push), consumers are inlined inside.
 
 ```rust
 // the codegen walk: each operator knows how to PRODUCE rows and how to
@@ -71,35 +112,66 @@ fn consume(op: &Op, g: &mut Codegen) {
 }
 ```
 
-Mermaid of the inversion:
+Notice the inversion: control flow is **push**, not pull. The scan
+is on the OUTSIDE and drives; consumers are inlined inside its loop.
+Volcano's root-pulls-from-leaves becomes leaves-push-to-root —
+exactly topic 11's push-vs-pull, but the pushing is done by
+generated code with zero interpretation:
 
 ```mermaid
 flowchart LR
-    subgraph Volcano pull
+    subgraph VP["Volcano pull"]
       out1[output] -->|next| j1[join] -->|next| s1[scan]
     end
-    subgraph Compiled push
+    subgraph CP["Compiled push"]
       s2[scan loop] -->|inlined code| j2[join] -->|inlined| out2[output]
     end
 ```
 
-## 4. What they compile WITH — and the latency seed
+### Step 5 — what they compile WITH: the LLVM cocktail, and the latency seed
 
-HyPer emits LLVM IR (not C — they measure C compiler latency as
-seconds), mixing generated IR with precompiled C++ for complex
-operators ("cocktail"). Even so, LLVM -O3 on big queries costs
-10-100 ms — the number that spawns Umbra's Tidy Tuples
-(reading-umbra-tidy-tuples.md). Key engineering rule from the
-paper: generated code should be *branch-predictable* and keep
-attributes in registers; complex logic goes in precompiled C++
-called from IR.
+HyPer emits **LLVM IR** (the intermediate representation of the LLVM
+compiler toolkit — typed, portable assembly that LLVM optimizes and
+lowers to machine code) rather than C source — they measure C
+compiler latency as *seconds* per query. Not everything is
+generated: complex operator logic lives in precompiled C++, and the
+generated IR calls into it — the "cocktail". The engineering rule:
+generated code should be branch-predictable and keep attributes in
+registers; complex logic goes in precompiled C++ called from IR.
 
-## 5. Numbers (2011 hardware, directionally durable)
+Even so, LLVM -O3 on big queries costs **10–100 ms** — the number
+that spawns Umbra's Tidy Tuples (reading-umbra-tidy-tuples.md) and
+the entire compile-latency arms race this topic tracks.
+
+### Step 6 — the numbers (2011 hardware, directionally durable)
 
 - TPC-H vs Volcano-style: ~2-10× faster per query
 - vs vectorized (VectorWise): usually faster but same ballpark —
   the honest comparison arrives in VLDB '18 (README §7)
 - compile time: tens of ms with LLVM even then
+
+The durable reading: compilation beats *tuple-at-a-time
+interpretation* by a lot, beats *vectorization* by a little or not
+at all — so the argument for a JIT must be made against topic 11,
+not against a strawman tree-walker.
+
+## How to read the paper (with the concepts in hand)
+
+Read the whole thing — it's short.
+
+- **§2 — the argument.** Steps 1–2: the per-tuple cost accounting
+  and Figure 1's data-boundary point. You already have the
+  vocabulary; verify the claims against topic 11's measurements.
+- **§3 — produce/consume.** Steps 3–4 in the authors' words. Trace
+  their worked example until you can predict, for each operator,
+  what its produce/consume emit — then do question 1's Cypher plan
+  from memory.
+- **§4 — the LLVM "cocktail".** Step 5. Note which parts of the
+  engine stay precompiled and why the boundary is a function call —
+  the same boundary M19's stub draws between generated CLIF and
+  precompiled Rust.
+- Then skim Kersten et al. VLDB '18 (References) for the
+  compiled-vs-vectorized rematch question 5 leans on.
 
 ## Questions for notes.md
 

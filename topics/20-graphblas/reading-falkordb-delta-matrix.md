@@ -3,27 +3,60 @@
 FalkorDB's answer to "GrB matrices are fast to read, slow to mutate
 one edge at a time" — your own code, with this curriculum's eyes.
 The delta matrix is topic 3's LSM memtable+tombstone pattern rebuilt
-over GrB matrices — read it against topics 3 (LSM), 6 (buffer mgmt),
-and this topic's zombies/pending-tuples machinery, and ask at each
-step "why not just let SuiteSparse's own deltas do this?"
+over GrB matrices. This chapter builds the design step by step —
+the mutation problem, the three-matrix trio, its invariants, the
+load-bearing "why not the library's own deltas" question, the
+masked-multiply fold, and the compaction — then hands you the
+anchors into `src/graph/delta_matrix/` to verify each piece.
 
-## Anchor map
+## The problem in one sentence
 
-| anchor | what it is |
-|---|---|
-| delta_matrix.h:34-108 | the state-transition comment table (A/DP/DM invariants per op) — the spec |
-| delta_matrix.h:110-116 | the struct: M + delta_plus + delta_minus + transposed twin |
-| delta_matrix.h:17-22 | accessor macros incl. the T* transposed trio |
-| delta_wait.c:13-33 | sync_deletions: `GrB_transpose(m, dm, NULL, m, GrB_DESC_RSCT0)` — transpose-as-masked-copy |
-| delta_wait.c:36-46+ | sync_additions: fold DP into M, clear DP |
-| delta_mxm.c:44-99 | `(A*(M+DP))<!A*DM>` — multiply WITHOUT forcing a sync |
-| delta_get_set.c / delta_isStored.c | the 3-way read path (check DM, DP, M) |
-| delta_will_wait.c | "would GrB_wait do work?" — the flush-decision probe |
+Deleting or inserting one edge in a packed sparse matrix means
+splicing contiguous arrays — O(nnz) work, potentially hundreds of
+MBs moved, for a one-edge change — and a graph database takes
+single-edge writes *continuously* while readers expect
+multiply-speed reads.
 
-## 1. The core invariant (the header comment IS the design doc)
+## The concepts, step by step
 
-delta_matrix.h:34-108 walks every operation through a worked
-example. Distilled:
+### Step 1 — the mutation problem: packed arrays hate point writes
+
+A settled `GrB_Matrix` in sparse/hypersparse form is CSR-like:
+contiguous row-pointer and column-index arrays, packed with no
+slack. That's exactly what makes reads and multiplies fast — and
+exactly what makes one-edge mutation expensive: inserting edge
+(i,j) means shifting every index after it, deleting means the
+same splice in reverse. For a 100M-edge relation matrix, one edge
+insert done eagerly is an O(100M) memmove. The generic fix, seen
+in topic 3 (LSM) and in SuiteSparse's own zombies/pending tuples:
+don't restructure — *record the change somewhere cheap and merge
+later*.
+
+### Step 2 — the trio: settled matrix plus two delta matrices
+
+FalkorDB's delta matrix keeps three GrB matrices (plus the same
+three transposed):
+
+```
+ Delta_Matrix = M (settled GrB_Matrix, hypersparse CSR)
+              + delta-plus  DP (pending additions)
+              + delta-minus DM (pending deletions)
+              + the same trio TRANSPOSED        (delta_matrix.h:110-113)
+```
+
+M is big and packed; DP and DM are tiny (bounded by the write
+batch since the last sync), so mutating them is cheap. The logical
+matrix the rest of the engine sees is defined algebraically:
+**A ≡ (M ∪ DP) \ DM** — everything settled or pending-added,
+minus everything pending-deleted. Same read algebra as an LSM
+point-read (memtable ∪ sstables minus tombstones — DM's entries
+are exactly **tombstones**, deletion markers that suppress a
+still-physically-present entry).
+
+### Step 3 — the invariants, and the read/write paths
+
+The header comment (delta_matrix.h:34-108) walks every operation
+through a worked example — it IS the design doc. Distilled:
 
 ```
  logical A  ≡  (M ∪ DP) \ DM
@@ -34,9 +67,9 @@ example. Distilled:
  the transposed twin maintains the same trio, updated in lockstep
 ```
 
-Same read algebra as an LSM point-read (memtable ∪ sstables minus
-tombstones), and `wait` is minor compaction. The read and write
-paths, distilled:
+The invariants keep every entry in exactly one state, so reads
+never need conflict resolution. The read and write paths,
+distilled:
 
 ```rust
 // logical A ≡ (M ∪ DP) \ DM — an LSM point-read over matrices
@@ -55,10 +88,16 @@ fn set(&mut self, i: u64, j: u64) {
 }
 ```
 
-## 2. Why not SuiteSparse's own pending tuples? (the load-bearing question)
+What it costs: every read is a 3-way check (read amplification),
+every write touches two trios (the twin doubles write work —
+question 2). What it buys: O(1)-ish writes against a matrix that
+stays multiply-ready.
+
+### Step 4 — why not SuiteSparse's own pending tuples? (the load-bearing question)
 
 SuiteSparse already defers mutations (zombies + pending tuples,
-reading-davis-toms19.md §1). The delta layer exists because:
+[reading-davis-toms19.md](reading-davis-toms19.md) step 4). The
+delta layer exists because:
 
 1. **flush control**: ANY GrB read op can force internal wait;
    FalkorDB needs reads that DON'T flush (readers under a write
@@ -72,9 +111,17 @@ reading-davis-toms19.md §1). The delta layer exists because:
    write-batch size) — library pending tuples can degrade into a
    full rebuild inside an unrelated query.
 
-## 3. delta_mxm — algebra instead of a flush
+The general lesson: a lower layer's deferred-work mechanism is
+only reusable if you control *when* it fires and *what
+invariants* it maintains — otherwise you rebuild it one level up,
+which is exactly what happened here.
 
-delta_mxm.c:44-86: to compute C = A*B where B has pending state,
+### Step 5 — delta_mxm: algebra instead of a flush
+
+The expensive operation on a delta matrix is a multiply — must the
+deltas be folded into M first? delta_mxm.c:44-86 says no: fold the
+pending state into the *algebra* of one multiply. To compute
+C = A*B where B carries pending state:
 
 ```
  accum = A * DP            (:86 — the additions' contribution)
@@ -82,24 +129,49 @@ delta_mxm.c:44-86: to compute C = A*B where B has pending state,
  C     = (A * M) + accum, masked by !mask     — "(A*(M+DP))<!A*DM>"
 ```
 
-Two extra small multiplies instead of one big compaction — the
-LSM read-amplification-vs-compaction trade, chosen per multiply.
-Note the mask is *coarse*: A*DM marks any output touched by a
-deleted edge, potentially over-masking; check how the caller
-compensates (question 3).
+Two extra *small* multiplies (DP and DM are tiny) instead of one
+big compaction — the LSM read-amplification-vs-compaction trade,
+chosen per multiply. Note the mask is *coarse*: A*DM marks any
+output touched by a deleted edge, potentially over-masking; check
+how the caller compensates (question 3).
 
-## 4. wait — the two-sided compaction
+### Step 6 — wait: the two-sided compaction
 
-delta_wait.c: deletions first (`GrB_transpose(m, dm, NULL, m,
-GrB_DESC_RSCT0)` — a transpose of m into itself, masked by the
-COMPLEMENT of dm, T0 transposing the transpose away: a masked
-copy that drops deleted entries in one library call), then
-additions (assign/eWiseAdd DP into M), then clear both. The
-`Delta_Matrix_wait` policy decision — sync now vs stay lazy —
-consults nvals thresholds (delta_will_wait.c): compaction
-triggering by size, topic 3 again.
+`Delta_Matrix_wait` is the compaction that folds the deltas into M
+and resets the trio. Deletions first: `GrB_transpose(m, dm, NULL,
+m, GrB_DESC_RSCT0)` — a transpose of m into itself, masked by the
+COMPLEMENT of dm, with T0 transposing the transpose away: one
+library call that copies M minus its tombstoned entries. Then
+additions (assign/eWiseAdd DP into M), then clear both deltas
+(delta_wait.c:13-46).
 
-## 5. What transfers to M20
+The policy decision — sync now vs stay lazy — consults nvals
+thresholds (delta_will_wait.c: "would GrB_wait do work?"). That's
+compaction triggering by size, topic 3 again: small thresholds =
+low read amplification but frequent O(nnz(M)) folds; large =
+cheap writes but every read/multiply pays the 3-way tax longer.
+
+## Where each step lives in the code
+
+| anchor | step | what it is |
+|---|---|---|
+| delta_matrix.h:110-116 | 2 | the struct: M + delta_plus + delta_minus + transposed twin |
+| delta_matrix.h:17-22 | 2 | accessor macros incl. the T* transposed trio |
+| delta_matrix.h:34-108 | 3 | the state-transition comment table (A/DP/DM invariants per op) — the spec |
+| delta_get_set.c / delta_isStored.c | 3 | the 3-way read path (check DM, DP, M) |
+| delta_mxm.c:44-99 | 5 | `(A*(M+DP))<!A*DM>` — multiply WITHOUT forcing a sync |
+| delta_wait.c:13-33 | 6 | sync_deletions: `GrB_transpose(m, dm, NULL, m, GrB_DESC_RSCT0)` — transpose-as-masked-copy |
+| delta_wait.c:36-46+ | 6 | sync_additions: fold DP into M, clear DP |
+| delta_will_wait.c | 6 | "would GrB_wait do work?" — the flush-decision probe |
+
+Navigation advice: start with the state-transition comment table
+in `delta_matrix.h:34-108` (it IS the design doc), then
+`delta_wait.c`, `delta_mxm.c`, `delta_get_set.c`,
+`delta_will_wait.c` — read each against topics 3 (LSM), 6 (buffer
+mgmt), and this topic's zombies/pending-tuples machinery, asking
+at each step "why not just let SuiteSparse's own deltas do this?"
+
+### What transfers to M20
 
 M20 rebuilds this over OUR kernels: the trio + transposed twin,
 the read algebra in get/extract, the mxm fold, threshold-driven
@@ -127,10 +199,11 @@ via the LDBC update workloads.
 4. delta_will_wait / the sync thresholds: what nvals bounds
    trigger a flush, and how do they map to LSM L0 file-count
    triggers (write-visible latency vs read amplification)?
-5. For M20: pick DP/DM's representation in Rust. COO Vec<(u32,u32)>
-   + sort at wait (LSM-flavored) vs HashMap (point-read-flavored)
-   — which do the LDBC interactive update+read mixes prefer?
-   Predict, then bench both under gb_bench's update workload.
+5. For M20: pick DP/DM's representation in Rust. COO
+   `Vec<(u32,u32)>` + sort at wait (LSM-flavored) vs HashMap
+   (point-read-flavored) — which do the LDBC interactive
+   update+read mixes prefer? Predict, then bench both under
+   gb_bench's update workload.
 
 ## References
 

@@ -4,15 +4,51 @@ Community detection's most-used algorithm (Louvain) has a bug in its
 GUARANTEES, not its code: it can output communities that are
 internally DISCONNECTED. Traag, Waltman & van Eck demonstrate it,
 explain why, and fix it with one extra phase. Read it as a
-correctness paper wearing a clustering costume — very topic-16.
+correctness paper wearing a clustering costume — very topic-16. This
+chapter builds up to the bug step by step: what modularity measures,
+how Louvain climbs it, exactly where the greedy climb breaks
+connectivity, and how Leiden's refinement phase repairs the guarantee
+for free.
 
-## Modularity + Louvain in five lines
+## The problem in one sentence
+
+Louvain greedily optimizes a global score with moves that never check
+connectivity, and on real graphs **up to 25% of the communities it
+outputs are internally disconnected** — two islands wearing one
+label — and iterating the algorithm makes it worse, not better.
+
+## The concepts, step by step
+
+### Step 1 — communities, and a score for them: modularity
+
+A **community** is a set of vertices with many edges inside the set
+and few crossing its boundary — and to optimize for that, you need a
+number. **Modularity** (Q) compares each community's internal edge
+count against what a random graph with the same vertex degrees would
+put there:
 
 ```
   Q = (1/2m) Σ_ij [ A_ij − k_i·k_j/2m ] · δ(c_i, c_j)
       "edges inside communities, minus what a degree-preserving
        random graph would put there"   (γ = resolution knob)
+```
 
+Here A_ij is the (weighted) adjacency entry, k_i is vertex i's
+degree, m the total edge weight, and δ(c_i, c_j) is 1 when i and j
+share a community. The subtraction is the insight: two hubs sharing
+an edge is unremarkable (random graphs do that too — k_i·k_j/2m is
+high), two leaves sharing an edge is signal. γ (the resolution
+parameter) scales the null-model term to tune community size. Why it
+matters: modularity turns "find communities" into "maximize Q" — an
+optimization problem a greedy algorithm can attack. Note what Q does
+*not* mention: connectivity. That omission is the whole paper.
+
+### Step 2 — Louvain: greedy local moves plus aggregation
+
+Louvain climbs Q with two alternating phases — move single vertices
+greedily, then shrink the graph and repeat:
+
+```
   Louvain:  repeat until stable:
     1. local moves: greedily move single vertices to the neighbor
        community with max ΔQ           (fast: ΔQ is O(deg) to eval)
@@ -21,7 +57,8 @@ correctness paper wearing a clustering costume — very topic-16.
 ```
 
 The local-move kernel — the part both algorithms share and Leiden
-speeds up with a queue:
+speeds up with a queue — is cheap because moving one vertex changes Q
+by an amount (ΔQ) computable from just that vertex's edges:
 
 ```rust
 fn local_move(v: u32, g: &Csr, comm: &mut [u32], tot: &mut [f64]) -> bool {
@@ -39,21 +76,55 @@ fn local_move(v: u32, g: &Csr, comm: &mut [u32], tot: &mut [f64]) -> bool {
 }
 ```
 
-## The bug (paper §2, Fig. 1 — internalize this figure)
+Aggregation is what makes Louvain fast in practice: after one round
+of moves on a million-vertex graph, the contracted graph might have
+tens of thousands of super-vertices, and the next round runs on that.
+The cost: contraction is *irreversible* — whatever the moves decided
+is frozen into the super-vertices.
 
-A vertex v can be the BRIDGE holding community C together. Local
-moves later relocate v (its ΔQ is evaluated against current
-neighbors, not C's connectivity) — C is left in two pieces that the
-aggregation phase then FREEZES into one super-vertex forever. Up to
-25% of Louvain communities on real graphs end up disconnected
-(§Results); iterating Louvain makes it WORSE, not better.
+### Step 3 — the bug: a bridge vertex walks away
 
-The root cause generalizes: greedy local search + irreversible
-aggregation = errors that can't be undone. (Compare topic 21's
-rule-ordering trap: greedy destructive rewriting parks in a local
-optimum; egg's fix was also "don't destroy — keep options open".)
+A vertex v can be the BRIDGE holding community C together — remove v
+and C falls into two pieces. Louvain's local move relocates v anyway:
+ΔQ is evaluated against v's current neighbors' communities (look at
+the code above — the comment marks the missing question), never
+against C's connectivity. After v leaves, C is two disconnected
+islands still sharing one community label — and the aggregation phase
+then FREEZES them into a single super-vertex forever:
 
-## Leiden's fix
+```
+   community C, held together by bridge v:
+
+     a ─ b            a ─ b
+      \                \
+       v      ──►       ·        v moved to a neighbor community
+      /                /         (its ΔQ there was positive);
+     c ─ d            c ─ d      {a,b} and {c,d} keep C's label,
+                                 then aggregation fuses them for good
+```
+
+This is the paper's §2 and Fig. 1 — internalize this figure. On real
+graphs, up to 25% of Louvain communities end up disconnected
+(§Results); iterating Louvain makes it WORSE, not better, because
+each iteration adds more frozen mistakes.
+
+### Step 4 — the root cause generalizes: greedy + irreversible = unfixable
+
+The failure is not a coding slip; it is a structural property of the
+algorithm class: greedy local search makes locally-scored decisions,
+and irreversible aggregation removes the ability to undo them — so
+errors accumulate monotonically. Compare topic 21's rule-ordering
+trap: greedy destructive rewriting parks a query plan in a local
+optimum; egg's fix was also "don't destroy — keep options open". Any
+fix for Louvain must therefore either check connectivity per move
+(expensive: a connectivity query per candidate move) or restore an
+undo path before aggregation freezes things. Leiden picks the second.
+
+### Step 5 — Leiden's fix: refine before you freeze
+
+Leiden inserts a refinement phase between moving and aggregating —
+re-cluster each community from scratch, *within* the community, so
+aggregation only ever fuses pieces that are actually connected:
 
 ```
   1. local moves (as Louvain, but with a QUEUE — only revisit
@@ -68,10 +139,18 @@ optimum; egg's fix was also "don't destroy — keep options open".)
 Refinement is the undo mechanism: aggregation now operates on pieces
 that are guaranteed γ-connected (Theorem: Leiden communities are
 connected; iterated Leiden converges to subset-optimal partitions).
-Empirically it's also FASTER than Louvain (the queue) — the fix
-costs nothing.
+The randomization in step 2 (merge proportional to exp(ΔQ/θ), not
+greedy-max) is load-bearing — it lets refinement explore partitions
+the greedy climb would never visit; §Methods explains what breaks if
+you make it deterministic (question 3). And empirically Leiden is
+also FASTER than Louvain — the queue in phase 1 (only revisit
+vertices whose neighborhood changed) more than pays for refinement.
+The fix costs nothing.
 
-## Engine-side notes (for M24)
+### Step 6 — what this costs an engine: SPA, SpGEMM, and seeds
+
+Mapping the algorithm onto the M20 sparse core, each phase lands on
+machinery that already exists:
 
 - ΔQ evaluation needs, per vertex: weights to each neighbor
   community + community total degrees — a hash-or-array accumulator
@@ -84,6 +163,21 @@ costs nothing.
   procedure (`CALL algo.community()`), fix the seed and document
   that reruns on the same snapshot match (topic 16's reproducibility
   bar) — Leiden's randomized refinement makes seeding mandatory.
+
+## How to read the paper (with the concepts in hand)
+
+- §2 and Fig. 1 are Step 3 — read them first and reconstruct the
+  bridge-vertex failure on paper (question 1) before continuing.
+- The results on disconnected-community frequency (the 25% number,
+  and the it-gets-worse-with-iteration result) justify Step 4's
+  framing: this is accumulation, not bad luck.
+- §Methods carries Step 5: the queue-based fast local move, the
+  randomized refinement (find the exp(ΔQ/θ) rule and the argument
+  for why greedy refinement fails), and the connectivity /
+  subset-optimality theorems.
+- Read the guarantees the way topic 16 reads invariants: "communities
+  are γ-connected" is a property you can test — question 5 turns it
+  into one.
 
 ## Questions (answer in notes.md)
 

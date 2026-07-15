@@ -2,24 +2,53 @@
 
 Redis logs the *commands themselves* (AOF) and checkpoints by *forking* (RDB)
 — and since a graph module's data lives inside redis's keyspace, this is the
-durability FalkorDB actually has today. Read it as the incumbent your M5
-design competes with: what everysec's ack-before-durability really promises,
-and why AOF rewrite is an LSM compaction in disguise.
+durability FalkorDB actually has today. Before the code, this chapter builds
+the design step by step: what a command log is, what the fsync policy knob
+really promises, why a command log must be rewritten, and how fork+COW turns
+the OS into a snapshot engine. Read it as the incumbent your M5 design
+competes with.
 
-## 1. AOF = the command stream is the log
+## The problem in one sentence
 
-- `feedAppendOnlyFile` — aof.c:1409–1448: every write command appended (as
-  RESP text!) to `server.aof_buf` (:1444).
-- `flushAppendOnlyFile` — aof.c:1147–1355: buffer → write() (:1218), then the
-  policy (:1330–1354):
-  - `AOF_FSYNC_ALWAYS` (:1337) — fsync before ack. Durable, slow.
-  - `AOF_FSYNC_EVERYSEC` (:1350) — fsync on the **bio background thread**
-    (`aof_background_fsync`, :983): main thread never blocks on the disk;
-    window = up to ~2s of acked writes.
-  - `AOF_FSYNC_NO` — kernel decides. Window = unbounded.
-- Group commit comparison: everysec is group commit with a *time* batch and
-  the ack BEFORE the flush — postgres groups the flush but never acks early.
-  Different contract, not just different tuning.
+Redis serves ~100K+ commands/s from one thread, so it cannot afford either
+an fsync per command (~1 ms each would cap it at ~1K/s) or any pause to
+write a snapshot — its durability design is entirely shaped by "the main
+thread must never wait for the disk," and the price is a stated window of
+acknowledged-but-lost writes.
+
+## The concepts, step by step
+
+### Step 1 — the command log: log what was *said*, not what changed
+
+An AOF ("append-only file") is a **command log**: instead of logging page
+images (turso) or record deltas (postgres), redis appends the write
+commands themselves — literally as RESP protocol text, the same bytes a
+client would send. `SET user:42 "avi"` goes into the log as `SET user:42
+"avi"`. Recovery is replay: start an empty server, feed it the file as if a
+very fast client were retyping history. The trade is volume-vs-CPU flipped
+from the other designs: a command is usually tiny (tens of bytes — the
+cheapest possible log record), but replay must re-execute *full command
+processing* — parsing, dispatch, data-structure updates — so recovery time
+scales with total command count, not with final data size. Every write
+command is appended to an in-memory buffer (`server.aof_buf`) during
+command execution; what happens to that buffer next is the whole durability
+story.
+
+### Step 2 — the fsync policy: durability as a config knob
+
+Once per event-loop iteration the buffer is `write()`n to the AOF file —
+which only reaches the kernel's page cache, not the disk (topic README §3:
+the kernel lies until fsync). *When to fsync* is a user-facing policy, and
+this is the design's signature: redis makes the durability window a
+**config choice** the other systems don't offer:
+
+- **`always`** — fsync before processing more commands. Durable, and slow:
+  the main thread eats ~1 ms per batch.
+- **`everysec`** — fsync issued at most once per second, **on a background
+  thread** (the "bio" thread): the main thread never touches the disk.
+  Window: up to ~2 s of *acknowledged* writes can vanish.
+- **`no`** — the kernel flushes when it feels like it. Window: unbounded
+  (typically ~30 s).
 
 The three contracts, side by side:
 
@@ -40,35 +69,77 @@ fn flush_aof(&mut self, policy: Fsync) {
 }
 ```
 
-## 2. AOF rewrite — compacting a command log
+Sharpen the comparison with postgres: group commit *batches the flush but
+never acks early* — the client waits until its LSN is durable. Everysec is
+group commit with a *time*-based batch and the **ack before the flush** —
+a different contract, not just different tuning.
 
-A command log grows without bound (1M INCRs = 1M records for one key).
-- `rewriteAppendOnlyFileBackground` — aof.c:2652–2720: **fork** (:2689); the
-  child serializes current state as a fresh BASE file; the parent keeps
-  serving and accumulates new commands into a new INCR file.
-- Multi-part AOF (aof.c:45–71): a **manifest** lists BASE + INCR files —
-  recovery = load BASE, replay INCRs. This is an LSM in disguise: BASE = the
-  bottom level, INCR = L0, rewrite = full compaction, manifest = MANIFEST.
-  (Topic 4's vocabulary transfers wholesale.)
+### Step 3 — the rewrite problem: command logs grow with history, not with data
 
-## 3. RDB — checkpoint by fork
+A command log's size is proportional to *everything ever said*, not to the
+data: 1M `INCR counter` commands is 1M log records describing one 8-byte
+value. So the AOF must periodically be **rewritten** — replaced by the
+shortest command sequence that reconstructs the *current* state (one `SET
+counter 1000000`). Redis does this without pausing: **fork** the process
+(the OS clones it; both copies share memory copy-on-write — see Step 5),
+let the child serialize current state into a fresh **BASE** file at its
+leisure, while the parent keeps serving and appends new commands to a new
+**INCR** file. When the child finishes, BASE + INCR replace the old log.
 
-- `rdbSaveBackground` — rdb.c:1859–1892: fork (:1868), child walks the
-  keyspace and writes the snapshot; parent's writes COW pages away. CRC64
-  trailer (rdb.c:1702–1706).
-- The COW cost is why topic-2's dict disables rehashing during BGSAVE
-  (dict.c:1655) — a rehash would touch every bucket and copy the whole table.
-  Durability policy reaching down into data-structure design.
+### Step 4 — multi-part AOF: an LSM in disguise
 
-## 4. The FalkorDB angle (write this up in notes)
+The modern (7.0+) AOF is not one file but a set — a **manifest** file lists
+one BASE file plus one or more INCR files; recovery loads the BASE, then
+replays the INCRs in order. Squint and this is topic 4 wholesale: BASE =
+the bottom level (a compacted, sorted-out rendering of all history), INCR
+files = L0 (recent appends), rewrite = full compaction, manifest = the
+MANIFEST. Even the write amplification question transfers: a rewrite's cost
+is (entire dataset serialized) per (INCR data absorbed) — exactly a
+full-compaction WA. Topic 4's vocabulary was never LSM-specific; it's the
+vocabulary of *any* log that must be compacted.
+
+### Step 5 — RDB: checkpoint by fork, priced in COW
+
+An RDB snapshot is durability by checkpoint alone: fork, and let the child
+walk the entire keyspace writing a compact binary snapshot (with a CRC64
+trailer — a 64-bit checksum over the file), while the parent serves
+traffic. Correctness is delegated to the OS: **copy-on-write** (COW) means
+parent and child share all memory pages until the parent *writes* one, at
+which point the kernel copies that 4 KB page — so the child sees a frozen
+instant of the keyspace for free. The price is paid in page copies under
+write load: a write-hot parent duplicates its working set, and worst case a
+multi-GB dataset approaches 2× RAM during the snapshot. This cost reaches
+all the way down into data-structure design: topic 2's dict *disables
+rehashing during BGSAVE* (dict.c:1655), because a rehash touches every
+bucket and would COW-copy the whole table. Durability window with RDB
+alone: everything since the last snapshot — minutes.
+
+### Step 6 — the FalkorDB angle: this is the incumbent
 
 A graph module's data lives inside redis's keyspace, so its durability *is*
-this file: RDB serializes matrices via module callbacks; AOF logs the
-GRAPH.QUERY commands. Questions that matter for M5:
-- Replaying `GRAPH.QUERY` commands re-executes *parsing and planning* — what's
-  recovery time for 10M mutations vs replaying logical records?
-- An RDB snapshot of a multi-GB graph forks + COWs the whole matrix set under
-  write load — measure-or-estimate the stall.
+this file: RDB serializes the matrices via module callbacks, and AOF logs
+the `GRAPH.QUERY` commands themselves. Two consequences to quantify in
+notes (they are the M5 comparison baseline): replaying `GRAPH.QUERY`
+commands re-executes *parsing and planning* per command — estimate recovery
+time for 10M mutations vs replaying logical records; and an RDB snapshot of
+a multi-GB graph forks + COWs the whole matrix set under write load —
+measure-or-estimate the stall and the memory spike.
+
+## Where each step lives in the code
+
+- **Step 1 — `aof.c:1409–1448`**: `feedAppendOnlyFile` — every write
+  command appended (as RESP text!) to `server.aof_buf` (:1444).
+- **Step 2 — `aof.c:1147–1355`**: `flushAppendOnlyFile` — buffer → write()
+  (:1218), then the policy (:1330–1354): `AOF_FSYNC_ALWAYS` (:1337);
+  `AOF_FSYNC_EVERYSEC` (:1350) — fsync on the bio background thread
+  (`aof_background_fsync`, :983); `AOF_FSYNC_NO`. The "postpone" logic near
+  :1147 delays *writes* when the bio fsync falls behind (question 1).
+- **Steps 3–4 — `aof.c`**: `rewriteAppendOnlyFileBackground` :2652–2720 —
+  fork at :2689; the child serializes a fresh BASE, the parent accumulates
+  a new INCR. Multi-part AOF manifest: aof.c:45–71.
+- **Step 5 — `rdb.c`**: `rdbSaveBackground` :1859–1892 — fork (:1868),
+  child walks the keyspace; CRC64 trailer rdb.c:1702–1706. The
+  rehash-disable during BGSAVE: dict.c:1655.
 
 ## Questions to answer in notes.md
 

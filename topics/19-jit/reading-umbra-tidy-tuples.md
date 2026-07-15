@@ -4,9 +4,28 @@ Two attacks on the same enemy: compile LATENCY. HyPer proved
 compiled queries run fast; production taught that 100 ms of LLVM
 before a 10 ms query is a loss. Umbra's answer is a bespoke IR and
 a tiered backend; copy-and-patch's answer is to do the compiling
-at BUILD time and only memcpy at runtime.
+at BUILD time and only memcpy at runtime. This chapter builds the
+ideas in order — why LLVM is structurally slow, what an IR designed
+for single-pass lowering looks like, how adaptive execution makes
+the interpret-vs-compile choice unnecessary, and how far the
+stencil trick pushes the floor — then routes you through both
+papers.
 
-## 1. The latency budget (why LLVM had to go)
+## The problem in one sentence
+
+A short OLTP query executes in under a millisecond but LLVM -O3
+needs tens of milliseconds to compile it — a compile-to-run ratio
+that can exceed **100:1** — so the fastest generated code in the
+world loses to an interpreter unless compilation itself gets ~100×
+cheaper.
+
+## The concepts, step by step
+
+### Step 1 — the latency budget: name the enemy in numbers
+
+Query compilation (topic recap: generate machine code per query
+instead of interpreting the plan) has one price tag that HyPer's
+LLVM backend made visible:
 
 ```
  HyPer, TPC-H Q1 scale:   LLVM -O3 compile ≈ tens of ms
@@ -16,17 +35,34 @@ at BUILD time and only memcpy at runtime.
  Umbra target: compile in ~100 µs — "Flying Start"
 ```
 
-LLVM's cost is structural, not a flag: SSA construction, many IR
-passes, ISel/RegAlloc are all multi-pass over graphs. Umbra's
-observation: *query* code is generated, regular, and short-lived —
-it doesn't need a general optimizer.
+Why it matters: compile latency is paid *before the first row*, on
+every query, hit or miss — so it sets the minimum query size for
+which a JIT is rational at all. Everything in this chapter is a way
+to shrink that minimum.
 
-## 2. Tidy Tuples — the codegen layer
+### Step 2 — why LLVM is slow: the cost is structural, not a flag
+
+LLVM is a general-purpose optimizing compiler: it builds **SSA**
+form (static single assignment — every value defined exactly once,
+which makes optimization clean but construction expensive), runs
+~100 IR passes, then does instruction selection and register
+allocation — each a multi-pass traversal over pointer-linked graph
+structures. No `-O0` flag removes the graph-building and
+multi-pass skeleton. Umbra's observation: *query* code is
+generated, regular, and short-lived — short straight-line blocks,
+few live values, no human weirdness — so it doesn't need a general
+optimizer. A compiler specialized to that shape can be linear.
+
+### Step 3 — Tidy Tuples: the codegen layer that never loses track
 
 The name is the *data-centric value tracking* in the code
-generator: attributes are tracked through codegen with their types
-and locations (register/memory), so the generator emits loads
-lazily and never re-materializes. The layer stack:
+generator: as it walks the plan (produce/consume, Neumann's model),
+it tracks every attribute with its type and current location —
+register or memory — so the generator emits loads lazily, exactly
+once, and never re-materializes a value it already has. That
+bookkeeping is what keeps the generated code register-clean without
+an optimizer cleaning up after the fact — the optimization happened
+*during* generation. The layer stack:
 
 ```
  relational algebra
@@ -38,12 +74,28 @@ lazily and never re-materializes. The layer stack:
              └─ LLVM -O3     (background, hot queries only)
 ```
 
-Design rules that make it fast (compare vdbe's fixed 24-byte ops):
-IR ops fixed-size in one contiguous array; no pointer graphs;
-types are simple scalars; control flow is basic blocks with
-fall-through bias. Everything single-pass.
+### Step 4 — Umbra IR + Flying Start: everything single-pass
 
-## 3. Adaptive execution — never choose wrong
+The IR (intermediate representation — the in-between language
+compilers lower through) is designed backwards from the constraint
+"every lowering step must be one linear scan": IR ops are
+fixed-size in one contiguous array (no pointer graphs to chase);
+types are simple scalars; control flow is basic blocks with
+fall-through bias. Flying Start then walks that array once,
+emitting x86 directly with a linear-scan register allocator.
+Compare the VDBE's fixed 24-byte ops: same instinct — flat arrays
+of fixed-width instructions — different target (interpretation vs
+fast native lowering). The result: ~100× faster compiles than LLVM
+at ~70–80% of LLVM -O3's execution speed, with LLVM kept as the top
+tier for queries that earn it. What it gives up: the global
+optimizations a multi-pass compiler could do — acceptable precisely
+because generated query code has so little to globally optimize
+(question 2).
+
+### Step 5 — adaptive execution: never choose wrong
+
+With a ~µs tier and a ~ms tier, Umbra refuses to *predict* which a
+query needs — it measures:
 
 ```mermaid
 flowchart LR
@@ -59,9 +111,18 @@ flowchart LR
 The swap granularity is topic 11's morsel: execution is already
 chunked, so "replace the function between morsels" is natural.
 This kills the postgres failure mode (reading-postgres-jit.md) —
-the decision uses *measured* runtime, not a planner estimate.
+the decision uses *measured* runtime, not a planner estimate. Short
+queries never pay LLVM; long queries pay it off the critical path.
 
-## 4. Copy-and-patch (OOPSLA '21) — compile time ≈ memcpy
+### Step 6 — copy-and-patch: compile time ≈ memcpy
+
+The OOPSLA '21 paper pushes the floor further: move compilation to
+*build* time. Precompile a library of **stencils** — machine-code
+fragments, one per (operator × type) combination, with **holes**
+(unresolved relocations — the linker concept: addresses/constants
+left blank in object code) for constants, offsets, and branch
+targets. At runtime, "compilation" is copying stencils and filling
+holes:
 
 ```
  build time:  compile a library of STENCILS with clang —
@@ -93,7 +154,7 @@ than LLVM -O0 with *better* code than -O0. This is the natural
 floor of the spectrum between bytecode and real JIT — and
 PostgreSQL people have prototyped it for ExprState.
 
-## 5. What transfers to M19
+### Step 7 — what transfers to M19
 
 M19's budget heuristic should be Umbra-shaped, not postgres-shaped:
 interpret first, count rows/time actually spent, JIT when the
@@ -101,6 +162,22 @@ measured cost clears the (measured) cranelift compile cost from
 jit_bench. Cranelift itself sits near Flying Start on the ladder:
 single-tier, fast compile, decent code — a sane single choice when
 you don't want two backends.
+
+## How to read the papers (with the concepts in hand)
+
+- **Tidy Tuples / Flying Start (VLDBJ '21)** — read the IR-design
+  section against Step 4's checklist (fixed-width ops, contiguous
+  arrays, restricted types/CFG) and the value-tracking section
+  against Step 3; the adaptive-execution material (with the
+  ICDE '18 companion) is Step 5 — note the morsel-boundary swap and
+  what state both code versions must agree on (question 4). The
+  evaluation's compile-time vs run-time scatter plots are the
+  chapter's thesis in one figure.
+- **Copy-and-Patch (OOPSLA '21)** — §on stencils and holes is
+  Step 6; the musttail/continuation-passing mechanics deserve a
+  slow read (question 3). Read their comparison against LLVM -O0
+  skeptically and note which benchmark shapes favor stencils
+  (short, cold code) vs a real JIT (hot loops).
 
 ## Questions for notes.md
 

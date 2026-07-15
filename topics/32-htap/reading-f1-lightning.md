@@ -4,14 +4,38 @@ This chapter closes the topic's design space with two documents: F1
 Lightning, where analytics is bolted onto an untouchable OLTP system
 entirely from the outside, and the Özcan survey, which organizes every
 architecture you've met along one axis — how many copies, how coupled.
-Between them sits the trilemma the README opened with, now with every
-corner priced.
+Before the papers, this chapter builds Lightning's design step by step —
+the constraint, the changelog feed, the replica, and the safe-timestamp
+trick that replaces waiting — and ends with every corner of the README's
+trilemma priced.
 
-## Lightning: HTAP without touching the OLTP system
+## The problem in one sentence
 
-Google's constraint: the OLTP databases (Spanner, F1 DB) *already exist*
-and cannot be modified or slowed. So the analytical side is bolted on
-entirely from the outside, fed by CDC:
+Google's OLTP databases (Spanner, F1 DB) already exist, serve
+revenue-critical traffic, and may not be modified or slowed by a single
+microsecond — so analytics must be added *entirely from the outside*,
+and the price of touching nothing is that "fresh" degrades from a
+bounded Raft wait to seconds of pipeline lag.
+
+## The concepts, step by step
+
+### Step 1 — the constraint: the OLTP system is a black box
+
+Every other design in this topic changed the primary — HANA restructured
+its storage, HyPer forked its process, TiDB put a learner inside its
+consensus group. Lightning's constraint forbids all of that: no OLTP
+code changes, no extra replica in the quorum, not even an assumption
+that there's only *one* OLTP engine (it must serve Spanner and F1 DB
+behind one interface). Whatever feeds the analytical side must use
+interfaces the OLTP systems already expose. The only such interface that
+carries every write is the changelog.
+
+### Step 2 — CDC: the changelog is the coupling
+
+CDC (change data capture) means subscribing to the stream of committed
+changes a database already produces — topic 27's changelog, promoted to
+an architecture. Lightning's ingest service, **Changepump**, consumes
+per-shard change streams and turns them into one usable feed:
 
 ```
   Spanner/F1 (OLTP, untouched)
@@ -26,20 +50,36 @@ entirely from the outside, fed by CDC:
                commit ts the replica has fully applied
 ```
 
-Two ideas to steal:
+The subtlety is ordering: changes arrive per shard, but analytics needs
+transactionally consistent snapshots across shards — so Changepump must
+reassemble a cross-shard order from commit timestamps. Spanner can
+supply globally meaningful ones because of TrueTime (topic 29); that's
+the hidden dependency of the whole design (question 3).
 
-1. **The safe timestamp is `applied_lsn`.** Lightning serves reads only
-   at-or-below the timestamp it has completely applied — your
-   `freshness_is_visible` test, productionized. Reads never wait
-   (contrast `doLearnerRead`); instead they're *served stale but
-   consistent*, and the query layer picks a timestamp all touched
-   replicas can serve.
-2. **Decoupling as a feature.** No OLTP code changes, no learner in the
-   quorum, works over multiple OLTP systems. Payment: freshness is
-   seconds (CDC lag), not a bounded Raft wait — the opposite corner of
-   the trilemma from HANA.
+### Step 3 — the replica is delta+main again
 
-The safe-timestamp routing rule, which replaces `doLearnerRead`'s wait:
+Lightning servers apply the change stream into columnar storage
+organized — once more — as delta+main: changes append into
+write-optimized deltas, background merges fold them into read-optimized
+main, reads merge the two. Same fold as HANA, DeltaTree, and your
+`replica.rs`; the only new twist is schema: because Lightning serves
+*multiple* OLTP engines, changes are translated into Lightning's own
+neutral row format and its own MVCC versioning — it cannot reuse any one
+engine's version format (question 4). The fourth appearance of this
+diagram in one topic is the point: whatever feeds the replica, the
+replica's storage problem has exactly one known shape.
+
+### Step 4 — the safe timestamp: never wait, serve stale-but-consistent
+
+Each Lightning replica tracks its **safe timestamp** — the maximum
+commit timestamp up to which it has applied *everything* (no gaps). A
+query is served at a single timestamp at-or-below the minimum safe
+timestamp of every replica it touches: consistent by construction, and
+**the read never blocks** — the opposite trade from `doLearnerRead`,
+which waits for the replica to catch up to *now*. Lightning reads are
+stale by the CDC lag (seconds) but return immediately; the safe
+timestamp is your `applied_lsn`, and your `freshness_is_visible` test is
+this idea productionized.
 
 ```rust
 // Lightning never waits: reads are stale-but-consistent at a SAFE TIMESTAMP
@@ -57,9 +97,29 @@ fn route_analytical(q: &Query, replicas: &[Replica]) -> Result<Plan, Refuse> {
 }                                       // trade from TiFlash's learner read
 ```
 
-## The survey: one axis to organize everything
+The `min()` is load-bearing: a multi-shard query needs *one* snapshot
+all touched replicas can serve, so the laggiest replica sets the
+timestamp. And the refusal branch is the honesty contract: if a caller
+demands freshness the pipeline can't deliver, say no — never serve a
+lie.
 
-Özcan et al. classify by *how many copies, how coupled*:
+### Step 5 — decoupling as a feature, priced
+
+Now place Lightning on the trilemma. Isolation: total — analytics
+cannot slow OLTP even in principle, because it shares nothing, and an
+OLTP leader failover just pauses the change stream (analytics keeps
+serving, staleness grows) rather than breaking reads (question 2).
+Cost: a full extra copy plus the pipeline. Freshness: the sacrifice —
+seconds of CDC lag, unbounded during pipeline hiccups, versus TiFlash's
+bounded learner wait. That's the exact opposite corner from HANA
+(perfectly fresh, poorly isolated), with TiFlash between them. Two ideas
+to steal for M32: the safe timestamp *is* `applied_lsn`, and
+refuse-rather-than-lie is the router's contract (question 6).
+
+### Step 6 — the survey: one axis to organize everything
+
+Özcan et al. classify every HTAP architecture by *how many copies, how
+coupled*:
 
 | | single copy | separate copies |
 |---|---|---|
@@ -69,7 +129,21 @@ fn route_analytical(q: &Query, replicas: &[Replica]) -> Result<Plan, Refuse> {
 Every cell trades the same three currencies — freshness, isolation, cost
 (README trilemma). Lane 1 measured why the top-left cell is hard; lanes
 2–3 price the right column's two currencies (scan speedup vs lsn lag,
-wait distribution).
+wait distribution). With Steps 1–5 in hand the table reads as a design
+procedure: pick the coupling you can afford, and the freshness mechanism
+(merge-on-read, re-fork, learner wait, safe timestamp) follows.
+
+## How to read the papers (with the concepts in hand)
+
+- **F1 Lightning (VLDB 2020)**: read §3–4 — §3 for Changepump (Step 2:
+  find the ordering guarantee it enforces and what it costs to enforce
+  it), §4 for the safe timestamp (Step 4: check the real routing rule
+  against the sketch above, especially multi-shard `min()` and what
+  happens on refusal). Skim the schema-translation material with Step 3's
+  question in mind: what does engine-neutrality rule out?
+- **Özcan et al. survey (SIGMOD 2017 tutorial)**: skim for the map, not
+  the details — place every system you've met this topic into the Step 6
+  table, then check your placements against theirs.
 
 ## Questions
 
@@ -96,6 +170,13 @@ wait distribution).
    Lightning's shape, not TiFlash's. Adopt the safe-timestamp idea:
    what exactly does the M32 router advertise per replica, and when does
    it *refuse* a query instead of serving stale?
+
+## Done when
+
+You can fill in the survey's copies-vs-coupling table from memory, name
+each cell's freshness mechanism, and state Lightning's two stealable
+ideas — safe timestamp as `applied_lsn`, and refuse-rather-than-lie —
+in M32's vocabulary.
 
 ## References
 

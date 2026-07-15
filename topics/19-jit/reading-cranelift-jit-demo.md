@@ -2,25 +2,41 @@
 
 The implementation manual for our stub: a toy language compiled to
 callable machine code, and the entire cranelift JIT recipe fits in
-one file. This chapter walks jit.rs top to bottom — read it before
-touching experiments/src/jit.rs, because every ceremony the stub
-needs (module lifetimes, SSA plumbing, the transmute contract)
+one file. This chapter builds the recipe step by step — what a JIT
+library actually has to hand you, the object ladder, the
+declare/define/finalize ceremony, the per-node translation table,
+and the lifetime contract that makes the final `transmute` sound —
+then maps each step into jit.rs. Read it before touching
+experiments/src/jit.rs, because every ceremony the stub needs
 appears here first.
 
-## Anchor map
+## The problem in one sentence
 
-| anchor | what it is |
-|---|---|
-| src/jit.rs:39-41 | `JITBuilder::with_isa(...)` → `JITModule::new` |
-| src/jit.rs:12-25 | the four state objects (see §1) |
-| src/jit.rs:55-92 | `compile()` — the whole ladder, annotated below |
-| src/jit.rs:135 | `FunctionBuilder::new(&mut ctx.func, &mut builder_context)` |
-| src/jit.rs:180 | `builder.finalize()` — seals the CLIF function |
-| src/jit.rs:189-191 | `FunctionTranslator` — AST→CLIF recursion lives here |
-| src/jit.rs:400+ | helper emitters (calls, comparisons) |
-| src/frontend.rs | the toy parser (87 lines — ignore, we have `Expr`) |
+M19 needs to turn an `Expr` tree into a `fn(*const f64) -> f64` it
+can call millions of times — which means generating machine code
+into executable memory at runtime, in ~tens of microseconds, without
+ever letting the function pointer outlive the memory it points into.
 
-## 1. The object ladder (compare wgpu's, topic 18)
+## The concepts, step by step
+
+### Step 1 — what a JIT library does: IR in, function pointer out
+
+Cranelift is a code generator: you hand it a function written in
+**CLIF** (Cranelift's intermediate representation — typed
+instructions like `fadd`/`load` organized in basic blocks), and it
+gives back native machine code placed in executable memory, plus a
+raw pointer you can call. CLIF is in **SSA** form (static single
+assignment — every value is defined exactly once; re-assignment
+becomes new values, and control-flow merges pass values as block
+parameters). You never write SSA by hand: a helper called
+`FunctionBuilder` maintains it while you emit instructions one at a
+time. So the whole job of our stub is a recursive walk: Expr node
+in, CLIF instruction out, then one call to compile.
+
+### Step 2 — the object ladder (compare wgpu's, topic 18)
+
+Like every runtime-code system, cranelift splits expensive
+long-lived containers from cheap per-function scratch:
 
 ```
  JITBuilder ──► JITModule            (owns memory for code+data)
@@ -34,10 +50,19 @@ appears here first.
 ```
 
 Same shape as topic 18's Instance→Device→Pipeline: expensive
-long-lived containers, cheap per-function contexts, and an explicit
-"finalize" moment after which you hold a raw pointer.
+long-lived containers (`JITModule` owns the executable memory),
+cheap per-function contexts (reused between compiles), and an
+explicit "finalize" moment after which you hold a raw pointer. Why
+it matters: the ladder tells you what to hoist — create the module
+once, reuse the contexts per expression (question 3 measures the
+difference).
 
-## 2. The compile ladder (jit.rs:55-92, memorize this)
+### Step 3 — the compile ladder: declare, define, finalize (memorize this)
+
+Compilation is a fixed seven-rung sequence — the split between
+`define` (generate code) and `finalize` (patch relocations —
+addresses of other functions/data unknown until everything is
+placed) is the part that surprises:
 
 ```
  1. translate AST → CLIF            (FunctionTranslator walk)
@@ -60,7 +85,7 @@ fn compile(&mut self, expr: &Expr) -> fn(*const f64) -> f64 {
     b.switch_to_block(block);
     b.seal_block(block);                          // one block: seal immediately
     let row_ptr = b.block_params(block)[0];
-    let v = translate(&mut b, expr, row_ptr);     // the §3 table, recursively
+    let v = translate(&mut b, expr, row_ptr);     // the §Step-4 table, recursively
     b.ins().return_(&[v]);
     b.finalize();
     let id = self.module.declare_function("f", Linkage::Export, &sig)?;
@@ -71,15 +96,16 @@ fn compile(&mut self, expr: &Expr) -> fn(*const f64) -> f64 {
 }   // sound only while the JITModule lives — CompiledExpr must own it
 ```
 
-The pointer is valid as long as the JITModule lives — our
-`CompiledExpr` must own the module (drop order = use-after-free
-otherwise; postgres solves the same lifetime with per-context
-resource trackers, llvmjit.c:288).
+The SSA ceremony (`create_block`, `append_block_params...`,
+`switch_to_block`, `seal_block` — sealing tells the builder no more
+predecessors will arrive, so it can resolve block params) collapses
+to four lines because a pure expression needs exactly one block.
 
-## 3. Translating an expression (what the stub must do)
+### Step 4 — translating an expression: one CLIF op per Expr node
 
 The demo's translator (jit.rs:189+) is statement-oriented; our
-`Expr` is pure — simpler. Per node:
+`Expr` is pure — simpler. The entire translation is this table,
+applied by recursion:
 
 ```
  Col(i)   → load: builder.ins().load(F64, MemFlags::trusted(),
@@ -95,12 +121,26 @@ The demo's translator (jit.rs:189+) is statement-oriented; our
 
 Signature: `fn(*const f64) -> f64` — one pointer param
 (`AbiParam::new(types::I64)` or a real pointer type via
-`module.target_config().pointer_type()`), one F64 return. SSA
-plumbing: one block, `append_block_params_for_function_params`,
-`switch_to_block`, `seal_block` — see jit.rs:135-180 for the
-exact ceremony.
+`module.target_config().pointer_type()`), one F64 return. Note the
+comparisons stay branch-free (`fcmp` + `select`, values not jumps) —
+generated straight-line code with no control flow is exactly what
+Step 6's "quality gap vanishes" claim relies on.
 
-## 4. Cranelift vs LLVM in one table
+### Step 5 — the lifetime contract: the pointer is borrowed, not owned
+
+`get_finalized_function` returns a raw pointer into memory the
+`JITModule` owns; `transmute` erases that relationship, and Rust
+can no longer save you. The pointer is valid exactly as long as the
+JITModule lives — so our `CompiledExpr` must own the module
+(`CompiledExpr { module, func }`; drop order = use-after-free
+otherwise). postgres solves the same lifetime with per-context
+resource trackers (llvmjit.c:288); the obligation is universal to
+JITs, only the spelling differs. The other half of the unsafe
+contract is the signature: the transmuted type must match the CLIF
+signature and ABI exactly (question 4 spells out every
+precondition).
+
+### Step 6 — the design point: cranelift vs LLVM, and the gotcha list
 
 ```
                  cranelift            LLVM -O3
@@ -117,7 +157,7 @@ single-tier, good-enough). For straight-line f64 arithmetic the
 quality gap vs LLVM nearly vanishes — no loops to optimize, and
 OUR loop (over rows) stays in Rust and gets rustc -O.
 
-## 5. Gotchas for the stub
+Gotchas for the stub:
 
 - Version lock: cranelift crates move together — Cargo.toml pins
   matching versions of cranelift-{jit,module,frontend,codegen,native}.
@@ -129,6 +169,24 @@ OUR loop (over rows) stays in Rust and gets rustc -O.
   bool handling changed across versions; select on f64 is stable.
 - The module must not be dropped: `CompiledExpr { module, func }`
   with func called through a stored raw pointer.
+
+## Where each step lives in the code
+
+| anchor | what it is | step |
+|---|---|---|
+| src/jit.rs:12-25 | the four state objects | 2 |
+| src/jit.rs:39-41 | `JITBuilder::with_isa(...)` → `JITModule::new` | 2 |
+| src/jit.rs:55-92 | `compile()` — the whole ladder, annotated above | 3 |
+| src/jit.rs:135 | `FunctionBuilder::new(&mut ctx.func, &mut builder_context)` | 3 |
+| src/jit.rs:180 | `builder.finalize()` — seals the CLIF function | 3 |
+| src/jit.rs:189-191 | `FunctionTranslator` — AST→CLIF recursion lives here | 4 |
+| src/jit.rs:400+ | helper emitters (calls, comparisons) | 4 |
+| src/frontend.rs | the toy parser (87 lines — ignore, we have `Expr`) | — |
+
+Read jit.rs top to bottom once, then re-read `compile()` (:55-92)
+against Step 3's seven rungs until each line maps to a rung; the
+`FunctionTranslator` walk (:189+) is Step 4 with statements added
+that our pure `Expr` doesn't need.
 
 ## Questions for notes.md
 

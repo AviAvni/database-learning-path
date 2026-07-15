@@ -3,17 +3,32 @@
 Every other protocol in this topic coordinates on transaction *outcomes*
 at runtime. Calvin is the counterpoint: fix the input order first, execute
 deterministically, and the whole commit-protocol problem disappears —
-along with the interactive transactions everyone actually writes. There
-is no reference repo to read here; the lineage lives on in FaunaDB and in
-Abadi's deterministic-database literature, so this chapter is paper-only.
+along with the interactive transactions everyone actually writes. This
+chapter builds the idea step by step — why nondeterminism forces
+coordination, the sequencer flip, deterministic locking, and the price —
+then routes you through the paper. There is no reference repo to read
+here; the lineage lives on in FaunaDB and in Abadi's
+deterministic-database literature, so this chapter is paper-only.
 
-## The contrarian move
+## The problem in one sentence
 
-Every other system in this topic agrees on transaction *outcomes* at
-runtime (2PC, Paxos-per-commit). Calvin agrees on transaction *inputs*
-before execution, then executes deterministically — so every replica and
-every shard reaches the same state with **zero runtime coordination about
-outcomes**. No 2PC. No commit protocol at all.
+2PC, replicated coordinators, and reader-driven resolution all pay per
+transaction to agree on *what happened*; Calvin asks why replicas must
+agree on outcomes at all, when agreeing once on the *inputs* — and
+executing them identically everywhere — costs one consensus round per
+10 ms batch instead of per transaction.
+
+## The concepts, step by step
+
+### Step 1 — nondeterminism is why databases coordinate
+
+A replica given the same transactions in the same order can still reach a
+different state, because execution is **nondeterministic**: thread
+scheduling decides who wins a lock, deadlock detectors pick victims
+arbitrarily, aborts depend on timing. That's why conventional systems
+must ship *outcomes* — replicas can't re-derive them, and cross-shard
+atomicity needs a runtime vote (2PC) because each shard's yes/no isn't
+predictable from the input:
 
 ```
         conventional                          Calvin
@@ -24,22 +39,31 @@ outcomes**. No 2PC. No commit protocol at all.
   => replicas must ship outcomes        => replicas re-derive outcomes
 ```
 
-## The three layers (paper §2)
+Remove the nondeterminism and the arrow flips: agreement moves *before*
+execution, once, on the inputs — and everything downstream becomes pure
+recomputation.
 
-1. **Sequencer** — collects txn requests into 10ms epochs, replicates the
-   batch (Paxos) across replicas, hands each shard the global order.
-   *This is the only consensus in the system, and it's off the critical
-   path of execution.*
-2. **Scheduler** — deterministic locking: acquire locks in exactly the
-   order txns appear in the log. Deadlock-free by construction (a total
-   order over lock acquisition), and every replica makes identical
-   grant decisions without talking.
-3. **Executor** — runs txn logic. Cross-shard txns exchange *read results*
-   (push, not request) — each shard knows from the plan exactly which
-   remote reads to expect.
+### Step 2 — the sequencer: one consensus, off the critical path
 
-The scheduler is the part worth writing down — deterministic 2PL is just
-2PL with the request order pinned to the log:
+Calvin's only consensus is at the front door. The **sequencer** collects
+incoming transaction requests into **epochs** (10 ms batches), replicates
+each batch with Paxos across replicas, and hands every shard the same
+global order. Amortization is the trick: one consensus round covers
+every transaction in the batch — at 10 ms epochs and thousands of txns
+per epoch, the per-transaction consensus cost rounds to zero — and it
+runs *ahead of* execution, so it pipelines instead of blocking. The cost
+is a latency floor: no transaction can begin executing until its epoch is
+sealed and replicated (~10 ms + a replication round), even at zero load.
+
+### Step 3 — the scheduler: deterministic locking
+
+Each shard's **scheduler** runs two-phase locking (2PL — acquire all
+locks before releasing any, topic 9) with one constraint that changes
+everything: lock requests are enqueued in **exactly the log order** from
+Step 2. That single total order over acquisition makes deadlock
+impossible (a deadlock needs a cycle of "A waits for B waits for A";
+a total order can't cycle) and makes every replica's lock-grant decisions
+*identical without communication* — same queues, same order, same grants:
 
 ```rust
 fn scheduler(log: &[Txn], lm: &mut LockManager) {
@@ -54,24 +78,65 @@ fn scheduler(log: &[Txn], lm: &mut LockManager) {
 }
 ```
 
-A crashed shard recovers by replaying the input log from a checkpoint —
-no undo, no in-doubt txns, no blocking window. Our `tpc.rs` crash matrix
-simply *cannot happen* here: there is no coordinator state to lose.
+Note the load-bearing comment: the keys must be known *up front* — the
+price arrives in Step 6.
 
-## The catch (why not everyone is Calvin)
+### Step 4 — executors: cross-shard reads are pushed, not requested
 
-- **Read/write sets must be known up front** to lock deterministically.
-  Interactive txns (`BEGIN; read; think; write; COMMIT`) don't fit.
-  Dependent txns get the OLLP trick: run a *reconnaissance* read-only pass
-  to discover the sets, then submit, then re-check and retry if they moved.
-- **One slow txn stalls the lock queue behind it** — deterministic order
-  means no reordering around stragglers.
-- Latency floor = epoch batching + log replication before *any* execution.
+A cross-shard transaction executes at every shard that holds any of its
+keys, and each shard knows — from the fixed order and the declared
+read/write sets — exactly which remote values the others will need. So
+shards **push** their local read results to the other participants and
+block until the pushes they expect arrive; nobody requests, nobody votes.
+There is no commit protocol at all: every participant *deterministically
+reaches the same commit/abort conclusion* from the same inputs, so
+"did it commit?" needs no network round — it's a theorem, not a message.
+
+### Step 5 — recovery for free: replay the inputs
+
+A crashed shard recovers by loading a checkpoint and replaying the input
+log through the same deterministic machinery — no undo, no in-doubt
+transactions, no blocking window. Our `tpc.rs` crash matrix simply
+*cannot happen* here: there is no coordinator state to lose, because
+there is no coordinator. Replication gets the same discount: replicas
+ship the compact input log (a command log) instead of a physical WAL of
+every modified byte, trading network bytes for the CPU of re-executing
+every transaction at every replica (Q4).
+
+### Step 6 — the catch: why not everyone is Calvin
+
+Three structural costs, all downstream of "the order is fixed before
+execution":
+
+- **Read/write sets must be known up front** to lock deterministically
+  (Step 3). Interactive transactions (`BEGIN; read; think; write;
+  COMMIT`) don't fit. Dependent transactions get the **OLLP** trick: run
+  a *reconnaissance* read-only pass to discover the sets, submit with
+  those sets declared, then re-check at execution and retry if they moved
+  — optimism that can livelock under fire (Q3).
+- **One slow transaction stalls the lock queues behind it** —
+  deterministic order means no reordering around stragglers.
+- **Latency floor** = epoch batching + log replication before *any*
+  execution (Step 2).
 
 Contrast with our lane 2: Percolator aborts under contention (measured vs
 θ); Calvin never aborts for conflicts — contention converts to *queueing*
 at the scheduler. Same enemy (the Zipf table in README §0), opposite
 symptom.
+
+## How to read the paper (with the concepts in hand)
+
+- **§2** — the three layers as Steps 2–4: sequencer (epochs + Paxos),
+  scheduler, executors with pushed reads. Verify the claim that
+  sequencing is the *only* consensus.
+- **§3 (especially §3.2)** — deterministic locking, Step 3 in the
+  authors' words. This is where Q1 lives: why pinned lock *ordering*
+  kills both deadlock and 2PC when 2PL alone kills neither.
+- **§5 — OLLP** — Step 6's answer to dependent transactions:
+  reconnaissance, declare, re-check, retry. Read it against the θ=1.3
+  row of README §0 (99.6% collision) and construct the livelock (Q3).
+- Checkpointing/recovery sections — skim with Step 5 in hand; the point
+  is what *isn't* there (no undo, no in-doubt state).
 
 ## Questions to answer while reading
 

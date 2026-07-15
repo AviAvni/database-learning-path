@@ -4,9 +4,34 @@ Zobel & Moffat's CSUR 2006 survey compresses 30 years of IR
 engineering into 50 coherent pages. Read it as "the B-tree paper"
 of text indexing: everything since (Lucene, tantivy, RediSearch) is
 an implementation of choices this paper enumerates — which makes it
-the right first chapter of this topic.
+the right first chapter of this topic. Before you open it, this
+chapter builds each axis of the design space from zero — what an
+inverted index even is, what a posting carries, why deltas compress,
+why construction is a merge, and how queries actually walk the
+lists — so the survey reads as a map instead of a wall.
 
-## The design space in one diagram
+## The problem in one sentence
+
+Given 100K documents (10M tokens in our corpus), answer "which
+documents contain *quick* and *fox*, ranked" in microseconds —
+scanning the text is 10M token comparisons per query, so the index
+must pre-invert the corpus, and every design choice after that is a
+size/speed/updatability trade.
+
+## The concepts, step by step
+
+### Step 1 — the inverted index: flip document→words into word→documents
+
+An **inverted index** stores, for every **term** (a normalized word
+produced by an analyzer: tokenize → lowercase → stem → drop
+stopwords), the sorted list of documents containing it — the
+**posting list**. "Inverted" because the raw corpus maps document →
+words; the index maps word → documents. A two-term query then never
+touches the corpus: fetch two posting lists and combine them.
+Concretely, in our corpus a common term's list holds ~100K doc ids
+and a rare term's holds ~159 — the query cost is driven by list
+lengths, not corpus size. The survey's whole design space hangs off
+this one structure:
 
 ```
   index granularity:  doc ids only → +frequencies → +positions → +fields
@@ -26,33 +51,79 @@ the right first chapter of this topic.
                       (§7 concludes merge wins — Lucene's whole architecture)
 ```
 
-## What to actually read
+Steps 2–6 take these axes one at a time.
 
-| section | why |
-|---|---|
-| §2-3 | vocabulary + postings anatomy; the doc-id vs word-position granularity trade |
-| §4 | compression: deltas are what make postings compressible at all — Zipf gives small gaps for common terms |
-| §5 | merge-based construction — recognize topic 4's LSM before Lucene made it famous |
-| §6 | query eval: term-at-a-time vs doc-at-a-time (our oracle is TAAT, WAND is DAAT); the accumulator-limiting trick |
-| §7 | index maintenance — why everyone chose immutable segments + merge |
-| §8 | ranked retrieval + early termination — the WAND lineage starts here |
+### Step 2 — granularity: what each posting carries
 
-## Vocabulary decoder ring
+A posting can be just a doc id, or a doc id plus payload — and each
+addition buys query types with index bytes:
 
-- **TAAT** (term-at-a-time): walk each term's full list, accumulate
-  scores per doc — our `oracle_topk`, simple, cache-friendly, no
-  skipping. **DAAT** (doc-at-a-time): cursors advance in lockstep by
-  doc id — enables WAND, needs doc-sorted lists.
-- **accumulators**: TAAT's hash map of partial scores; §6's insight
-  is you can cap them (only allow ~1% of docs to hold accumulators)
-  and lose almost no effectiveness — the 2006 answer to the problem
-  WAND solves exactly.
-- **impact-sorted**: postings ordered by score contribution, not doc
-  id — perfect early termination, terrible AND. Block-max WAND is
-  doc-sorted lists with impact metadata bolted on blocks.
+- **doc ids only** — boolean AND/OR/NOT; the filter lane.
+- **+ frequencies** (how often the term occurs in that doc) —
+  enables ranking (BM25 needs tf; next chapter).
+- **+ positions** (word offsets within the doc) — enables phrase
+  ("quick fox" adjacent) and proximity queries, at ~3× the index
+  size.
+- **+ fields** (which attribute: title vs body) — per-field
+  weighting and filtering.
 
-TAAT in code — our `oracle_topk`, and the baseline every later
-chapter is trying to beat:
+This ladder is literally a directory listing in RediSearch's Rust
+crate (eleven codecs from `doc_ids_only` to `full` —
+reading-redisearch.md). The cost rule: pay for the payload only
+where a query type needs it.
+
+### Step 3 — posting order: doc-sorted vs impact-sorted
+
+Doc-sorted lists (postings ordered by doc id) make intersection
+cheap — two sorted lists merge in one pass, and a cursor can *skip
+ahead* to any doc id. **Impact-sorted** lists (postings ordered by
+score contribution, best first) make top-k trivially early-terminating
+— read from the front until the tail can't matter — but wreck AND:
+neither list is in id order, so intersection needs a hash. 2006
+presents them as a fork in the road; the resolution came later —
+block-max WAND (this topic's third chapter) keeps doc-sorted lists
+and bolts per-block impact metadata on top, getting both.
+
+### Step 4 — compression: store the gaps, not the ids
+
+Doc-sorted ids compress because you store **deltas** (gaps between
+consecutive ids) instead of raw 32-bit ids — and Zipf's law makes
+the gaps small exactly where the lists are long: a term appearing
+in half the docs has average gap 2, fitting in 2–3 bits instead of
+32. The 2006 menu is Golomb/Rice (bit-optimal, slow),
+variable-byte (byte-aligned, fast), word-aligned Simple-9; today's
+answers are 128-block bitpacking (tantivy), PForDelta, and roaring
+(this topic's fourth chapter). Why it matters: postings dominate
+index size, and decompression speed is the scan speed of the whole
+query engine — pick wrong and topic 17's GB/s ceiling drops by 10×.
+
+### Step 5 — construction and update: it's an LSM
+
+You can't build a big inverted index by inserting into one giant
+in-memory map — it doesn't fit. §5's merge-based construction:
+invert as much as fits in RAM, flush the sorted **run** to disk,
+repeat, then merge runs into the final index. §7 reaches the
+matching update conclusion: of rebuild / in-place / merge, **merge
+wins** — keep new documents in a RAM index, flush as immutable
+runs, merge in the background.
+
+That is topic 4's LSM tree, rediscovered independently: run =
+memtable flush, merge pass = compaction, immutable segments +
+tombstoned deletes. Lucene's entire architecture (and tantivy's —
+this topic's fifth chapter) is §5 + §7 productionized. Inverted
+indexes are cheap to build and expensive to update in place —
+exactly the LSM bet.
+
+### Step 6 — query evaluation: TAAT vs DAAT
+
+Two ways to walk multiple posting lists:
+
+- **TAAT** (term-at-a-time): process one term's *entire* list before
+  the next, accumulating partial scores per doc in a map of
+  **accumulators**. Simple, sequential, cache-friendly — and no
+  skipping is possible, since you don't know a doc's full score
+  until every term has been walked. Our `oracle_topk`, and the
+  baseline every later chapter tries to beat:
 
 ```rust
 // term-at-a-time: walk each term's WHOLE list, accumulate per doc
@@ -69,6 +140,38 @@ fn taat_topk(terms: &[PostingList], k: usize) -> Vec<(DocId, f32)> {
     // almost nothing — the 2006 answer to what WAND later solved exactly
 }
 ```
+
+- **DAAT** (doc-at-a-time): one cursor per term, all advancing in
+  lockstep by doc id, finishing each doc's score before moving on —
+  needs doc-sorted lists (Step 3), and enables skipping: that's
+  WAND's home.
+
+§6's accumulator-limiting trick — allow only ~1% of docs to hold
+accumulators, lose almost no ranking quality — is the heuristic
+2006 answer to bounding work; WAND (Step 3's lineage, §8) is the
+exact answer. Measured stakes from fts_bench: TAAT on
+common∧rare (100K postings) takes 6.34 ms even though the rare
+term's idf ≈ 9 means almost none of the common term's postings can
+reach the top-10 — all that work is provably skippable.
+
+## How to read the paper (with the concepts in hand)
+
+50 pages, but it's a survey — the section map, with the step each
+one expands:
+
+| section | why (step) |
+|---|---|
+| §2-3 | vocabulary + postings anatomy; the doc-id vs word-position granularity trade (1, 2) |
+| §4 | compression: deltas are what make postings compressible at all — Zipf gives small gaps for common terms (4) |
+| §5 | merge-based construction — recognize topic 4's LSM before Lucene made it famous (5) |
+| §6 | query eval: term-at-a-time vs doc-at-a-time (our oracle is TAAT, WAND is DAAT); the accumulator-limiting trick (6) |
+| §7 | index maintenance — why everyone chose immutable segments + merge (5) |
+| §8 | ranked retrieval + early termination — the WAND lineage starts here (3, 6) |
+
+Read §2-3 fast, slow down for §5-§7 (the architecture payload), and
+treat §8 as the setup for the block-max WAND chapter. The
+compression specifics in §4 are 2006's menu — read for the *why*
+(deltas + Zipf), not the codec details.
 
 ## Questions (answer in notes.md)
 

@@ -2,13 +2,56 @@
 
 Everything else in this topic samples the input space; SMT quantifies
 over it — "does there EXIST a row where these two plans disagree?"
-UNSAT means the rewrite is proven for all databases. This chapter
-reads Z3 the way PLAN.md says to: as a masterclass high-performance
-search engine over LOGIC whose architecture rhymes with a query
-engine, then applies it Cosette-style to verify our topic-10 rewrite
-rules.
+UNSAT means the rewrite is proven for all databases. Before the code
+and the papers, this chapter builds the machinery step by step — SAT,
+the CDCL loop, theory solvers, tactics — then applies it
+Cosette-style to verify our topic-10 rewrite rules. Read Z3 the way
+PLAN.md says to: as a masterclass high-performance search engine over
+LOGIC whose architecture rhymes with a query engine.
 
-## SMT in one box
+## The problem in one sentence
+
+A fuzzer that runs 10 million random rows through two query plans
+still checks a measure-zero slice of the input space; encoding both
+plans as logic and asking a solver "∃ row where they disagree?"
+checks ALL rows at once — and returns either a proof or the exact
+counterexample row, usually in milliseconds.
+
+## The concepts, step by step
+
+### Step 1 — SAT: search over boolean assignments
+
+SAT (boolean satisfiability) is the question "given a formula over
+true/false variables, is there an assignment making it true?" A SAT
+**solver** is a search engine over the 2^n assignments — and modern
+ones routinely handle formulas with millions of variables because
+the search is ruthlessly pruned. Flip the answer around and you get
+verification: to prove a property P holds always, ask the solver for
+a case where `NOT P` holds. **UNSAT** ("no satisfying assignment
+exists") is then a proof; **SAT** hands you a concrete
+counterexample. That inversion — prove by failing to find — is the
+whole chapter.
+
+### Step 2 — CDCL: the search loop that learns from every dead end
+
+CDCL (conflict-driven clause learning) is the algorithm inside every
+modern SAT solver: guess a variable (**decide**), push the logical
+consequences (**propagate**), and when a contradiction appears
+(**conflict**), *analyze why*, record the reason as a new learned
+clause so the same dead end is never entered again, and jump back
+(**backjump**) past the guesses the conflict proved irrelevant. The
+learned clauses are why CDCL beats brute force by orders of
+magnitude: every failure permanently shrinks the remaining search
+space. The DB analogy runs deep — CDCL is adaptive execution with
+feedback, and learned clauses are materialized negative results.
+
+### Step 3 — SMT: SAT proposes, theories veto
+
+Real verification needs more than booleans — integers, arrays, bit
+patterns. SMT (satisfiability modulo theories) keeps the CDCL engine
+and attaches **theory solvers**, each a decision procedure for one
+domain (linear arithmetic, bitvectors, arrays, uninterpreted
+functions, strings):
 
 ```
  SAT solver:  boolean skeleton (CDCL: decide → propagate →
@@ -22,35 +65,30 @@ rules.
       become learned clauses
 ```
 
-The DB analogy: CDCL = adaptive execution with feedback; learned
-clauses = materialized negative results; theory propagation =
-predicate pushdown into specialized engines.
+The SAT core treats `x < 3` as an opaque boolean; when it proposes
+`x < 3 ∧ x > 5`, the arithmetic theory vetoes with an explanation
+that becomes a learned clause. Theory propagation is predicate
+pushdown into specialized engines — same shape as topic 10.
 
-## Codebase anchors
+### Step 4 — tactics: query plans for proofs
 
-| anchor | what it is |
-|---|---|
-| src/solver/solver.h:58 | `class solver` — check_sat over assertions |
-| src/smt/smt_context.h:89 | `smt::context` — the CDCL(T) core loop |
-| src/tactic/tactic.h:34 | `class tactic` — composable transformers |
-| src/tactic/portfolio/default_tactic.cpp | the default strategy: probe → dispatch by logic |
-| src/tactic/portfolio/smt_strategic_solver.cpp | tactic → solver bridge |
-| src/ast/ | hash-consed terms (one node per distinct expr — topic 2's interning) |
-| src/smt/mam.cpp | matching abstract machine for quantifier triggers — a compiled pattern matcher (topic 19 vibes) |
+Z3 doesn't run one fixed algorithm; it composes **tactics** —
+transformers that rewrite a goal (simplify, eliminate equalities,
+blast bitvectors to SAT) — into pipelines, chosen by **probes** that
+inspect the formula first. `(then simplify solve-eqs bit-blast sat)`
+is a pipeline of rewrites ending in an executor, and
+`default_tactic.cpp` dispatches on the detected logic the way a
+planner dispatches on statistics — probes are cardinality
+estimation for proofs. This is why PLAN.md calls Z3 a query engine
+for logic: the architecture is parse → rewrite → cost-informed
+dispatch → execute.
 
-Tactics ARE query plans for proofs: `(then simplify solve-eqs
-bit-blast sat)` is a pipeline of rewrites ending in an executor,
-chosen by a probe (cardinality estimation!). `default_tactic.cpp`
-dispatches on the detected logic the way a planner dispatches on
-statistics.
+### Step 5 — symbolic rows: encoding a query plan as a formula
 
-## Cosette: proving SQL rewrites
-
-Cosette answers "are Q1 and Q2 equivalent for ALL databases?" — it
-compiles SQL to K-relations (rows with multiplicities, so bag
-semantics work), then splits: easy fragments → SMT for
-counterexamples, hard equivalences → Coq proof search over HoTT
-encodings. Our use is the SMT half:
+To verify a rewrite rule, replace concrete data with one **symbolic
+row** — a tuple of solver variables, one per column — and compile
+each plan's filter chain into a formula over it. Then ask the Step 1
+question:
 
 ```
  symbolic row: (a: Int, b: Int, a_null: Bool, b_null: Bool)
@@ -60,12 +98,6 @@ encodings. Our use is the SMT half:
    UNSAT → rewrite proven for all rows
    SAT   → the model IS the counterexample row
 ```
-
-Three-valued logic is the trap AND the point: encode each nullable
-column as (value, is_null) and define AND/OR/NOT/comparison per SQL
-Kleene semantics — most real optimizer bugs (TLP's bread and
-butter) are exactly NULL-semantics violations, and Z3 finds them as
-SAT models in milliseconds.
 
 ```rust
 // verify a rewrite for ALL rows by asking for ONE disagreeing row
@@ -81,6 +113,52 @@ match solver.check(p1.keeps_row().xor(p2.keeps_row())) {
     Sat(m) => Counterexample(m),       // the model IS the failing row
 }
 ```
+
+One subtlety keeps this tractable: filters are row-at-a-time pure
+logic, so one symbolic row quantifies over all databases —
+no quantifiers needed, and quantifier-free formulas are Z3's fast
+path.
+
+### Step 6 — the NULL trap: encode SQL's three-valued logic honestly
+
+SQL predicates evaluate to TRUE, FALSE, or NULL ("unknown"), and
+WHERE keeps only TRUE — so a two-valued encoding proves rewrites
+that are false in real SQL. The honest encoding: each nullable
+column becomes a pair (value, is_null), and AND/OR/NOT/comparison
+are defined per SQL's Kleene semantics (NULL AND FALSE = FALSE, NULL
+AND TRUE = NULL, …). This is the trap AND the point: most real
+optimizer bugs (TLP's bread and butter — reading-pqs-tlp-papers.md)
+are exactly NULL-semantics violations, and Z3 finds them as SAT
+models in milliseconds.
+
+### Step 7 — Cosette: the full SQL-equivalence prover
+
+Cosette answers "are Q1 and Q2 equivalent for ALL databases?" — the
+general problem, beyond single-row filters. It compiles SQL to
+**K-relations** (relations where each row carries a multiplicity, so
+bag/duplicate semantics work — SQL tables are bags, not sets), then
+splits: easy fragments → SMT for counterexamples, hard equivalences
+→ Coq proof search over HoTT encodings. Our use is the SMT half:
+filters and projections over symbolic rows, exactly Steps 5–6, which
+is all topic 10's rewrite rules need.
+
+## Where each step lives in the code
+
+| anchor | step | what it is |
+|---|---|---|
+| src/solver/solver.h:58 | 1 | `class solver` — check_sat over assertions |
+| src/smt/smt_context.h:89 | 2–3 | `smt::context` — the CDCL(T) core loop |
+| src/tactic/tactic.h:34 | 4 | `class tactic` — composable transformers |
+| src/tactic/portfolio/default_tactic.cpp | 4 | the default strategy: probe → dispatch by logic |
+| src/tactic/portfolio/smt_strategic_solver.cpp | 4 | tactic → solver bridge |
+| src/ast/ | — | hash-consed terms (one node per distinct expr — topic 2's interning) |
+| src/smt/mam.cpp | — | matching abstract machine for quantifier triggers — a compiled pattern matcher (topic 19 vibes) |
+
+Reading order: `solver.h` for the public shape, `smt_context.h` for
+the CDCL(T) loop (don't read it all — find decide/propagate/
+conflict), then the tactic machinery. The `src/ast/` hash-consing
+and `mam.cpp` are optional side quests that rhyme with topics 2
+and 19.
 
 ## Questions for notes.md
 

@@ -5,18 +5,43 @@ but kills random access. FSST closes that gap — LZ4-class ratios on
 similar-but-distinct strings with every single string decodable alone —
 and BtrBlocks (same group, three years later) shows what happens when
 you cascade such encodings recursively and pick per block by sampling.
-Read FSST first (it's a component), then BtrBlocks (the composition).
+This chapter builds both ideas step by step — the gap, the symbol
+table, why static tables are the trick, the cascade, and the sampling
+argument — then routes you through the two papers (FSST first: it's a
+component; then BtrBlocks: the composition).
 
-## FSST: Fast Static Symbol Table (VLDB '20)
+## The problem in one sentence
 
-The gap it fills: dictionary encoding dedups WHOLE strings — useless
-when strings are distinct but SIMILAR (URLs, emails, paths).
-LZ4/zstd catch that redundancy but kill random access (must decode a
-whole block to read one string).
+A column of 1M distinct URLs defeats dictionary encoding (nothing
+repeats *whole*) and zstd would shrink it ~4× but forces you to
+decompress a whole block to read ONE string — the gap is a string
+encoding with LZ-class ratios where any single value decodes alone.
 
-- The scheme: a static table of ≤255 symbols, each a 1–8 byte
-  substring; encoding replaces substrings with 1-byte codes; code 255 =
-  escape byte for literals.
+## The concepts, step by step
+
+### Step 1 — the gap: whole-string dedup vs block compression
+
+Dictionary encoding (topic 12's staple: store each distinct string
+once, reference it by integer id) dedups WHOLE strings — useless when
+strings are distinct but SIMILAR: URLs, emails, file paths, where the
+redundancy is shared *substrings* ("http://www.", "@gmail.com").
+LZ-family compressors (LZ4, zstd) catch exactly that redundancy — they
+replace repeated substrings with back-references into a sliding
+history window — but the back-references are the poison: to decode
+string 5,000 you must first decode everything its references point
+into, i.e. the whole block. That breaks `fetch_row`-style random
+access and rules them out as a scan-path vector format. Why it
+matters: real analytics columns are full of medium-cardinality similar
+strings, and until 2020 the menu offered no encoding that was both
+compact and randomly accessible for them.
+
+### Step 2 — the symbol table: 255 substrings, 1-byte codes
+
+FSST (**fast static symbol table**) compresses strings with a small
+fixed table of at most 255 **symbols** — each a 1–8 byte substring —
+and encodes each string by greedily replacing matched substrings with
+the 1-byte code of the symbol; code 255 is an escape marker meaning
+"the next byte is a literal that matched no symbol":
 
 ```
  "http://www.example.com/index.html"
@@ -24,11 +49,17 @@ whole block to read one string).
         3           17        9      42      51      -> 5 bytes + table
 ```
 
-- **Random access preserved**: any single string decodes alone —
-  decode is a per-code table lookup (fits in L1: 255 × 8 B), no
-  history window like LZ. This single property is why DuckDB ships it
-  as a storage encoding and a VECTOR TYPE (FSST_VECTOR, topic 11) —
-  compressed strings flow through the executor.
+34 bytes → 5 bytes, ~7×, and the table itself is tiny: 255 × 8 B ≈
+2 KB, shared by the whole block. Why it matters: the compression unit
+dropped from "whole string" (dictionary) to "substring" (LZ) *without*
+adopting LZ's history window — the table IS the entire shared state.
+
+### Step 3 — static is the trick: random access and vectorized decode
+
+Because the symbol table is trained once and then immutable
+(**static**), decoding is a pure per-code table lookup with no
+history: any single string decodes alone, in isolation, and the 2 KB
+table sits in L1 cache the whole time:
 
 ```rust
 // FSST decode: a table lookup per code, NO history window —
@@ -50,22 +81,39 @@ fn decode(codes: &[u8], sym: &[[u8; 8]; 255], len: &[u8; 255]) -> Vec<u8> {
 }
 ```
 
-- Symbol table construction: iterative — start with single bytes,
-  repeatedly extend/merge symbols scoring by (frequency × length) gain,
-  on a SAMPLE. A greedy-with-restarts search, bounded iterations.
-- Claims: ~LZ4-class ratios on string data, faster decompression, AND
-  random access. Check their table for where it loses (long-range
-  redundancy, already-compressed data).
+Contrast an adaptive (LZ78-style) scheme, where the table *evolves* as
+you decode — every code's meaning depends on all prior codes, and
+random access dies. This single property — decode one string without
+its neighbors — is why DuckDB ships FSST both as a storage encoding
+and as a VECTOR TYPE (FSST_VECTOR, topic 11): compressed strings flow
+through the executor itself. Why it matters: the design constraint
+(random access) dictated the mechanism (static table), not the other
+way around.
 
-## BtrBlocks: cascaded encodings, chosen by sampling (SIGMOD '23)
+### Step 4 — training the table: greedy search on a sample
 
-The setting: open formats (Parquet) pick conservative encodings; you
-can do much better if the format may choose AGGRESSIVELY per block.
+The table is built by an iterative search over a small SAMPLE of the
+data: start with single-byte symbols, repeatedly extend and merge
+symbols, scoring each candidate by its estimated gain (frequency ×
+length), for a bounded number of iterations — greedy with restarts,
+not an optimal search. The claims to verify in the paper: ~LZ4-class
+ratios on string data, *faster* decompression than LZ4, and random
+access on top; check their table for where FSST loses (long-range
+redundancy, already-compressed data). The cost side: training is a
+few passes over a sample — cheap, but nonzero, and a bad sample means
+a bad table for the whole block. Why it matters: this is the topic's
+recurring pattern — spend bounded work at write time choosing a
+representation, harvest it on every scan.
 
-- The scheme: for each 64K-value block, take small SAMPLES, try every
-  applicable encoder ON the sample, pick the best ratio — then RECURSE:
-  the outputs of one encoding (e.g. dictionary codes, FOR residuals)
-  are themselves columns that get the same treatment, up to depth 3.
+### Step 5 — BtrBlocks: encoder outputs are columns too, so recurse
+
+BtrBlocks starts from an observation about open formats: Parquet picks
+conservative, one-shot encodings; you can do much better if the format
+may choose AGGRESSIVELY per block. Its scheme: for each 64K-value
+block, try every applicable encoder, pick the best — then **cascade**:
+the *outputs* of one encoding (dictionary codes are an int column; FOR
+residuals are an int column; dictionary entries are a string column)
+get the same treatment recursively, up to depth 3:
 
 ```
  strings ─ dictionary ─┬─ codes (ints)  ─ FOR ─ bit-pack
@@ -73,14 +121,58 @@ can do much better if the format may choose AGGRESSIVELY per block.
  doubles ─ pseudodecimal ─ (mantissa ints) ─ ...   <- their new float trick
 ```
 
-- Sampling vs DuckDB's full analyze pass: they show a handful of small
-  random slices (not one contiguous slice!) estimates ratios well —
-  ingest stays fast, choice stays near-optimal. (The topic 0 sampling
-  lesson: representative beats exhaustive.)
-- No general-purpose byte compressor on top — everything stays
-  scannable + SIMD-decodable; they hit Parquet+zstd-class ratios with
-  ~4× faster decompression, on the cheap-CPU side of the
-  network-vs-CPU tradeoff (object storage era — topic 28).
+So FSST slots in as one component of a larger composition — exactly
+how DuckDB's `dict_fsst/` uses it. Why it matters: no single encoding
+is the answer; the win compounds — dictionary might give 5×, then
+bit-packed codes another 4× — and the cascade finds the composition
+per block instead of per format revision.
+
+### Step 6 — sampling, not full analysis
+
+To choose among cascades without reading each block many times,
+BtrBlocks estimates each candidate's ratio on small random SAMPLES —
+and shows that a handful of small slices drawn from *different*
+positions (not one contiguous slice!) predicts the full-block ratio
+well. Compare the three answers to "who picks the encoding": DuckDB
+analyzes everything (full extra pass at ingest), ClickHouse makes you
+declare, BtrBlocks samples — near-optimal choice at a fraction of the
+ingest cost, risking only an unrepresentative sample. (The topic 0
+sampling lesson: representative beats exhaustive.) Why it matters:
+choice quality vs ingest cost is a dial, and sampling sits at its
+sweet spot for data lakes where ingest volume is huge.
+
+### Step 7 — no block compressor on top: the CPU-vs-network bet
+
+BtrBlocks deliberately puts NO general-purpose byte compressor over
+its cascade — everything on disk stays scannable and SIMD-decodable —
+and still reaches Parquet+zstd-class ratios with ~4× faster
+decompression. The bet: in the object-storage era (topic 28), network
+bandwidth to S3 is plentiful and CPU is the scarce resource at scan
+time, so trading a few percent of ratio for 4× cheaper decode wins.
+This is Parquet's two-layer design (semantic + block) with the second
+layer amputated on purpose. Why it matters: it closes the arc this
+topic opened — compression IS performance, and the last block codec
+standing gets cut when it stops paying for its CPU.
+
+## How to read the papers (with the concepts in hand)
+
+**FSST (VLDB '20)** — read first; it's a component.
+
+1. The scheme itself is Steps 2–3; the paper's contribution beyond
+   them is the table-construction search (Step 4) and the engineering
+   for vectorized decode — read both carefully.
+2. Check the evaluation table for where FSST *loses* (long-range
+   redundancy, already-compressed data) — the honest boundary of the
+   technique.
+
+**BtrBlocks (SIGMOD '23)** — read second; it's the composition.
+
+1. The cascade (Step 5) and the sampling argument (Step 6) are the
+   core — the sampling section is the part to work through slowly
+   (why multiple small slices beat one contiguous slice).
+2. The evaluation's Parquet+zstd comparison is Step 7's bet
+   quantified — note it's the same group as the VLDB '15 / LeanStore
+   papers, and the hardware-conscious style shows.
 
 ## Questions for notes.md
 

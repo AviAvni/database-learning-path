@@ -6,23 +6,57 @@ Rust crates behind FFI (`c_entrypoint/inverted_index_ffi`,
 `varint_ffi`) — the exact migration pattern falkordb-rs-next-gen
 lives. Read the `inverted_index` crate as a *mutable, in-memory*
 counterpart to tantivy's immutable segments
-([reading-tantivy.md](reading-tantivy.md)): every design delta
-falls out of "updates must be cheap NOW".
+([reading-tantivy.md](reading-tantivy.md)). Before pointing at the
+code, this chapter builds the design one constraint at a time —
+every delta from tantivy falls out of "updates must be cheap NOW" —
+then hands you the anchors.
 
-## The structure (`inverted_index/src/index/core.rs`)
+## The problem in one sentence
 
-| anchor | what |
-|---|---|
-| `core.rs:30` `InvertedIndex<E>` | `blocks: ThinVec<IndexBlock>`, `n_unique_docs`, `flags: IndexFlags`, `gc_marker: AtomicU32`, `unique_id` — encoder is a type parameter (`PhantomData<E>`), so codec choice is compile-time |
-| `core.rs:75` `IndexBlock` | `{ first_doc_id, last_doc_id, num_entries: u16, buffer: Vec<u8> }` — a growable byte buffer of varint-encoded entries, chained, NOT fixed 128-wide bitpacked |
-| `core.rs:229` | a delta too large for the codec ⇒ start a new block with delta 0 (`IdDelta::from_u64` → None path, codec/mod.rs:28-44) |
-| `codec/mod.rs:53` `trait Encoder` | `write(record, delta)`, `delta_base(block)` — one trait, eleven codecs |
-| `codec/` | `doc_ids_only` / `raw_doc_ids_only` / `freqs_only` / `freqs_fields` / `fields_offsets` / `full` / `numeric` … — the granularity ladder from Zobel-Moffat §3 as a directory listing |
-| `varint/src/lib.rs:98` `VarintEncode` | the wire format under most codecs |
-| `gc.rs` | garbage collection rewrites blocks to purge deleted docs — compaction for a mutable index; `gc_marker` tells live readers their cursor is stale |
-| `unique_id` (core.rs comment) | ABA detection: index freed + reallocated at same address ⇒ cursors notice via id mismatch — a very Redis-module concern |
+tantivy absorbs one new document by buffering it and eventually
+flushing a whole immutable segment; a Redis module must make a
+freshly indexed document searchable *within the same command*, with
+no background merge infrastructure and readers potentially holding
+cursors into the very lists being appended — the entire crate is
+the fallout of that requirement.
 
-The write path in miniature (core.rs:229 + codec/mod.rs:28-44):
+## The concepts, step by step
+
+### Step 1 — the constraint: mutable NOW, or nothing
+
+A Redis module runs inside Redis's (mostly) single-threaded command
+loop: no fleet of merge threads, no "visible after the next flush"
+— a write command returns and the data is queryable. That kills the
+Lucene/tantivy design (immutable segments + background merge,
+topic 4's LSM) at the root. The alternative: **one mutable posting
+list per term**, appended in place, with deletion handled by
+periodic in-place garbage collection. Every structure below is this
+choice worked out; the cost — weaker compression, no block-max
+metadata, cursor-invalidation protocols — is the running theme.
+
+### Step 2 — the structure: chained growable blocks per term
+
+Each term's index (`core.rs:30`, `InvertedIndex<E>`) is a
+`ThinVec<IndexBlock>` plus counters (`n_unique_docs`), flags, a
+`gc_marker: AtomicU32`, and a `unique_id`. An `IndexBlock`
+(`core.rs:75`) is `{ first_doc_id, last_doc_id, num_entries: u16,
+buffer: Vec<u8> }` — a growable byte buffer of varint-encoded
+entries, chained one after another. Contrast tantivy: blocks here
+are **variable-length and append-tail-mutable**, not fixed 128-wide
+bitpacked — because an append must be O(1) bytes written, not a
+block re-pack. The block chain still gives coarse skipping
+(`first_doc_id`/`last_doc_id` per block), which is what a mutable
+index can afford instead of skip files.
+
+### Step 3 — the write path: varint deltas, new block on overflow
+
+Appending a posting means varint-encoding (a byte-at-a-time
+variable-length integer encoding — small deltas take 1 byte) the
+delta from the block's last doc id into the last block's buffer.
+One edge case drives the block-chaining: a delta too large for the
+codec's representable range starts a fresh block at delta 0
+(`core.rs:229`, the `IdDelta::from_u64` → None path,
+codec/mod.rs:28-44):
 
 ```rust
 // append one posting: varint-encode the delta into the last block;
@@ -44,7 +78,53 @@ fn add<E: Encoder>(&mut self, doc_id: u64, rec: &Record) {
 }
 ```
 
-## Design deltas vs tantivy (worth internalizing)
+Simple and robust — and the cost is exactly topic 17's lesson: the
+branchy per-byte varint decode loop caps read-side GB/s, versus
+tantivy's branchless 128-at-a-time SIMD unpack. Cheap writes were
+bought with slower scans.
+
+### Step 4 — the codec ladder: one trait, eleven encoders, chosen at compile time
+
+What a posting *carries* (Zobel-Moffat's granularity ladder: ids →
+frequencies → fields → positions) is a codec choice: `trait
+Encoder` (`codec/mod.rs:53` — `write(record, delta)`,
+`delta_base(block)`) has eleven implementations in `codec/` —
+`doc_ids_only` / `raw_doc_ids_only` / `freqs_only` / `freqs_fields`
+/ `fields_offsets` / `full` / `numeric` … — the granularity ladder
+as a directory listing, over one shared varint wire format
+(`varint/src/lib.rs:98`, `VarintEncode`).
+
+The encoder is a *type parameter* (`InvertedIndex<E>`,
+`PhantomData<E>`), so codec choice is compile-time. This is the
+Rust rewrite earning its keep: the C original dispatched on
+`IndexFlags` at runtime *per record*; the Rust one monomorphizes
+eleven codecs and lets FFI pick the concrete type once
+(`c_entrypoint/inverted_index_ffi`) — the per-posting branch simply
+no longer exists.
+
+### Step 5 — deletes and readers: GC, gc_marker, unique_id
+
+A mutable index can't do tantivy's "alive-bitmap now, purge at
+merge" — there is no merge. Instead a **GC pass** (`gc.rs`)
+rewrites blocks in place to purge deleted docs — compaction for a
+mutable index — which invalidates any cursor mid-list. Two
+validation devices protect readers:
+
+- `gc_marker` (an atomic counter bumped by GC) — a cursor compares
+  its saved marker and knows its position is stale;
+- `unique_id` — ABA detection (the "freed, then something new
+  allocated at the same address" hazard): if the whole index was
+  dropped and reallocated at the same pointer, cursors notice via
+  id mismatch — a very Redis-module concern.
+
+This is the mutable-world tax: tantivy readers get snapshot
+isolation free (a segment never changes under you); RediSearch buys
+an approximation of it with two integers and a protocol (question 2
+maps this onto FalkorDB's delta-matrix `wait`/version story).
+
+### Step 6 — the deltas vs tantivy, and what M23 should copy
+
+The whole comparison, one line per axis:
 
 ```
                      tantivy/Lucene              RediSearch
@@ -58,12 +138,7 @@ fn add<E: Encoder>(&mut self, doc_id: u64, rec: &Record) {
                                               merge infrastructure
 ```
 
-The `Encoder`-as-type-parameter design is the Rust rewrite earning
-its keep: the C original dispatched on `IndexFlags` at runtime per
-record; the Rust one monomorphizes eleven codecs and lets FFI pick
-the concrete type once (`c_entrypoint/inverted_index_ffi`).
-
-## What M23 should copy vs avoid
+For M23's own index:
 
 - Copy: codec ladder (doc-ids-only for filters, freqs for ranked),
   new-block-on-delta-overflow (simple, robust), GC marker protocol
@@ -74,6 +149,28 @@ the concrete type once (`c_entrypoint/inverted_index_ffi`).
   maxima buy WAND. RediSearch itself has no block-max WAND; scoring
   unions walk everything (why `FT.SEARCH` with scores is expensive
   on big result sets).
+
+## Where each step lives in the code
+
+All under `src/redisearch_rs/` — `inverted_index/src/index/core.rs`
+unless noted:
+
+| anchor | what (step) |
+|---|---|
+| `core.rs:30` `InvertedIndex<E>` | `blocks: ThinVec<IndexBlock>`, `n_unique_docs`, `flags: IndexFlags`, `gc_marker: AtomicU32`, `unique_id` — encoder is a type parameter (`PhantomData<E>`), so codec choice is compile-time (2, 4) |
+| `core.rs:75` `IndexBlock` | `{ first_doc_id, last_doc_id, num_entries: u16, buffer: Vec<u8> }` — a growable byte buffer of varint-encoded entries, chained, NOT fixed 128-wide bitpacked (2) |
+| `core.rs:229` | a delta too large for the codec ⇒ start a new block with delta 0 (`IdDelta::from_u64` → None path, codec/mod.rs:28-44) (3) |
+| `codec/mod.rs:53` `trait Encoder` | `write(record, delta)`, `delta_base(block)` — one trait, eleven codecs (4) |
+| `codec/` | `doc_ids_only` / `raw_doc_ids_only` / `freqs_only` / `freqs_fields` / `fields_offsets` / `full` / `numeric` … — the granularity ladder from Zobel-Moffat §3 as a directory listing (4) |
+| `varint/src/lib.rs:98` `VarintEncode` | the wire format under most codecs (3, 4) |
+| `gc.rs` | garbage collection rewrites blocks to purge deleted docs — compaction for a mutable index; `gc_marker` tells live readers their cursor is stale (5) |
+| `unique_id` (core.rs comment) | ABA detection: index freed + reallocated at same address ⇒ cursors notice via id mismatch — a very Redis-module concern (5) |
+
+Read order: `core.rs` top-to-bottom (it's the smallest core file in
+this topic), then `codec/mod.rs` + one concrete codec
+(`doc_ids_only`), then `gc.rs`, then peek at the FFI seam in
+`c_entrypoint/inverted_index_ffi` to see how C picks the
+monomorphized type.
 
 ## Questions (answer in notes.md)
 

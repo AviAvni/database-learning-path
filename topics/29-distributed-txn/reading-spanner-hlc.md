@@ -5,17 +5,35 @@ oracle — and the oracle is a SPOF and a WAN round trip. This chapter reads
 the two production escapes side by side: Spanner buys a tiny clock-error
 bound ε with GPS and atomic clocks and then *sleeps it out* at commit,
 while CockroachDB accepts NTP-grade skew and pays with hybrid logical
-clocks plus uncertainty restarts at read time. The code walk is
-CockroachDB's `pkg/util/hlc` — the exact rules our `hlc.rs` stub
+clocks plus uncertainty restarts at read time. It builds each idea step
+by step — what external consistency demands, TrueTime, commit-wait, the
+HLC rules, uncertainty intervals, and parallel commits — then walks
+CockroachDB's `pkg/util/hlc`, the exact rules our `hlc.rs` stub
 implements.
 
-## The problem both solve
+## The problem in one sentence
 
-Snapshot isolation needs timestamps that respect real-world order: if txn
-T1 commits and *then* (in wall-clock reality) T2 starts on another
-machine, T2's snapshot must see T1. A central TSO (Percolator) gives this
-trivially but is a SPOF and a WAN round trip. Spanner and CockroachDB are
-two answers to "timestamps without the oracle."
+If T1 commits and *then* (in wall-clock reality) T2 starts on another
+machine, T2's snapshot must include T1 — but ordinary server clocks
+disagree by tens to hundreds of milliseconds, so "then" is exactly what a
+distributed system cannot see, and the central timestamp oracle that
+fixes it (Percolator's TSO) is a SPOF plus a WAN round trip on every
+transaction.
+
+## The concepts, step by step
+
+### Step 1 — external consistency, and why clocks can't give it for free
+
+**Snapshot isolation** (topic 9) hands every transaction a timestamp;
+readers see exactly the writes with smaller timestamps. That's only
+honest if timestamps respect real-world order — a guarantee called
+**external consistency** (if T2 begins after T1 commits in real time, T2
+gets the larger timestamp; also called linearizability for transactions).
+With one central clock (the TSO) it's trivial. With per-node clocks it
+breaks: node B's clock running 200 ms behind stamps T2 *before* the T1 it
+causally follows, and T2's snapshot silently misses committed data. The
+two production escapes both start by *bounding* clock wrongness, then
+differ in who pays:
 
 ```
                  external consistency without a TSO
@@ -26,23 +44,27 @@ two answers to "timestamps without the oracle."
         => reads never doubt                reads that land inside it
 ```
 
-## Spanner in four ideas
+### Step 2 — TrueTime: a clock that confesses its error
 
-1. **TrueTime**: `TT.now()` returns an *interval* `[earliest, latest]`
-   guaranteed to contain true time. Hardware (GPS + atomic clocks per DC)
-   keeps ε small.
-2. **Commit wait**: assign `commit_ts = TT.now().latest`, then *wait*
-   until `TT.now().earliest > commit_ts` before acknowledging. After the
-   wait, every machine's clock has passed commit_ts — so any later txn
-   anywhere gets a higher timestamp. External consistency by sleeping ~2ε.
-3. **2PC over Paxos groups**: each shard is a Paxos group; the 2PC
-   coordinator is *itself* a Paxos group, so the blocking window of our
-   `tpc.rs` (coordinator dies holding everyone's locks) is closed by
-   replication rather than removed.
-4. **Lock-free snapshot reads**: any replica can serve a read at `t` once
-   its Paxos log is caught up past `t` — timestamps replace read locks.
+Spanner's TrueTime API never returns a timestamp — it returns an
+*interval*. `TT.now()` yields `[earliest, latest]` guaranteed to contain
+true time, where the half-width **ε** is the current worst-case clock
+error. Google keeps ε at ~1–7 ms with GPS receivers and atomic clocks in
+every datacenter, plus clock-drift accounting between synchronizations.
+The honesty is the innovation: any machine can say "true time is
+definitely not past X yet" — which converts clock uncertainty from a
+silent correctness bug into a *waitable quantity*. The cost is hardware:
+without it, ε is NTP's hundreds of milliseconds, and Step 3's trick
+becomes unaffordable (that's the CockroachDB branch, Step 5).
 
-Commit-wait is the whole trick, and it fits in eight lines:
+### Step 3 — commit-wait: sleep until your timestamp is in the past
+
+Spanner assigns `commit_ts = TT.now().latest` (an upper bound on true
+time), then simply *waits* until `TT.now().earliest > commit_ts` before
+acknowledging the commit — about 2ε, so ~4–14 ms. After the wait,
+commit_ts is in the *past* on every machine on earth, so any transaction
+that starts afterward — anywhere — reads a clock past it and gets a
+higher timestamp. External consistency by sleeping:
 
 ```rust
 fn commit(txn: &mut Txn, tt: &TrueTime) -> Timestamp {
@@ -56,12 +78,32 @@ fn commit(txn: &mut Txn, tt: &TrueTime) -> Timestamp {
 }
 ```
 
-## HLC: the software substitute
+Note what it costs: pure *latency*, not throughput (commits pipeline
+through the wait) — except under contention, where locks are held through
+the sleep (Q1).
 
-No atomic clocks ⇒ ε is hundreds of ms ⇒ commit-wait is unaffordable. HLC
-instead makes timestamps *causally* consistent (Lamport) while staying
-within max clock skew of physical time — the rules our `hlc.rs` stubs
-implement:
+### Step 4 — the rest of Spanner: 2PC over Paxos, reads without locks
+
+Two more ideas complete the picture. First, every shard is a **Paxos
+group** (a handful of replicas keeping a consensus log, topic 15), and a
+cross-shard transaction runs classic **two-phase commit (2PC** — all
+shards durably prepare, then a coordinator decides**)** — but the
+coordinator is *itself* a Paxos group, so the textbook blocking window
+(coordinator dies holding everyone's locks, our `tpc.rs`) is closed by
+replication rather than removed (contrast Percolator, which removed it).
+Second, **lock-free snapshot reads**: because timestamps are externally
+consistent, any replica whose Paxos log has caught up past `t` can serve
+a consistent read at `t` with no locks at all — timestamps replace read
+locks, and read traffic scales across replicas.
+
+### Step 5 — HLC: causal timestamps within skew of the wall clock
+
+No atomic clocks ⇒ ε is hundreds of ms ⇒ commit-wait is unaffordable.
+CockroachDB's substitute is the **hybrid logical clock (HLC)**: a
+timestamp `(l, c)` where `l` tracks the largest *physical* time seen
+anywhere (your clock or any message's), and `c` is a logical counter
+breaking ties when `l` stalls — a Lamport clock (increment on every
+message to preserve causal order) welded to physical time:
 
 ```
 send:  l' = max(l, pt)            recv:  l' = max(l, m.l, pt)
@@ -70,34 +112,73 @@ key bound: l never exceeds the largest pt seen anywhere
            => |l - true time| <= skew  (a Lamport clock has no such bound)
 ```
 
-The price: HLC alone gives causal order, not external consistency. CRDB
-patches the gap at read time with the **uncertainty interval**
-`[read_ts, read_ts + max_offset]`: a value with a timestamp inside it
-*might* have committed first in real time, so the read restarts above it.
+These are exactly the rules our `hlc.rs` stub implements. The bound is
+the point: a pure Lamport clock drifts arbitrarily far from wall time
+under message storms; HLC's `max(l, pt)` (never `l+1` past physical time)
+pins `l` to the largest physical clock in the cluster, so an HLC
+timestamp is *within max clock skew* of true time (Q2 asks for the
+induction). Causality is guaranteed; real-time order is not — yet.
 
-## CockroachDB code walk
+### Step 6 — the uncertainty interval: restart the read, not sleep the write
+
+HLC alone gives causal order, not external consistency: a write by a
+fast-clocked node can carry a timestamp *above* a later reader's — the
+reader would wrongly skip it. CRDB patches this at read time. Every
+deployment promises a **max-offset** (maximum clock skew between any two
+nodes, default 500 ms — a promise, not a measurement). A read at `ts`
+treats `[ts, ts + max_offset]` as its **uncertainty interval**: a value
+timestamped *inside* it might have committed before the read began in
+real time (the writer's clock may be ahead by up to max-offset), so the
+read **restarts** at just above that value's timestamp; a value *above*
+the interval provably committed after the read began and is safely
+ignored (Q3). Spanner's ~2ε sleep on every read-write commit became a
+restart penalty paid only when a read actually collides with a recent
+write in the window.
+
+### Step 7 — parallel commits: shaving the second consensus round
+
+With timestamps settled, CRDB attacks commit latency. Naively a
+distributed commit is two sequential consensus rounds: replicate the
+intents (staged writes), then replicate the "committed" decision.
+**Parallel commits** merges them: the coordinator writes a transaction
+record in `STAGING` state listing every in-flight write, and issues all
+of them in parallel. The transaction is **implicitly committed** the
+instant all staged writes succeed — a fact any observer can verify by
+checking the STAGING record's list, then promote to an explicit
+COMMITTED record. That is Percolator's any-reader-can-resolve idea,
+repurposed to save a latency round instead of to survive coordinator
+death (Q4 asks what replaces the "primary lock still held" test).
+**Pipelining** is the same instinct one level down: don't wait for one
+write's consensus before issuing the next; prove all in-flight writes at
+commit time.
+
+## Where each step lives in the code
+
+CockroachDB, in reading order:
 
 1. `pkg/util/hlc/hlc.go:38` — `type Clock`: wall + logical, exactly our
-   `Hlc { l, c }`. Read the comment at `:42-47` on how `maxOffset` is a
-   *promise* the deployment makes, not a measurement.
+   `Hlc { l, c }` (Step 5). Read the comment at `:42-47` on how
+   `maxOffset` is a *promise* the deployment makes, not a measurement
+   (Step 6).
 2. `hlc.go:411` — `Now()`: the send rule. `hlc.go:471` — `Update()`: the
    receive rule (every RPC response carries a timestamp; clocks gossip
-   ambiently). `:517` — `UpdateAndCheckMaxOffset`: a remote timestamp too
-   far ahead crashes the node rather than silently breaking the promise.
+   ambiently) — Step 5. `:517` — `UpdateAndCheckMaxOffset`: a remote
+   timestamp too far ahead crashes the node rather than silently breaking
+   the promise (Step 6).
 3. `pkg/kv/kvclient/kvcoord/txn_coord_sender.go:113` — `TxnCoordSender`:
    the client-side coordinator, structured as a stack of interceptors.
 4. `txn_interceptor_committer.go:128` (`txnCommitter`, background at
-   `:55-83`) — **parallel commits**: instead of prewrite-everything *then*
-   commit (two sequential consensus rounds), CRDB writes a txn record in
-   `STAGING` state listing all in-flight writes and issues them in
-   parallel. The txn is *implicitly committed* the instant all writes
-   succeed; any observer can verify this and promote STAGING→COMMITTED
-   (`:195-205`). This is Percolator's any-reader-can-resolve idea applied
-   to shave a latency round.
-5. `txn_interceptor_pipeliner.go:311` (`SendLocked`) — pipelining: don't
-   wait for a write's consensus before issuing the next; track "in-flight"
-   writes and prove them at commit. Parallel commits (`:89-168` comments)
-   is the natural endpoint.
+   `:55-83`) — **parallel commits** (Step 7): the STAGING record listing
+   all in-flight writes, implicit commit, and the STAGING→COMMITTED
+   promotion any observer can perform (`:195-205`).
+5. `txn_interceptor_pipeliner.go:311` (`SendLocked`) — pipelining
+   (Step 7): don't wait for a write's consensus before issuing the next;
+   track "in-flight" writes and prove them at commit. Parallel commits
+   (`:89-168` comments) is the natural endpoint.
+
+For Spanner itself there is no code to read — the paper is the artifact;
+see the reading route in the References (§1-4 carry TrueTime and
+commit-wait; schema/evaluation sections are skimmable).
 
 ## Questions to answer while reading
 

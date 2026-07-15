@@ -5,16 +5,38 @@ tables on some workloads *while staying sorted*. Where rax spends its design
 budget on memory, ART spends it on lookup speed: node layouts that adapt to
 fanout, each picking the cheapest search its density allows. It is also where
 this topic's SwissTable and radix-tree threads literally meet, in Node16's
-SIMD probe.
+SIMD probe. This chapter builds the paper's ideas one at a time — the
+sparse-node waste, the four adaptive layouts, the two compression tricks, the
+key encoding that makes everything radix-able — then routes you through the
+sections.
 
-## The problem it solves
+## The problem in one sentence
 
-Plain radix trees waste memory: a 256-pointer node with 3 children is 2KB of
-nulls. Binary-comparison trees (B-tree, T-tree) waste *time*: every level is a
-key comparison + dependent cache miss. ART's move: **make node size adapt to
-fanout**, so space ≈ compact and depth ≈ radix.
+A radix tree that branches on full bytes needs 256 child pointers per node —
+2 KB — and a real node averages a handful of children, so a naive
+main-memory radix index burns **~98% of its space on null pointers**; shrink
+the nodes naively and every level becomes a search, i.e. a B-tree with extra
+steps.
 
-## The four node types (§III.A — the core of the paper)
+## The concepts, step by step
+
+### Step 1 — the tension: radix depth vs radix memory
+
+Recall from the rax chapter: a radix tree finds keys by *spelling* them —
+one branch decision per key byte, depth = key length, no comparisons, no
+hashing. Branching on a full byte (span 8 bits) keeps depth minimal — ≤8
+levels for an 8-byte integer key, regardless of n — but demands room for 256
+children per node. Binary-comparison trees (B-tree, T-tree) have the
+opposite problem: compact nodes, but every level costs a key comparison plus
+a dependent cache miss, and depth grows as log₂(n). ART's move: keep the
+byte-wise branching, but **make the node's physical size adapt to how many
+children it actually has**.
+
+### Step 2 — the four node types: one logical node, four layouts
+
+An ART node is logically always "up to 256 children indexed by byte"; its
+physical layout is whichever of four types fits the current child count
+(§III.A — the core of the paper):
 
 ```
 Node4        keys[4]   ┌k┬k┬k┬k┐          linear scan, fits in
@@ -25,15 +47,18 @@ Node16       keys[16]  ┌k×16────────┐     SIMD compare — 
 
 Node48       index[256]┌256 × 1-byte ─┐   byte-indexed indirection:
              ptrs[48]  └48 × 8-byte  ─┘   index[c] → slot in ptrs
-
+             
 Node256      ptrs[256] ┌●×256────────┐    direct array — no search at all
 ```
 
-Nodes grow/shrink between types as children are added/removed. Note the
-progression of *search strategy*: linear → SIMD → indexed → direct. Each type
-picks the cheapest search its density allows.
+Nodes grow and shrink between types as children are added or removed — a
+Node4 gaining a fifth child is copied into a Node16, and so on. Space now
+tracks density: a 3-child node costs ~56 bytes, not 2 KB.
 
-One `match` carries the whole idea:
+### Step 3 — search strategy per type: pay only what density demands
+
+Each layout picks the cheapest search its density allows — the progression is
+linear → SIMD → indexed → direct, and one `match` carries the whole idea:
 
 ```rust
 fn find_child(node: &Node, byte: u8) -> Option<&Node> {
@@ -53,28 +78,62 @@ fn find_child(node: &Node, byte: u8) -> Option<&Node> {
 }
 ```
 
-## Reading order
+Node16 is where the topic's two threads meet: compare 16 candidate bytes
+against one search byte in a single SIMD instruction — the SwissTable group
+probe, reused as tree navigation. Cost per level in every case: at most one
+or two cache lines and no branch mispredictions worth naming.
 
-1. **§III.A–B** — node types + lazy expansion / path compression. Map both onto
-   rax: lazy expansion ≈ rax storing the key tail in a compressed node;
-   path compression ≈ `iscompr`. ART's per-node prefix is capped (8 bytes,
-   "pessimistic" overflow re-checks the full key) — rax's is unbounded. Why does
-   ART cap it? (Fixed-size headers ⇒ no variable-size node layouts.)
-2. **§III.C–D** — insert/delete with node-type transitions. Skim.
-3. **§III.E + §IV — binary-comparable keys.** Don't skip this. To make ints,
-   floats, strings radix-able you transform them so bytewise order = logical
-   order (flip sign bit, big-endian, etc.). This idea is *everywhere*: RocksDB
-   comparators, FoundationDB tuples, your capstone's composite (entity,attr)
-   keys in M2.
-4. **§V — evaluation.** Read Fig. 8/9 with topic-0 eyes: where does ART beat the
-   hash table (dense integer keys — short paths, no hash cost) and where does it
-   lose (long random strings — depth ∝ length)?
+### Step 4 — lazy expansion and path compression: kill the boring levels
 
-## Space guarantee worth remembering
+Two tricks remove nodes that exist only to spell out bytes (§III.B) — both
+are rax ideas with fixed-size discipline:
 
-§III.B proves worst-case **52 bytes per key** regardless of key distribution —
-the adaptive nodes + path compression make the bound possible. Compare: your
-skiplist's per-node cost (1.33 pointers avg + key) has no such bound story.
+- **Lazy expansion**: a subtree containing a *single* key isn't expanded at
+  all — the leaf stores the key's remaining bytes. (rax equivalent: storing
+  the key tail as a compressed run.)
+- **Path compression**: a chain of one-child inner nodes is collapsed; each
+  node carries a **prefix** of the skipped bytes. (rax's `iscompr`.) ART caps
+  the stored prefix at 8 bytes — beyond that it goes "pessimistic": skip the
+  bytes optimistically and re-check the full key at the leaf. Why cap it?
+  Fixed-size node headers — ART refuses variable-size node layouts, which is
+  exactly the trade rax took the other way.
+
+Together these make depth ≈ number of *distinguishing* bytes, not key
+length.
+
+### Step 5 — binary-comparable keys: the encoding that makes it universal
+
+A radix tree returns keys in **byte order**, so for sorted iteration and
+range scans to be *correct*, byte order must equal logical order. §III.E +
+§IV show the transformations: store integers big-endian (most significant
+byte first), flip the sign bit for signed ints, massage IEEE floats, null-
+terminate strings, concatenate fields for composite keys. Example: as
+little-endian bytes, 256 (`00 01 00 ...`) sorts *before* 1 (`01 00 ...`) —
+big-endian fixes it. Don't skip this section: the idea is everywhere —
+RocksDB comparators, FoundationDB tuples, and your capstone's composite
+(entity, attr) keys in M2 are all binary-comparable encodings.
+
+### Step 6 — the space guarantee: 52 bytes per key, worst case
+
+Adaptive nodes plus path compression buy a provable bound (§III.B):
+worst-case **52 bytes per key** regardless of key distribution — no
+adversarial key set can blow the structure up. Compare: your skiplist's
+per-node cost (1.33 pointers average + key) is fine on average but has no
+such bound story, and a naive radix tree has no bound at all. Bounds like
+this are what let a database *promise* memory budgets.
+
+## How to read the paper (with the concepts in hand)
+
+1. **§III.A–B** — node types (Steps 2–3) + lazy expansion / path compression
+   (Step 4). Map both tricks onto rax as you read; note where ART's 8-byte
+   prefix cap diverges from rax's unbounded runs and why.
+2. **§III.C–D** — insert/delete with node-type transitions. Skim — it's
+   Step 2's grow/shrink mechanics spelled out.
+3. **§III.E + §IV — binary-comparable keys** (Step 5). Don't skip; work the
+   encodings until you could encode (u64, u16) pairs cold.
+4. **§V — evaluation.** Read Fig. 8/9 with topic-0 eyes: where does ART beat
+   the hash table (dense integer keys — short paths, no hash cost) and where
+   does it lose (long random strings — depth ∝ length)?
 
 ## Questions to answer in notes.md
 
