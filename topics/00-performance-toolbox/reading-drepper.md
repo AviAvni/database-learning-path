@@ -1,38 +1,49 @@
 # CPU caches and TLBs: the constants aged, the structure didn't
 
 Every latency table in topic 0 §2 is a compressed version of one 2007 paper —
-Drepper's "What Every Programmer Should Know About Memory". This chapter is a
-reading lens for its two load-bearing sections: §3 (why misses cost what they
-cost) and §4 (why a TLB miss is pointer chasing in silicon). The DDR2 numbers
-are stale; the cache-organization math, the prefetching rules, and the
-measurement methodology behind `cache_ladder` are forever.
+Drepper's "What Every Programmer Should Know About Memory". Before you open
+its 114 pages, this chapter builds the eight concepts the paper assumes, one
+at a time — then hands you a section-by-section reading lens. The DDR2
+numbers are stale; the cache-organization math, the prefetching rules, and
+the measurement methodology behind `cache_ladder` are forever.
 
-## What's stale vs. what's forever
+## The problem in one sentence
 
-2007 paper: the *constants* aged, the *structure* didn't. Reading lens:
-- Stale: DDR2 timings, front-side bus, Pentium 4/NetBurst details, exact cache sizes.
-- Forever: cache organization math, why misses cost what they cost, prefetching rules,
-  the measurement methodology (his benchmark plots are the blueprint for `cache_ladder`).
-- Apple Silicon deltas to keep in mind while reading: 128-byte cache lines on M-series
-  (not 64!), no inclusive L3 (shared SLC instead), much larger L1 (128–192 KB).
+A modern core executes an instruction in ~0.3 ns, but fetching data from
+main memory (DRAM) takes ~80–100 ns — roughly **300 instructions of waiting**
+for one load. Everything in this paper is machinery to hide that gap, and
+every database trick in later topics (columnar layouts, B-tree fanout,
+vectorized execution) is a way of cooperating with that machinery.
 
-## §3 — CPU caches (the core, ~35 pages)
+## The concepts, step by step
 
-- **3.1–3.2** Skim. Cache hierarchy diagrams + associativity. Know: set-associative =
-  hash table with N-way buckets; conflict misses = bucket collisions.
-- **3.3 (read carefully)** — the famous measurements. Fig 3.4 (sequential vs random
-  access over working-set size) is *exactly* the `cache_ladder` experiment; compare his
-  plateau shapes with yours before explaining your numbers in `notes.md`. Understand
-  *why* random is worse than sequential even in DRAM: TLB misses + no prefetch + row
-  activation.
-- **3.3.2** Critical word first / early restart — why the miss cost isn't a full line
-  transfer.
-- **3.4** Instruction cache — skim (matters again at topic 19, JIT).
-- **3.5 (read carefully)** Cache coherency + **false sharing** (Fig 3.27-ish,
-  multi-thread scaling collapse). This is the section that pays off in topic 9
-  (concurrency) — two atomics on one line = cacheline ping-pong.
-- **Fig 3.11** (cache-line utilization) explains why columnar layouts win: touching 8
-  bytes of a 128-byte line wastes 94% of the transfer. Topic 12 in one figure.
+### Step 1 — the speed gap, and why caches exist
+
+Memory got bigger much faster than it got faster. The fix: put small,
+fast memories *between* the core and DRAM, and keep recently-used data there.
+
+```
+              size        latency      what it is
+ registers    ~1 KB       0 cycles     inside the core
+ L1 cache     ~128 KB     ~4 cycles    per-core, split data/instruction
+ L2 cache     ~4-16 MB    ~14 cycles   per-core or per-cluster
+ L3 / SLC     ~24-48 MB   ~40 cycles   shared by all cores
+ DRAM         GBs         ~300 cycles  the actual memory
+```
+
+A "cache hit" = found at that level. A "miss" = go down one level and wait.
+The whole game is: what fraction of your loads hit L1?
+
+### Step 2 — the cache line: memory moves in fixed-size chunks
+
+Caches don't store individual bytes. They store **lines** — fixed 64-byte
+blocks (128 bytes on Apple M-series). Load 1 byte and the hardware fetches
+the whole line it lives in.
+
+Two consequences that shape databases:
+
+- **Touching 8 bytes costs a full line.** Filter on one 8-byte column of a
+  wide row and you waste 94% of every transfer:
 
 ```
 filter on one 8-byte column, 128 B cache lines (M-series):
@@ -41,9 +52,43 @@ row layout:  line = [ a │ b  c  d  e  f  g ... padding ... ]   use 8 B / 128 B
 col layout:  line = [ a  a  a  a  a  a  a  a  a  a  a  a  a  a  a  a ]   use 128 B → 0% wasted
 ```
 
-The measurement engine behind Fig 3.4 (and behind `cache_ladder`) is a
-pointer chase through a shuffled ring — every load *depends* on the previous
-one, so latency can't hide behind memory-level parallelism:
+  That's topic 12 (columnar storage) in one diagram — Drepper's Fig 3.11.
+
+- **Neighbors are free.** Once the line is in L1, the other 120 bytes cost
+  nothing. Sequential scans exploit this; pointer chasing throws it away.
+
+### Step 3 — where can a line live? Sets, ways, and conflict misses
+
+A cache can't search all its lines on every load — that would be too slow. So
+it's organized like a **hash table with fixed-size buckets**: some middle
+bits of the address pick a **set** (the bucket), and each set holds N lines
+(**N-way associative**, typically 8–16). A new line evicts one of the N
+residents of *its own set only*.
+
+This gives the three miss types a vocabulary:
+
+- **cold** — first touch, unavoidable
+- **capacity** — working set simply bigger than the cache
+- **conflict** — the set is full even though the cache isn't (bucket
+  collision: many hot addresses hash to the same set, e.g. a stride that
+  equals the set-index period)
+
+### Step 4 — the prefetcher: hardware that bets on your next load
+
+The memory system watches your access pattern. Sequential or fixed-stride
+loads are detected and the *next* lines are fetched before you ask —
+hiding DRAM latency entirely. The bet fails on random access: the prefetcher
+has nothing to extrapolate, so every miss pays full price.
+
+This is why "sequential vs random" is the single most important distinction
+in the topic 0 latency table — same data, same cache, ~10× difference.
+
+### Step 5 — dependent loads: the one latency you cannot hide
+
+Out-of-order cores can overlap many *independent* misses (memory-level
+parallelism: 10 misses in flight ≈ 10× cheaper per miss). But if load N+1's
+*address* comes from load N's *result* — a linked list, a tree descent — no
+overlap is possible. That's a **pointer chase**, and it measures raw latency:
 
 ```rust
 // ring[i] holds the index of the next element to visit (a shuffled cycle).
@@ -59,11 +104,16 @@ fn chase(ring: &[usize], steps: usize) -> usize {
 // grow ring.len() from 16 KB to 512 MB and plot ns/step → the plateaus
 ```
 
+This is the measurement engine behind Drepper's famous Fig 3.4 *and* behind
+this topic's `cache_ladder` experiment: plot ns/step against working-set
+size, and the plateaus ARE the cache levels.
 
-## §4 — Virtual memory (~10 pages)
+### Step 6 — virtual memory: every address you use is fake
 
-- **4.1–4.2** Page tables are a 4-level radix tree walked *in memory* — a TLB miss is
-  up to 4 dependent loads. Sound familiar? It's pointer chasing (topic 0 §2).
+Your pointers are **virtual addresses**. Hardware translates each one to a
+physical DRAM location via the **page table** — a map stored, awkwardly,
+*in memory itself*, organized as a 4-level radix tree over 4 KB **pages**
+(16 KB on Apple Silicon). Walking it costs up to 4 dependent loads:
 
 ```
 A TLB miss is pointer chasing in silicon — 4 dependent memory loads:
@@ -74,17 +124,51 @@ CR3 ──► PGD entry ──► PUD entry ──► PMD entry ──► PTE �
         before the ACTUAL access even starts
 ```
 
-- **4.3 (the key bit)** TLB reach: 4 KB pages × ~2K entries ≈ a few MB — far smaller
-  than working sets. Why databases care about **huge pages** (2 MB/1 GB; 16 KB base
-  pages on Apple Silicon already 4x the reach).
-- Skim the virtualization part (4.4+).
+### Step 7 — the TLB: a cache for translations, with tiny reach
 
-## §6 — What programmers can do (skim for the checklist)
+Doing that 4-load walk per access would be absurd, so translations are
+cached in the **TLB** (translation lookaside buffer). The catch is
+**reach**: ~2K entries × 4 KB pages ≈ only a few MB of address space covered.
+Working sets beyond that miss in the TLB *as well as* the caches — the two
+penalties stack. This is why databases care about **huge pages** (2 MB/1 GB
+pages multiply reach by 512×; Apple's 16 KB base pages already 4× it).
 
-Sequential access > random; `-O2 -march=native`; struct layout: hot fields together,
-sorted by size; `pahole`-style padding audits; NUMA awareness (§5/§7 — skip until a
-NUMA box matters). §6.2's cache-oblivious matrix transpose is worth 10 minutes — it's
-the intellectual ancestor of blocked/vectorized execution (topic 11).
+### Step 8 — multiple cores: coherency and false sharing
+
+Each core has its own L1/L2, so hardware keeps copies **coherent**: writing
+a line invalidates every other core's copy of it. The pathology is **false
+sharing** — two threads writing *different* variables that happen to share
+one line. The line ping-pongs between cores at ~100-cycle cost per bounce,
+and multi-thread scaling collapses with no visible reason in the source.
+Padding each thread's data to its own line fixes it. (This pays off in
+topic 9, concurrency.)
+
+## How to read the paper (with the concepts in hand)
+
+The paper is ~114 pages; §3–§4 are the payload.
+
+- **§3.1–3.2** — skim; this is Steps 1–3 with 2007 diagrams.
+- **§3.3 — read carefully.** The famous measurements. Fig 3.4 (sequential vs
+  random over working-set size) is *exactly* `cache_ladder`; compare his
+  plateau shapes with yours before explaining your numbers in `notes.md`.
+  You now know why random loses even in DRAM: no prefetch (Step 4) + TLB
+  misses (Step 7) + DRAM row activation.
+- **§3.3.2** — critical word first / early restart: the CPU resumes as soon
+  as the needed word arrives, before the rest of the line does.
+- **§3.4** — instruction cache: skim (matters again at topic 19, JIT).
+- **§3.5 — read carefully.** Coherency + false sharing (Step 8) with the
+  multi-thread scaling-collapse measurements.
+- **§4.1–4.3** — Steps 6–7. The key bit is §4.3 on TLB reach.
+- **§4.4+, §5, §7** — virtualization and NUMA: skip until a NUMA box matters.
+- **§6** — skim for the checklist: sequential > random; hot struct fields
+  together, sorted by size; padding audits. §6.2's cache-oblivious matrix
+  transpose is worth 10 minutes — the intellectual ancestor of
+  blocked/vectorized execution (topic 11).
+
+What's stale vs. forever: DDR2 timings, front-side bus, and Pentium 4
+details aged; the organization math, miss taxonomy, and measurement method
+didn't. Keep the Apple Silicon deltas in mind while reading: 128-byte lines
+(not 64), no inclusive L3 (shared SLC instead), much larger L1 (128–192 KB).
 
 ## Questions to answer in notes.md when done
 
