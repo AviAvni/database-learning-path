@@ -147,11 +147,11 @@ their tables as a price list:
 
 | Axis | Options | Verdict (their workloads) |
 |---|---|---|
-| concurrency control | MVTO / MVOCC / MV2PL / SI+SSN | no universal winner; MVTO strong; the *version machinery* dominates CC choice |
-| version storage | append-only / delta / time-travel | **delta wins for writes** (N2O append-only for reads); append-only pays full-tuple copies |
-| ordering | newest-to-oldest / oldest-to-newest | N2O wins — readers want the newest; O2N walks garbage first |
-| GC | tuple-level background / cooperative / txn-level / epoch | cooperative + epoch wins; background vacuum-style lags under write bursts |
-| index mgmt | logical pointers / physical | logical (indirection) — physical means every version churns every index |
+| concurrency control | MVTO / MVOCC / MV2PL / SI+SSN | MVTO wins TPC-C by 45–120%; MVOCC loses ~50% past contention θ=0.7 (conflicts found only at validation); no protocol helps write-write conflicts |
+| version storage | append-only / delta / time-travel | **delta wins for small updates of wide tables** (~2× at 100 attributes) but scan latency grows near-linearly with threads; append-only pays full-tuple copies |
+| ordering | newest-to-oldest / oldest-to-newest | N2O wins always — 2.4–3.4× at θ=0.9; O2N walks garbage first, and readers want the newest |
+| GC | tuple-level background / cooperative / txn-level / epoch | cooperative: +45% throughput, 30–60% less memory than background vacuum; txn-level epoch: +20% update-intensive, smallest footprint; GC off = throughput *decays over time* |
+| index mgmt | logical pointers / physical | logical (indirection) — +25% at high contention, +40% with 20 secondary indexes; physical means every version churns every index |
 
 Terms: *append-only* stores each version as a full copy (postgres);
 *delta* stores only the changed columns (like an undo record); N2O/O2N is
@@ -159,6 +159,25 @@ which end of the version chain the pointer enters. The meta-lesson (their
 words, roughly): everyone argues about CC algorithms, but **version
 storage and GC decide throughput**. Storage layer > protocol. (The RUM
 triangle strikes again.)
+
+Three findings hide outside the axis table:
+
+- **The allocator is a confounding variable.** Partitioning version
+  storage into per-thread memory spaces lifted append-only/time-travel
+  throughput **1.6–4×** (Fig 16) — allocator contention masquerades as
+  protocol cost. Even on read-only YCSB, scaling flattens past 24 of 40
+  cores from cache-coherence traffic on the memory manager's counters,
+  not from any protocol.
+- **Non-inline attributes** (BLOBs, long strings): reference-count them
+  instead of copying per version — +40% read-intensive, >100%
+  update-intensive at 50 attributes (Fig 11).
+- **The shootout** (§8, Figs 24–25): Peloton configured as each real
+  system's Table-1 row, on TPC-C. Oracle/MySQL (MV2PL + delta + vacuum +
+  logical ptrs) and NuoDB (MV2PL + append-N2O) come first; **postgres
+  comes last** — append-only O2N is the strangler. But the delta winners
+  post the *worst* scan latency — no corner of the space dominates. And
+  MVTO, the best all-round protocol, ships in none of the nine systems
+  surveyed.
 
 ## How to read the papers (with the concepts in hand)
 
@@ -175,9 +194,14 @@ commit processing sections carry it:
 4. Skim the durability/recovery section — checkpointing versions to disk
    is topic-5 material wearing new clothes.
 
-**Then Wu/Pavlo (~1 h)** — read it as a menu with prices: the taxonomy
-sections map one-to-one onto Step 7's table rows; the §6 graphs are the
-message. For each axis, find the crossover workload where the verdict
+**Then Wu/Pavlo (~1 h)** — read it as a menu with prices: taxonomy
+sections §3–§6 map one-to-one onto Step 7's table rows; the §7 graphs are
+the message. Landmarks: Fig 1 (the version header — compare Step 2's
+diagram), Table 1 (nine real systems placed on the axes), Fig 12 (N2O vs
+O2N), Fig 13–15 (storage schemes vs update rate / attribute counts),
+Fig 16 (the allocator finding), Fig 18–21 (GC on/off decay over time),
+Fig 22–23 (index pointers vs secondary-index count), Fig 24–25 (the
+shootout). For each axis, find the crossover workload where the verdict
 flips — that's what you're buying.
 
 ## Questions for notes.md
@@ -194,7 +218,7 @@ flips — that's what you're buying.
    for a graph MVCC — which updates still have to touch indexes?
 4. Cooperative GC in proportion to reads: what happens to a write-only
    hot key that nobody reads? (Wu/Pavlo call this out — find the fix.)
-5. Predict, then check §6 of Wu/Pavlo: at 40 cores, high contention, what
+5. Predict, then check §7 of Wu/Pavlo: at 40 cores, high contention, what
    ruins MVOCC — validation aborts or timestamp allocation?
 
 ## Done when
@@ -209,5 +233,6 @@ and your M8 design in it — one row each.
   — "Hekaton: SQL Server's Memory-Optimized OLTP Engine" (SIGMOD 2013) —
   ~1.5 h; the version format and commit processing sections carry it
 - Wu, Arulraj, Lin, Xian, Pavlo — "An Empirical Evaluation of In-Memory
-  Multi-Version Concurrency Control" (VLDB 2017) — ~1 h; read it as a
-  menu with prices, the tables and §6 graphs carry the message
+  Multi-Version Concurrency Control" (VLDB 2017) —
+  [PDF](https://db.cs.cmu.edu/papers/2017/p781-wu.pdf) — ~1 h; read it as
+  a menu with prices, Table 1 and the §7 graphs carry the message
