@@ -180,6 +180,14 @@ row against a field.
 
 ## References
 
+**Papers**
+- Diaconu et al. — "Hekaton: SQL Server's Memory-Optimized OLTP Engine"
+  (SIGMOD 2013) and Wu, Arulraj, Lin, Xian, Pavlo — "An Empirical
+  Evaluation of In-Memory Multi-Version Concurrency Control" (VLDB 2017)
+  — both read in topic 8; they taxonomize exactly the choices Step 4
+  shows memgraph making (N2O ordering, delta vs. full-copy version
+  storage, GC strategy) — place memgraph in Wu/Pavlo's 5-axis table
+
 **Code**
 - [memgraph](https://github.com/memgraph/memgraph) (cloned for
   topic 9) — `src/storage/v2/vertex.hpp` is the whole chapter in one
