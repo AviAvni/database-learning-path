@@ -258,6 +258,12 @@
   - [TiDB HTAP: the columnar replica is a Raft learner](topics/32-htap/reading-tidb-htap.md)
   - [DeltaTree: columnar storage built for writes](topics/32-htap/reading-tiflash-deltatree.md)
   - [Topic 32 notes — HTAP architectures](topics/32-htap/notes.md)
+- [Topic 33 — Temporal Graphs](topics/33-temporal-graphs/README.md)
+  - [AeonG: anchor+delta history behind an MVCC front door](topics/33-temporal-graphs/reading-aeong.md)
+  - [Raphtory: the graph IS the event log, views are lenses](topics/33-temporal-graphs/reading-raphtory.md)
+  - [δ-temporal motifs: counting ordered patterns inside a time window](topics/33-temporal-graphs/reading-temporal-motifs.md)
+  - [Time-respecting paths: when "shortest" splits four ways](topics/33-temporal-graphs/reading-temporal-paths.md)
+  - [Topic 33 notes — temporal graphs](topics/33-temporal-graphs/notes.md)
 
 ---
 
