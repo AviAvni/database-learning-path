@@ -64,3 +64,4 @@ Clone the ones in active use to `~/repos/`.
 | [RoaringBitmap/CRoaring](https://github.com/RoaringBitmap/CRoaring) | C | compressed bitmaps: container switching, SIMD set ops (topics 23, 26) |
 | [automerge/automerge](https://github.com/automerge/automerge) | Rust | CRDT engine — state/op-based, columnar op storage (topic 31) |
 | [loro-dev/loro](https://github.com/loro-dev/loro) | Rust | fast modern CRDT engine, great perf blog posts (topic 31) |
+| [graphistry/pygraphistry](https://github.com/graphistry/pygraphistry) | Python | GPU graph ETL/analytics on RAPIDS cuDF/cuGraph, GFQL query layer — production analog to Gunrock's research code (topics 18, 24) |

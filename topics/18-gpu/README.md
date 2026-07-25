@@ -82,6 +82,12 @@ happens.
   (dedupe/validate) operators; the whole research area is load
   balancing ragged adjacency lists across warps (thread_mapped /
   block_mapped / merge_path in operators/advance/).
+- cuGraph is Gunrock's production sibling — same RAPIDS/CUDA
+  substrate, packaged as a batteries-included algorithm library;
+  pygraphistry sits one layer up as a Python client doing GPU ETL
+  (cuDF) + a query surface (GFQL) + visualization over cuGraph/graph
+  DBs — the "whole pipeline" view this topic's kernels are one stage
+  of.
 - CAGRA (cuVS): HNSW rebuilt for SIMT — a flat degree-regular graph
   (no levels), searched by MANY parallel greedy walks with a shared
   visited hashmap in shared memory; one CTA per query
