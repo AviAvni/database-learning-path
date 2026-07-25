@@ -264,6 +264,12 @@
   - [δ-temporal motifs: counting ordered patterns inside a time window](topics/33-temporal-graphs/reading-temporal-motifs.md)
   - [Time-respecting paths: when "shortest" splits four ways](topics/33-temporal-graphs/reading-temporal-paths.md)
   - [Topic 33 notes — temporal graphs](topics/33-temporal-graphs/notes.md)
+- [Topic 34 — Debugging & Production Diagnosis](topics/34-debugging/README.md)
+  - [The Flame Graph: folding a million stacks into one picture](topics/34-debugging/reading-flamegraphs.md)
+  - [Redis doctors: a database that confesses at a price it can afford](topics/34-debugging/reading-redis-doctors.md)
+  - [RocksDB PerfContext: observability as a dial, not a switch](topics/34-debugging/reading-rocksdb-perfcontext.md)
+  - [rr: freeze the nondeterminism, replay the bug forever](topics/34-debugging/reading-rr.md)
+  - [Topic 34 notes — debugging & production diagnosis](topics/34-debugging/notes.md)
 
 ---
 
