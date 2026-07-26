@@ -294,6 +294,12 @@
   - [Zep/Graphiti: agent memory as a bi-temporal knowledge graph](topics/38-graphrag-agent-memory/reading-zep-graphiti.md)
   - [GraphRAG-SDK: the whole GraphRAG stack inside one FalkorDB round trip](topics/38-graphrag-agent-memory/reading-graphrag-sdk.md)
   - [Topic 38 notes — GraphRAG & agent memory](topics/38-graphrag-agent-memory/notes.md)
+- [Topic 39 — Fraud Rings & Identity Graphs](topics/39-fraud-identity-graphs/README.md)
+  - [FRAUDAR: density the fraudster cannot fake down](topics/39-fraud-identity-graphs/reading-fraudar.md)
+  - [Fellegi–Sunter record linkage: identity as a likelihood-ratio test](topics/39-fraud-identity-graphs/reading-fellegi-sunter.md)
+  - [splink: Fellegi–Sunter compiled to SQL](topics/39-fraud-identity-graphs/reading-splink.md)
+  - [FlowScope: laundering is dense flow, not a dense block](topics/39-fraud-identity-graphs/reading-flowscope.md)
+  - [Topic 39 notes — Fraud rings & identity graphs](topics/39-fraud-identity-graphs/notes.md)
 
 ---
 
