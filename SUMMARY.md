@@ -276,6 +276,12 @@
   - [Metastable failures: the outage that outlives its trigger](topics/35-overload/reading-metastable.md)
   - [Redis: overload control at the edges, because one thread can't shed by priority](topics/35-overload/reading-redis-backpressure.md)
   - [Topic 35 notes — overload control & resource governance](topics/35-overload/notes.md)
+- [Topic 36 — Sharding, Partitioning & Rebalancing](topics/36-sharding/README.md)
+  - [CockroachDB rebalancing: ranges that split where the load is](topics/36-sharding/reading-cockroach-rebalancing.md)
+  - [Dynamo: the ring that taught everyone consistent hashing — and then outgrew it](topics/36-sharding/reading-dynamo.md)
+  - [PowerGraph: cut the vertices, not the edges](topics/36-sharding/reading-powergraph.md)
+  - [Redis Cluster: 16384 slots and two ways to say "not here"](topics/36-sharding/reading-redis-cluster.md)
+  - [Topic 36 notes — sharding, partitioning & rebalancing](topics/36-sharding/notes.md)
 
 ---
 
