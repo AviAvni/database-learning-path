@@ -270,6 +270,12 @@
   - [RocksDB PerfContext: observability as a dial, not a switch](topics/34-debugging/reading-rocksdb-perfcontext.md)
   - [rr: freeze the nondeterminism, replay the bug forever](topics/34-debugging/reading-rr.md)
   - [Topic 34 notes — debugging & production diagnosis](topics/34-debugging/notes.md)
+- [Topic 35 — Overload Control & Resource Governance](topics/35-overload/README.md)
+  - [CockroachDB admission control: stealing the queue back from the scheduler](topics/35-overload/reading-cockroach-admission.md)
+  - [DAGOR: overload control when every task is a fan-out](topics/35-overload/reading-dagor.md)
+  - [Metastable failures: the outage that outlives its trigger](topics/35-overload/reading-metastable.md)
+  - [Redis: overload control at the edges, because one thread can't shed by priority](topics/35-overload/reading-redis-backpressure.md)
+  - [Topic 35 notes — overload control & resource governance](topics/35-overload/notes.md)
 
 ---
 
