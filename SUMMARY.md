@@ -288,6 +288,12 @@
   - [The Tail at Scale: Why Fan-Out Turns Rare Slowness into Common Slowness](topics/37-distributed-query/reading-tail-at-scale.md)
   - [Volcano's exchange operator: parallelism as just another iterator](topics/37-distributed-query/reading-volcano-exchange.md)
   - [Topic 37 notes — distributed query execution](topics/37-distributed-query/notes.md)
+- [Topic 38 — GraphRAG & Agent Memory](topics/38-graphrag-agent-memory/README.md)
+  - [HippoRAG: pattern completion over a sparse association index, not iterative retrieval](topics/38-graphrag-agent-memory/reading-hipporag.md)
+  - [Microsoft GraphRAG: pay at index time so global questions get cheap](topics/38-graphrag-agent-memory/reading-graphrag-paper.md)
+  - [Zep/Graphiti: agent memory as a bi-temporal knowledge graph](topics/38-graphrag-agent-memory/reading-zep-graphiti.md)
+  - [GraphRAG-SDK: the whole GraphRAG stack inside one FalkorDB round trip](topics/38-graphrag-agent-memory/reading-graphrag-sdk.md)
+  - [Topic 38 notes — GraphRAG & agent memory](topics/38-graphrag-agent-memory/notes.md)
 
 ---
 
