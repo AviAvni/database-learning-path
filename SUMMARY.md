@@ -282,6 +282,12 @@
   - [PowerGraph: cut the vertices, not the edges](topics/36-sharding/reading-powergraph.md)
   - [Redis Cluster: 16384 slots and two ways to say "not here"](topics/36-sharding/reading-redis-cluster.md)
   - [Topic 36 notes — sharding, partitioning & rebalancing](topics/36-sharding/notes.md)
+- [Topic 37 — Distributed Query Execution](topics/37-distributed-query/README.md)
+  - [CockroachDB DistSQL: Volcano's Exchange Operator, Stretched Over a Cluster](topics/37-distributed-query/reading-cockroach-distsql.md)
+  - [DataFusion's RepartitionExec: Volcano's Exchange Operator, One Process at a Time](topics/37-distributed-query/reading-datafusion-repartition.md)
+  - [The Tail at Scale: Why Fan-Out Turns Rare Slowness into Common Slowness](topics/37-distributed-query/reading-tail-at-scale.md)
+  - [Volcano's exchange operator: parallelism as just another iterator](topics/37-distributed-query/reading-volcano-exchange.md)
+  - [Topic 37 notes — distributed query execution](topics/37-distributed-query/notes.md)
 
 ---
 
