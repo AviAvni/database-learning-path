@@ -25,6 +25,7 @@
 //! basic walk to 42.55% under Pixie's**).
 
 use crate::graphs::Bipartite;
+#[allow(unused_imports)] // you will need this once the walks are implemented
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
@@ -90,7 +91,7 @@ pub fn walk_per_query(
 ///
 /// (STUB.)
 pub fn multi_hit_boost(per_query: &PerQueryVisits) -> HashMap<u32, f64> {
-    let _ = (per_query);
+    let _ = per_query;
     todo!(
         "sum sqrt(visits) across the per-query counters for each candidate, then square the sum. A candidate seen from only one query pin must come out with exactly its original visit count."
     )

@@ -114,7 +114,7 @@ pub fn topology(rng: &mut ChaCha8Rng, cfg: &TopologyConfig) -> Topology {
     let mut names = Vec::new();
     let mut tiers: Vec<Vec<u32>> = Vec::new();
 
-    let mut push_tier = |n: usize, label: &str, names: &mut Vec<String>| -> Vec<u32> {
+    let push_tier = |n: usize, label: &str, names: &mut Vec<String>| -> Vec<u32> {
         (0..n)
             .map(|i| {
                 let id = names.len() as u32;
