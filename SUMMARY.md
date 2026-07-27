@@ -300,6 +300,12 @@
   - [splink: Fellegi–Sunter compiled to SQL](topics/39-fraud-identity-graphs/reading-splink.md)
   - [FlowScope: laundering is dense flow, not a dense block](topics/39-fraud-identity-graphs/reading-flowscope.md)
   - [Topic 39 notes — Fraud rings & identity graphs](topics/39-fraud-identity-graphs/notes.md)
+- [Topic 40 — Security & Attack Graphs](topics/40-security-attack-graphs/README.md)
+  - [BloodHound: the directory is a graph, and the attacker already knows](topics/40-security-attack-graphs/reading-bloodhound.md)
+  - [Monotonicity: how attack graphs went from 2²²⁹ states to 229 nodes](topics/40-security-attack-graphs/reading-attack-graph-monotonicity.md)
+  - [Zanzibar: authorization is a reachability query, at 10M QPS](topics/40-security-attack-graphs/reading-zanzibar.md)
+  - [SLEUTH: 38.5 million events, one 130-event story](topics/40-security-attack-graphs/reading-sleuth.md)
+  - [Topic 40 notes — Security & attack graphs](topics/40-security-attack-graphs/notes.md)
 
 ---
 
