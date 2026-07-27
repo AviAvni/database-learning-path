@@ -312,6 +312,12 @@
   - [BlockSci: when the graph database is the wrong answer](topics/41-onchain-analytics/reading-blocksci.md)
   - [Elliptic: the graph neural network that lost to a random forest](topics/41-onchain-analytics/reading-elliptic-aml.md)
   - [Topic 41 notes — On-chain & crypto analytics](topics/41-onchain-analytics/notes.md)
+- [Topic 42 — Recommendations & Social Graphs](topics/42-recommendations-social/README.md)
+  - [Pixie: three billion items in sixty milliseconds](topics/42-recommendations-social/reading-pixie.md)
+  - [GraphJet: a storage engine shaped like a power law](topics/42-recommendations-social/reading-graphjet.md)
+  - [TAO: two shapes, five queries, and a 96.4% hit rate](topics/42-recommendations-social/reading-tao.md)
+  - [Link prediction: one-line scores, and why degree alone loses](topics/42-recommendations-social/reading-link-prediction.md)
+  - [Topic 42 notes — Recommendations & social graphs](topics/42-recommendations-social/notes.md)
 
 ---
 
