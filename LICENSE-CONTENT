@@ -1,0 +1,38 @@
+# License for the written material
+
+The prose in this repository — the curriculum in `PLAN.md`, every topic study
+guide and reading guide under `topics/`, the notes, and the capstone
+descriptions — is licensed under the
+
+    Creative Commons Attribution 4.0 International License (CC BY 4.0)
+
+You are free to share and adapt this material, including commercially, for any
+purpose, provided you give appropriate credit, link to the license, and
+indicate if changes were made.
+
+Full legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+Human-readable summary: https://creativecommons.org/licenses/by/4.0/
+
+Attribution: "Database Learning Path" by Avi Avni,
+https://github.com/AviAvni/database-learning-path
+
+## What is covered by which license
+
+| files | license |
+|---|---|
+| `topics/*/experiments/**` (Rust crates), `capstone/**` code, `*.sh`, `*.js`, CI config | MIT — see `LICENSE` |
+| `*.md` throughout: `PLAN.md`, `PROGRESS.md`, `SESSION-LOG.md`, `README.md`, `topics/**/*.md`, `resources/*.md` | CC BY 4.0 — this file |
+
+## Third-party material
+
+This repository quotes short passages from academic papers and from
+open-source codebases for the purpose of study and commentary, with
+attribution in each guide's References section. Those quotations remain the
+property of their respective authors and are used here under fair use / fair
+dealing. The papers themselves are not redistributed; each guide links to the
+publisher's or author's copy.
+
+Code excerpts shown in the reading guides are taken from the projects named in
+each guide (FalkorDB, RocksDB, SQLite, PostgreSQL, Redis/Valkey, BloodHound,
+SpiceDB, splink, BlockSci, RustyTaintChain and others) and remain under their
+own licenses.

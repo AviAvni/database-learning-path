@@ -3,6 +3,8 @@
 [Database Learning Path](README.md)
 [The Plan](PLAN.md)
 [Progress](PROGRESS.md)
+[Session log](SESSION-LOG.md)
+[Contributing](CONTRIBUTING.md)
 
 ---
 
