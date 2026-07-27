@@ -318,6 +318,12 @@
   - [TAO: two shapes, five queries, and a 96.4% hit rate](topics/42-recommendations-social/reading-tao.md)
   - [Link prediction: one-line scores, and why degree alone loses](topics/42-recommendations-social/reading-link-prediction.md)
   - [Topic 42 notes — Recommendations & social graphs](topics/42-recommendations-social/notes.md)
+- [Topic 43 — Network & IT-Ops Dependency Graphs](topics/43-ops-dependency-graphs/README.md)
+  - [Dapper: 204 nanoseconds, and one trace in a thousand](topics/43-ops-dependency-graphs/reading-dapper.md)
+  - [Sherlock: probabilistic blame on a graph you had to infer](topics/43-ops-dependency-graphs/reading-sherlock.md)
+  - [Pivot Tracing: a join operator over causality](topics/43-ops-dependency-graphs/reading-pivot-tracing.md)
+  - [Gray failure: when the system and its users disagree](topics/43-ops-dependency-graphs/reading-gray-failure.md)
+  - [Topic 43 notes — Network & IT-ops dependency graphs](topics/43-ops-dependency-graphs/notes.md)
 
 ---
 
