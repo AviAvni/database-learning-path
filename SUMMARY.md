@@ -306,6 +306,12 @@
   - [Zanzibar: authorization is a reachability query, at 10M QPS](topics/40-security-attack-graphs/reading-zanzibar.md)
   - [SLEUTH: 38.5 million events, one 130-event story](topics/40-security-attack-graphs/reading-sleuth.md)
   - [Topic 40 notes — Security & attack graphs](topics/40-security-attack-graphs/notes.md)
+- [Topic 41 — On-Chain & Crypto Analytics](topics/41-onchain-analytics/README.md)
+  - [A Fistful of Bitcoins: two heuristics, and why only one of them is safe](topics/41-onchain-analytics/reading-fistful-of-bitcoins.md)
+  - [Bitcoin Redux: an 1816 court case fixes taint tracking](topics/41-onchain-analytics/reading-bitcoin-redux.md)
+  - [BlockSci: when the graph database is the wrong answer](topics/41-onchain-analytics/reading-blocksci.md)
+  - [Elliptic: the graph neural network that lost to a random forest](topics/41-onchain-analytics/reading-elliptic-aml.md)
+  - [Topic 41 notes — On-chain & crypto analytics](topics/41-onchain-analytics/notes.md)
 
 ---
 
