@@ -16,7 +16,27 @@ fn cpu_us(mut f: impl FnMut()) -> f64 {
 }
 
 fn main() {
-    let ctx = GpuCtx::new();
+    // This is the one lane in the repo that needs hardware the machine may not
+    // have: a headless Linux CI runner has no Metal and often no Vulkan driver.
+    // A benchmark with no device to measure has not failed, it has nothing to
+    // report — so say that and exit cleanly rather than panicking. verify.sh
+    // reads the marker below and records SKIP rather than PASS, because a green
+    // tick for a lane that measured nothing would be worse than a red one.
+    let Some(ctx) = GpuCtx::try_new() else {
+        println!(
+            "[skipped — no GPU adapter on this machine]\n\n\
+             This topic is the only one that needs a device: it measures where the\n\
+             CPU/GPU crossover sits once transfer costs are included, and with no\n\
+             adapter there is nothing to transfer to. On macOS you get Metal; on\n\
+             Linux you need a Vulkan or GL driver (mesa's lavapipe works, and is\n\
+             itself instructive — a software adapter makes the transfer tax look\n\
+             free and the kernel look terrible).\n\n\
+             The recorded reference numbers for an Apple M3 Pro are in notes.md:\n\
+             no crossover up to 2^24 elements, with upload alone costing 7197 µs\n\
+             at 16 M against a 2723 µs CPU total."
+        );
+        return;
+    };
     println!("adapter: {}\n", ctx.adapter_name);
 
     println!("sum: CPU (8-acc autovec) vs GPU (workgroup reduce), end-to-end");

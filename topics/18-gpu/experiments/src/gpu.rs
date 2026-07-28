@@ -33,20 +33,37 @@ pub struct GpuCtx {
 }
 
 impl GpuCtx {
+    /// Panics if there is no usable GPU. Use this in tests and anywhere a
+    /// missing adapter should be treated as a broken environment.
     pub fn new() -> Self {
+        Self::try_new().expect(
+            "no GPU adapter — Metal is expected on macOS, and a Vulkan or GL \
+             driver on Linux. A headless CI runner usually has neither; see \
+             try_new() and the skip path in bin/gpu_bench.rs.",
+        )
+    }
+
+    /// Returns `None` when no GPU adapter is available, so a caller can report
+    /// "nothing to measure here" instead of crashing. This exists because the
+    /// whole topic is about a device that may simply not be present: a headless
+    /// Linux CI runner has no Metal and often no Vulkan driver either, and a
+    /// benchmark that cannot find hardware has not failed — it has nothing to
+    /// say.
+    pub fn try_new() -> Option<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let adapter = pollster::block_on(
             instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 ..Default::default()
             }),
-        )
-        .expect("no GPU adapter (Metal expected on macOS)");
+        )?;
         let adapter_name = adapter.get_info().name;
+        // An adapter that reports itself but then refuses a device is the same
+        // situation as no adapter at all, as far as a caller is concerned.
         let (device, queue) = pollster::block_on(
             adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
         )
-        .expect("device");
+        .ok()?;
 
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sum"),
@@ -62,7 +79,7 @@ impl GpuCtx {
                 cache: None,
             });
 
-        Self { device, queue, sum_pipeline, adapter_name }
+        Some(Self { device, queue, sum_pipeline, adapter_name })
     }
 
     /// PROVIDED: sum via one workgroup-reduction pass (1024 elems →

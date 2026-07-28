@@ -153,7 +153,20 @@ run_lane() {
   if [ $rc -ne 0 ]; then
     FAILED=1
     RESULTS+=("FAIL|$dir/$bin|${dur}s")
-    [ $SUMMARY_ONLY -eq 1 ] || { echo "$out" | tail -20; }
+    # A failure is exactly when the output is wanted, so print it even under
+    # --summary. (This script used to swallow it, which meant CI reported a red
+    # build with no way to tell what broke.)
+    echo
+    red "── $dir/$bin failed (rc=$rc); last 25 lines:"; echo
+    printf '%s\n' "$out" | tail -25
+    return
+  fi
+
+  # A lane that needs hardware this machine does not have reports SKIP, not
+  # PASS: a green tick for a lane that measured nothing is worse than a red one.
+  if printf '%s\n' "$out" | grep -q 'skipped —'; then
+    RESULTS+=("SKIP|$dir/$bin|${dur}s, needs hardware this machine lacks")
+    [ $SUMMARY_ONLY -eq 1 ] || printf '%s\n' "$out"
     return
   fi
 
@@ -193,6 +206,7 @@ for r in "${RESULTS[@]}"; do
   case "$status" in
     PASS) printf '   %-17s %-40s %s\n' "$(green PASS)" "$lane" "$note" ;;
     FAIL) printf '   %-17s %-40s %s\n' "$(red FAIL)" "$lane" "$note" ;;
+    SKIP) printf '   %-8s %-40s %s\n' "SKIP" "$lane" "$note" ;;
     *)    printf '   %-8s %-40s %s\n' "$status" "$lane" "$note" ;;
   esac
 done
@@ -202,6 +216,13 @@ if [ ${#RESULTS[@]} -eq 0 ]; then
 elif [ $FAILED -eq 0 ]; then
   echo "   Every measured lane ran. The numbers above are the ones quoted in the"
   echo "   guides; timings will differ from the recorded ones on other hardware."
+  skipped=$(printf '%s\n' "${RESULTS[@]}" | grep -c '^SKIP' || true)
+  if [ "$skipped" -gt 0 ]; then
+    echo
+    echo "   $skipped lane(s) reported SKIP: they need hardware this machine does not"
+    echo "   have, so they measured nothing rather than failing. topics/18-gpu is the"
+    echo "   only one that can do this, and its reference numbers are in its notes.md."
+  fi
 else
   echo "   Something failed to run — please open an issue with the output above."
 fi
