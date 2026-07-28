@@ -26,7 +26,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install mdbook + mdbook-mermaid
         uses: taiki-e/install-action@v2
@@ -84,10 +84,18 @@ jobs:
           fi
           exit $fail
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'
         with:
           path: book/html
+          # v4 stopped including dotfiles by default. Keeping them means this
+          # version bump publishes byte-identically to before, rather than
+          # silently changing the live site: mdbook emits .nojekyll, and the
+          # source tree's stray .gitignore files get copied in by src = ".".
+          # (Pages deployed via Actions never runs Jekyll, so .nojekyll is
+          # almost certainly inert here — but proving that is a separate change
+          # from bumping a version.)
+          include-hidden-files: true
 
   deploy:
     needs: build
@@ -96,9 +104,14 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      # deploy-pages resolves the artifact by id since v4 and documents
+      # actions:read as required. It happens to work without it today, but
+      # relying on that is relying on undocumented behaviour, and a read-only
+      # scope is the cheapest possible way to stop doing so.
+      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

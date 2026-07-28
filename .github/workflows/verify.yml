@@ -31,7 +31,7 @@ jobs:
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -42,7 +42,7 @@ jobs:
       # recompiles all 45 crates from scratch. The reason the checked-in config
       # points outside the clone is mdbook, which never runs in this workflow.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -60,12 +60,12 @@ jobs:
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
