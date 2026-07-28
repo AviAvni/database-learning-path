@@ -1,5 +1,30 @@
 # Topic 15 notes — replication, consensus & distribution
 
+## Baseline (provided lane, Apple M3 Pro / APFS, measured 2026-07-28)
+
+`cargo run --release --bin repl_lag` — 2000 entries × 128 B, leader
+group-commits every 64, ack semantics `WAIT 1` (one follower must acknowledge).
+The follower's fsync policy is the only variable.
+
+| follower fsync | entries/s | ack p50 | ack p99 |
+|---|---|---|---|
+| every entry | 341 | 2967.0 µs | 3889.5 µs |
+| every 8 | 2 730 | 22.2 µs | 2979.8 µs |
+| every 64 | 12 187 | 14.0 µs | 2133.0 µs |
+| never | 20 174 | 13.8 µs | 64.5 µs |
+
+**59× throughput between the safest and the loosest row, and the durability
+argument is entirely in the p99 column.** Two things to sit with:
+
+- The `every 8` row already recovers most of the *median* (22.2 µs, within 60%
+  of `never`) while its p99 stays at 2980 µs — batching hides the fsync from the
+  common case and leaves it in the tail. If you judge a replication setting by
+  its median you will pick a configuration whose worst case you have not seen.
+- `every entry` at 341 entries/s lines up with topic 5's `F_FULLFSYNC` rung
+  (337 commits/s) almost exactly. The follower is not slow because replication
+  is expensive; it is slow because it is paying the same physical media flush,
+  once per entry. Same wall, different topic.
+
 ## Predictions (fill BEFORE implementing raft.rs)
 
 repl_lag baseline (provided, measured 2026-07-10, macOS

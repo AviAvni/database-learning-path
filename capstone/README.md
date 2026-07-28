@@ -40,8 +40,15 @@ flowchart TD
 
 ## Milestone map
 
-Milestones M0–M31 map 1:1 to curriculum topics 0–31 in `PLAN.md`; each topic's
+Milestones M0–M43 map 1:1 to curriculum topics 0–43 in `PLAN.md`; each topic's
 "Capstone milestone" line defines the scope. Status lives in `PROGRESS.md`.
+
+M0–M31 build the engine itself, in the spine below. M32–M43 attach the later
+topics' capabilities to a working engine rather than extending the spine: HTAP
+routing (M32), temporal queries (M33), diagnosis surfaces (M34), admission
+control (M35), sharding and distributed execution (M36/M37), and the six
+graph use cases (M38–M43), each landing as procedures and index structures
+over the M20 core.
 
 Rough dependency spine: M0 → M2 → M13 (naive adjacency graph) → M10/M11 (query engine)
 → M20 (sparse-matrix core replaces M13). Everything else attaches to that spine —
@@ -64,4 +71,7 @@ flowchart LR
     PF["performance<br/>M17 / M18 / M19 / M22"] -.-> M20
 ```
 
-Workspace is created at M0 (topic 0). Nothing lives here until then.
+Workspace is created at M0 (topic 0). **M0 is the only milestone built so far** —
+`crates/workload` (the seeded workload generator) plus the reference baselines in
+[BASELINES.md](BASELINES.md). Everything above is the plan, not the state; check
+[PROGRESS.md](../PROGRESS.md) for what actually exists before going looking for it.

@@ -4,6 +4,35 @@
 > and LMDB's copy-on-write variant are three answers to the same question:
 > how do you keep a sorted map in fixed-size blocks that survive power loss?
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin btree_baseline`. The page arithmetic comes from the
+format in `src/page.rs`; the timings are redb, warm, so the file is in the page
+cache and this is in-page search plus pointer chasing, not disk:
+
+```
+key shape                leaf cells   fanout   height @ 1e6   height @ 1e9
+8 B key, 8 B value              185      255              3              4
+32 B key, 8 B value              88      102              4              5
+
+keys          ns/lookup    file MB    height (our fmt)
+10000               367        1.6                   2
+100000              423        9.0                   3
+1000000             862       67.9                   3
+4000000            1101      270.0                   3
+```
+
+**The tidy version of this topic is wrong, and the ladder shows exactly how.**
+"Height is the metric" predicts a step function — flat while height holds,
+jumping when it grows. Instead cost climbs 862 → 1101 ns from 1e6 to 4e6 keys
+with height pinned at 3.
+
+Height sets how many pages a lookup *touches*. What a touch *costs* is set by
+whether that page is in CPU cache, and at 270 MB it is not. So there are two
+levers here, not one: fanout (which you control through the page format, and
+which suffix truncation exists to protect) and residency (which you do not
+control at all until topic 6 gives you a buffer pool). Keep both columns.
+
 ## Outcomes
 
 By the end you can:

@@ -180,6 +180,14 @@ partition key *is* the age.
    topology (adjacency) belong in the "labels" (indexed dimensions) or in
    the "values" (payload)?
 
+## Done when
+
+- [ ] You can explain the head block against persistent blocks and what compaction does between them.
+- [ ] You can explain why series churn is the scaling problem rather than sample volume.
+- [ ] You can explain the inverted index over labels and why a selector is a postings intersection (topic 23, again).
+- [ ] You can say what out-of-order samples cost and why the head block's design decides it.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Papers**

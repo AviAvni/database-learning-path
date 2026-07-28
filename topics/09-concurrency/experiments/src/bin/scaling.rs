@@ -119,12 +119,32 @@ fn main() {
         ("crossbeam", Box::new(|| Arc::new(SkipSet::new()))),
         ("mine", Box::new(|| Arc::new(ConcurrentSet::new()))),
     ];
+    // "global", "sharded" and "crossbeam" are provided — they are the three
+    // reference points. "mine" is the exercise (src/concurrent_set.rs) and
+    // reports as a stub until it is implemented, so the other three rows
+    // always land.
     for (name, mk) in contestants {
-        print!("{name:<10}");
-        for &t in &thread_counts {
-            print!(" {:>8.2}", run(mk(), t));
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let row = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            thread_counts
+                .iter()
+                .map(|&t| run(mk(), t))
+                .collect::<Vec<_>>()
+        }));
+        std::panic::set_hook(prev);
+        match row {
+            Ok(vals) => {
+                print!("{name:<10}");
+                for v in vals {
+                    print!(" {v:>8.2}");
+                }
+                println!();
+            }
+            Err(_) => println!(
+                "{name:<10} [stub — implement src/concurrent_set.rs to unlock this row]"
+            ),
         }
-        println!();
     }
     println!("\nRecord the table + line shapes in notes.md.");
 }

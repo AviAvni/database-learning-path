@@ -186,6 +186,14 @@ thesis), then chase each branch to its implementation.
    map it onto topic 13's transient/persistent kuzu split and
    Delta_Matrix. What's the graph-index "flush"?
 
+## Done when
+
+- [ ] You can explain why the build structure and the serve structure differ, and what freezing buys.
+- [ ] You can explain percolation: why a selective filter shatters a proximity graph rather than just shrinking it.
+- [ ] You can describe the per-query decision qdrant makes and name the inputs it uses (cardinality estimate, thresholds).
+- [ ] You can say what ACORN's 2-hop expansion costs in scoring work and what it buys in connectivity.
+- [ ] You wrote answers to all five questions in notes.md, including why `full_scan_threshold` is expressed in bytes.
+
 ## References
 
 **Papers**

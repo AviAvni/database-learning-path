@@ -173,6 +173,14 @@ Read in this order:
 LSM is not a data structure, it's an *IO scheduling policy*: convert random writes
 into sequential ones by deferring and batching — and pay for it at read time.
 
+## Done when
+
+- [ ] You can explain why random in-place writes are the problem the paper is solving, in terms of what the disk is asked to do.
+- [ ] You can define read, write and space amplification precisely enough to compute each one.
+- [ ] You can work the §3 cost model far enough to say where the insert speedup comes from and what pays for it.
+- [ ] You can explain the title claim — an IO scheduling policy, not a data structure — and defend it against the obvious objection that C0/C1 are clearly data structures.
+- [ ] You wrote answers to all questions in notes.md, and can connect the paper's rolling merge to the leveled/tiered choice topic 4 asks you to implement.
+
 ## References
 
 **Papers**

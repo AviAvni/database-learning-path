@@ -202,6 +202,15 @@ Read them in pipeline order (encode → step estimate → ranges → neighbors)
    code (encode + 9-cell range computation + haversine), and what's
    reused verbatim?
 
+## Done when
+
+- [ ] You can explain the reframe: making 2D nearness look like key order.
+- [ ] You can compute a Morton code by hand and say why interleaving works.
+- [ ] You can explain why 26 bits per axis, connected to the zset score's precision.
+- [ ] You can describe the candidate-cells, range-scan, exact-verify search and estimate the over-fetch factor.
+- [ ] You can explain the curve's seams and what Hilbert fixes.
+- [ ] You wrote answers to all questions in notes.md, including the `GEO.ADD`/`GEO.SEARCH` sketch for M26.
+
 ## References
 
 **Papers**

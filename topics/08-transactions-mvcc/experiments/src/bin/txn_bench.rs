@@ -1,7 +1,7 @@
 //! Txn throughput: your MVCC vs one big lock.
 //!
-//! Runs the global-lock baseline immediately; the MVCC half panics until
-//! src/mvcc.rs is implemented. Then: cargo run --release --bin txn_bench
+//! Runs the global-lock baseline immediately; the MVCC half reports as a stub
+//! until src/mvcc.rs is implemented. Then: cargo run --release --bin txn_bench
 //!
 //! Predict in notes.md BEFORE running:
 //! - read-heavy (95/5): who wins, by how much? (MVCC readers never block;
@@ -118,13 +118,35 @@ fn main() {
         THREADS, TXNS_PER_THREAD, OPS_PER_TXN
     );
     println!("{:<36} {:>14} {:>14} {:>9}", "mix", "global-lock/s", "mvcc txn/s", "aborts");
+
+    // lane 1 (PROVIDED) is the global-lock column; the MVCC column is the
+    // exercise, so it reports as a stub and leaves the baseline standing.
+    let mut mvcc_ok = true;
     for &mix in MIXES {
         let lock_tps = run_global_lock(mix);
-        let (mvcc_tps, aborts) = run_mvcc(mix);
-        println!(
-            "{:<36} {:>14.0} {:>14.0} {:>9}",
-            mix.name, lock_tps, mvcc_tps, aborts
-        );
+        let mvcc = if mvcc_ok {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let r = std::panic::catch_unwind(|| run_mvcc(mix));
+            std::panic::set_hook(prev);
+            mvcc_ok = r.is_ok();
+            r.ok()
+        } else {
+            None
+        };
+        match mvcc {
+            Some((mvcc_tps, aborts)) => println!(
+                "{:<36} {:>14.0} {:>14.0} {:>9}",
+                mix.name, lock_tps, mvcc_tps, aborts
+            ),
+            None => println!(
+                "{:<36} {:>14.0} {:>14} {:>9}",
+                mix.name, lock_tps, "—", "—"
+            ),
+        }
+    }
+    if !mvcc_ok {
+        println!("\n[stub — implement src/mvcc.rs to unlock the mvcc column]");
     }
     println!("\nRecord all three rows + the abort counts in notes.md.");
 }

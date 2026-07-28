@@ -18,6 +18,29 @@ fn snapshot(sim: &Sim, label: &str) {
 }
 
 fn main() {
+    // The whole scenario drives YOUR src/raft.rs, so there is no provided
+    // lane here — probe once and explain the state instead of dumping a
+    // panic trace.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let implemented = std::panic::catch_unwind(|| {
+        let mut s = Sim::new(3, 1);
+        s.run(1);
+    })
+    .is_ok();
+    std::panic::set_hook(prev);
+    if !implemented {
+        println!(
+            "[stub — implement src/raft.rs to unlock the partition scenario]\n\n\
+             This binary elects a leader, commits three entries, partitions the\n\
+             leader into a minority with one buddy, has it propose entry 99, then\n\
+             heals the partition. The two invariants it exists to show: 99 must\n\
+             never commit, and after the heal it must be truncated everywhere.\n\
+             `cargo test` is the smaller specification."
+        );
+        return;
+    }
+
     let mut sim = Sim::new(5, 2026);
 
     let leader = sim.run_until_leader(500);

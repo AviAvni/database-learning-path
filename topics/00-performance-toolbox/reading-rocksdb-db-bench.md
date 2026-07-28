@@ -226,6 +226,14 @@ db_bench's value is the workload taxonomy, not the harness. When topic 4 (LSM) a
 `readrandom`, `readwhilewriting`) so numbers are comparable against published RocksDB
 results.
 
+## Done when
+
+- [ ] You can explain why a shared workload vocabulary matters more than any single number db_bench prints.
+- [ ] You can name the four members of the fill family and say which one is the adversarial case for a B-tree (and check that against topic 1's measured 63x space amp).
+- [ ] You can explain why a uniform key distribution flatters almost every engine, and what changes under Zipf.
+- [ ] You can read a db_bench comma list and reconstruct the methodology it encodes.
+- [ ] You can name three things in a reported db_bench figure you would refuse to take at face value, and what you would ask for instead.
+
 ## References
 
 **Papers**

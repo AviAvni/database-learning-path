@@ -2,19 +2,50 @@
 
 Predict FIRST, then measure.
 
-## Measured already (false_sharing, provided binary — this Mac, 8 threads)
+## Baseline (provided lanes, Apple M3 Pro, measured 2026-07-28)
 
-| layout | time | rate |
-|---|---|---|
-| packed | 636 ms | 63 M inc/s |
-| pad64 | 24 ms | 1697 M inc/s |
-| pad128 | 11 ms | 3707 M inc/s |
+### false_sharing — 8 threads, 5 M increments each, own counter per thread
 
-- **59×** packed → pad128. "Independent" counters in one line are not
+| layout | time | rate | vs pad128 |
+|---|---|---|---|
+| packed | 202.7 ms | 197.4 M inc/s | 17.8× slower |
+| pad64 | 20.4 ms | 1957.6 M inc/s | 1.8× slower |
+| pad128 | 11.4 ms | 3502.9 M inc/s | — |
+
+- **17.8× packed → pad128.** "Independent" counters sharing a line are not
   independent — this is the whole reason redis pads `used_memory`.
-- **pad64 is still 2.2× slower than pad128**: Apple M-series coherence
-  granularity is 128 B. `#[repr(align(64))]`, the x86 default, HALF-fixes
-  false sharing on this machine. Check every CachePadded assumption.
+- **pad64 is still 1.8× slower than pad128**: Apple M-series coherence
+  granularity is 128 B. `#[repr(align(64))]`, the x86 default, only HALF-fixes
+  false sharing on this machine. Check every `CachePadded` assumption against
+  the hardware you are actually on.
+- **Run-to-run variance is large on the packed row** and worth knowing about:
+  an earlier run of this same binary recorded 636 ms / 63 M inc/s, i.e. a 59×
+  ratio rather than 17.8×. Contended-line throughput depends on how the threads
+  happen to interleave, so treat the *order of magnitude* as the finding and
+  quote a range, not a point, if you cite it.
+
+### scaling — 90/10 read/write mix, keyspace 100 000, Mops/s total
+
+| impl | 1t | 2t | 4t | 8t | 16t |
+|---|---|---|---|---|---|
+| global mutex | 8.65 | 5.32 | 2.84 | 2.86 | 2.96 |
+| sharded ×16 | 11.63 | 8.40 | 8.66 | 11.22 | 12.65 |
+| crossbeam SkipSet | 4.21 | 9.07 | 14.39 | 14.82 | 19.28 |
+| mine | | | | | stub |
+
+**The global mutex gets 2.9× SLOWER going from 1 thread to 16.** Not "stops
+scaling" — actually negative: 8.65 → 2.96 Mops/s. Adding cores to a
+single-lock structure removes throughput, because the cores spend their time
+transferring the lock's cache line and parking/unparking instead of working.
+That line shape (peak at 1 thread, decay after) is the signature to recognise in
+production: it means the fix is never "more threads".
+
+Two more shapes worth naming: sharding recovers most of it but is *non-monotonic*
+(dips at 2t, recovers by 8t) because 16 shards with few threads is mostly
+uncontended luck; and the lock-free skip set is the only one that is slowest at
+1 thread (4.21, vs the mutex's 8.65) and fastest at 16 — atomics and epoch
+bookkeeping cost real single-threaded performance to buy a slope. That trade is
+the whole topic.
 
 ## Predictions (fill in BEFORE running scaling.rs)
 

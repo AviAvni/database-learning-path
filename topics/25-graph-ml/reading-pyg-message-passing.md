@@ -169,6 +169,15 @@ are the supporting cast.
 5. If M25 exposes ONE kernel to Cypher (`CALL algo.spmm`?), which PyG
    surface is the right shape to copy, and what stays engine-internal?
 
+## Done when
+
+- [ ] You can name the three overridable functions and trace one `GCNConv.forward`.
+- [ ] You can compute the memory footprint of the COO path's m×d temporary against a CSR SpMM on this topic's graph.
+- [ ] You can explain what `message_and_aggregate` fuses and why that is exactly an SpMM.
+- [ ] You can explain why attention forces SDDMM as a second primitive.
+- [ ] You can say why `reduce='max'` is not a semiring on floats-with-gradients.
+- [ ] You wrote answers to all five questions in notes.md, including which single kernel you would expose to Cypher.
+
 ## References
 
 **Code**

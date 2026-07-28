@@ -154,6 +154,15 @@ problem wearing KG clothes (question 3).
    vectors live (graph metadata? a relations table?) and do they update
    transactionally with edge-type DDL?
 
+## Done when
+
+- [ ] You can state the model in one equation and say what it assumes about relations.
+- [ ] You can prove the symmetric-relation collapse.
+- [ ] You can name the failure modes one arrow per relation cannot express.
+- [ ] You can explain why serving is a nearest-neighbour query and what filter the vector index needs.
+- [ ] You can say what degenerates when TransE is applied to an untyped single-relation graph like this topic's SBM.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

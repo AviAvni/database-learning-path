@@ -199,6 +199,15 @@ then sse2.rs → neon.rs → generic.rs in that order (native → shrunk
    fn pointers (SimSIMD): which fits a Cypher engine that ships one
    binary to unknown ARM servers?
 
+## Done when
+
+- [ ] You can explain movemask and give the three different answers to "one bit per lane" across ISAs.
+- [ ] You can explain SWAR: how a u64 acts as an 8-lane vector, and which operation is the dangerous one.
+- [ ] You can narrate the SwissTable probe loop and count the instructions per 8-16 slots.
+- [ ] You can explain why `match_tag` may tolerate false positives while `match_empty` may not.
+- [ ] You can state the portability pattern — and say why hashbrown found a 16-byte NEON group *lost* to the generic path.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Code**

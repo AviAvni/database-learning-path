@@ -185,6 +185,14 @@ Skim NOW, return LATER:
 A database is five cooperating managers, and a storage engine is just one of them —
 this paper is the org chart for everything the capstone will build.
 
+## Done when
+
+- [ ] You can draw the five boxes from memory and say which one owns the bytes on disk.
+- [ ] You can trace one query through all five, naming the four stages inside the query processor.
+- [ ] You can state both arguments §6 gives for bypassing OS caching — and connect them to the mmap tail you will measure in topic 6.
+- [ ] You can say which of the five boxes fjall and redb implement, and which they deliberately do not.
+- [ ] You wrote answers to both questions in notes.md.
+
 ## References
 
 **Papers**

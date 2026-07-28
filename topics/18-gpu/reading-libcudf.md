@@ -187,6 +187,15 @@ questions demand.
    values, not count) using a workgroup prefix scan — Crystal's
    BlockScan.
 
+## Done when
+
+- [ ] You can explain the no-push rule and why it forces two-phase (size, then retrieve) kernels.
+- [ ] You can count the kernel launches in one `inner_join` and say which of them recomputes work.
+- [ ] You can explain cooperative-groups probing: the warp as the vector register.
+- [ ] You can say why group-by aggregates in shared memory until it spills, and what the spill costs.
+- [ ] You can explain why conditional joins fall back to nested loops with a device AST.
+- [ ] You wrote answers to all five questions in notes.md, including what is wrong with one atomic per workgroup in the `filter_count` stub.
+
 ## References
 
 **Code**

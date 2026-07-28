@@ -174,6 +174,14 @@ carry the chapter:
    encoding wins for CSR targets sorted by src, and why? (Think about
    what's monotonic within a run and what isn't.)
 
+## Done when
+
+- [ ] You can explain how a CSR header turns sorted rows into an O(1) expand.
+- [ ] You can describe the persistent-CSR-plus-transient-overlay scheme per node group, and state its worst-case update cost.
+- [ ] You can say why Intersect requires sorted adjacency lists, and what breaks without that.
+- [ ] You can estimate intermediate sizes for a triangle count under a binary plan against a WCOJ plan on this topic's 16 M edge graph.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

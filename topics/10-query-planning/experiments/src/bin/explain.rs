@@ -91,6 +91,26 @@ fn main() {
         table(5_000_000, &[("order_id", 1_000_000), ("sku", 20_000)]),
     );
 
+    // Every plan below comes out of YOUR src/planner.rs, so there is no
+    // provided lane here — probe once and explain the state instead of
+    // dumping a panic trace.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let implemented =
+        std::panic::catch_unwind(|| parse_and_plan("SELECT users.id FROM users").is_ok()).is_ok();
+    std::panic::set_hook(prev);
+    if !implemented {
+        println!(
+            "[stub — implement src/planner.rs to unlock EXPLAIN]\n\n\
+             This binary prints naive / pushed-down / reordered plans with cardinality\n\
+             estimates for three queries, so you can see a predicate move and a join\n\
+             order flip. `cargo test` is the specification; the third query is the\n\
+             interesting one — predict in notes.md whether the selective users filter\n\
+             makes {{users, orders}} cheaper than {{orders, items}} before you run it."
+        );
+        return;
+    }
+
     explain(
         "SELECT users.city FROM users, orders \
          WHERE users.city = 7 AND users.id = orders.user_id",

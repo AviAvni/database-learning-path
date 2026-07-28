@@ -5,6 +5,29 @@ the k nearest vectors WITHOUT scanning everything, trading exactness
 for speed. The whole field is one curve — **recall@k vs QPS** — and
 every algorithm is a point-generator on it.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin ann_bench` — 100 000 × 128-dim f32 (51 MB) in 200
+clusters, 500 queries, k=10:
+
+```
+brute force: 4.28 s total, 117 QPS — recall 1.000 by definition
+```
+
+**117 queries per second, with perfect recall for free.** That single point is
+what the entire approximate-nearest-neighbour field exists to beat, and stating
+it first changes how you read every ANN result afterwards: a QPS figure quoted
+without its recall is not a measurement, because the trivial way to get more QPS
+is to return worse answers.
+
+It is worth being precise about *why* it is slow, because it decides which lane
+should win. 51 MB of vectors is small — this is a compute problem, not a memory
+one: 500 queries × 100 000 candidates × 128 dimensions is 6.4 G multiply-adds.
+So brute force here is really a SIMD exercise (topic 17), which means the two
+exercise lanes attack different walls. HNSW cuts the *number* of candidates;
+scalar quantization shrinks each candidate 4× and rescopes the same scan. Predict
+where the two land relative to each other, and to this row, before writing either.
+
 ## 1. The problem shape
 
 Exact k-NN over n vectors of dimension d = n·d multiply-adds per

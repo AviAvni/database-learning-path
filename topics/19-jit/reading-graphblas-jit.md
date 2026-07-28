@@ -188,6 +188,15 @@ counterpart under `Source/generic/` to see Steps 2–3 as a diff.
    what does getting this wrong cost (constant folded in → cache
    miss per literal value → compile storm)?
 
+## Done when
+
+- [ ] You can explain why semirings make the kernel space combinatorial, and why that makes a JIT structurally necessary rather than merely fast.
+- [ ] You can state the JIT grain: the specialization, not the query — and say why that grain makes caching effective.
+- [ ] You can describe the four-level load ladder and the lifetime of each cache.
+- [ ] You can state the cache key rule — shape in, values out — and why including values would defeat it.
+- [ ] You can explain what PreJIT does and why harvesting from the cache feeds back into the build.
+- [ ] You wrote answers to all five questions in notes.md, including your Cypher expression cache key design.
+
 ## References
 
 **Code**

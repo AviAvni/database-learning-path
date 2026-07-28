@@ -208,6 +208,14 @@ pipelining is a masterclass in doing the minimum work per event-loop tick, but t
 closed loop means its latency numbers systematically flatter the server under stress.
 For the capstone (M7+): keep the obuf trick, add an intended-send schedule.
 
+## Done when
+
+- [ ] You can explain the difference between service time and latency, and say which one `redis-benchmark` reports.
+- [ ] You can define coordinated omission and explain the mechanism by which a closed loop under-samples exactly the worst moments.
+- [ ] You can say why adding HdrHistogram to a closed-loop generator does not fix it.
+- [ ] You can predict what pipelining does to the reported figure, then check your prediction against topic 7's `loopback_bench` — 44k ops/s at P=1 against 12.3M at P=256.
+- [ ] You can name what you would have to change in the tool to make its latency numbers trustworthy (a target rate, and the arithmetic that goes with it).
+
 ## References
 
 **Code**

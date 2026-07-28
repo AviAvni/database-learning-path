@@ -1,0 +1,92 @@
+name: verify
+
+# The repo's central claim is that every performance figure in the guides comes
+# from code in the repo that you can run. This workflow is what keeps that
+# claim honest: it runs the same ./verify.sh a reader would, so a lane that
+# stops building or stops running fails the build instead of quietly rotting.
+#
+# Note on `cargo test`: it is NOT the gate here. Each topic ships two exercise
+# lanes as `todo!()` stubs whose tests are the specification, so a red test
+# suite is the intended state of a fresh clone. The bin lanes in verify.sh are
+# the part that must always run.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # a cold full run is ~20 min of compiling plus ~15 min of benchmarks
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Each job sets CARGO_TARGET_DIR to an absolute in-workspace path, which
+      # takes precedence over .cargo/config.toml's ../.dlp-target. Necessary
+      # because actions/cache rejects any path containing ".." — it logs
+      # "Invalid pattern" and then silently caches nothing, so every run
+      # recompiles all 45 crates from scratch. The reason the checked-in config
+      # points outside the clone is mdbook, which never runs in this workflow.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/.ci-target
+          key: verify-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: verify-${{ runner.os }}-
+
+      - name: Every measured lane must build and run
+        run: ./verify.sh --summary
+
+  warnings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/.ci-target
+          key: warn-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: warn-${{ runner.os }}-
+
+      # rustc warnings only — deliberately NOT clippy. A reader's first
+      # experience of a topic crate should not be a wall of noise on top of the
+      # intentional todo!()s, and stub bodies that legitimately ignore their
+      # arguments carry a local #[allow] with a reason. Style lints across 44
+      # independent teaching crates are a different argument, not this gate.
+      - name: No rustc warnings in the experiment crates
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          fail=0
+          for d in topics/*/experiments capstone; do
+            echo "::group::$d"
+            (cd "$d" && cargo build --all-targets --quiet) || fail=1
+            echo "::endgroup::"
+          done
+          exit $fail

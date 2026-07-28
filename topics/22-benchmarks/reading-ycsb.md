@@ -190,6 +190,15 @@ SoCC 2010, ~12 pages; the design half aged well, the eval half didn't:
    zipfian to a growing keyspace subtly wrong (hint: zetan
    staleness, go-ycsb :135)?
 
+## Done when
+
+- [ ] You can state the factoring: workload equals op mix times key distribution, and name all six mixes.
+- [ ] You can derive `P(rank 0) = 1/ζ(n,θ)` and compute the hot-key probability at n=1M, θ=0.99.
+- [ ] You can explain the O(1) inverse-CDF sampling trick and why the two fast paths in `next()` exist.
+- [ ] You can explain what scrambling changes and what it deliberately preserves.
+- [ ] You can predict the uniform-to-Zipf effect per workload against this topic's measured uniform baseline (3.16 Mops/s on B, 0.86 on E) before implementing `zipf.rs`.
+- [ ] You wrote answers to all five questions in notes.md, including the coordinated-omission fix for the driver.
+
 ## References
 
 **Papers**

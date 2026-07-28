@@ -185,6 +185,15 @@ the ranges the old estimator needed three different formulas for.
    you'd maintain a per-label HLL inside a graph engine's write path
    (topic 26 M-log) without making every node-insert O(m).
 
+## Done when
+
+- [ ] You can explain why rare hash patterns imply many distinct elements.
+- [ ] You can say why index bits and pattern bits must not overlap.
+- [ ] You can explain what the registers average away and why the harmonic mean.
+- [ ] You can explain the sparse encoding and why a PFCOUNT key starts at 30 bytes.
+- [ ] You can state the killer feature — merge is max, therefore algebraic — and say what that buys a distributed count.
+- [ ] You wrote answers to all five questions in notes.md, including the ZERO/XZERO/VAL comparison against roaring's containers.
+
 ## References
 
 **Papers**

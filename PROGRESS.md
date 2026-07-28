@@ -1,53 +1,65 @@
 # Progress
 
-Status: `todo` → `in progress` → `done`. Add a one-line takeaway when done.
+Two different things get tracked here, and conflating them is misleading:
 
-| # | Topic | Status | Takeaway |
-|---|-------|--------|----------|
-| 0 | The Performance Toolbox | done | Benchmarks lie by default: my own cache_ladder measured its own cache footprint until the walker carried state; flamegraph showed 21% of HashMap lookup time is SipHash; DRAM ladder verified at ~1/5/100 ns. |
-| 1 | Storage Engine Landscape: B-Tree vs LSM | in progress | |
-| 2 | In-Memory Structures: Hash Tables, Skip Lists, Tries | todo | |
-| 3 | B-Tree Internals & Paged Storage | todo | |
-| 4 | LSM-Tree Deep Dive | todo | |
-| 5 | Durability: WAL, fsync, Crash Recovery | todo | |
-| 6 | Buffer Pool & Memory Management | todo | |
-| 7 | Networking, Protocols & Event Loops | todo | |
-| 8 | Transactions & MVCC | todo | |
-| 9 | Concurrency: Latches, Lock-Free & Epochs | todo | |
-| 10 | Query Engines I: Parsing, Planning, Optimization | todo | |
-| 11 | Query Engines II: Execution Models | todo | |
-| 12 | Columnar Storage & Analytics | todo | |
-| 13 | Graph Engines | todo | |
-| 14 | Vector Search | todo | |
-| 15 | Replication, Consensus & Distribution | todo | |
-| 16 | Testing & Correctness Engineering | todo | |
-| 17 | SIMD & Hardware-Conscious Data Processing | todo | |
-| 18 | GPU Acceleration for Databases | todo | |
-| 19 | JIT & Query Compilation | todo | |
-| 20 | Sparse Linear Algebra & GraphBLAS Internals | todo | |
-| 21 | Formal Methods & Verification | todo | |
-| 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | todo | |
-| 23 | Full-Text Search & Inverted Indexes | todo | |
-| 24 | Advanced Graph Algorithms & Analytics | todo | |
-| 25 | Graph Neural Networks & Graph ML | todo | |
-| 26 | Indexing & Probabilistic Data Structures | todo | |
-| 27 | Streaming & Incremental View Maintenance | todo | |
-| 28 | Cloud-Native & Disaggregated Storage | todo | |
-| 29 | Distributed Transactions | todo | |
-| 30 | Time-Series Engines | todo | |
-| 31 | CRDTs & Multi-Master Replication | todo | |
-| 32 | HTAP Architectures | todo | |
-| 33 | Temporal Graphs | todo | |
-| 34 | Debugging & Production Diagnosis | todo | |
-| 35 | Overload Control & Resource Governance | todo | |
-| 36 | Sharding, Partitioning & Rebalancing | todo | |
-| 37 | Distributed Query Execution | todo | |
-| 38 | GraphRAG & Agent Memory (graph use case 1/6) | todo | |
-| 39 | Fraud Rings & Identity Graphs (graph use case 2/6) | todo | |
-| 40 | Security & Attack Graphs (graph use case 3/6) | todo | |
-| 41 | On-Chain & Crypto Analytics (graph use case 4/6) | todo | |
-| 42 | Recommendations & Social Graphs (graph use case 5/6) | todo | |
-| 43 | Network & IT-Ops Dependency Graphs (graph use case 6/6) | todo | |
+- **Package** — does `topics/NN-name/` exist and hold up? That means a study
+  guide, four to seven reading guides, `notes.md`, and an experiments crate
+  whose provided lane runs and whose numbers are recorded. All 44 are built;
+  `./verify.sh` re-derives every one of their measured lanes.
+- **Studied** — have *I* actually worked through the material and the two
+  exercise lanes? That is a much smaller number, and it is the honest one.
+  `todo` here does not mean the topic is missing; it means the exercises are
+  still exercises.
+
+Status values: `todo` → `in progress` → `done`. A takeaway lands when Studied
+is done.
+
+| # | Topic | Package | Studied | Takeaway |
+|---|-------|---------|---------|----------|
+| 0 | The Performance Toolbox | done | done | Benchmarks lie by default: my own cache_ladder measured its own cache footprint until the walker carried state; flamegraph showed 21% of HashMap lookup time is SipHash; DRAM ladder verified at ~1/5/100 ns. |
+| 1 | Storage Engine Landscape: B-Tree vs LSM | done | in progress |  |
+| 2 | In-Memory Structures: Hash Tables, Skip Lists, Tries | done | todo |  |
+| 3 | B-Tree Internals & Paged Storage | done | todo |  |
+| 4 | LSM-Tree Deep Dive | done | todo |  |
+| 5 | Durability: WAL, fsync, Crash Recovery | done | todo |  |
+| 6 | Buffer Pool & Memory Management | done | todo |  |
+| 7 | Networking, Protocols & Event Loops | done | todo |  |
+| 8 | Transactions & MVCC | done | todo |  |
+| 9 | Concurrency: Latches, Lock-Free & Epochs | done | todo |  |
+| 10 | Query Engines I: Parsing, Planning, Optimization | done | todo |  |
+| 11 | Query Engines II: Execution Models | done | todo |  |
+| 12 | Columnar Storage & Analytics | done | todo |  |
+| 13 | Graph Engines | done | todo |  |
+| 14 | Vector Search | done | todo |  |
+| 15 | Replication, Consensus & Distribution | done | todo |  |
+| 16 | Testing & Correctness Engineering | done | todo |  |
+| 17 | SIMD & Hardware-Conscious Data Processing | done | todo |  |
+| 18 | GPU Acceleration for Databases | done | todo |  |
+| 19 | JIT & Query Compilation | done | todo |  |
+| 20 | Sparse Linear Algebra & GraphBLAS Internals | done | todo |  |
+| 21 | Formal Methods & Verification | done | todo |  |
+| 22 | Standard Benchmarks: TPC-H, TPC-C, YCSB, LDBC | done | todo |  |
+| 23 | Full-Text Search & Inverted Indexes | done | todo |  |
+| 24 | Advanced Graph Algorithms & Analytics | done | todo |  |
+| 25 | Graph Neural Networks & Graph ML | done | todo |  |
+| 26 | Indexing & Probabilistic Data Structures | done | todo |  |
+| 27 | Streaming & Incremental View Maintenance | done | todo |  |
+| 28 | Cloud-Native & Disaggregated Storage | done | todo |  |
+| 29 | Distributed Transactions | done | todo |  |
+| 30 | Time-Series Engines | done | todo |  |
+| 31 | CRDTs & Multi-Master Replication | done | todo |  |
+| 32 | HTAP Architectures | done | todo |  |
+| 33 | Temporal Graphs | done | todo |  |
+| 34 | Debugging & Production Diagnosis | done | todo |  |
+| 35 | Overload Control & Resource Governance | done | todo |  |
+| 36 | Sharding, Partitioning & Rebalancing | done | todo |  |
+| 37 | Distributed Query Execution | done | todo |  |
+| 38 | GraphRAG & Agent Memory (graph use case 1/6) | done | todo |  |
+| 39 | Fraud Rings & Identity Graphs (graph use case 2/6) | done | todo |  |
+| 40 | Security & Attack Graphs (graph use case 3/6) | done | todo |  |
+| 41 | On-Chain & Crypto Analytics (graph use case 4/6) | done | todo |  |
+| 42 | Recommendations & Social Graphs (graph use case 5/6) | done | todo |  |
+| 43 | Network & IT-Ops Dependency Graphs (graph use case 6/6) | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 

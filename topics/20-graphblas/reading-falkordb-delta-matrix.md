@@ -205,6 +205,15 @@ via the LDBC update workloads.
    update+read mixes prefer? Predict, then bench both under
    gb_bench's update workload.
 
+## Done when
+
+- [ ] You can state the trio and write the read identity `(M ∪ DP) ∖ DM` from memory.
+- [ ] You can answer the load-bearing question: why FalkorDB needs its own deltas rather than SuiteSparse's pending tuples.
+- [ ] You can explain `delta_mxm` as algebra instead of a flush, and identify where it over-masks.
+- [ ] You can describe the two-sided compaction that `wait` performs and what triggers it.
+- [ ] You can cost the transposed twin's extra write work per mutation.
+- [ ] You wrote answers to all five questions in notes.md, including your Rust representation choice for DP/DM.
+
 ## References
 
 **Code**

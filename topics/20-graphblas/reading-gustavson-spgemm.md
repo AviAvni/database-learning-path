@@ -185,6 +185,15 @@ median.
    per wedge, and reconcile with LAGraph shipping BOTH Sandia_LL
    (saxpy) and Sandia_LUT (dot) as the fastest per-graph choices.
 
+## Done when
+
+- [ ] You can derive Gustavson's total work and say why it equals the flop count rather than the output size.
+- [ ] You can explain what the SPA does and why it makes scattering O(1).
+- [ ] You can state the design space in one sentence: what data structure the SPA is — and connect it to this topic's measured SpGEMM (356.9 ms hash at scale 14, 17.1 M flops).
+- [ ] You can explain the unknown-output-size problem and when symbolic-then-numeric beats guessing.
+- [ ] You can show, on an example, why masked Gustavson cannot skip work but masked dot can.
+- [ ] You wrote answers to all five questions in notes.md, including the dense-SPA memory cost per thread.
+
 ## References
 
 **Papers**

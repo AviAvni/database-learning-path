@@ -8,6 +8,32 @@ Budget: ~12 h. Order: §1 pipeline → §2 rewrites → §3 join ordering →
 §4 cardinality (where it all goes wrong) → §5 architectures → code →
 experiments → M10.
 
+## The problem, and why this topic has no measured opener
+
+This is the second of two topics whose only binary measures **your** code:
+every plan `explain` prints comes out of your `src/planner.rs`, so a fresh clone
+prints one stub notice and exits, and there is no lane in `./verify.sh`.
+
+That is not a gap to apologise for — it is what a planner is. The failure mode
+of a query optimizer is not being slow, it is being *confidently wrong about row
+counts*, and you cannot see that in a timing number. So the oracle here is
+external and deliberately not Rust:
+
+```
+   load the same 3-table schema into DuckDB
+   EXPLAIN the same 3 queries
+   diff the join orders against yours
+        every disagreement = one cardinality estimate to go find
+```
+
+The one number worth committing to before you start is on the third query
+(`items ⋈ orders ⋈ users`, two selective filters on `users`): once those filters
+are pushed down, does `{users, orders}` become a cheaper first join than
+`{orders, items}`? Write the estimate down, then let `estimate()` grade you.
+Getting the *direction* right matters more than getting the number right, and a
+planner that gets the direction wrong will pick a plan that is orders of
+magnitude slow — which is how this topic's mistakes actually show up.
+
 ## 1. The pipeline
 
 ```mermaid

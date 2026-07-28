@@ -194,6 +194,15 @@ next to sum.wgsl, and big_compute_buffers only when Step 7 bites.
    regime A) or `upload(&[f32]) -> GpuVec` + `sum(&GpuVec)` (regime
    B)? Justify from this guide's measurements.
 
+## Done when
+
+- [ ] You can list the object ladder a dispatch requires and say which parts can be hoisted out of a loop.
+- [ ] You can state the fixed per-dispatch tax and check it against this topic's measurement: ~1.4 ms of kernel time at every size from 2^14 to 2^20.
+- [ ] You can explain why the absence of float atomics forces the tree-reduction shape.
+- [ ] You can say why there is no device-wide barrier and what multi-pass therefore means.
+- [ ] You can explain why upload dominates readback in the measured table (7197 µs against 25.6 µs at 16 M elements).
+- [ ] You wrote answers to all five questions in notes.md, including the regime-B rerun with upload hoisted out.
+
 ## References
 
 **Code**

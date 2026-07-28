@@ -111,6 +111,32 @@ async fn handle(stream: TcpStream, store: Store) -> std::io::Result<()> {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // Every byte in and out of this server goes through YOUR src/resp.rs, so
+    // there is nothing to serve until it is implemented. Probe once rather
+    // than binding a port and panicking on the first client.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let implemented = std::panic::catch_unwind(|| {
+        let mut buf = BytesMut::from(&b"*1\r\n$4\r\nPING\r\n"[..]);
+        let _ = parse(&mut buf);
+    })
+    .is_ok();
+    std::panic::set_hook(prev);
+    if !implemented {
+        println!(
+            "[stub — implement src/resp.rs to unlock the server]\n\n\
+             `cargo test` is the specification: RESP framing, partial reads that must\n\
+             not consume the buffer, and the inline-command case. Once it passes:\n\n\
+             \x20 cargo run --release --bin server\n\
+             \x20 redis-benchmark -p 7379 -t get,set -n 1000000 -P 1\n\
+             \x20 redis-benchmark -p 7379 -t get,set -n 1000000 -P 64\n\n\
+             For the measurement this topic actually turns on — what a request costs\n\
+             when the protocol and the store are removed — run the provided lane:\n\n\
+             \x20 cargo run --release --bin loopback_bench"
+        );
+        return Ok(());
+    }
+
     let store: Store = Arc::new((0..SHARDS).map(|_| RwLock::new(HashMap::new())).collect());
     let listener = TcpListener::bind("127.0.0.1:7379").await?;
     println!("listening on 127.0.0.1:7379 — try: redis-cli -p 7379 ping");

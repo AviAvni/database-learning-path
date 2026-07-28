@@ -181,6 +181,15 @@ questions about what nesting trades against lattice times.
    what M27 must add (the arranged join state — nothing! wedges need only
    A itself: the integrals ARE the adjacency matrices).
 
+## Done when
+
+- [ ] You can explain why Z-sets make deletion a first-class value and why sets cannot.
+- [ ] You can name the four operators and write incrementalization in one line.
+- [ ] You can prove the bilinear rule by expanding `Q^Δ = D∘Q∘I`.
+- [ ] You can explain the chain rule and why it covers a whole dialect rather than one query.
+- [ ] You can say how recursion is handled by nested circuits.
+- [ ] You wrote answers to all questions in notes.md, including the wedge count — which this topic measures at 1111.0 ms per batch under full recompute.
+
 ## References
 
 **Papers**

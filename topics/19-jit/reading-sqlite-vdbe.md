@@ -178,6 +178,14 @@ it uses; Step 5's coroutine pair is the detour worth taking whole.
    match). Predict where it lands between interp and JIT in
    rows/s, then (stretch) build it and check.
 
+## Done when
+
+- [ ] You can explain what flattening an AST into bytecode buys before any compilation is involved — and check it against this topic's measured interpreter numbers, which fall 94x from 7 nodes to 511.
+- [ ] You can say why a register machine beats a stack machine here, and count the ops for `a*b + c*d` under each.
+- [ ] You can explain what dispatch cost bytecode removes and what it leaves behind.
+- [ ] You can trace `OP_Yield` and explain how flattening gives coroutines for free.
+- [ ] You wrote answers to all five questions in notes.md, including a sketch of a bytecode lane for this topic's `Expr` enum.
+
 ## References
 
 **Code**

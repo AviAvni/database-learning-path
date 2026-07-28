@@ -21,6 +21,38 @@ Columns compress because a column is SELF-SIMILAR: same type, similar
 values, sorted or clustered. Rows interleave types and kill every trick
 below.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin scan_bench` — 100 M u64 (800 MB) per shape,
+single-threaded fold, best of 3:
+
+```
+shape                       raw sum    raw-equiv GB/s
+sorted low-cardinality      0.033 s              24.4
+shuffled low-cardinality    0.016 s              50.0
+small-range random          0.014 s              57.0
+```
+
+**That is the floor every encoding in this topic has to beat: 24–57 GB/s on a
+machine whose peak memory bandwidth is 150 GB/s.** One core gets roughly a third
+of the bus, with LLVM already vectorizing the fold across several accumulators
+to manage it. Beating this number is not a matter of shaving instructions; it
+requires moving *fewer bytes*, which is the entire thesis — compression IS
+performance.
+
+Two honesty notes that matter more than the figures. First, the spread across
+the three shapes is noise, not signal: all three do byte-identical work, and
+repeat runs put this lane anywhere from 24 to 76 GB/s depending on machine
+state. A bandwidth-bound single number wants an error bar; take the high end as
+the target.
+
+Second, **this lane used to print 19 047 619 GB/s** — roughly 20 000× the
+machine's bandwidth. The timing loop let LLVM hoist the pure fold out of its own
+repetition loop, so two of three reps timed nothing and best-of-3 reported
+0.000 s. A `black_box` on the input fixed it. Topic 0's first failure mode,
+found in this repo's own code, which is the best argument going for why the
+numbers here are printed rather than asserted.
+
 ## 1. The lightweight encoding zoo
 
 Not gzip. These are encodings the SCAN can execute over directly:

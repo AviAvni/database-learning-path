@@ -164,6 +164,15 @@ Read PQS first; TLP is partly a response to PQS's costs.
    for Cypher (WHERE / count(*) / collect?) and write the ⊎ for
    each.
 
+## Done when
+
+- [ ] You can state the test-oracle problem and explain why differential testing against another DBMS is not a solution.
+- [ ] You can explain rectification: how any random predicate is made TRUE on the pivot row, and why three-valued logic makes that delicate.
+- [ ] You can construct a bug PQS provably misses, using containment rather than equality.
+- [ ] You can write the TLP identity and say why `col = col` is a useless partitioning predicate.
+- [ ] You can state the trade the two papers make — completeness for portability — and which one you would reach for first.
+- [ ] You wrote answers to all five questions in notes.md, including your first three TLP recombinations for M16.
+
 ## References
 
 **Papers**

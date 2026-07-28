@@ -219,6 +219,16 @@ TiKV, in reading order:
    `get` suffice for consistent multi-shard *reads*, and what does the TSO
    become in that design?
 
+## Done when
+
+- [ ] You can say where classic 2PC blocks and what Percolator replaces the coordinator with.
+- [ ] You can name the three column families and what each holds.
+- [ ] You can explain why prewrite must fail on any lock, even a newer one.
+- [ ] You can identify the commit point precisely and say why it is one atomic write.
+- [ ] You can explain how a reader resolves an abandoned transaction from the data alone.
+- [ ] You can predict the abort rate at θ=1.1, where this topic measures 86.2% of batches containing a key collision, before implementing `percolator.rs`.
+- [ ] You wrote answers to all six questions in notes.md.
+
 ## References
 
 **Papers**

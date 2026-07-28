@@ -1,5 +1,30 @@
 # Topic 14 notes — vector search
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin ann_bench` — 100 000 × 128-dim f32 (51 MB) in 200
+clusters, 500 queries, k=10.
+
+| method | recall@10 | QPS | total |
+|---|---|---|---|
+| brute force | 1.000 (by definition) | **117** | 4.28 s |
+| HNSW (yours) | | | stub |
+| u8 quantized + rescore (yours) | | | stub |
+
+**117 QPS is the number the whole field exists to beat, and it comes with
+perfect recall for free.** Every approximate index in this topic is a bet that
+you can trade a measurable amount of that 1.000 for orders of magnitude of
+throughput — so the honest way to read any ANN benchmark is as a *curve*
+against this point, never as a single QPS figure.
+
+Worth being precise about what makes it slow: 51 MB of vectors is small enough
+to be a pure compute problem, not a memory-bound one — 500 queries × 100 000
+candidates × 128 dimensions is 6.4 G multiply-adds. So brute force here is a
+SIMD/bandwidth exercise (topic 17), and a scalar-quantized scan that shrinks
+each vector 4× is attacking the same wall from the data side rather than the
+algorithm side. Predict where those two lanes land relative to each other
+before you write either.
+
 ## Predictions (fill BEFORE implementing hnsw.rs / quant.rs)
 
 Baseline (provided, measured): brute force 185 QPS at recall 1.0

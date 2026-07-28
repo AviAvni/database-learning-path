@@ -7,6 +7,32 @@ must die?*
 Budget: ~12 h. Order: §1 anomalies → §2 three concurrency schools →
 §3 postgres on-disk MVCC → §4 in-memory MVCC → experiments → M8.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin txn_bench` — 4 threads × 50 000 transactions × 4
+ops, against one global `Mutex<HashMap>`:
+
+```
+mix                                 global-lock/s     mvcc txn/s    aborts
+read-heavy  95/5, 10K keys                 623454              —         —
+write-heavy 50/50, 10K keys                594264              —         —
+write-heavy 50/50, 64 keys (HOT)           676691              —         —
+```
+
+**The baseline barely moves across three workloads that should be wildly
+different, and the flatness is the finding.** A single mutex cannot benefit from
+the read-heavy row (95% of those operations could have run concurrently, and
+none of them did) and cannot be hurt by the HOT row (everything was already
+contending on one lock, so shrinking the keyspace to 64 changes nothing). The
+hot row is even the *fastest*, because a 64-key working set fits in cache.
+
+That gives you a sharp pair of predictions to write down before you implement
+MVCC: it should crush row 1, since readers never block writers. It may well
+*lose* row 3, where first-committer-wins converts key contention into aborted
+work the mutex never had to redo. Find the keyspace size where the crossover
+happens — that number, not the read-heavy speedup, is what decides whether MVCC
+is the right answer for a given workload.
+
 ## 1. Isolation levels are defined by their bugs
 
 Read the levels bottom-up, as "which anomalies are permitted":

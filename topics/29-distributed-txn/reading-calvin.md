@@ -159,6 +159,16 @@ symptom.
    (reconnaissance traversal, then deterministic re-execution), and what
    invalidation check would "did the read set move?" become on a graph?
 
+## Done when
+
+- [ ] You can state why nondeterminism is the reason databases coordinate.
+- [ ] You can explain how the sequencer takes consensus off the critical path.
+- [ ] You can explain deterministic locking and why lock *ordering* is what makes it work.
+- [ ] You can explain why cross-shard reads are pushed rather than requested.
+- [ ] You can explain why recovery is replaying inputs, and why replication is cheaper than shipping a write set.
+- [ ] You can state the catch — dependent transactions — and connect it to why graph traversals are the hard case for M29.
+- [ ] You wrote answers to all six questions in notes.md.
+
 ## References
 
 **Papers**

@@ -18,6 +18,10 @@ use timeseries_experiments::index::TagIndex;
 const N: usize = 1_000_000;
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     println!("=== tsdb_bench: {N} samples/series shape, 10s scrape interval ===\n");
 
     let ts = scrape_timestamps(N, 1_700_000_000_000, 10_000, 100, 42);

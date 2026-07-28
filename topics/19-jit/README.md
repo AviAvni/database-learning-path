@@ -9,6 +9,37 @@ VM since 2000, and SuiteSparse:GraphBLAS JIT-compiles its semiring
 kernels — which makes this FalkorDB home turf twice over (M19 JITs
 Cypher expressions with cranelift).
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin jit_bench` — random arithmetic expression trees
+evaluated over columns, interpreter (per row) vs vectorized (per column):
+
+```
+depth (nodes)     rows     interp M/s   vector M/s   ratio
+    2 (7)         1024          89.37       558.34    6.2x
+    2 (7)      2097152          86.83       452.10    5.2x
+    4 (31)        1024          18.80       182.04    9.7x
+    4 (31)     2097152          17.75       129.32    7.3x
+    6 (127)       1024           4.05        47.72   11.8x
+    6 (127)    2097152           3.71        32.40    8.7x
+    8 (511)       1024           0.95        11.84   12.5x
+```
+
+**Interpretation cost scales with expression size, and the penalty compounds:
+7 nodes to 511 nodes costs the interpreter 94× (89.4 → 0.95 M rows/s) while the
+vectorized evaluator loses 47× (558 → 11.8).** The gap between them therefore
+*widens* with depth, from 6× to 12×, which is the opposite of what "interpretive
+overhead is a constant factor" would predict.
+
+The reason is the thing this topic is about: a tree-walking interpreter pays
+dispatch *per node per row*, so its work is `rows × nodes` of branching on tags,
+while the vectorized version pays `nodes` dispatches and amortizes each over a
+whole column. That leaves the JIT lane with a precise question rather than a
+vague one — compile time is a fixed cost paid once, so break-even rows =
+`compile_µs / (µs_per_row_interp − µs_per_row_jit)`. Predict where that lands for
+depth 8 before you implement it; the answer is why SQLite still ships a bytecode
+VM and HyPer does not.
+
 ## 1. The spectrum (and where each system sits)
 
 ```

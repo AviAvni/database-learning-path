@@ -63,7 +63,36 @@ fn run(name: &str, strategy: CompactionStrategy) {
     );
 }
 
+/// Run an exercise lane, reporting unimplemented `todo!()`s as a note
+/// instead of a crash.
+fn stub_lane(name: &str, f: impl FnOnce()) -> bool {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    if r.is_err() {
+        println!("[stub — implement the todo!()s to unlock {name}]\n");
+    }
+    r.is_ok()
+}
+
 fn main() {
-    run("leveled (ratio 10)", CompactionStrategy::Leveled { ratio: 10 });
-    run("tiered (K=4)", CompactionStrategy::Tiered { k: 4 });
+    // Both lanes are the exercise: this whole benchmark measures YOUR LSM
+    // (src/lsm.rs + src/sst.rs). There is no provided baseline to compare
+    // against here — the comparison is leveled vs tiered, both yours.
+    let a = stub_lane("leveled compaction", || {
+        run("leveled (ratio 10)", CompactionStrategy::Leveled { ratio: 10 })
+    });
+    let b = stub_lane("tiered compaction", || {
+        run("tiered (K=4)", CompactionStrategy::Tiered { k: 4 })
+    });
+
+    if !(a && b) {
+        println!(
+            "This binary is the topic's acceptance test: it measures the RUM position\n\
+             of your own LSM, so it has nothing to print until src/lsm.rs and\n\
+             src/sst.rs are implemented. `cargo test` is the specification; the\n\
+             reference write/read/space-amp figures to aim at are in notes.md."
+        );
+    }
 }

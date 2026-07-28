@@ -241,6 +241,14 @@ GraphBLAS's format/algorithm anchors as the layer below.
 5. Map Delta_Matrix states to LSM vocabulary: what's the memtable, the
    SST, the tombstone, the compaction?
 
+## Done when
+
+- [ ] You can write the `read = (M ∪ DP) ∖ DM` identity and explain what each of the three matrices holds.
+- [ ] You can explain why CSR is hostile to single-edge inserts, and why that fact alone forces something like Delta_Matrix.
+- [ ] You can say when dot beats saxpy for a BFS step, in terms of frontier size against matrix dimension.
+- [ ] You can explain what a mask pushes into the kernel and what it saves — connect it to the masked-SpMV lane in this topic's bench.
+- [ ] You wrote answers to all five questions in notes.md, including the Delta_Matrix-to-LSM vocabulary mapping.
+
 ## References
 
 **Papers**

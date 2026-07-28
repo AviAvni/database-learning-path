@@ -188,6 +188,15 @@ implements all three explicitly in ~100 lines.
    a SPARSE frontier from a bitmap — O(n) scan), and design the
    experiment that would confirm it.
 
+## Done when
+
+- [ ] You can explain why push dies mid-search, in terms of edges checked per useful discovery.
+- [ ] You can explain what pull inverts and why its early exit needs the ANY/OR monoid.
+- [ ] You can state what pull requires — the reverse graph and a dense frontier — and what that costs in memory.
+- [ ] You can describe the two thresholds and why hysteresis is needed.
+- [ ] You can write the algebraic translation: push is `vxm`, pull is `mxv`.
+- [ ] You wrote answers to all five questions in notes.md, and can reproduce Beamer's waste argument from `gb_bench`'s per-level trace once `bfs_diropt` runs.
+
 ## References
 
 **Papers**

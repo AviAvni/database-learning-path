@@ -172,6 +172,15 @@ Four pieces of this 2011 paper are load-bearing in 2026 systems:
 5. SDC would let you precompute ALL tables once (no per-query work).
    Why does nobody care?
 
+## Done when
+
+- [ ] You can explain the product move: why quantizing subspaces independently gives 2^128 effective centroids from 16 bytes.
+- [ ] You can state the difference between SDC and ADC and say where each eats its approximation.
+- [ ] You can explain why chunks must be roughly statistically independent, and what correlated dimensions do to the code.
+- [ ] You can compute the per-query ADC table build cost and say at what candidate count it stops mattering.
+- [ ] You can say why IVFADC encodes residuals rather than raw vectors, in terms of the quantizer's dynamic range.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

@@ -26,6 +26,19 @@ fn report(name: &str, label: &str, secs: f64, n: usize, checksum: u64) {
     );
 }
 
+/// Run an exercise lane, reporting unimplemented `todo!()`s as a note
+/// instead of a crash, so the adj_list oracle above always prints.
+fn stub_lane<T>(name: &str, f: impl FnOnce() -> T) -> Option<T> {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    if r.is_err() {
+        println!("  [stub — implement the todo!()s to unlock {name}]");
+    }
+    r.ok()
+}
+
 fn main() {
     let t = Instant::now();
     let g = data::preferential_attachment(N, M, 42);
@@ -67,29 +80,38 @@ fn main() {
     }
 
     println!("\n== csr");
-    let t = Instant::now();
-    let csr = Csr::build(g.num_nodes, &g.edges);
-    println!("  build: {:.2} s", t.elapsed().as_secs_f64());
-    for (label, srcs) in [("random", &random), ("supernodes", &supernodes)] {
-        let mut checksum = 0u64;
+    let csr = stub_lane("the CSR build + two_hop (src/csr.rs)", || {
         let t = Instant::now();
-        for &s in srcs {
-            stamp += 1;
-            checksum += csr.two_hop(s, &mut seen, stamp);
+        let csr = Csr::build(g.num_nodes, &g.edges);
+        println!("  build: {:.2} s", t.elapsed().as_secs_f64());
+        for (label, srcs) in [("random", &random), ("supernodes", &supernodes)] {
+            let mut checksum = 0u64;
+            let t = Instant::now();
+            for &s in srcs {
+                stamp += 1;
+                checksum += csr.two_hop(s, &mut seen, stamp);
+            }
+            report("csr", label, t.elapsed().as_secs_f64(), srcs.len(), checksum);
         }
-        report("csr", label, t.elapsed().as_secs_f64(), srcs.len(), checksum);
-    }
+        csr
+    });
 
-    println!("\n== matrix (masked SpMV over the same CSR)");
-    let (mut f1, mut f2) = (Vec::new(), Vec::new());
-    for (label, srcs) in [("random", &random), ("supernodes", &supernodes)] {
-        let mut checksum = 0u64;
-        let t = Instant::now();
-        for &s in srcs {
-            stamp += 1;
-            checksum += matrix::two_hop(&csr, s, &mut seen, stamp, &mut f1, &mut f2);
-        }
-        report("matrix", label, t.elapsed().as_secs_f64(), srcs.len(), checksum);
+    // the matrix lane runs over the CSR the previous lane built, so it can
+    // only run once that one does
+    if let Some(csr) = csr.as_ref() {
+        println!("\n== matrix (masked SpMV over the same CSR)");
+        stub_lane("masked SpMV (src/matrix.rs)", || {
+            let (mut f1, mut f2) = (Vec::new(), Vec::new());
+            for (label, srcs) in [("random", &random), ("supernodes", &supernodes)] {
+                let mut checksum = 0u64;
+                let t = Instant::now();
+                for &s in srcs {
+                    stamp += 1;
+                    checksum += matrix::two_hop(csr, s, &mut seen, stamp, &mut f1, &mut f2);
+                }
+                report("matrix", label, t.elapsed().as_secs_f64(), srcs.len(), checksum);
+            }
+        });
     }
 
     println!("\nnotes:");

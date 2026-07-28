@@ -2,6 +2,38 @@
 
 Predict FIRST, then measure. Numbers without predictions are just trivia.
 
+## Baseline (provided lane, Apple M3 Pro, loopback, measured 2026-07-28)
+
+`cargo run --release --bin loopback_bench` — 200 000 ops per depth, 32 B
+request / 8 B reply, one connection, `TCP_NODELAY` on, **no protocol parsing
+and no store**. Pipeline depth P is the only knob.
+
+| P | ops/s | µs per request | syscalls per op | vs P=1 |
+|---|---|---|---|---|
+| 1 | 44 088 | 22.68 | 2.000 | 1.0× |
+| 2 | 88 262 | 11.33 | 1.000 | 2.0× |
+| 8 | 353 067 | 2.83 | 0.250 | 8.0× |
+| 32 | 1 517 490 | 0.66 | 0.062 | 34.4× |
+| 64 | 2 919 728 | 0.34 | 0.031 | 66.2× |
+| 256 | 12 321 414 | 0.08 | 0.008 | **279.5×** |
+
+**Identical work, zero of it useful, and the throughput spans 279×.** Nothing
+in this benchmark parses, stores, or computes anything — the entire curve is
+syscalls, wakeups and round trips. That is the number to hold in your head the
+next time a benchmark result is quoted without its pipeline depth: a
+`redis-benchmark -P 64` figure and a `-P 1` figure are not the same measurement
+of the same system, they are measurements of different bottlenecks.
+
+Two things worth noticing:
+
+- The scaling is slightly **super**-linear against the 2/P syscall floor (279×
+  at P=256, not 256×). Larger writes amortize per-byte costs too, so the
+  syscall count is a floor on the improvement, not a ceiling.
+- Per-request latency *improves* with depth, 22.68 µs → 0.08 µs. Client-side
+  batching is not the usual throughput-for-latency trade, because the queueing
+  it removes was pure round-trip overhead. Server-side batching (group commit,
+  topic 5) is the trade; this is not.
+
 ## Predictions (fill in BEFORE running anything)
 
 | Measurement | Prediction | Actual | Surprised? |

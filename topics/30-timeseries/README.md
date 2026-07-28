@@ -5,6 +5,34 @@ TSDBs are what you get when every design decision exploits that
 regularity: append-mostly, time-ordered, compress-by-predicting,
 partition-by-time, delete-by-dropping-partitions.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin tsdb_bench` — 1 M samples per series shape, 10-second
+scrape interval, raw representation = 16.00 B/sample (8 B timestamp + 8 B value):
+
+```
+shape        delta+varint      decode
+constant     11.00 B/sample    272 Msamples/s
+gauge        11.00 B/sample    239 Msamples/s
+counter      11.00 B/sample    320 Msamples/s
+random       11.00 B/sample    329 Msamples/s
+```
+
+**11.00 bytes per sample for all four shapes, including the constant one.** A
+series that never changes value compresses exactly as well as uniform random
+noise, which is absurd on its face and is precisely the finding: delta + varint
+encodes the *timestamp* well (regular scrapes delta to a small constant) and the
+*float* not at all, because an f64 that repeats is still 8 bytes of mantissa to a
+varint that only knows about leading zero bytes.
+
+So the baseline has cut 16 B to 11 B — a 1.45× win, entirely from the timestamp
+column — and left the larger half of every sample untouched. That is the gap
+Gorilla's XOR-and-leading-zeros trick is aimed at, and it is why the paper
+reports single-digit *bits* per value rather than bytes. Predict the B/sample
+Gorilla achieves for each of these four shapes before you implement it; the
+spread between `constant` and `random` should go from zero to enormous, and if it
+does not, your encoder is not exploiting what the shape gives it.
+
 ## 0. The shape of the problem
 
 ```

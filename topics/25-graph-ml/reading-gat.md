@@ -175,6 +175,14 @@ is the explanation (question 4: what Cypher surface exposes it).
 5. For M25: is GAT worth engine support at all, or is GCN/SAGE + the
    vector index the 95% case? Argue from the kernel inventory each needs.
 
+## Done when
+
+- [ ] You can say what GCN's structural constant weights cannot express.
+- [ ] You can explain why the softmax is over in-edges of v, and what normalizing over out-edges would mean.
+- [ ] You can decompose a GAT layer into SDDMM, segmented softmax and SpMM.
+- [ ] You can count edge passes per GAT layer against per GCN layer on this topic's 566 K-edge SBM, whose SpMM measures 4.31 ms at 16.82 GFLOP/s.
+- [ ] You wrote answers to all five questions in notes.md, including whether GAT is worth engine support at all.
+
 ## References
 
 **Papers**

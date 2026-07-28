@@ -189,6 +189,14 @@ fields, then trace Step 4's walk mentally against them.
    version of the argument that still holds, and the part that died
    with DRAM.
 
+## Done when
+
+- [ ] You can explain the index-free adjacency bet and name the hardware assumption that aged out from under it.
+- [ ] You can compute expand cost for a 1000-edge node as dependent loads, and compare it to a CSR slice.
+- [ ] You can say what the doubly-linked relationship chain buys and what it costs on insert.
+- [ ] You can state the modern version of the index-free adjacency argument — the one that survives the disk era ending.
+- [ ] You wrote answers to all five questions in notes.md, including the 15 B versus 34 B field accounting.
+
 ## References
 
 **Code**

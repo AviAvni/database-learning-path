@@ -15,6 +15,10 @@ const N: usize = 10_000_000;
 const Q: usize = 1_000_000;
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     let mut keys: Vec<u64> = (0..N).map(|_| rng.gen::<u64>() | 1).collect(); // odd = present
     keys.sort_unstable();

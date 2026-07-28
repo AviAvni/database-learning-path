@@ -184,6 +184,16 @@ ALEX — Step 5
    binary search within the leaf, and when is it worth zero? (Uniform
    small leaves fit in one cache line either way.)
 
+## Done when
+
+- [ ] You can state the reframe: an index is a model of the CDF, and a B-tree is already one.
+- [ ] You can explain what RMI provokes and what safety net it lacks.
+- [ ] You can explain PGM's inversion: fix the error bound first, then minimize the model.
+- [ ] You can construct four points where the shrinking cone closes a segment.
+- [ ] You can explain how ε trades segment count against final search width.
+- [ ] You can describe an adversarial insert sequence and how ALEX's gapped arrays respond.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

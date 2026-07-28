@@ -194,6 +194,14 @@ Step 5 diagram's order.
    result set) and which need a Bolt twin? Sketch the
    `bolt_reply_*`-equivalent trait your result set must implement.
 
+## Done when
+
+- [ ] You can write a PackStream marker byte from memory and decode type and size from its nibbles.
+- [ ] You can explain how one structure mechanism serves both protocol messages and graph types, and why that is more than an aesthetic choice.
+- [ ] You can say what RUN/PULL buys by splitting execute from fetch, and what the server must therefore hold between them.
+- [ ] You can explain how chunking substitutes for a message length prefix, and what that costs a parser.
+- [ ] You wrote answers to all questions in notes.md, including the honest cost list for why FalkorDB removed Bolt.
+
 ## References
 
 **Papers**

@@ -5,6 +5,33 @@ competes with — with line numbers and benchmarks, not marketing. Four
 architectures, one question: what does an Expand (get neighbors) cost,
 and what does pattern matching (multi-way Expand) cost?
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin hop_bench` — preferential-attachment graph, 1 M nodes
+/ 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 1000 sources. Max degree
+6565, p50 degree 11:
+
+```
+impl                 source set       ns/query      distinct reached
+adj_list (oracle)    random               4914              10220457
+adj_list (oracle)    supernodes         495378               7890665
+```
+
+**The same query, on the same graph, through the same code: 101× slower
+depending on which node you start from.** Nothing before this topic behaves like
+that. A B-tree point lookup costs what it costs; a two-hop traversal costs
+whatever the degree distribution under your start node says, and on a scale-free
+graph that distribution is a power law with no useful mean. The median node has
+11 neighbours. The top one has 6565.
+
+Now look at the last column: the slow case reaches *fewer* distinct nodes — 7.9 M
+against 10.2 M — while taking 101× longer. High-degree neighbourhoods overlap
+heavily, so the extra work is redundant rather than productive. That redundancy
+is the opening the CSR and masked-SpMV lanes attack, and it is why graph engines
+are built around set operations on sorted adjacency rather than around pointer
+chasing. It is also why "supernode" is a word in this field and not in the
+others.
+
 ## 1. The adjacency representation menu
 
 ```

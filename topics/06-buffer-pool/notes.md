@@ -1,5 +1,29 @@
 # Topic 6 notes — buffer pool & memory management
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin pool_vs_mmap` — 1 GiB file, 2 M Zipf(0.99) page
+reads, 8 bytes touched per page so the access rather than the copy dominates.
+
+| impl | p50 | p99 | p99.9 | max |
+|---|---|---|---|---|
+| mmap | 42 ns | 1500 ns | 4459 ns | **181 887 ns** |
+| pool (CLOCK, yours) | | | | stub |
+
+**p50 42 ns, max 182 µs: a 4300× spread, and every bit of it is the tail.** The
+median is a hit on a page the kernel already had resident — essentially free,
+which is exactly why mmap is so tempting. The p99.9 and the max are minor page
+faults: a trap into the kernel, a read, a TLB shootdown, and no way for the
+database to know it happened, schedule around it, or prefetch ahead of it. That
+is CIDR '22's argument in one row.
+
+Read the handicap honestly before you compare your pool to this: the mmap side
+gets the *whole* machine's page cache (there is no per-process cap on macOS),
+while your pool will be held to a 256 MiB budget against a 1 GiB file. mmap is
+playing with an advantage. If your pool still wins the tail, that is conclusive;
+if mmap wins the median, that is expected and the interesting question is why
+the tail behaves differently from the median at all.
+
 ## Predictions (fill BEFORE running)
 
 - pool_vs_mmap p50: mmap ___ ns vs pool ___ ns (who wins the median and why?)

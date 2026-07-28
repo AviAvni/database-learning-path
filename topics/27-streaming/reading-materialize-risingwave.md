@@ -160,6 +160,15 @@ RisingWave — Steps 4–5
    gets harder (memory pressure from arrangements competes with the graph
    itself — who evicts?).
 
+## Done when
+
+- [ ] You can say what production adds to the theory, in failure modes rather than features.
+- [ ] You can explain Materialize's identity: indexes are arrangements are memory.
+- [ ] You can explain delta joins and why they need an arrangement per input per key.
+- [ ] You can contrast RisingWave's hand-written executors plus LSM-on-S3 state with that.
+- [ ] You can explain what barriers give you for consistency and recovery.
+- [ ] You wrote answers to all questions in notes.md, including the degree-table against diff-arithmetic comparison.
+
 ## References
 
 **Code**

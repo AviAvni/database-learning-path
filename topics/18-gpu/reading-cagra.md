@@ -179,6 +179,14 @@ single-CTA search (Steps 4–5).
    candidates. Which half goes to GPU first, and what's the batch
    size per the crossover table you'll measure with l2_batch?
 
+## Done when
+
+- [ ] You can say what SIMT hates about a greedy proximity-graph walk, and why fixed degree 32 is the answer rather than levels.
+- [ ] You can explain why the build is NN-descent rather than insert-one-at-a-time.
+- [ ] You can describe the one-CTA-per-query shape and what is parallel inside a single step.
+- [ ] You can explain why the visited set becomes a shared-memory hashmap, and what that costs.
+- [ ] You wrote answers to all five questions in notes.md, including where `search_multi_cta` becomes the right choice.
+
 ## References
 
 **Papers**

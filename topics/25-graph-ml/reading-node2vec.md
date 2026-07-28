@@ -188,6 +188,15 @@ Everything above maps onto machinery an engine already owns:
    API, and which should be fixed opinions? Compare FalkorDB's
    proc_pagerank arg surface (topic 24).
 
+## Done when
+
+- [ ] You can explain why the walk bias must be second-order to interpolate between BFS-ish and DFS-ish neighbourhoods.
+- [ ] You can say what p and q buy — roles against communities — and predict the effect before running the lane.
+- [ ] You can state the skip-gram-with-negative-sampling objective.
+- [ ] You can explain the alias-table against rejection-sampling trade and compute the expected draw count at p=1, q=0.25.
+- [ ] You can explain embeddings as a materialized view and say which ones an edge insert invalidates.
+- [ ] You wrote answers to all five questions in notes.md, and compared your walk rate against the measured uniform-walk baseline of 35.1 Msteps/s.
+
 ## References
 
 **Papers**

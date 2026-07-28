@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn pull_matches_oracle() {
-        check_matches_oracle(|g, at, s| bfs_pull(at, s).0);
+        check_matches_oracle(|_g, at, s| bfs_pull(at, s).0);
     }
 
     #[test]

@@ -1,5 +1,29 @@
 # Topic 5 notes — durability, WAL, crash recovery
 
+## Baseline (provided lane, Apple M3 Pro / APFS, measured 2026-07-28)
+
+`cargo run --release --bin fsync_ladder`. macOS, so the rungs are `write()`,
+`fsync`, and `F_FULLFSYNC` (there is no `fdatasync`; the bench compiles the
+Linux rung out).
+
+| rung | p50 | p99 | p99.9 | implied max commits/s |
+|---|---|---|---|---|
+| `write()` only | 1.17 µs | 4.54 µs | 14.46 µs | 856 898 |
+| `fsync` | 22.67 µs | 56.73 µs | 157.06 µs | 44 109 |
+| `F_FULLFSYNC` | **2.97 ms** | 3.61 ms | 9.89 ms | **337** |
+
+**Three rungs, a 2540× spread in the last column, and only the bottom one is
+actually durable on this hardware.** The middle rung is the trap: `fsync` on
+macOS returns once the data reaches the *drive*, not once the drive has
+committed it to stable media — the write can still be sitting in the disk's
+volatile cache. `F_FULLFSYNC` is what forces a cache flush, and it costs 131×
+more than the `fsync` that most code calls and believes.
+
+337 commits/s is the number to keep. Any single-threaded design that fsyncs per
+transaction is capped there regardless of how fast the rest of the engine is,
+which is why group commit is not an optimization but a structural requirement —
+and why topic 15's follower-fsync table looks the way it does.
+
 ## Predictions (fill BEFORE running fsync_ladder)
 
 | Rung | Predicted p50 | Measured p50 | Measured p99 |

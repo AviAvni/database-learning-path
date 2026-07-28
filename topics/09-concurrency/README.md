@@ -7,6 +7,40 @@ question for NANOSECONDS: two threads, one cache line, who wins?
 Budget: ~12 h. Order: §1 vocabulary → §2 memory ordering → §3 latch
 protocols → §4 reclamation → §5 code → experiments → M9.
 
+## The problem, measured (bench lanes 1 and 2, provided — run today)
+
+`cargo run --release --bin false_sharing` and `--bin scaling`:
+
+```
+8 threads, 5M increments each, each on its OWN counter
+packed      202.7 ms     197.4 M inc/s
+pad64        20.4 ms    1957.6 M inc/s
+pad128       11.4 ms    3502.9 M inc/s
+
+Mops/s total, 90/10 read/write, keyspace 100000
+impl             1t       2t       4t       8t      16t
+global         8.65     5.32     2.84     2.86     2.96
+sharded       11.63     8.40     8.66    11.22    12.65
+crossbeam      4.21     9.07    14.39    14.82    19.28
+```
+
+**The global mutex gets 2.9× slower as you add cores.** Not "fails to scale" —
+negative: 8.65 Mops/s on one thread, 2.96 on sixteen. The cores spend their time
+moving the lock's cache line between caches and parking each other rather than
+doing work, and that line shape (peak at one thread, decay after) is the single
+most useful signature to recognise in production, because it means the fix is
+never "add threads".
+
+The counter table is the same physics one level down: three layouts where every
+thread owns its own counter and touches nobody else's, spanning 17.8×. `pad64`
+— the x86-default `CachePadded` — is still 1.8× off `pad128`, because M-series
+coherence granularity is 128 B. Check that assumption on your own hardware
+before trusting any padding.
+
+And note which structure is *slowest* single-threaded: crossbeam's lock-free
+set, at 4.21 vs the mutex's 8.65. Atomics and epoch bookkeeping cost real
+sequential performance to buy a slope. That trade is the topic.
+
 ## 1. Latches vs locks (say it right)
 
 | | lock (topic 8) | latch (this topic) |

@@ -179,6 +179,15 @@ adjacency. What operation must the storage tier then support that S3
 doesn't — and is that why Aurora runs its own storage fleet while Neon
 keeps S3 behind a pageserver?
 
+## Done when
+
+- [ ] You can count the writes a naive lift-and-shift of a page-based engine to cloud storage produces.
+- [ ] You can state the thesis — only the log crosses the network — and what that removes.
+- [ ] You can explain the quorum and protection-group scheme and what failure it survives.
+- [ ] You can explain LSN and VDL and why one monotonic counter replaces 2PC.
+- [ ] You can say what waits at commit and what does not, and why REDO has already run at recovery.
+- [ ] You have this topic's measured latency gap to argue against: local NVMe p50 0.10 ms against raw S3 p50 14.17 ms and p99 112.99 ms.
+
 ## References
 
 **Papers**

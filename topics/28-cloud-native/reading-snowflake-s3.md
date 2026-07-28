@@ -187,6 +187,14 @@ live engine. Which graph representations tolerate immutable ~16 MB chunks
 well (edge lists / CSR segments, topic 2) and which don't (in-place
 delta-mutated matrices)? One paragraph in notes.md.
 
+## Done when
+
+- [ ] You can say what object storage actually is, in terms of which primitives exist.
+- [ ] You can explain why the 2008 pages-on-S3 attempt failed.
+- [ ] You can state the fix — never modify an object — and where the mutable bit goes instead.
+- [ ] You can explain a table version as a list of files, and pruning as the replacement for indexes.
+- [ ] You can explain how caches and consistent hashing claw back the gap, and check the size of that gap against this topic's measured 140x local-to-S3 median ratio.
+
 ## References
 
 **Papers**

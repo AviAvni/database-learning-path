@@ -212,6 +212,15 @@ Numbers to retain while you read:
    the CSR memory in v9 (64-bit) vs v10 — and where the same 2×
    shows up in our Rust CSR if we switch usize→u32.
 
+## Done when
+
+- [ ] You can name the four sparsity formats and the rule that switches between them.
+- [ ] You can map semiring, mask and accumulator onto executor concepts.
+- [ ] You can explain zombies and pending tuples, and why lazy mutation is necessary at all.
+- [ ] You can say what non-blocking mode defers and what forces completion.
+- [ ] You can explain the iso-value optimization and identify which FalkorDB matrices are iso.
+- [ ] You wrote answers to all five questions in notes.md, including the 32-bit index memory computation.
+
 ## References
 
 **Papers**

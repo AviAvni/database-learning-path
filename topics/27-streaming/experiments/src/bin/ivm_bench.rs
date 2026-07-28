@@ -20,6 +20,10 @@ const BATCH_INS: usize = 90;
 const BATCH_DEL: usize = 10;
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     let base = gen_edges(N, M, 42);
     println!("graph: {} nodes, {} edges; {} batches of +{}/-{}", N, M, BATCHES, BATCH_INS, BATCH_DEL);
 

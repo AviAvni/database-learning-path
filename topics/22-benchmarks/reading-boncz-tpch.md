@@ -214,6 +214,14 @@ TPCTC 2013, ~20 pages, one evening — but only with the queries open
 5. TPC-H says nothing about updates. What does TPC-C's NewOrder mix
    test that no TPC-H query can (see reading-oltpbench-tpcc.md)?
 
+## Done when
+
+- [ ] You can define a choke point and name what Q1, Q6 and Q9 each stress.
+- [ ] You can explain why Q6's low selectivity favours branchy evaluation while 50% does not — and check it against topic 17's measured sweep.
+- [ ] You can state dbgen's dirty secret (uniform, independent columns) and what it flatters.
+- [ ] You can read a published TPC-H number and say what refresh streams and scale factor do to its meaning.
+- [ ] You wrote answers to all five questions in notes.md, including the Cypher analogues of Q1/Q6/Q9.
+
 ## References
 
 **Papers**

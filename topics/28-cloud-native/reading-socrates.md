@@ -163,6 +163,14 @@ does the compute node's own RBPEX-style local cache over object storage
 suffice until read replicas (M15) enter? Write the one-paragraph answer in
 notes.md.
 
+## Done when
+
+- [ ] You can state why durability and availability are different jobs, and what that separation permits.
+- [ ] You can name the four tiers and what each owns.
+- [ ] You can explain why commit latency reduces to one small append to the XLOG landing zone.
+- [ ] You can explain why page servers are caches and therefore disposable.
+- [ ] You can explain what RBPEX preserves across a restart and why that matters given this topic's measured cold-S3 tail.
+
 ## References
 
 **Papers**

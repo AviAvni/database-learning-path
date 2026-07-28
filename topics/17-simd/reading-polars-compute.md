@@ -162,6 +162,15 @@ expanded in your head, then `mod.rs` for the dispatch.
    intrinsics + scalar. Why does compress specifically defeat
    portable SIMD abstractions?
 
+## Done when
+
+- [ ] You can explain the reduction problem and why STRIPE=16 fixes it — then connect it to this topic's measured 8.88 -> 26.32 GB/s from eight accumulators alone.
+- [ ] You can explain how pairwise recursion fixes accuracy and derive why the error bound differs from a single chain.
+- [ ] You can describe the `simd_filter!` skeleton and how it advances the output pointer by popcount.
+- [ ] You can say what NEON gets instead of a compress instruction, and what that costs.
+- [ ] You can explain the dispatch strategy — one feature test per block — and why polars chose not to use `std::simd` for filter.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Code**

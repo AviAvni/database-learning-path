@@ -198,6 +198,15 @@ machinery that already exists:
    (connectivity check per community = one BFS each, or one
    FastSV on the induced subgraph).
 
+## Done when
+
+- [ ] You can define modularity and say what it scores.
+- [ ] You can reproduce Figure 1's failure: how a bridge vertex ends up disconnected from its own community.
+- [ ] You can state the general root cause — greedy plus irreversible is unfixable — and what Leiden's refinement changes.
+- [ ] You can explain the resolution limit and what γ does about it.
+- [ ] You can map one Leiden iteration onto SPA and SpGEMM steps.
+- [ ] You wrote answers to all five questions in notes.md, including the topic-16 property test for community connectivity.
+
 ## References
 
 **Papers**

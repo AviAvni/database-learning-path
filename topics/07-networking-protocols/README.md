@@ -5,6 +5,35 @@
 > side: one loop, many sockets, and a protocol designed to be parsed with
 > `memchr`.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin loopback_bench` — 200 000 ops per depth, 32 B in /
+8 B out, one connection, `TCP_NODELAY`, and deliberately **no protocol parsing
+and no store**. Pipeline depth P is the only variable:
+
+```
+    P          ops/s   µs per request   syscalls per op    vs P=1
+    1          44088            22.68             2.000      1.0x
+    2          88262            11.33             1.000      2.0x
+    8         353067             2.83             0.250      8.0x
+   32        1517490             0.66             0.062     34.4x
+   64        2919728             0.34             0.031     66.2x
+  256       12321414             0.08             0.008    279.5x
+```
+
+**Identical work, none of it useful, and throughput spans 279×.** Nothing here
+parses, stores or computes; the whole curve is syscalls, wakeups and round
+trips. So when a benchmark result arrives without its pipeline depth, it is not
+a measurement of a system — a `-P 1` number and a `-P 64` number describe two
+different bottlenecks in the same process.
+
+Two details worth keeping. The scaling is slightly *super*-linear against the
+2/P syscall floor (279× at P=256, not 256×), because bigger writes amortize
+per-byte costs too. And per-request latency *improves* with depth, 22.68 → 0.08
+µs: client-side batching is not the usual throughput-for-latency trade, because
+what it removes was pure round-trip overhead. Server-side batching — group
+commit, topic 5 — is the trade. This is not.
+
 ## Outcomes
 
 By the end you can:

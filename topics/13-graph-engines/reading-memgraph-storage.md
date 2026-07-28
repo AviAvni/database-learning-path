@@ -178,6 +178,14 @@ row against a field.
 5. Sketch what an analytics query (PageRank) costs on this layout vs a
    matrix. Where does the memory bus time go?
 
+## Done when
+
+- [ ] You can draw the Vertex struct and say what per-node state lives in one place.
+- [ ] You can explain why every edge is stored twice and which query shape breaks if it is not.
+- [ ] You can state the difference between per-object delta chains here and per-version rows in postgres, and what each makes cheap.
+- [ ] You can compare the cost of expanding one vertex here against kuzu's CSR slice, and say which workload each layout is built for.
+- [ ] You wrote answers to all five questions in notes.md, including the PageRank cost sketch.
+
 ## References
 
 **Papers**

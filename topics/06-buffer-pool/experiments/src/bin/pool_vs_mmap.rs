@@ -52,6 +52,18 @@ fn report(name: &str, hist: &Histogram<u64>) {
     );
 }
 
+/// Run an exercise lane, reporting unimplemented `todo!()`s as a note
+/// instead of a crash, so the provided lane above always prints.
+fn stub_lane(name: &str, f: impl FnOnce()) {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    if r.is_err() {
+        println!("[stub — implement the todo!()s to unlock {name}]\n");
+    }
+}
+
 fn main() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("big.dat");
@@ -59,7 +71,9 @@ fn main() {
     make_file(&path);
     let pages = zipf_pages(OPS);
 
-    // -- mmap ---------------------------------------------------------------
+    // -- lane 1 (PROVIDED): mmap ---------------------------------------------
+    // The kernel's page cache doing the paging for you — and, per CIDR '22,
+    // doing it with no idea which pages matter to you.
     let file = std::fs::File::open(&path).unwrap();
     let map = unsafe { memmap2::Mmap::map(&file).unwrap() };
     let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
@@ -72,24 +86,26 @@ fn main() {
     }
     report("mmap", &hist);
 
-    // -- buffer pool ----------------------------------------------------------
-    let mut pool = BufferPool::open(&path, POOL_PAGES).unwrap();
-    let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
-    for &p in &pages {
-        let t = Instant::now();
-        let v = pool
-            .with_page(p, |b| u64::from_le_bytes(b[..8].try_into().unwrap()))
-            .unwrap();
-        hist.record(t.elapsed().as_nanos() as u64).unwrap();
-        sink = sink.wrapping_add(v);
-    }
-    report("pool(CLOCK)", &hist);
-    let s = pool.stats();
-    println!(
-        "pool hit rate: {:.2}%  ({} hits / {} misses)",
-        100.0 * s.hits as f64 / (s.hits + s.misses) as f64,
-        s.hits,
-        s.misses
-    );
+    // -- lane 2 (EXERCISE): your buffer pool ---------------------------------
+    stub_lane("the CLOCK buffer pool (src/buffer_pool.rs)", || {
+        let mut pool = BufferPool::open(&path, POOL_PAGES).unwrap();
+        let mut hist = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3).unwrap();
+        for &p in &pages {
+            let t = Instant::now();
+            let v = pool
+                .with_page(p, |b| u64::from_le_bytes(b[..8].try_into().unwrap()))
+                .unwrap();
+            hist.record(t.elapsed().as_nanos() as u64).unwrap();
+            sink = sink.wrapping_add(v);
+        }
+        report("pool(CLOCK)", &hist);
+        let s = pool.stats();
+        println!(
+            "pool hit rate: {:.2}%  ({} hits / {} misses)",
+            100.0 * s.hits as f64 / (s.hits + s.misses) as f64,
+            s.hits,
+            s.misses
+        );
+    });
     std::hint::black_box(sink);
 }

@@ -180,6 +180,17 @@ for few fat streams, not 10M skinny ones (Q4).
    churn (edges-added-per-hour rollups). Sketch where an aggregate tree
    over the M27 changelog would live in FalkorDB.
 
+## Done when
+
+- [ ] You can state Monarch's founding constraint — you cannot depend on what you monitor — and name two design choices that fall directly out of it.
+- [ ] You can explain autonomy by geography: what a zone owns and what it keeps working through a partition.
+- [ ] You can say why push beats pull at Monarch's scale, and what it costs.
+- [ ] You can explain why typed schemas are the cure for cardinality, and connect that to the tag-index cost you will measure in `index.rs`.
+- [ ] You can explain query pushdown as shipping aggregates rather than samples, and say what class of query it cannot serve.
+- [ ] You can describe BtrDB's aggregate tree and say which regime it is built for that Monarch is not.
+- [ ] You can explain copy-on-write versioning as treating corrections as history, and connect it to the out-of-order tax this topic's `head.rs` lane prices.
+- [ ] You wrote answers to all the questions in notes.md.
+
 ## References
 
 **Papers**

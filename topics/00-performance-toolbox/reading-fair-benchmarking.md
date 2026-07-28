@@ -203,6 +203,14 @@ Appendix A is a reusable review checklist: benchmarks chosen + justified; reprod
 separated and correctly collected; preprocessing equalized; results verified; medians +
 CIs over several runs. Pin it next to every capstone `notes.md` comparison.
 
+## Done when
+
+- [ ] You can name all eight pitfalls without the paper open.
+- [ ] You can explain why "failure to optimize the baseline" (3.2) is the one that invalidates a result rather than merely weakening it.
+- [ ] You can state the difference between a restarted process and a cold system (3.6), and name what stays warm across a restart.
+- [ ] You can identify which pitfall each of this repo's own lanes is most exposed to — start with topic 6's mmap handicap and topic 12's bandwidth variance.
+- [ ] You wrote answers to all three questions in notes.md, including the FalkorDB checklist audit.
+
 ## References
 
 **Papers**

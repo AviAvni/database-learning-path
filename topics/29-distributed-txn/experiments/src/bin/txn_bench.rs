@@ -25,6 +25,10 @@ const TXNS: usize = 100_000;
 const THETAS: [f64; 4] = [0.5, 0.9, 1.1, 1.3];
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     println!("=== txn_bench: {TXNS} transfers over {ACCOUNTS} accounts, batches of {BATCH} ===\n");
 
     // ---- Lane 1 (provided): workload conflict probability -----------------

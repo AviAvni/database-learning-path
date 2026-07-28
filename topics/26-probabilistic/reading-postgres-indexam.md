@@ -165,6 +165,15 @@ rare case where that order pays.
    graph workload, and why is that the one topic 4 already measured?
    (Point-miss cost × miss rate of MATCH lookups.)
 
+## Done when
+
+- [ ] You can explain what an index AM is and name the three price points behind the one API.
+- [ ] You can say what nbtree's cache misses buy you that a filter cannot.
+- [ ] You can explain what exactness costs under concurrency and on writes.
+- [ ] You can explain why GIN is an inverted index and BRIN is an admitted filter.
+- [ ] You can state the precise condition under which BRIN on a column is useful.
+- [ ] You wrote answers to all questions in notes.md, including the M26 synthesis — and you have this topic's in-memory baseline (BTreeMap miss at 299 ns) to put beside postgres's page-based numbers.
+
 ## References
 
 **Code** ([postgres](https://github.com/postgres/postgres), `src/backend/access/`)

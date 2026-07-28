@@ -181,6 +181,15 @@ stage 1 — the rest you can skim once the steps above are solid.
 5. For M7: sketch stage-1 masks for RESP (`*3\r\n$3\r\nSET...`) —
    which characters are "structural"?
 
+## Done when
+
+- [ ] You can explain the stage-1 idea: classify 64 bytes into bitmasks, branch once per block instead of once per byte.
+- [ ] You can explain quote parity by carry-less multiply and why prefix-xor is the right primitive.
+- [ ] You can describe the escaped-backslash problem and why it cannot be solved with a single mask.
+- [ ] You can explain `flatten_bits`'s over-write-and-under-advance trick and why it is safe.
+- [ ] You can say why stage 2 stays branchy and give the Amdahl argument for why that is acceptable.
+- [ ] You wrote answers to all five questions in notes.md, including stage-1 masks sketched for RESP.
+
 ## References
 
 **Papers**
