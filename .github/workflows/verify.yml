@@ -28,21 +28,27 @@ jobs:
     runs-on: ubuntu-latest
     # a cold full run is ~20 min of compiling plus ~15 min of benchmarks
     timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # verify.sh points cargo at ../.dlp-target (see .cargo/config.toml), so
-      # the cache key covers that directory rather than ./target
+      # Each job sets CARGO_TARGET_DIR to an absolute in-workspace path, which
+      # takes precedence over .cargo/config.toml's ../.dlp-target. Necessary
+      # because actions/cache rejects any path containing ".." — it logs
+      # "Invalid pattern" and then silently caches nothing, so every run
+      # recompiles all 45 crates from scratch. The reason the checked-in config
+      # points outside the clone is mdbook, which never runs in this workflow.
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ github.workspace }}/../.dlp-target
-          key: verify-${{ runner.os }}-${{ hashFiles('topics/*/experiments/Cargo.toml', 'topics/*/experiments/Cargo.lock') }}
+            ${{ github.workspace }}/.ci-target
+          key: verify-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: verify-${{ runner.os }}-
 
       - name: Every measured lane must build and run
@@ -51,6 +57,8 @@ jobs:
   warnings:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.ci-target
     steps:
       - uses: actions/checkout@v4
 
@@ -62,8 +70,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ github.workspace }}/../.dlp-target
-          key: warn-${{ runner.os }}-${{ hashFiles('topics/*/experiments/Cargo.toml') }}
+            ${{ github.workspace }}/.ci-target
+          key: warn-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: warn-${{ runner.os }}-
 
       # rustc warnings only — deliberately NOT clippy. A reader's first
