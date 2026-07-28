@@ -146,6 +146,14 @@ reporting), not its full query set.
 5. Which SNB scale factor fits in this Mac's RAM as (a) memgraph
    objects, (b) CSR, (c) Delta_Matrix? Rough per-edge byte estimates.
 
+## Done when
+
+- [ ] You can name the three workloads and the different question each one asks.
+- [ ] You can explain why correlated power-law data is the point rather than a realism garnish — and connect it to the 101x supernode gap this topic measures.
+- [ ] You can say what running updates during reads prevents a vendor from doing.
+- [ ] You can state what a pinned scale factor and an audit rule are for.
+- [ ] You wrote answers to all questions in notes.md, including what you intend to steal for M22.
+
 ## References
 
 **Papers**

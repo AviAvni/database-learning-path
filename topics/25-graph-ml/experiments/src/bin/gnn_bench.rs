@@ -13,6 +13,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Instant;
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     // 64 blocks x 256 = 16,384 vertices; ~30 intra + ~4 inter deg
     let t = Instant::now();
     let (g, labels) = gen_sbm(64, 256, 0.12, 0.00025, 42);

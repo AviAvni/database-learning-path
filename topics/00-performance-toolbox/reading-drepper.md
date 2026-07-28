@@ -185,6 +185,14 @@ Every table in topic 0 §2 is a compressed version of this paper. Drepper's meth
 plot access cost against working-set size and *explain every inflection* — is the
 habit; the numbers you regenerate yourself on your own machine.
 
+## Done when
+
+- [ ] You can recite the latency ladder — L1, L2, L3, DRAM — within 2x, and say which numbers from 2007 have aged and which have not.
+- [ ] You can explain a conflict miss in terms of sets and ways, and construct a stride that causes one on purpose.
+- [ ] You can say why a dependent-load chain is the one latency the prefetcher cannot hide, and why `cache_ladder` is built as a pointer chase for exactly that reason.
+- [ ] You can compute a TLB's reach from entry count and page size, and explain why exceeding it looks like a second, later cliff.
+- [ ] You wrote answers to all three questions in notes.md.
+
 ## References
 
 **Papers**

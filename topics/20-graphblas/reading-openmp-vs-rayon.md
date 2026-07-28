@@ -208,6 +208,15 @@ What to read, in order:
    the workspace? Write the four decisions in notes.md — that's the
    checklist item.
 
+## Done when
+
+- [ ] You can state the skew problem: equal slices are not equal work, and connect it to the RMAT max degree of 9751 measured in topic 24.
+- [ ] You can explain the static answer (cost the work, freeze the plan) and what the flopcount pre-pass costs.
+- [ ] You can explain work stealing and name what it gives up (determinism).
+- [ ] You can say why both worlds need a small-job guard and what `GB_nthreads` does with a small `work`.
+- [ ] You can fill in the trade table from memory.
+- [ ] You wrote answers to all five questions in notes.md, including your M20 kernel list.
+
 ## References
 
 **Code**

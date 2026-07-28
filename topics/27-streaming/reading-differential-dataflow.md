@@ -160,6 +160,15 @@ bug you can now name.
    input change at epoch 2 while iteration from epoch 1 is still running —
    which updates must NOT be merged?
 
+## Done when
+
+- [ ] You can explain the delta discipline: weighted, timestamped updates.
+- [ ] You can explain what an arrangement is and why sharing one across queries matters.
+- [ ] You can explain the incremental join as the bilinear rule on traces, and what "fuel" is for.
+- [ ] You can explain why lattice timestamps are required for retractable recursion, not merely convenient.
+- [ ] You can show how semi-naive evaluation falls out for free.
+- [ ] You wrote answers to all questions in notes.md, including the ordering issue in `IncrementalJoin::step`.
+
 ## References
 
 **Papers**

@@ -191,6 +191,15 @@ but more nondeterminism left uncorralled.
    M6 buffer pool). List the remaining nondeterminism sources to
    corral (threadpool from M9! HashMap iteration! rand in plans!).
 
+## Done when
+
+- [ ] You can explain why example-based tests lose to distributed systems, in terms of interleaving count.
+- [ ] You can state the bet: the database and its test harness are one artifact, and say what that forbids in the production code.
+- [ ] You can describe the seeded event loop over a time-ordered heap, and say why simulation runs *faster* than real time.
+- [ ] You can explain what BUGGIFY is and give the argument for why compiling it out of production is not cheating.
+- [ ] You can name three bug classes simulation provably cannot catch.
+- [ ] You wrote answers to all five questions in notes.md, including which of our IO traits already sit in the right place for M16.
+
 ## References
 
 **Papers & docs**

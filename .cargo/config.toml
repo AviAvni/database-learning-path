@@ -1,0 +1,23 @@
+# One shared build directory for all 45 crates in this repo, placed OUTSIDE
+# the repo root — as a sibling of your clone, not inside it.
+#
+# Two reasons it lives outside rather than in ./target:
+#
+#   1. mdbook's source directory is the repo root (`src = "."` in book.toml),
+#      and mdbook copies every non-markdown file under src into the rendered
+#      book. It has no exclude mechanism and does not honour .gitignore, so a
+#      target/ dir anywhere under the root gets duplicated into book/ on every
+#      build. That is how book/ once reached 7.2 GB.
+#   2. The 44 topic crates are deliberately independent packages, not workspace
+#      members, so each one would otherwise build its own copy of rand,
+#      criterion and friends. Sharing one directory means sharing those builds:
+#      it is the difference between 6.6 GB and about 1.5 GB, and it makes
+#      ./verify.sh's cold run several times faster.
+#
+# Nothing here changes how any individual crate builds — `cargo run`,
+# `cargo test` and `cargo bench` all work exactly as the guides describe from
+# inside any topics/*/experiments directory. If you would rather keep artifacts
+# inside your clone, delete this file; just run `cargo clean` before
+# `mdbook build` if you do.
+[build]
+target-dir = "../.dlp-target"

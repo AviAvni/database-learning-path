@@ -1,5 +1,22 @@
 # Topic 10 notes — parsing, planning, optimization
 
+## No provided baseline in this topic — and why
+
+`explain` is the only binary here and every plan it prints comes out of **your**
+`src/planner.rs`, so on a fresh clone it prints one stub notice and exits. That
+is the intended state, and it is why this topic has no lane in `./verify.sh`.
+
+The external baseline is deliberately not Rust: load the same three-table schema
+into DuckDB, run `EXPLAIN` on the same three queries, and diff the join orders
+against yours. Every disagreement is a lead — find which cardinality estimate
+produced it. That comparison is worth more than a timing number here, because a
+planner's failure mode is not being slow, it is being confidently wrong about
+row counts.
+
+The one figure worth predicting before you start: for the third query
+(`items ⋈ orders ⋈ users` with two selective filters on `users`), does pushing
+those filters down make `{users, orders}` the cheaper first join than
+`{orders, items}`? Write the estimate, then let `estimate()` grade you.
 ## Predictions (fill BEFORE running / reading)
 
 ### explain.rs query 3 (items ⋈ orders ⋈ users, users filtered to city=7 AND age=30)

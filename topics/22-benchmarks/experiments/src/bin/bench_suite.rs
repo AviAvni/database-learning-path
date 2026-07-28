@@ -10,12 +10,32 @@ use bench_experiments::{
     zipf::{Scrambled, Uniform, Zipfian},
 };
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+static STUBBED: AtomicBool = AtomicBool::new(false);
+
+/// The exercise lanes below are each wrapped in `catch_unwind` and reported as
+/// STUB in the table. This replaces the default panic hook so an unimplemented
+/// `todo!()` does not dump a trace between two table rows, and records that at
+/// least one lane is still a stub.
+fn quiet_stubs() {
+    std::panic::set_hook(Box::new(|_| STUBBED.store(true, Ordering::Relaxed)));
+}
+
+/// One line at the end, for the reader and for verify.sh to count.
+fn stub_summary(what: &str) {
+    if STUBBED.load(Ordering::Relaxed) {
+        println!("\n[stub — implement {what} to unlock the lanes marked STUB]");
+    }
+}
+
 fn main() {
+    quiet_stubs();
     println!("=== bench_suite ===\n");
     tpch_section();
     ycsb_section();
+    stub_summary("src/tpch.rs and src/zipf.rs");
 }
 
 fn tpch_section() {

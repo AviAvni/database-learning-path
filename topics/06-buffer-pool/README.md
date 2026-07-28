@@ -7,6 +7,29 @@
 > Plus redis's answer to a different question: not page caching but
 > *allocator accounting* (zmalloc + jemalloc + active defrag).
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin pool_vs_mmap` — 1 GiB file, 2 M Zipf(0.99) page
+reads, 8 bytes touched per page so the access dominates the copy:
+
+```
+mmap    p50 42 ns    p99 1500 ns    p99.9 4459 ns    max 181887 ns
+```
+
+**42 nanoseconds at the median, 182 microseconds at the max — a 4300× spread,
+and all of it lives in the tail.** The median is a hit on a page the kernel
+already had resident, which is essentially free and exactly why mmap is so
+tempting for a storage engine. The p99.9 and the max are minor page faults: a
+trap, a read, a TLB shootdown — and, crucially, an event the database cannot
+see, schedule around, or prefetch ahead of.
+
+That asymmetry is the entire argument of *"Are You Sure You Want to Use MMAP in
+Your DBMS?"*, and it is why every serious engine reimplements paging it could
+have had for free. Note the handicap when you compare your own pool to this
+row: mmap gets the whole machine's page cache here, while your pool will be
+held to 256 MiB against a 1 GiB file. If your pool still wins the tail under
+that disadvantage, the result is conclusive.
+
 ## Outcomes
 
 By the end you can:

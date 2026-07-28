@@ -34,15 +34,40 @@ fn bench(name: &str, table: &Table, threshold: u32, f: impl Fn(&Table, u32) -> V
     );
 }
 
+/// Run an exercise lane, reporting unimplemented `todo!()`s as a note
+/// instead of a crash, so the volcano baseline always prints.
+fn stub_lane(name: &str, f: impl FnOnce()) -> bool {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    if r.is_err() {
+        println!("  [stub — implement the todo!()s to unlock {name}]");
+    }
+    r.is_ok()
+}
+
 fn main() {
     println!("generating {} M rows...", ROWS / 1_000_000);
     let table = Table::generate(ROWS, 42);
 
+    let mut vec_ok = true;
+    let mut kern_ok = true;
     for threshold in [50, 5, 95] {
         println!("\nSELECT k, SUM(v) WHERE f < {threshold} GROUP BY k  (selectivity ~{threshold}%)");
+        // lane 1 (PROVIDED): tuple-at-a-time volcano — the baseline to beat
         bench("volcano", &table, threshold, volcano::run);
-        bench("vectorized", &table, threshold, vectorized::run);
-        bench("kernel", &table, threshold, kernels::run);
+        // lanes 2-3 (EXERCISE): batch-at-a-time, then typed kernels
+        if vec_ok {
+            vec_ok = stub_lane("vectorized (src/vectorized.rs)", || {
+                bench("vectorized", &table, threshold, vectorized::run)
+            });
+        }
+        if kern_ok {
+            kern_ok = stub_lane("kernels (src/kernels.rs)", || {
+                bench("kernel", &table, threshold, kernels::run)
+            });
+        }
     }
 
     println!("\nnotes:");

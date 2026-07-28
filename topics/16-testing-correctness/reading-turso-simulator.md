@@ -203,6 +203,15 @@ doublecheck and shrink.
 5. For M16: which three properties from generation/property.rs port
    directly to Cypher? Sketch the graph equivalents.
 
+## Done when
+
+- [ ] You can explain what it takes to make a program a pure function of a seed, and name the three sources of nondeterminism that must be captured.
+- [ ] You can say why ChaCha8 rather than the default RNG, and what property DST needs from its generator.
+- [ ] You can describe fault injection at the file layer and why targeting the WAL separately from the db file matters.
+- [ ] You can explain the doublecheck oracle — determinism itself — and why it is the cheapest one available.
+- [ ] You can say why shrinking stateful op sequences is harder than shrinking values, and connect it to this topic's `shrink.rs` exercise.
+- [ ] You wrote answers to all five questions in notes.md, including the three properties you will port.
+
 ## References
 
 **Code**

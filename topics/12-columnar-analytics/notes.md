@@ -1,5 +1,35 @@
 # Topic 12 notes — columnar storage & analytics
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin scan_bench` — 100 M u64 (800 MB raw) per shape,
+best of 3, single-threaded fold.
+
+| shape | raw sum | raw-equiv GB/s |
+|---|---|---|
+| sorted low-cardinality | 0.033 s | 24.4 |
+| shuffled low-cardinality | 0.016 s | 50.0 |
+| small-range random | 0.014 s | 57.0 |
+
+**This is the floor every encoded scan has to beat: 24–57 GB/s of sequential
+u64 fold, on a machine whose peak memory bandwidth is 150 GB/s.** One core gets
+roughly a third of the bus, and LLVM is already vectorizing the
+`wrapping_add` fold across several accumulators to do it.
+
+Two honesty notes, both of which matter more than the numbers:
+
+- **The spread across the three shapes is measurement noise, not a property of
+  the data.** All three do byte-identical work — the same 800 MB fold — and the
+  shapes differ only in what the *encoders* will later be able to exploit.
+  Repeat runs put this lane anywhere from 24 to 76 GB/s depending on machine
+  state, which is a useful reminder that a bandwidth-bound single number wants
+  an error bar. Take the high end as the target to beat.
+- **This lane used to print 19 047 619 GB/s.** The timing loop hoisted the pure
+  fold out of its own repetition loop, so reps 2 and 3 timed nothing and
+  best-of-3 reported ~0.000 s. `black_box` on the input fixed it. If you write
+  your own lane here, that is the failure mode to expect (topic 0's lesson,
+  learned the hard way in this file).
+
 ## Predictions (fill BEFORE running scan_bench)
 
 Raw baseline context: 100M u64 = 800 MB; this Mac's bandwidth ≈ ? GB/s

@@ -167,6 +167,15 @@ The closing vocabulary, three items:
    read — cost per read of each, and which M22 (the capstone's
    read-path milestone) should pick.
 
+## Done when
+
+- [ ] You can name the three read anomalies lag produces and give a user-visible symptom for each.
+- [ ] You can state what statement, WAL-byte and row shipping each make hard, and which one valkey uses.
+- [ ] You can explain what a fencing token prevents that a timeout cannot.
+- [ ] You can define linearizability precisely enough to say why it is a recency guarantee and not an isolation level.
+- [ ] You can fill in the 2x3 matrix of {async, semi-sync, raft} x {read-your-writes, monotonic reads, consistent prefix}.
+- [ ] You wrote answers to all five questions in notes.md, including why FLP does not doom Raft in practice.
+
 ## References
 
 **Papers / Books**

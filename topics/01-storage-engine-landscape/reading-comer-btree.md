@@ -185,6 +185,14 @@ Read in this order:
 The B-tree is the memory hierarchy turned into a data structure: node size = transfer
 unit, fanout = whatever fits, height = the IO budget.
 
+## Done when
+
+- [ ] You can state the disk access model in one line — cost is blocks touched, not comparisons made — and use it to explain why a binary search tree is the wrong shape.
+- [ ] You can list the B-tree invariants and say which one forces the >=50% occupancy guarantee.
+- [ ] You can narrate a split and say where the separator key ends up in a B-tree versus a B+-tree.
+- [ ] You can compute fanout and height for a given page size and key width, and check yourself against topic 3's measured table (185 leaf cells and fanout 255 for 8 B keys).
+- [ ] You wrote answers to both questions in notes.md, including what turso actually implements.
+
 ## References
 
 **Papers**

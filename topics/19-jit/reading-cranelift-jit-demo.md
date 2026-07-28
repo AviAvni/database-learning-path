@@ -210,6 +210,14 @@ that our pure `Expr` doesn't need.
    directly, and what's the fallback boundary (per-node fallback
    vs whole-expression bailout — pick one and defend it)?
 
+## Done when
+
+- [ ] You can recite the compile ladder: declare, define, finalize — and say why `define_function` alone does not give you a callable.
+- [ ] You can explain what `FunctionBuilder` handling SSA construction saves you from doing.
+- [ ] You can state the lifetime contract on the returned pointer and every invariant the `transmute` is assuming.
+- [ ] You can time `compile()` across expression depths and say whether it is linear in node count.
+- [ ] You wrote answers to all five questions in notes.md, including how you will handle non-f64 values in M19.
+
 ## References
 
 **Code**

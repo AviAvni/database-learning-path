@@ -235,6 +235,14 @@ Suggested reading order in the crate:
 Criterion is built on three ideas: **bootstrap instead of normality assumptions, slope
 instead of mean, label outliers instead of dropping them.**
 
+## Done when
+
+- [ ] You can explain why criterion times *batches* and fits a line, rather than timing one iteration.
+- [ ] You can give the three reasons taking the minimum is the wrong estimator, not just a noisy one.
+- [ ] You can state what a bootstrapped confidence interval assumes about the distribution (nothing) and what it therefore cannot rescue you from.
+- [ ] You can name criterion's two regression gates and say why "statistically significant" alone is not one of them.
+- [ ] You have run `cargo bench` in `experiments/` and can point at the warm-up, sample and outlier lines in its output.
+
 ## References
 
 **Code**

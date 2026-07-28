@@ -172,6 +172,14 @@ exactly there?
    simd_bench — then reconcile with FastLanes' claim that layout,
    not intrinsics, is the win.
 
+## Done when
+
+- [ ] You can explain why the sequential bit-packed layout cannot vectorize, at the level of which value crosses which lane boundary.
+- [ ] You can describe the transpose into 1024 virtual bit-serial lanes and say what makes one permutation work for every lane width.
+- [ ] You can name the two constraints that fix the block at 1024 values regardless of bit width.
+- [ ] You can say what random access to value i now costs, and what was traded to get the scan speed.
+- [ ] You wrote answers to all five questions in notes.md, and can state how your `unpack.rs` differs from the paper's layout — this topic measures the scalar version at 7.99 GB/s of output.
+
 ## References
 
 **Papers**

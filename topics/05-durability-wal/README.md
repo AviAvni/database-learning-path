@@ -5,6 +5,30 @@
 > style redo), turso/SQLite (WAL with checksum chain), LMDB (topic 3: no log at
 > all), redis (AOF command log + fork snapshots).
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin fsync_ladder` on APFS. macOS has no `fdatasync`, so
+the rungs are `write()`, `fsync`, and `F_FULLFSYNC`:
+
+```
+rung                   p50         p99       p99.9     implied max commits/s
+write() only       1.17 µs     4.54 µs    14.46 µs                   856898
+fsync             22.67 µs    56.73 µs   157.06 µs                    44109
+F_FULLFSYNC        2.97 ms     3.61 ms     9.89 ms                      337
+```
+
+**856 898, then 44 109, then 337 commits per second — and only the last row is
+actually durable on this hardware.** The middle rung is the one that ruins
+people: `fsync` on macOS returns when the data reaches the *drive*, not when the
+drive has committed it to stable media, so the write can still be lost in the
+disk's volatile cache. `F_FULLFSYNC` forces the cache flush and costs 131× more
+than the call most code makes while believing it is safe.
+
+337 commits/s is the number to carry forward. It is a hard ceiling on any design
+that syncs once per transaction, no matter how fast everything above it is —
+which is why group commit is structural rather than an optimization, and why
+topic 15's follower-fsync table bottoms out at 341 entries/s on the same box.
+
 ## Outcomes
 
 By the end you can:

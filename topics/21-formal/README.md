@@ -28,6 +28,37 @@ graph LR
     LEAN["Lean 4"] --> PROOF["machine-checked proof<br/>(unbounded, forever)"]
 ```
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin eqsat_bench` — a hand-ordered rewriter on the
+canonical trap expression `(a*2)/2`, then on random trees:
+
+```
+-- the ordering trap: (a*2)/2 --
+hand: cost 5 (1 firing, 11.9 µs) — Div(Shl(Var("a"), Num(1)), Num(2))
+
+-- random exprs, 20 seeds per depth --
+depth   in cost   hand cost   hand µs   firings
+    4        31          21       4.3         4
+    6       127          90      17.3        15
+    8       511         355     102.1        61
+   10      2047        1390     420.7       248
+```
+
+**The answer to `(a*2)/2` is `a`. The hand-ordered rewriter returns
+`(a << 1) / 2`, cost 5, and stops.** It is not buggy and it did not run out of
+rules — it applied a locally excellent rewrite (`*2` → `<<1`, a real strength
+reduction) which destroyed the syntactic shape that the cancellation rule was
+waiting for. One firing, then a local optimum, forever.
+
+That is the entire motivation for equality saturation, and it is why the sweep
+matters too: hand rewriting only removes about 32% of the cost at every depth
+(2047 → 1390 at depth 10), consistently, because the same class of ordering
+accident keeps happening. An e-graph does not choose an order — it keeps *all*
+the equivalent forms and extracts the cheapest at the end, which is why the egg
+column exists and why "phase ordering" is a compiler problem with a data
+structure for an answer rather than a heuristic for one.
+
 ## 1. E-graphs: the data structure
 
 An e-graph = union-find over e-classes + hashcons (memo) + congruence

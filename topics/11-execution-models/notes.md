@@ -1,5 +1,27 @@
 # Topic 11 notes — execution models
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin exec_bench` — 50 M rows,
+`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3.
+
+| selectivity | volcano | vectorized | kernels |
+|---|---|---|---|
+| 5% | 0.386 s / 129.4 M rows/s | stub | stub |
+| 50% | 0.484 s / 103.3 M rows/s | stub | stub |
+| 95% | 0.669 s / 74.7 M rows/s | stub | stub |
+
+**103 M rows/s at 50% selectivity is the tuple-at-a-time ceiling on this
+machine, and note which direction it moves.** Cost rises monotonically with
+selectivity (74.7 M rows/s at 95%) because in a Volcano pipeline every surviving
+row pays the full per-tuple interpretation cost — a virtual call per operator
+per row — on its way to the aggregate. The filter is not the expensive part;
+*passing the filter* is.
+
+Predict before implementing: at 50% selectivity, how much of the gap between
+103 M rows/s and memory bandwidth (topic 12 measures ~50 GB/s = 6.2 G u64/s on
+this box) does batching close, and what does the remainder consist of?
+
 ## Predictions (fill BEFORE implementing vectorized.rs / kernels.rs)
 
 Measured baseline (provided volcano, release, 50M rows, sel 50%):

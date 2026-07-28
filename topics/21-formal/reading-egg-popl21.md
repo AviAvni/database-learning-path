@@ -201,6 +201,15 @@ tree and orthogonal.
 5. Cascades memo vs e-graph: what does Cascades have that egg lacks
    (physical properties, promises), and vice versa (congruence)?
 
+## Done when
+
+- [ ] You can explain the e-graph as a set of terms closed under equivalence, and say what congruence adds to union-find.
+- [ ] You can trace `(a*2)/2` by hand through iteration 1 and say which unions happen — then compare with the measured hand-rewriter result here, which gets stuck at `(a << 1) / 2`, cost 5.
+- [ ] You can explain deferred rebuilding and why `memo` re-canonicalization needs a repair loop.
+- [ ] You can explain what an e-class analysis is and give one useful example.
+- [ ] You can say why extraction is the weak spot, and what a cost function cannot express.
+- [ ] You wrote answers to all five questions in notes.md, including the growth estimate under associativity plus commutativity.
+
 ## References
 
 **Papers**

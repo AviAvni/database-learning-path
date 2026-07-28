@@ -23,6 +23,36 @@ Every technique in this topic is one choice of generator + oracle:
 | Jepsen/elle | concurrent client histories | linearizability checker |
 | Z3 / Cosette | symbolic (ALL inputs at once) | UNSAT = proven equal |
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin crash_matrix` — 5000 seeded workloads × 40 ops
+(50% put / 20% delete / 20% commit / 10% crash) against a KV store with one bug
+planted at a time:
+
+```
+bug                      caught         rate     first seed
+None                          0         0.0%              -
+LostDelete                 3738        74.8%              0
+NoSyncOnCommit             4980        99.6%              0
+TornWriteAccepted          2442        48.8%              3
+StaleRead                  4706        94.1%              0
+```
+
+**Every planted bug is caught, three of them by the very first seed — and the
+spread from 48.8% to 99.6% is the useful part.** A bug caught by 99.6% of seeds
+is one you cannot ship; a bug caught by 48.8% is one that survives a test suite
+run twice and fails in production on the third. Same harness, same effort, four
+different probabilities of ever finding out.
+
+The `None` row is the load-bearing one. 0.0% is not a formality: any nonzero
+number there means the harness reports divergence on a correct implementation,
+and a false-positive oracle is worse than no oracle because it trains you to
+ignore it. Check that row first, every time you change the generator.
+
+Note also what is *not* here: no timing claim. The value of deterministic
+simulation is that a failure comes with a seed you can replay, and the exercise
+lanes are about shrinking that seed's 40 ops to the 3 that matter.
+
 ## 1. Deterministic simulation testing (DST)
 
 FoundationDB's gift to the industry (turso, TigerBeetle, Antithesis

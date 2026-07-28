@@ -183,6 +183,15 @@ fusability, and neither dominates:
    Ligra's F-with-CAS cost a SAFE embedding (Rust: Send+Sync bounds,
    no UDF aborts mid-frontier)?
 
+## Done when
+
+- [ ] You can define the frontier and both physical representations.
+- [ ] You can explain push against pull as whose edges you traverse.
+- [ ] You can construct a frontier where the m/20 threshold is the wrong call.
+- [ ] You can explain why `edgeMapDenseForward` pushes from all vertices and when that is cheaper.
+- [ ] You can compare Ligra's model honestly against GraphBLAS's and say what each makes awkward.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

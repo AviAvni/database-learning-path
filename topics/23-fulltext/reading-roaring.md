@@ -181,6 +181,14 @@ Two short papers, both readable in one sitting:
    RediSearch → node-id set → GraphBLAS vector, and what would a
    native roaring-masked mxv save?
 
+## Done when
+
+- [ ] You can derive the 4096 crossover from bytes per value.
+- [ ] You can explain why the representation is chosen per 64K range rather than per set.
+- [ ] You can name the kernel matrix idea: one algorithm per container pair.
+- [ ] You can say what a 99.9%-dense posting list like this topic's `t0` (df 99 888 of 100 000 docs) should become, and what that costs against the sorted-vec baseline measured here (0.1178 ms for dense∧dense AND).
+- [ ] You wrote answers to all five questions in notes.md, including the M20 bitmap-container tie-in.
+
 ## References
 
 **Papers**

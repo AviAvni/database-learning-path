@@ -47,17 +47,24 @@ fn child(wal_path: &Path, ack_path: &Path) -> ! {
 }
 
 fn round(n: usize) -> bool {
+    round_inner(n, false)
+}
+
+/// `quiet` silences the child's stderr — used only for the one probe round
+/// that detects an unimplemented `Wal`, so a reader who has started the
+/// exercise still sees their own child's panics during the real rounds.
+fn round_inner(n: usize, quiet: bool) -> bool {
     let dir = tempfile::tempdir().unwrap();
     let wal_path = dir.path().join("wal");
     let ack_path = dir.path().join("ack");
 
     let exe = std::env::current_exe().unwrap();
-    let mut kid = Command::new(exe)
-        .arg("child")
-        .arg(&wal_path)
-        .arg(&ack_path)
-        .spawn()
-        .expect("spawn child");
+    let mut cmd = Command::new(exe);
+    cmd.arg("child").arg(&wal_path).arg(&ack_path);
+    if quiet {
+        cmd.stderr(std::process::Stdio::null());
+    }
+    let mut kid = cmd.spawn().expect("spawn child");
 
     let ms = rand::thread_rng().gen_range(5..80);
     std::thread::sleep(std::time::Duration::from_millis(ms));
@@ -101,6 +108,24 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("child") {
         child(Path::new(&args[2]), Path::new(&args[3]));
+    }
+
+    // This whole binary is the topic's acceptance test for YOUR src/wal.rs:
+    // there is no provided lane to fall back on, so probe once and explain
+    // the state rather than dumping a panic trace 100 times.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let implemented = std::panic::catch_unwind(|| round_inner(0, true)).is_ok();
+    std::panic::set_hook(prev);
+    if !implemented {
+        println!(
+            "[stub — implement src/wal.rs to unlock the crash matrix]\n\n\
+             This binary kill -9's a child mid-commit {ROUNDS} times and checks two\n\
+             things after each replay: no acknowledged write is lost, and no\n\
+             transaction is half-applied. `cargo test` is the smaller specification;\n\
+             \"Done when: {ROUNDS}/{ROUNDS} crash rounds pass\" is this binary."
+        );
+        return;
     }
 
     let mut passed = 0;

@@ -192,6 +192,16 @@ exercise — it's the test a bloom filter *cannot* pass.
    Rank bloom/cuckoo/xor/ribbon along (updatable, space, query misses) and
    match each to: memtable filter, routing table with churn, immutable SST.
 
+## Done when
+
+- [ ] You can explain why bloom cannot delete, in terms of shared bits.
+- [ ] You can state the one trick that makes cuckoo *filters* possible: partial-key cuckoo hashing.
+- [ ] You can explain why the alternate bucket is `i1 XOR hash(fp)` rather than something simpler.
+- [ ] You can say why deletion is only safe for keys actually inserted.
+- [ ] You can explain why 4 slots per bucket, with the load-factor numbers.
+- [ ] You can explain why the peeling stack makes XOR filters build-once.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Papers**

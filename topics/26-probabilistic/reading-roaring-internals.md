@@ -189,6 +189,15 @@ produces runs.
    ever converts back down, and why is demotion rarer than promotion
    everywhere?
 
+## Done when
+
+- [ ] You can state the density crossover and why it is applied per 64K chunk.
+- [ ] You can explain what run containers add and which data shape wants them.
+- [ ] You can explain the density algebra: kernels chosen pairwise per container type.
+- [ ] You can say what happens when a union overflows the array limit.
+- [ ] You can explain why cardinality-only operations are the hot path and what they skip.
+- [ ] You wrote answers to all questions in notes.md, including the three-adaptive-encodings cross-topic thread with GraphBLAS and HLL.
+
 ## References
 
 **Papers**

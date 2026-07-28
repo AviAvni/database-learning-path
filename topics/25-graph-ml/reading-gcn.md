@@ -171,6 +171,14 @@ Three built-in ceilings, each motivating a successor:
    deltas participate in A_hat, and is that the same decision as topic
    24's `CALL algo.wcc` three-option question?
 
+## Done when
+
+- [ ] You can write `A_hat = D^-1/2 (A+I) D^-1/2` and say why its eigenvalues lie in [-1, 1].
+- [ ] You can decompose a layer into one SpMM plus one small dense matmul.
+- [ ] You can explain why associativity is a query plan, and count FLOPs both ways on this topic's SBM — the measured SpMM is 4.31 ms against 5.65 ms for the dense transform.
+- [ ] You can say what being baked into `A_hat` at training time costs when a node arrives.
+- [ ] You wrote answers to all five questions in notes.md, including what pending deltas mean for a forward pass over the M20 graph.
+
 ## References
 
 **Papers**

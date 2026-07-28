@@ -166,6 +166,14 @@ survive.
    when a "read" is 50 ms S3 GET instead of 100 µs NVMe? Which knob
    moves?
 
+## Done when
+
+- [ ] You can say why HNSW does not survive being put on disk, in reads per hop rather than in generalities.
+- [ ] You can explain what `α > 1` does to greedy walk length, and why that is the property Vamana is buying.
+- [ ] You can describe the block layout and count the SSD reads per hop it achieves.
+- [ ] You can explain the division of labour in the search loop: PQ steers, f32 ranks, W reads in flight — and what recall failure each part is responsible for.
+- [ ] You wrote answers to all five questions in notes.md, including the M28 object-storage preview.
+
 ## References
 
 **Papers**

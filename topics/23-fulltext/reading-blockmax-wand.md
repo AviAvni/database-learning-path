@@ -190,6 +190,15 @@ already fixed.
    max_score may belong to a deleted doc. Is WAND still exact?
    What's the merge-time fix?
 
+## Done when
+
+- [ ] You can explain the threshold θ and why top-k means most documents are provably irrelevant.
+- [ ] You can compute a pivot from term upper bounds and say what makes the jump safe.
+- [ ] You can explain what per-block ceilings fix about the global upper bound.
+- [ ] You can say why block-max helps most on common terms, and check it against this topic's measured oracle: 10.378 ms and 272 310 postings for `t0∧t1∧t5` against 0.009 ms and 159 postings for two rare terms.
+- [ ] You can state what breaks if the scorer stops having a ceiling.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

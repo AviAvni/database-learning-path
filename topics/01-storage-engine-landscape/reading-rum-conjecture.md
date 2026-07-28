@@ -143,6 +143,14 @@ elsewhere — find where the cost went before believing the benchmark.
 There is no best index, only a workload-shaped position on a three-way frontier —
 "which engine is better" is an ill-posed question until the workload is named.
 
+## Done when
+
+- [ ] You can define RO, UO and MO as ratios and say what the denominator is in each.
+- [ ] You can name one real structure per corner of the triangle.
+- [ ] You can state what the conjecture does and does not claim (it is a conjecture and a compass, not a proven bound).
+- [ ] You have placed this topic's own measured result on the triangle: fjall at 0.45x and redb at 63.28x space amp, and can say which axis each engine is spending.
+- [ ] You wrote answers to both questions in notes.md, including where FalkorDB's matrix adjacency sits.
+
 ## References
 
 **Papers**

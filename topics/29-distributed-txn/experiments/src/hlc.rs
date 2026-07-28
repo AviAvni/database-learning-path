@@ -89,6 +89,9 @@ mod tests {
     }
 
     #[test]
+    // rustc reports the seed assignment to `m` as dead while recv() is still
+    // a todo!(), because the loop below never gets to read it
+    #[allow(unused_assignments)]
     fn l_is_bounded_by_max_physical_time_seen() {
         // The paper's key bound: l never exceeds the largest pt in the
         // system, so HLC stays within clock-skew of true time (unlike a

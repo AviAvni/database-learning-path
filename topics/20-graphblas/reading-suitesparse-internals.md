@@ -206,6 +206,15 @@ else in `Source/mxm/` is implementation of that comment. Then read
    lose to the HashMap version (SPA = m×8B cold bytes per row team
    — when m outgrows L2, topic 13's blocking argument bites)?
 
+## Done when
+
+- [ ] You can explain format switching as a bitmask plus two floats, and name the two thresholds.
+- [ ] You can explain why the flopcount pre-pass exists before any allocation.
+- [ ] You can describe the coarse/fine task taxonomy and why a fine Gustavson task needs atomics while a coarse one does not.
+- [ ] You can say how each task picks between Gustavson and hash accumulation, and how the hash table is sized.
+- [ ] You can explain dot3's mask-as-outer-loop and where it crosses over against saxpy3.
+- [ ] You wrote answers to all five questions in notes.md, including the RMAT scale at which the dense SPA stops fitting.
+
 ## References
 
 **Papers**

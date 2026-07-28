@@ -176,6 +176,15 @@ preserved by set/remove/wait.
 5. Koka's effect types let Perceus assume no hidden aliasing. What's
    the moral equivalent in Rust that makes `Arc::make_mut` sound?
 
+## Done when
+
+- [ ] You can explain why immutability means copying and what reference counting costs to avoid it.
+- [ ] You can explain borrow inference: not counting what you only look at.
+- [ ] You can explain reuse tokens and the runtime RC==1 check they depend on.
+- [ ] You can state what "garbage-free" means precisely (peak memory equals live data) and what it assumes.
+- [ ] You can say why this belongs in a database curriculum, in terms of where `Arc<T>` costs a Rust engine.
+- [ ] You wrote answers to all five questions in notes.md, including your ranking of Lean, TLC and proptest for the `DP ∩ M = ∅` invariant.
+
 ## References
 
 **Papers**

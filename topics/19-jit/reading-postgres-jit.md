@@ -180,6 +180,14 @@ llvmjit.c for the lifecycle.
    key (expression shape with constants as parameters — count how
    many distinct shapes a workload of 1000 queries has)?
 
+## Done when
+
+- [ ] You can explain that Postgres already had bytecode (`ExprState`) before it had a JIT, and what the JIT therefore actually replaces.
+- [ ] You can explain tuple deforming and why it is the underrated half of the win.
+- [ ] You can name all four ways the `jit_above_cost` gate misfires, and propose a better gate.
+- [ ] You can say why the JIT emits one function per `ExprState` with a block per step.
+- [ ] You wrote answers to all five questions in notes.md, including the per-query-no-cache versus GraphBLAS-cache-forever contrast.
+
 ## References
 
 **Code**

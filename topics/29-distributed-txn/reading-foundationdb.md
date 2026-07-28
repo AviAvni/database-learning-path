@@ -191,6 +191,15 @@ Two design reads to carry out of the topic:
    What is the graph analogue of a range conflict, and does a 2-hop
    traversal's read set even fit in a resolver's memory window?
 
+## Done when
+
+- [ ] You can explain OCC: check at commit, lock nothing.
+- [ ] You can name the unbundled roles and what batching happens between them.
+- [ ] You can explain the resolver's in-memory conflict window and why sharded resolvers need not talk to each other.
+- [ ] You can explain why storage servers may apply writes lazily after commit.
+- [ ] You can explain why "failure equals recovery, not repair" is a design choice and what it buys.
+- [ ] You wrote answers to all six questions in notes.md, including why a read-only transaction still gets a consistent snapshot without contacting resolvers.
+
 ## References
 
 **Papers**

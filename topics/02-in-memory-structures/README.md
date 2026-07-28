@@ -4,6 +4,31 @@
 > in-memory database. This topic is where topic 0's cache lessons become design
 > rules: every structure here is a different answer to "how do I avoid DRAM misses?"
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin rehash_spike` — 10 M keys into `hashbrown`, one at a
+time, every single insert timed:
+
+```
+hashbrown   p50=42ns  p99=291ns  p99.9=1292ns  p99.99=13423ns  max=58392575ns
+
+per-decile max (ns):
+[8110084, 13203125, 36417, 28320250, 85792, 46625, 51125, 58385375, 470917, 62083]
+   8.1ms    13.2ms    36µs  28.3ms    86µs   47µs   51µs   58.4ms   471µs   62µs
+```
+
+**A 42-nanosecond median and a 58-millisecond maximum: the same operation,
+1.4 million times apart.** Four of the ten deciles carry a multi-millisecond
+spike and the rest sit in the tens of microseconds, because a doubling rehash
+is not amortized over anything a *latency* measurement cares about — one
+unlucky insert copies the entire table while every other insert waits.
+
+Read the decile row again: the spikes land where the table crossed a power of
+two, so they are perfectly predictable and perfectly invisible to a throughput
+number. This is why redis rehashes incrementally, and it is the concrete reason
+topic 0 insisted on percentiles: an average over this data is 5.9 µs, which
+describes no insert that actually happened.
+
 ## Outcomes
 
 By the end you can:

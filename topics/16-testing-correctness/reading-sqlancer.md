@@ -173,6 +173,15 @@ skip the adapter plumbing.
    plays the role of NULL in a graph pattern (missing property!),
    and what's the union assertion?
 
+## Done when
+
+- [ ] You can describe all three oracles — PQS, TLP, NoREC — in one sentence each.
+- [ ] You can explain why checking one row per query is enough in expectation.
+- [ ] You can write the TLP identity for `COUNT(*)` and for `MAX(c)`, and say which one is harder and why.
+- [ ] You can explain what NoREC compares and why turning the optimizer off is a valid oracle.
+- [ ] You can sketch a Cypher TLP partition for `MATCH (a)-[e]->(b) WHERE p` and name what makes graph patterns harder than SQL rows here.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

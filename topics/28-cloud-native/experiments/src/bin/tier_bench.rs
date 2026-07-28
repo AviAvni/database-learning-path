@@ -32,6 +32,10 @@ fn pctl_line(label: &str, lat: &mut Vec<u64>) {
 }
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     println!("=== tier_bench: {N_KEYS} keys, {READS} zipf({ZIPF_THETA}) point reads ===\n");
 
     // Pre-draw the key stream so every lane sees identical reads.

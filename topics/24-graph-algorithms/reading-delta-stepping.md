@@ -205,6 +205,15 @@ never a wrong answer.
    the M20 core: which semiring, which vector becomes the bucket,
    and where does Δ live in the API?
 
+## Done when
+
+- [ ] You can state relaxation as the one move all SSSP algorithms share.
+- [ ] You can explain the Dijkstra/Bellman-Ford trade as order against parallelism, and where Δ sits on that dial.
+- [ ] You can say exactly which algorithm Δ=1 gives you with integer weights.
+- [ ] You can name the three traps inside the bucket loop and why benign write races are acceptable.
+- [ ] You can write SSSP as MIN_PLUS matrix multiplication.
+- [ ] You wrote answers to all five questions in notes.md, and predicted a Δ for weights uniform in 1..=255 before running the lane against the measured Dijkstra oracle (42.5 ms, 342 909 heap pops).
+
 ## References
 
 **Papers**

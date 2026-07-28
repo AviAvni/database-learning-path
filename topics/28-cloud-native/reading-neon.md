@@ -183,6 +183,14 @@ would M28's graph branches need the same trick — what query pattern makes
 a 64-deep ancestor walk show up, and what's the graph equivalent of an
 image layer (a materialized matrix snapshot at the branch point)?
 
+## Done when
+
+- [ ] You can state the Postgres contract Neon preserves: WAL in, pages out.
+- [ ] You can explain the safekeeper/pageserver split as durability against serving.
+- [ ] You can explain why the pageserver is an LSM keyed by (key, LSN).
+- [ ] You can explain reconstruction: REDO on the read path, and what it costs a cold read.
+- [ ] You can explain why a branch is two numbers, and what that makes free.
+
 ## References
 
 **Code**

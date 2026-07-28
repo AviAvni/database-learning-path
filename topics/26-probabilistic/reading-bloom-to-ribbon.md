@@ -207,6 +207,15 @@ for your keys-per-block Poisson mean.
    `bloom_before_level`). Why does that split follow directly from
    "ribbon: ~30% less space but several× slower to build and query"?
 
+## Done when
+
+- [ ] You can state the filter contract: one-sided error, and which side.
+- [ ] You can explain why exactly half the bits are set at optimal k, and why that is intuitive.
+- [ ] You can name the two sins — 1.44x space and k cache misses — and say which one blocked bloom fixes.
+- [ ] You can explain filters as a linear solve, and why the ribbon band makes it O(n).
+- [ ] You can say what happens when ribbon construction fails and what RocksDB does about it.
+- [ ] You wrote answers to all five questions in notes.md, including why RocksDB picks ribbon for the bottom level — and you have this topic's measured miss costs to compare against: 246 ns binary search, 299 ns BTreeMap, 28 ns HashSet at 224 MB.
+
 ## References
 
 **Papers**

@@ -1,6 +1,12 @@
 //! disk_btree — your slotted-page B+tree vs redb, plus the prefix-truncation
 //! experiment.
 //!
+//! This one needs your `src/btree.rs`: every group puts your tree and redb in
+//! the same table, so it panics until `DiskBTree` works. For the redb-only
+//! baseline that runs on a fresh clone — the page arithmetic, the height
+//! ladder and the long-key case — run `cargo run --release --bin
+//! btree_baseline` first and record those numbers as your targets.
+//!
 //! Honesty rules (topic 0/1): both engines warm (OS page cache holds everything
 //! at 1M keys — you are NOT benching the disk, note it); fixed seed; predict
 //! before running (notes.md table).

@@ -195,6 +195,15 @@ The 2009 monograph is ~90 pages; you need two sections:
    no-information special case. Where would M23 get click/edge
    feedback to use the full RSJ weight, and is it worth it?
 
+## Done when
+
+- [ ] You can explain where idf comes from, rather than asserting it.
+- [ ] You can derive the tf saturation limit and say what it approaches as tf grows.
+- [ ] You can explain what b controls and predict its effect on a corpus with near-uniform lengths.
+- [ ] You can say why WAND needs BM25's score ceiling and what a scorer without one costs.
+- [ ] You can state what the +0.5 smoothing terms are doing.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

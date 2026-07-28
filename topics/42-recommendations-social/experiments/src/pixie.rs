@@ -265,7 +265,7 @@ mod tests {
         }
         let (a, b) = (a.unwrap(), b.unwrap());
         let mut rng = seeded_rng(3);
-        let mut list_for = |u: u32, rng: &mut ChaCha8Rng| {
+        let list_for = |u: u32, rng: &mut ChaCha8Rng| {
             let q: Vec<(u32, f64)> = g.user_adj[u as usize][..4].iter().map(|&i| (i, 1.0)).collect();
             let r = pixie_walk(rng, &g, &q, 60_000, 0.3, None);
             topk(&r.scores, &g.user_adj[u as usize], 50)

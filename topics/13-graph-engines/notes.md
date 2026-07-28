@@ -1,5 +1,34 @@
 # Topic 13 notes — graph engines
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin hop_bench` — preferential-attachment graph, 1 M
+nodes / 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 1000 sources.
+Max degree 6565, p50 degree 11.
+
+| impl | source set | ns/query | checksum |
+|---|---|---|---|
+| adj_list (oracle) | random | 4 914 | 10 220 457 |
+| adj_list (oracle) | supernodes (top-100 degree) | **495 378** | 7 890 665 |
+| CSR (yours) | | | stub |
+| masked SpMV (yours) | | | stub |
+
+**Same query, same graph, same code path: 101× slower depending on where you
+start.** That ratio is the single most important fact about graph workloads and
+it has no analogue in the topics before this one. A B-tree point lookup costs
+what it costs; a two-hop traversal costs whatever the *degree distribution*
+under your start node says it costs, and on a scale-free graph that is a
+power law with no useful average. The p50 node has 11 neighbours; the top node
+has 6565.
+
+Note the supernode checksum is *smaller* (7.9 M vs 10.2 M distinct nodes
+reached) while taking 101× longer — high-degree neighbourhoods overlap heavily,
+so the work is redundant, not productive. That redundancy is what the CSR and
+SpMV lanes are able to attack; the adjacency-list oracle cannot.
+
+Checksums must match across all three implementations per source set — that is
+the correctness gate before any timing comparison means anything.
+
 ## Predictions (fill BEFORE implementing csr.rs / matrix.rs)
 
 Baseline (provided, measured): adj_list 3484 ns/query random,

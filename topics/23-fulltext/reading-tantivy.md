@@ -175,6 +175,14 @@ Suggested 90-minute read order:
    actually need to fetch, and in what order — how does the layout
    minimize round trips?
 
+## Done when
+
+- [ ] You can say why the term dictionary is an FST rather than a hash map, and list what the FST gives you that a hash cannot.
+- [ ] You can describe 128-delta posting blocks with one bit width, and what happens to a final partial block.
+- [ ] You can explain what skip data answers without decoding.
+- [ ] You can explain why the write path is topic 4's LSM wearing a hat, and contrast LogMergePolicy with leveled compaction.
+- [ ] You wrote answers to all five questions in notes.md, including which of WAND's needs `TermInfo.doc_freq` serves.
+
 ## References
 
 **Code**

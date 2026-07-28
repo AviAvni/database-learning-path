@@ -179,6 +179,14 @@ needs no index redesign.
    brute-force case at batch 1. Predict from the roofline whether
    Metal wins BEFORE running your implementation — then check.
 
+## Done when
+
+- [ ] You can state the residency rule and what it implies about index size versus device memory.
+- [ ] You can explain why heaps fail on warps and what WarpSelect does instead.
+- [ ] You can say what breaks when k exceeds roughly 1024 per warp.
+- [ ] You can explain why fusing distance computation into k-select matters more than either part alone.
+- [ ] You wrote answers to all five questions in notes.md, including the `l2_batch` comparison against their reported figures.
+
 ## References
 
 **Papers**

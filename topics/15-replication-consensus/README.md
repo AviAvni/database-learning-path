@@ -6,6 +6,33 @@ asynchronously and calls it a day, qdrant wraps tikv's raft-rs around
 cluster METADATA only, and everyone chooses a different point on the
 consistency/latency line.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin repl_lag` — 2000 entries × 128 B, leader
+group-commits every 64, `WAIT 1` ack semantics. The only variable is the
+follower's fsync policy:
+
+```
+follower fsync      entries/s   ack p50 us   ack p99 us
+every entry               341       2967.0       3889.5
+every 8                  2730         22.2       2979.8
+every 64                12187         14.0       2133.0
+never                   20174         13.8         64.5
+```
+
+**59× throughput between the safest row and the loosest one — and the whole
+durability argument hides in the p99 column.** The `every 8` row has already
+recovered most of the *median* (22.2 µs, within 60% of `never`) while its p99 is
+still 2980 µs. Batching removes the fsync from the common case and leaves it in
+the tail, so a replication setting judged by its median is a setting whose worst
+case you have not looked at.
+
+Then compare the top row to topic 5: 341 entries/s here, 337 commits/s for
+`F_FULLFSYNC` there. The follower is not slow because replication is expensive.
+It is slow because it is paying the same physical media flush, once per entry,
+that topic 5 already priced. Same wall, one topic later — which is the argument
+for reading these two together.
+
 ## 1. The topology menu
 
 ```

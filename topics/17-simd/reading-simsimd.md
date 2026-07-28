@@ -167,6 +167,15 @@ different table.
    {dot, l2sq, filter} × {neon, scalar} and where
    `is_aarch64_feature_detected!` runs exactly once.
 
+## Done when
+
+- [ ] You can read the port/latency table and compute peak f32 FMA throughput for M-series from it.
+- [ ] You can explain why precision is bought with wider accumulators rather than with reordering.
+- [ ] You can say why batching candidates beats unrolling pairs.
+- [ ] You can state the FCMLA lesson: a specialized instruction must beat the table, not merely exist.
+- [ ] You can sketch the function-pointer dispatch table and say when the ISA choice is made.
+- [ ] You wrote answers to all five questions in notes.md, including the Newton-Raphson round count for f64.
+
 ## References
 
 **Code**

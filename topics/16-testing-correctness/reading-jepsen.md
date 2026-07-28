@@ -167,6 +167,15 @@ overlap.
    the history. What does the deterministic sim make TRIVIAL that
    real Jepsen fights (total real-time order is known!)?
 
+## Done when
+
+- [ ] You can explain why checking a recorded history is the hard half of the method, not collecting one.
+- [ ] You can describe elle's workload trick and say why append-and-read-full-list makes dependencies visible.
+- [ ] You can explain why a cycle in the serialization graph *is* an anomaly, and identify which isolation level a pure-rw cycle violates.
+- [ ] You can say why Jepsen uses SIGSTOP/SIGCONT rather than kill -9 for certain faults.
+- [ ] You can state what elle cannot check, and where DST complements rather than competes.
+- [ ] You wrote answers to all five questions in notes.md, including the redis-raft stale-read history.
+
 ## References
 
 **Papers**

@@ -189,6 +189,15 @@ optimality without ever naming it.
    vs intersect for a pattern — what's the detectable trigger?
    (Cyclicity of the pattern graph.)
 
+## Done when
+
+- [ ] You can explain why every pairwise plan loses on the triangle query, using intermediate sizes rather than intuition.
+- [ ] You can state the AGM bound and compute the fractional edge cover for the triangle.
+- [ ] You can narrate Generic Join as one variable at a time, and say where the intersections happen.
+- [ ] You can say when galloping beats a merge intersection, in terms of the two list lengths.
+- [ ] You can explain why `C<A> = A²` is the same algorithm in matrix spelling — and connect it to the masked-SpMV lane here.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Papers**

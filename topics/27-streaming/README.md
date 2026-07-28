@@ -6,6 +6,35 @@ Differential dataflow and DBSP made that rigorous — and FalkorDB's delta
 matrices (topic 20) are already halfway there conceptually: DP/DM *are*
 positive and negative Z-sets waiting for an algebra.
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin ivm_bench` — 50 000 nodes / 500 000 edges, then 10
+batches of +90/−10 edges, recomputing each view from scratch per batch:
+
+```
+view                        full recompute per batch
+triangles                              141.6 ms
+wedge join                            1111.0 ms
+reachability (re-BFS)                   31.2 ms
+```
+
+**One hundred changes to half a million edges, and the wedge join spends 1.1
+seconds re-deriving an answer that barely moved.** The batch is 0.02% of the
+graph. The recompute is 100% of the work, every time.
+
+That ratio — change size against work size — is the only motivation incremental
+view maintenance needs, and stating it in milliseconds first is what keeps the
+rest of the topic honest. The three views are deliberately different shapes:
+reachability is cheap to redo (31 ms) so incrementalization has little room and
+mostly has to avoid regressions; the wedge join is expensive and *local*, so
+delta rules should win enormously; triangles sit between them and are where the
+bookkeeping cost of maintaining state starts to show against the recompute it
+saves.
+
+Predict the speedup for each of the three before implementing, and predict which
+one's incremental version is *slower* to initialize than a full recompute — that
+one is the interesting result, not the 100× one.
+
 ## Our motivation numbers first (Apple M3 Pro, 50K nodes / 500K edges, batches of 100 changes, 2026-07-10)
 
 | standing query | full recompute / batch | incremental target |

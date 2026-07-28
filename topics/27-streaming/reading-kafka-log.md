@@ -167,6 +167,16 @@ after the paper so the architecture claims have mechanics under them.
    subscriber disconnects for an hour — and where's the retention-window
    trade from Step 6 hiding in your answer?
 
+## Done when
+
+- [ ] You can explain why position is identity in an append-only log.
+- [ ] You can explain the dumb-broker/smart-consumer split and what it moves to the client.
+- [ ] You can state the mechanical bet: sequential IO plus the OS page cache.
+- [ ] You can explain why ordering is per partition only and what that forbids.
+- [ ] You can say where the offset lives for each delivery semantic.
+- [ ] You can explain log compaction as turning a topic into a table changelog.
+- [ ] You wrote answers to all questions in notes.md, including what FalkorDB's existing log already gives M27.
+
 ## References
 
 **Papers**

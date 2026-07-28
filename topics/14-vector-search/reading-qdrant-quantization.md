@@ -172,6 +172,14 @@ smallest and carries the score-without-decode idea), then
 5. M14 decision: which rung of the ladder for graph node embeddings,
    given M17 SIMD comes later — commit + reason.
 
+## Done when
+
+- [ ] You can name the three rungs of the ladder and the compression ratio each achieves.
+- [ ] You can derive the u8 affine dot-product expansion and say what must be stored per vector for it to work.
+- [ ] You can explain why PQ hurts HNSW traversal more than it hurts a flat IVF scan.
+- [ ] You can say what oversample-and-rescore claws back, and predict where it lands against this topic's brute-force point before implementing `quant.rs`.
+- [ ] You wrote answers to all five questions in notes.md, including the M14 rung decision.
+
 ## References
 
 **Papers**

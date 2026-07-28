@@ -4,6 +4,31 @@
 > topic is the rest of the LSM machine: SST anatomy, bloom filters, and
 > compaction — a scheduling problem wearing a storage-engine costume.
 
+## The problem, predicted before it is measured
+
+This is one of two topics whose benchmark measures **only your own code** —
+`write_amp` runs your LSM under leveled and tiered compaction, so on a fresh
+clone it prints two stub notices and exits, and it has no lane in `./verify.sh`.
+That makes the arithmetic below the thing to commit to first:
+
+```
+             write amp            read amp              space amp
+leveled      ~ T/2 x L   (~20x)   ~ L runs   (~4)       low: L1+ disjoint
+tiered       ~ L         (~4x)    ~ K x L    (~16)      high: shadowed
+                                                        versions survive
+             T = size ratio (10), L = levels (4), K = runs per level (4)
+```
+
+**A 5× swing in write amplification and a 4× swing in read amplification, from
+one policy decision, in opposite directions.** That is the whole topic: leveled
+and tiered are not better and worse, they are two positions on the RUM triangle
+that topic 1 priced in bytes and this one prices in rewrites.
+
+Predict both numbers before you implement, then check `describe()`. If your
+leveled figure lands near 4× or your tiered figure near 20×, you have wired the
+strategies backwards — and the fact that you can tell from the amplification
+number alone is why these are the metrics compaction papers argue about.
+
 ## Outcomes
 
 By the end you can:

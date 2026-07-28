@@ -182,6 +182,15 @@ driving loop for this exact API is the next chapter
 5. Map Ready → M15 stage 2: which parts of your WAL commit path
    play the roles of persist/send/apply/advance?
 
+## Done when
+
+- [ ] You can explain what sans-io buys and why raft-rs contains no fsync, no sockets and no threads.
+- [ ] You can write out the `maybe_commit` sorted-matched-index computation from memory.
+- [ ] You can state the Ready contract's ordering rules and say which reorderings are safety violations rather than performance bugs.
+- [ ] You can explain how splitting the persistence acknowledgement (`advance_append`) enables pipelining without breaking the contract.
+- [ ] You can say what the `next_idx` decrement-and-retry loop costs in round trips, and what optimization fixes it.
+- [ ] You wrote answers to all five questions in notes.md, including the Ready-to-M15 mapping.
+
 ## References
 
 **Papers**

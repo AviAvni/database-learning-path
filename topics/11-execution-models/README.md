@@ -16,6 +16,30 @@ flowchart LR
     H --> C
 ```
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release --bin exec_bench` — 50 M rows,
+`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3:
+
+```
+selectivity      volcano
+        5%      0.386 s     129.4 M rows/s
+       50%      0.484 s     103.3 M rows/s
+       95%      0.669 s      74.7 M rows/s
+```
+
+**103 M rows/s is the tuple-at-a-time ceiling on this machine — and notice which
+way it moves.** Cost rises monotonically with selectivity, because in a Volcano
+pipeline every row that *survives* the filter pays the full per-tuple
+interpretation bill on its way to the aggregate: a virtual call per operator per
+row. The filter is not the expensive part. Passing it is.
+
+Put that next to topic 12's measurement of the same machine — ~50 GB/s of
+sequential u64 fold, about 6.2 G values/s — and the gap is 60×. That gap is what
+vectorized execution and compiled kernels are competing to close, and the
+interesting question is not whether they close it but *what the remainder
+consists of* once they do. Predict the split before you implement either lane.
+
 ## 1. The Volcano (iterator) model
 
 Every operator implements `open() / next() / close()`; `next()` returns

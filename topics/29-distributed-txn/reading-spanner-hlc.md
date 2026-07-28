@@ -201,6 +201,15 @@ commit-wait; schema/evaluation sections are skimmable).
    TiKV's PD and (b) HLC + uncertainty restarts, which fits a
    single-region graph store, and what changes if we go multi-region?
 
+## Done when
+
+- [ ] You can define external consistency and say why clocks do not give it for free.
+- [ ] You can explain TrueTime as a clock that confesses its error, and what commit-wait does with that.
+- [ ] You can explain why commit-wait's ~2ε sleep does not cap throughput.
+- [ ] You can derive HLC's `l <= max pt seen` bound by induction.
+- [ ] You can explain the uncertainty-interval alternative: restart the read rather than sleep the write.
+- [ ] You wrote answers to all questions in notes.md, and can connect the HLC bound to the invariant the `hlc.rs` test asserts.
+
 ## References
 
 **Papers**

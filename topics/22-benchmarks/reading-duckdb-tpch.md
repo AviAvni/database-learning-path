@@ -155,6 +155,14 @@ aggregation, Q9 is join-order sensitive (try
 5. Sketch M22's `CALL ldbc_datagen(sf=1)` equivalent for the
    capstone: what determinism/answer-shipping properties must it keep?
 
+## Done when
+
+- [ ] You can explain what a table function is and why shipping the generator inside the engine makes determinism the product.
+- [ ] You can say why shipping `answers/` matters more than shipping `queries/`.
+- [ ] You can explain what streaming chunks avoids that writing `.tbl` files does not.
+- [ ] You can measure DuckDB Q1 and Q6 at SF1 on this machine and compare effective GB/s against this topic's own measured lane (5.2-5.7 GB/s for Q1, 9.0-14.4 for Q6).
+- [ ] You wrote answers to all five questions in notes.md, including your `CALL ldbc_datagen` sketch for M22.
+
 ## References
 
 **Code**

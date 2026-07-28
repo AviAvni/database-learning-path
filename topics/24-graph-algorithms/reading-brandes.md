@@ -215,6 +215,15 @@ The stub's failure modes are all boundary conditions of Steps 3–5:
    changed under a delta matrix that hasn't been flushed (topic 20's
    wait) — flush first, or compute on the stale main matrix?
 
+## Done when
+
+- [ ] You can explain what betweenness measures and why the definitional cost is O(n³).
+- [ ] You can derive the dependency recurrence from the definition, using the partition-by-predecessor argument.
+- [ ] You can explain how one BFS counts paths along the level DAG.
+- [ ] You can say why the brute-force version is O(n²) in *memory* as well as O(n³) in time.
+- [ ] You can name the four practical traps and say which one bites on a scale-free graph like this topic's RMAT (max degree 9751).
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

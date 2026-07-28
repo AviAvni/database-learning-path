@@ -191,6 +191,14 @@ monomorphized type.
    graph (node ids = doc ids, roaring hit-sets into masked mxv)
    change the design?
 
+## Done when
+
+- [ ] You can state the constraint that shapes the whole design: mutable now, or nothing.
+- [ ] You can describe the chained growable block structure per term and the write path through it.
+- [ ] You can explain the codec ladder — one trait, many encoders, chosen at compile time — and why that is a codegen decision rather than a runtime one.
+- [ ] You can explain how GC, `gc_marker` and `unique_id` let readers survive concurrent deletes.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Code**

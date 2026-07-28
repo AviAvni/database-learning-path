@@ -186,6 +186,15 @@ topic 13's software write-combining buffers make the scatter moot.
    our Cypher pipeline (filter, probe, partition, bloom) given M11's
    profile — where does Amdahl bite first?
 
+## Done when
+
+- [ ] You can name the two primitives — selective store, selective load/gather — and say which operators need which.
+- [ ] You can explain why branchless loses to branchy at extreme selectivities in the paper, and check that against this topic's measured sweep, where branchless never actually loses (0.95 vs 10.04 GB/s at 50%).
+- [ ] You can describe vertical hash probing with W probes in flight and say what it requires of the hash table.
+- [ ] You can state the gather cost model: parallel instructions, serial memory.
+- [ ] You can say why scatter needs conflict detection during partitioning.
+- [ ] You wrote answers to all five questions in notes.md, including your ranking of the four operators by expected engine-level win.
+
 ## References
 
 **Papers**

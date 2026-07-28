@@ -191,6 +191,14 @@ prometheus `tsdb/chunkenc/xor.go`, line by line:
    Gorilla survives (dod timestamps) and what replaces XOR for
    non-numeric payloads?
 
+## Done when
+
+- [ ] You can explain delta-of-delta on timestamps and why regular scrapes make it nearly free.
+- [ ] You can explain XOR plus leading/trailing zero counts on values, and why that is the half delta+varint cannot compress.
+- [ ] You can predict bits per sample for a constant series and for a random one — this topic measures the baseline at a flat 11.00 B/sample for both, which is the gap you are closing.
+- [ ] You can say what makes the encoding block-oriented and what a partial block costs.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Papers**

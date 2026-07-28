@@ -195,6 +195,16 @@ InfluxDB 3 (Rust) anchors:
    Which do you pick for `MATCH ... AT TIME t` and why does the answer
    differ for hot recent history vs year-old history?
 
+## Done when
+
+- [ ] You can say what both systems agree on with Prometheus, before naming what they reject.
+- [ ] You can explain VM's codec ladder: integers first, then lossy *on purpose* — and say what "on purpose" means for a monitoring workload.
+- [ ] You can explain why VM caches the query rather than only the postings, and what that assumes about query shape.
+- [ ] You can state IOx's bet — delete the engine, keep the pipeline (Parquet plus DataFusion) — and what it inherits for free from topic 12.
+- [ ] You can explain IOx's sort-at-snapshot approach to out-of-order data and contrast it with a head block that must accept writes in place.
+- [ ] You can fill in the side-by-side bet table from memory, and say which bet you would make for the capstone.
+- [ ] You wrote answers to all the questions in notes.md, and have a predicted bytes-per-sample for VM's codec to set against this topic's measured 11.00 B/sample baseline.
+
 ## References
 
 **Papers**

@@ -192,6 +192,15 @@ FalkorDB analogue for a graph snapshot object — what belongs in the footer
 so a reader can route its *second* GET precisely (matrix block index /
 offsets, label→matrix directory, node-count header)?
 
+## Done when
+
+- [ ] You can re-price the LSM when fsync costs 50-100 ms and say which decisions invert.
+- [ ] You can explain why the manifest is the whole database and what that buys.
+- [ ] You can explain single-writer fencing from one conditional PUT.
+- [ ] You can describe the cache ladder that buys back the 15 ms, against this topic's measured S3 p50 of 14.17 ms.
+- [ ] You can explain checkpoints and clones as copying the manifest, not the data.
+- [ ] You can explain hedged requests and predict their effect on the measured p99 of 112.99 ms before implementing `hedge.rs`.
+
 ## References
 
 **Code**

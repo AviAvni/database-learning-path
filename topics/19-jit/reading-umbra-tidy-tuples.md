@@ -201,6 +201,15 @@ you don't want two backends.
    the break-even row count formula and compute it. Does a
    FalkorDB `WHERE` clause over a 1M-node scan clear it?
 
+## Done when
+
+- [ ] You can state the compile-latency budget in numbers and explain why LLVM's cost is structural rather than a flag away.
+- [ ] You can name three concrete ways Umbra IR differs from LLVM IR.
+- [ ] You can explain what Flying Start's single-pass register allocation gives up.
+- [ ] You can explain why continuation-passing plus `musttail` is what makes copy-and-patch work.
+- [ ] You can say what state must be transferable for an adaptive swap at a morsel boundary.
+- [ ] You wrote answers to all five questions in notes.md, including your measured cranelift compile time for a depth-8 expression.
+
 ## References
 
 **Papers**

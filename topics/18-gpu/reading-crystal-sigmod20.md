@@ -224,6 +224,15 @@ on a GPU at all?
    filter (streaming), distance scoring (dense). Apply Step 7's
    roofline to each and write the one-line go/no-go.
 
+## Done when
+
+- [ ] You can state the two regimes and say which one the bus puts you in — then connect it to this topic's measured result: no crossover up to 2^24, with upload alone costing 7197 µs at 16 M elements.
+- [ ] You can explain the two memory rules (coalescing, shared memory) and what violating each costs.
+- [ ] You can explain why a filter needs a prefix scan rather than an output cursor.
+- [ ] You can state why kernel fusion is mandatory rather than an optimization, and what it costs in modularity.
+- [ ] You can use the roofline formula to predict a winner before measuring.
+- [ ] You wrote answers to all five questions in notes.md, including the unified-memory rewrite of their regime analysis.
+
 ## References
 
 **Papers**

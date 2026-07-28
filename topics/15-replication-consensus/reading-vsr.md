@@ -177,6 +177,15 @@ skill — it's how you'll evaluate M15 stage 2's design decisions.
    fails, torn write) survivable, where Raft's model assumes storage
    is faithful? Connect to topic 5's torn-page discussion.
 
+## Done when
+
+- [ ] You can state which VSR concepts are Raft's under other names, and which are genuinely different choices.
+- [ ] You can explain what round-robin primary selection removes from the protocol, and what it costs.
+- [ ] You can compare DOVIEWCHANGE's whole-log shipping against Raft's incremental repair and say when each is cheaper.
+- [ ] You can write the failure sequence that the no-disk recovery argument depends on, and say what makes it safe.
+- [ ] You can say why the recovery protocol needs a nonce.
+- [ ] You wrote answers to all five questions in notes.md, including the TigerBeetle checksum point.
+
 ## References
 
 **Papers**

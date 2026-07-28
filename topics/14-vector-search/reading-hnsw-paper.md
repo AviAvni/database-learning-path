@@ -228,6 +228,15 @@ lens:
 5. The paper claims robustness to dimensionality vs NSW. What's the
    skip-list analogue of "the entry point is always the same node"?
 
+## Done when
+
+- [ ] You can explain what makes "approximate" the product rather than a compromise, using this topic's measured 117 QPS brute-force floor.
+- [ ] You can derive why `mL = 1/ln(M)` gives an expected max level of `ln(n)/ln(M)`.
+- [ ] You can state what Algorithm 4's neighbour selection does differently from taking the M nearest, and what breaks if you take the nearest.
+- [ ] You can say why `ef >= k` is required and what happens at exactly `ef = k`.
+- [ ] You can account for HNSW's memory at n=1M, d=128, M=16, splitting vectors from links.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

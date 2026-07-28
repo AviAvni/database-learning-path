@@ -166,6 +166,14 @@ persisted (question 5).
 5. Where does qdrant persist the raft log and HardState? Find the
    Storage impl behind ConsensusStateRef.
 
+## Done when
+
+- [ ] You can state the arithmetic that forces the metadata/data plane split — why metadata volume fits raft and point writes do not.
+- [ ] You can map the replica states Active/Dead/Partial onto Raft's Progress states.
+- [ ] You can say what consistency a qdrant vector read actually gets, and whether it is configurable.
+- [ ] You can describe the `on_ready` ordering rules and name which of them is a safety requirement rather than an optimization.
+- [ ] You wrote answers to all five questions in notes.md, including where the raft log and HardState are persisted.
+
 ## References
 
 **Code**

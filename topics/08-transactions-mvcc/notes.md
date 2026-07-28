@@ -2,6 +2,30 @@
 
 Predict FIRST, then measure.
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin txn_bench` — 4 threads × 50 000 txns × 4 ops, one
+global `Mutex<HashMap>` as the baseline.
+
+| mix | global-lock txn/s | mvcc txn/s | aborts |
+|---|---|---|---|
+| read-heavy 95/5, 10K keys | 623 454 | stub | stub |
+| write-heavy 50/50, 10K keys | 594 264 | stub | stub |
+| write-heavy 50/50, 64 keys (HOT) | 676 691 | stub | stub |
+
+**The baseline is flat across all three mixes — and that flatness is the
+finding.** A single mutex does not care what the transactions do or how much
+they collide, because it has already serialized them: the read-heavy row cannot
+exploit the fact that 95% of operations are reads that could have run
+concurrently, and the HOT row is not penalised for contending on 64 keys
+because everything was contending on one lock anyway. It even comes out
+*fastest*, since a 64-key working set is cache-resident.
+
+That gives you a sharp prediction to write down before implementing MVCC: your
+version should crush the baseline on row 1 (readers never block) and may well
+*lose* on row 3, where first-committer-wins turns key contention into aborted
+work that the mutex never has to redo. Find the crossover keyspace size.
+
 ## Predictions (fill in BEFORE running txn_bench)
 
 | Measurement | Prediction | Actual | Surprised? |

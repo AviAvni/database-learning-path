@@ -80,16 +80,16 @@ pub fn visit_dist(walks: &[Vec<u32>], n: usize) -> Vec<f64> {
     counts
 }
 
-fn degree_dist(g: &Csr) -> Vec<f64> {
+pub fn degree_dist(g: &Csr) -> Vec<f64> {
     let m = g.m() as f64;
     (0..g.n as u32).map(|v| g.degree(v) as f64 / m).collect()
 }
 
-fn l1(a: &[f64], b: &[f64]) -> f64 {
+pub fn l1(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum()
 }
 
-fn avg_distinct(walks: &[Vec<u32>]) -> f64 {
+pub fn avg_distinct(walks: &[Vec<u32>]) -> f64 {
     let mut sum = 0.0;
     for w in walks {
         let mut s: Vec<u32> = w.clone();

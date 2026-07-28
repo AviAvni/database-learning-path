@@ -179,6 +179,15 @@ and 19.
    encoding for each; which needs the (value, is_null) pair and
    which doesn't?
 
+## Done when
+
+- [ ] You can explain CDCL as a search loop that learns, and say what a learned clause is.
+- [ ] You can state the SAT/theory division of labour: SAT proposes, theories veto.
+- [ ] You can encode a small query plan as symbolic rows and say what the formula asserts.
+- [ ] You can encode `WHERE NOT (a = b)` against `WHERE a <> b` over nullable columns and show where they differ.
+- [ ] You can say why Cosette needs bags (K-relations) rather than sets, and which SQL feature forces it.
+- [ ] You wrote answers to all five questions in notes.md, including the two topic-10 rewrite rules you would verify.
+
 ## References
 
 **Papers**

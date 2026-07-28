@@ -3,6 +3,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Instant;
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     println!("== graphs ==");
     let t = Instant::now();
     let (n, e) = graph::gen_rmat(16, 16, 42);

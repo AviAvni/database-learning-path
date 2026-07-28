@@ -9,6 +9,10 @@ fn time_ms(f: impl FnOnce()) -> f64 {
 }
 
 fn main() {
+    // An unimplemented exercise lane is an expected state, not a crash: every
+    // stub lane below is wrapped in catch_unwind, so drop the default panic
+    // hook to keep their todo!() traces out of the measured output.
+    std::panic::set_hook(Box::new(|_| {}));
     println!("== corpus + index build ==");
     let t = Instant::now();
     let c = corpus::gen_corpus(100_000, 50_000, 1.0, 42);

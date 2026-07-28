@@ -148,6 +148,15 @@ counterpart in that 94-line model.
 5. Spec-code drift: sketch how the capstone's CI could keep
    WalReplication.tla honest against the real replication code.
 
+## Done when
+
+- [ ] You can explain what model checking does and why exhaustive state enumeration is different in kind from testing.
+- [ ] You can state the 35-step claim and say what makes an interleaving reachable but rare.
+- [ ] You can explain the small-scope hypothesis and say where it holds (protocols) and where it does not.
+- [ ] You can state the pitch — exhaustively testable pseudo-code — and say what a TLA+ `Next` action is that pseudo-code is not.
+- [ ] You can name what TLA+ did not do for AWS.
+- [ ] You wrote answers to all five questions in notes.md, including which capstone protocol clears the cost/benefit bar.
+
 ## References
 
 **Papers**

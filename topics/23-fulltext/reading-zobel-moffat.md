@@ -192,6 +192,15 @@ compression specifics in §4 are 2006's menu — read for the *why*
    its cost models still bind a BM25+vector hybrid (M23), and which
    are obsoleted by the ANN side?
 
+## Done when
+
+- [ ] You can explain granularity: what each posting carries and what that costs.
+- [ ] You can state the difference between doc-sorted and impact-sorted postings and which query strategy each enables.
+- [ ] You can explain why storing gaps works, and how Zipf makes it work.
+- [ ] You can explain the TAAT/DAAT distinction and which one this topic's oracle lane implements.
+- [ ] You can say what capped accumulators bound and how that differs from WAND's guarantee.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

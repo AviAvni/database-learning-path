@@ -181,6 +181,15 @@ representations. In the paper: §3 is the operator model (Step 2),
    per LDBC scale factor, and does the answer change with the
    frontier's hub fraction per BFS level?
 
+## Done when
+
+- [ ] You can express a graph algorithm as rounds of advance and filter.
+- [ ] You can explain why frontier raggedness breaks warps, using this repo's own measured degree skew (max degree 6565 against a median of 11 in topic 13).
+- [ ] You can name the load-balancing strategies and say which one a hub vertex of degree 10^6 demands.
+- [ ] You can explain why sparse versus dense frontier representation is the same choice as push versus pull.
+- [ ] You can say why a lost CAS race on `parent[]` is benign in BFS.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

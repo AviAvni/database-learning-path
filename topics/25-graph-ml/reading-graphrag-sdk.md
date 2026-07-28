@@ -167,6 +167,14 @@ database.
 5. M25 acceptance test: pattern + similarity in one query, verified
    against this SDK's answers on the same data — sketch it.
 
+## Done when
+
+- [ ] You can draw the pipeline as a dataflow and name what the SDK asks the database for.
+- [ ] You can write the single Cypher query that replaces the client-side relationship expansion.
+- [ ] You can name all four systems smells and say which one `SET c.embedding = vecf32(...)` inside a loop is.
+- [ ] You can say what statistic would give the router a cost model.
+- [ ] You wrote answers to all five questions in notes.md, including the M25 acceptance test that puts pattern and similarity in one query.
+
 ## References
 
 **Code**

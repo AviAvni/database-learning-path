@@ -11,7 +11,8 @@
 //! at the next level. L0 in both: every flush is one overlapping run.
 
 use crate::memtable::Memtable;
-use crate::sst::{SstReader, SstWriter};
+// SstWriter is what your flush() writes through — see the todo!() below.
+use crate::sst::SstReader;
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -38,6 +39,9 @@ impl Stats {
     }
 }
 
+// Everything but `stats` is read only by the methods you are about to
+// implement, so rustc reports them as dead while those are still todo!().
+#[allow(dead_code, reason = "read by the methods you are about to implement")]
 pub struct Lsm {
     pub stats: Stats,
     memtable: Memtable,
@@ -68,10 +72,12 @@ impl Lsm {
         todo!("memtable → L0 newest-first → deeper levels; L1+ disjoint ⇒ pick by key range; count stats")
     }
 
+    #[allow(dead_code, reason = "called from put() once you implement it")]
     fn flush(&mut self) -> std::io::Result<()> {
         todo!("write memtable to a new L0 SST via SstWriter; add finish() bytes to stats")
     }
 
+    #[allow(dead_code, reason = "called from put() once you implement it")]
     fn maybe_compact(&mut self) -> std::io::Result<()> {
         todo!("per strategy: pick level, k-way merge runs (drop shadowed versions; drop tombstones ONLY into last level), replace inputs with output")
     }

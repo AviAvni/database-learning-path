@@ -194,6 +194,14 @@ LAGr_PageRankGAP.c's loop. Leave LG_CC_FastSV7.c until M24.
    assign), and what does each move per level (indices vs nothing
    — iso!)?
 
+## Done when
+
+- [ ] You can write the BFS loop as one line of algebra inside a while loop.
+- [ ] You can explain what `ANY_SECONDI` computes and why that semiring gives you parents for free.
+- [ ] You can give more than one masked spelling of triangle counting and say which one LAGraph picks.
+- [ ] You can explain why PageRank needs no mask and is therefore pure bandwidth — check against this topic's measured SpMV ladder (20.72 GB/s at scale 14 falling to 12.26 at scale 20).
+- [ ] You wrote answers to all five questions in notes.md, including which inputs the direction switch actually reads.
+
 ## References
 
 **Code**

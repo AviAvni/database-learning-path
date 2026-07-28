@@ -198,6 +198,15 @@ back what async gave up).
 5. For M15 stage 1: which parts of PSYNC do you keep (replid+offset,
    backlog ring, +CONTINUE/+FULLRESYNC) and which do you simplify?
 
+## Done when
+
+- [ ] You can explain what "ack first, replicate later" means for a client that received a success reply.
+- [ ] You can describe PSYNC's `(replid, offset)` scheme and say what makes a partial resync possible or impossible.
+- [ ] You can size the replication backlog from a write rate and a tolerable disconnect window.
+- [ ] You can explain why full sync forks, and connect it to copy-on-write.
+- [ ] You can say precisely what WAIT does and does not guarantee — then check it against this topic's measured table, where WAIT 1 with per-entry follower fsync costs 341 entries/s.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Code**

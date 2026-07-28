@@ -185,6 +185,15 @@ VLDB 2013, ~12 pages; §3 is the part that aged well:
 5. OLTP-Bench's phased rates: sketch the config that reproduces a
    cache-warmup-then-spike incident (topic 6's eviction storm).
 
+## Done when
+
+- [ ] You can explain that an OLTP benchmark measures contention, not speed, and identify TPC-C's hot counter.
+- [ ] You can explain NURand and why the skew cannot be preloaded away.
+- [ ] You can say what think times are for and what removing them changes.
+- [ ] You can state what an honest harness must add (rate control) and why — connect it to topic 34's coordinated-omission lane.
+- [ ] You can contrast TPC-C's contention with YCSB-A's; they are not the same shape.
+- [ ] You wrote answers to all five questions in notes.md, including your design for a graph analogue of the hot counter.
+
 ## References
 
 **Papers**

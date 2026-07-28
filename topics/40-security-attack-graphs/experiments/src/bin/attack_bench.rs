@@ -259,8 +259,14 @@ fn lane3_authz() {
     println!();
 }
 
-fn stub_lane(name: &str, f: impl FnOnce() + std::panic::UnwindSafe) {
-    if catch_unwind(AssertUnwindSafe(f)).is_err() {
+fn stub_lane(name: &str, f: impl FnOnce()) {
+    // Silence the default panic hook for the duration of the lane: an
+    // unimplemented exercise is an expected state, not a crash to report.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = catch_unwind(AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    if r.is_err() {
         println!("[stub — implement the todo!()s to unlock {name}]\n");
     }
 }

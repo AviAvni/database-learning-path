@@ -169,6 +169,15 @@ stale is acceptable — question 4 makes this precise.
    as the stored artifact — which do you ship first, and what does the
    vector index (topic 14) need to know about staleness either way?
 
+## Done when
+
+- [ ] You can state the transductive/inductive distinction as a lookup table against a function.
+- [ ] You can explain the fan-out explosion and compute nodes touched for B=512, S=(25,10) against a full 2-hop on this topic's SBM (avg degree 34.6).
+- [ ] You can explain why neighbour sampling is a page budget for graph access.
+- [ ] You can say what bias the sample introduces and how you would measure it.
+- [ ] You can explain why inductive is the database-compatible variant, in terms of which embeddings an insert invalidates.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

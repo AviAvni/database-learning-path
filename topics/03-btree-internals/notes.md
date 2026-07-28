@@ -1,5 +1,52 @@
 # Topic 3 — notes
 
+## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
+
+`cargo run --release --bin btree_baseline`. Two provided things: the page
+arithmetic from the format documented in `src/page.rs`, and redb measured on
+the workloads this topic's table asks about. Everything is **warm** — the file
+sits in the page cache — so this is in-page search plus pointer chasing, not
+disk I/O.
+
+### Fanout arithmetic (computed, not measured)
+
+| key shape | leaf cells | fanout | height @ 1e6 | height @ 1e9 |
+|---|---|---|---|---|
+| 8 B key, 8 B value | 185 | 255 | 3 | 4 |
+| 32 B key, 8 B value | 88 | 102 | 4 | 5 |
+| 8 B key, 100 B value | 35 | 255 | 3 | 5 |
+
+A 32 B key costs **2.5×** the interior slots of an 8 B key. That ratio — not
+the byte count — is what suffix truncation buys back.
+
+### The height ladder (redb, warm)
+
+| keys | ns/lookup | file MB | height (our fmt) |
+|---|---|---|---|
+| 10 000 | 367 | 1.6 | 2 |
+| 100 000 | 423 | 9.0 | 3 |
+| 1 000 000 | 862 | 67.9 | 3 |
+| 4 000 000 | 1101 | 270.0 | 3 |
+
+**This is the topic's tidy story failing, and it is the most useful number
+here.** "Height is the metric" predicts a step function: flat while height is
+constant, jumping when it grows. Instead cost climbs 862 → 1101 ns from 1e6 to
+4e6 keys with height pinned at 3. Height sets how many pages a lookup *touches*;
+what a touch *costs* is set by whether that page is in CPU cache, and at 270 MB
+it is not. Two levers, and the second one is why topic 6 exists.
+
+### The long-key case (1e6 keys)
+
+| keys | ns/lookup | file MB |
+|---|---|---|
+| 8 B | 733 | 67.9 |
+| 32 B, 24 B shared prefix | 882 | 135.3 |
+| ratio | 1.20× | 1.99× |
+
+The file doubles and lookups slow 20%. The arithmetic above predicted a 2.5×
+fanout loss; redb absorbs most of it, which is itself the finding — a
+production B-tree already does some of what you are about to implement by hand.
+
 ## Predictions (fill BEFORE running)
 
 | Bench | my btree | redb |

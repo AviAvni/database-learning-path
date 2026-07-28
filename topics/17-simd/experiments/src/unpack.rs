@@ -34,6 +34,7 @@ pub fn pack4(vals: &[u32]) -> Vec<u8> {
 /// u8 → u16 → u32 (`vmovl_u8`, `vmovl_u16`) before `vst1q_u32`.
 /// Scalar remainder for len % 16. Output must equal unpack4_scalar.
 #[cfg(target_arch = "aarch64")]
+#[allow(unused_variables, reason = "used once the todo!() is implemented")]
 pub fn unpack4_neon(packed: &[u8], out: &mut Vec<u32>) {
     todo!("vandq/vshrq nibble split + vzipq interleave + vmovl widen")
 }

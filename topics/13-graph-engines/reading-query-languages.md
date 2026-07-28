@@ -182,6 +182,14 @@ the query says what, not how.
    path pattern that can represent Cypher's `[*1..5]` AND GQL's
    `ALL ACYCLIC (a)(-[:R]->){1,5}(b)` without a parser rewrite.
 
+## Done when
+
+- [ ] You can state the three matching semantics and count the 2-paths in a triangle under each.
+- [ ] You can explain what GQL's restrictors and selectors make explicit that Cypher left implicit.
+- [ ] You can say what property graphs and RDF actually disagree about, beyond syntax.
+- [ ] You can name, for each language, one thing its semantics lets the planner do that another's forbids.
+- [ ] You wrote answers to all questions in notes.md, including this topic's 2-hop query written in more than one language.
+
 ## References
 
 **Papers**

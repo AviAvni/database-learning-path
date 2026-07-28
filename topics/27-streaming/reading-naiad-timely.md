@@ -177,6 +177,16 @@ Then the Rust reincarnation — the code anchors, by step:
    Where does FalkorDB's single-writer serialization make the proof
    trivial? (That's why M27 can skip most of §4.)
 
+## Done when
+
+- [ ] You can explain what a logical timestamp says about a message.
+- [ ] You can state the completeness problem and what a frontier answers.
+- [ ] You can explain could-result-in and progress tracking as a refcount.
+- [ ] You can explain why loop nodes must edit the timestamp and what order becomes inside a loop.
+- [ ] You can say why progress counts may transiently go negative and why that is safe.
+- [ ] You can contrast this with heuristic watermarks and say what each guarantees.
+- [ ] You wrote answers to all questions in notes.md.
+
 ## References
 
 **Papers**

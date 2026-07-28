@@ -191,6 +191,15 @@ class of bug (stuck protocols, not corrupt ones).
 5. `[][Next]_vars` allows stuttering. Why is that essential for
    refinement (mapping a detailed spec onto an abstract one)?
 
+## Done when
+
+- [ ] You can explain a state as a variable snapshot and an action as a predicate relating now to next.
+- [ ] You can explain why `Next` being a disjunction gives you concurrency for free.
+- [ ] You can state the model-size discipline that lets TLC finish, and name the knobs.
+- [ ] You can explain why `[][Next]_vars` allows stuttering and why that is essential.
+- [ ] You can state the difference between safety and liveness and which one TLC checks cheaply.
+- [ ] You wrote answers to all five questions in notes.md, including the `Rejoin` action and the longest-log-among-survivors counterexample.
+
 ## References
 
 **Papers**

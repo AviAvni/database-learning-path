@@ -175,6 +175,15 @@ Each file's header comment = required reading (Step 6):
    benchmark-hostile (hint: nondeterminism, tie-breaking,
    quality-vs-speed frontier)?
 
+## Done when
+
+- [ ] You can explain what a kernel is and why the spec binds the kernel rather than the implementation.
+- [ ] You can explain why degree skew changes the work and not just the clock — this topic measures max degree 9751 on RMAT against 59 on uniform, with triangle counts of 15.6 M against 5428.
+- [ ] You can explain why diameter sets the round count and why road networks are therefore in the suite.
+- [ ] You can say why 64 trials from random sources are required, and what source luck does to a single measurement.
+- [ ] You can state the baseline problem: reference code that is itself state of the art.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

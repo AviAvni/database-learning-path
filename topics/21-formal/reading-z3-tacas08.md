@@ -186,6 +186,15 @@ cited inside the 2008 solver.
 5. E-matching triggers: why is trigger selection the "index choice"
    problem of SMT (too general = blowup, too specific = incomplete)?
 
+## Done when
+
+- [ ] You can explain DPLL(T): the SAT core proposes, theories dispose.
+- [ ] You can explain why Nelson-Oppen requires theories to agree on shared equalities.
+- [ ] You can say why Z3's e-graph must carry justifications while egg's need not, and connect it to backtracking.
+- [ ] You can explain e-matching and why trigger selection is the index-choice problem of theorem proving.
+- [ ] You can encode `x/x -> 1` as an SMT query and say what changes between integers and reals.
+- [ ] You wrote answers to all five questions in notes.md.
+
 ## References
 
 **Papers**

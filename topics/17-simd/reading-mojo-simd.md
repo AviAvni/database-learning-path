@@ -156,6 +156,14 @@ this table is the map from the ideal to what M17 actually ships:
    sentence justifying that (deployment target) and the one-line
    escape hatch if SVE servers arrive.
 
+## Done when
+
+- [ ] You can explain what making scalars width-1 vectors buys in the type system.
+- [ ] You can say what `simdwidthof` + `vectorize` generate that you currently write by hand, including the remainder loop.
+- [ ] You can separate the four layers of the matmul arc and say which one contributes most (it is not SIMD).
+- [ ] You can name what parametric width does *not* solve.
+- [ ] You wrote answers to all five questions in notes.md, including the one-line justification for hardcoding NEON width 4 in M17.
+
 ## References
 
 **Papers & docs**

@@ -205,6 +205,15 @@ Step 6, and worth an hour.
 5. Map to valkey: which Raft properties does async replication give
    up, and what do you get back for each?
 
+## Done when
+
+- [ ] You can explain why agreeing on log order is sufficient for state-machine convergence.
+- [ ] You can say what a term is and what it fences.
+- [ ] You can state both safety rules — the election restriction and the current-term commit rule — and explain the quorum-intersection argument behind Figure 8.
+- [ ] You can say exactly which state must be persisted before responding, and why the rest need not be.
+- [ ] You can explain why a leader never overwrites its own entries, and what that means for the follower repair loop.
+- [ ] You wrote answers to all five questions in notes.md, and can predict what `partition_test` must show: 99 never commits, and is truncated everywhere after the heal.
+
 ## References
 
 **Papers**

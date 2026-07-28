@@ -161,6 +161,14 @@ walked revision; navigate by symbol name when they drift):
    Decide, justify with expected access pattern, and note what M17's
    SIMD needs.
 
+## Done when
+
+- [ ] You can list what an HNSW node must store and compute bytes per node for M=16, M0=32.
+- [ ] You can explain what the node tape buys over `Vec<Vec<u32>>` per level, in allocations and in locality.
+- [ ] You can say why link slots are preallocated to the maximum rather than grown.
+- [ ] You can describe the concurrency scheme — striped writer locks, lock-free readers — and what it assumes about readers.
+- [ ] You wrote answers to all five questions in notes.md, including your own tape-or-vec decision for `hnsw.rs`.
+
 ## References
 
 **Papers**

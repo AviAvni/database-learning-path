@@ -17,6 +17,9 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
+// The fields and page helpers below are the scaffolding your create/open/
+// insert/get will use; rustc cannot see that while those are still todo!().
+#[allow(dead_code, reason = "read by the methods you are about to implement")]
 pub struct DiskBTree {
     file: File,
     root: u32,
@@ -34,6 +37,7 @@ impl DiskBTree {
         todo!()
     }
 
+    #[allow(dead_code, reason = "called by the methods you are about to implement")]
     fn read_page(&mut self, no: u32) -> std::io::Result<Page> {
         let mut buf = [0u8; PAGE_SIZE];
         self.file.seek(SeekFrom::Start(no as u64 * PAGE_SIZE as u64))?;
@@ -41,11 +45,13 @@ impl DiskBTree {
         Ok(Page { buf })
     }
 
+    #[allow(dead_code, reason = "called by the methods you are about to implement")]
     fn write_page(&mut self, no: u32, p: &Page) -> std::io::Result<()> {
         self.file.seek(SeekFrom::Start(no as u64 * PAGE_SIZE as u64))?;
         self.file.write_all(&p.buf)
     }
 
+    #[allow(dead_code, reason = "called by the methods you are about to implement")]
     fn alloc_page(&mut self) -> u32 {
         let n = self.npages;
         self.npages += 1;

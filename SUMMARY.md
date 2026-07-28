@@ -1,6 +1,7 @@
 # Summary
 
 [Database Learning Path](README.md)
+[Findings — every measured result](FINDINGS.md)
 [The Plan](PLAN.md)
 [Progress](PROGRESS.md)
 [Session log](SESSION-LOG.md)

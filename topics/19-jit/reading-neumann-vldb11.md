@@ -194,6 +194,14 @@ Read the whole thing — it's short.
    and what did HyPer add to fix it (group prefetching / SIMD probe
    batching)?
 
+## Done when
+
+- [ ] You can explain why operator boundaries are data boundaries, and why that is the deeper cost than dispatch.
+- [ ] You can define pipelines and pipeline breakers and identify both in a plan you draw yourself.
+- [ ] You can explain how produce/consume turns a tree walk into one flat loop, and why push-based codegen produces one loop where pull-based produces several.
+- [ ] You can state the LLVM cocktail rule and say which parts of an expression should stay interpreted.
+- [ ] You wrote answers to all five questions in notes.md, including the VLDB '18 counter-result on hash-probe-heavy queries.
+
 ## References
 
 **Papers**

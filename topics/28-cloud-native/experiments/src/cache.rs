@@ -20,6 +20,8 @@ pub struct LruBlockCache {
     pub capacity: usize,
     pub hits: u64,
     pub misses: u64,
+    // your get()/insert() bump and compare this to pick a victim
+    #[allow(dead_code, reason = "read by the eviction you are about to implement")]
     tick: u64,
     map: HashMap<u64, (u64, Vec<u8>)>,
 }

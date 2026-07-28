@@ -44,12 +44,22 @@ Every topic follows the same shape, because the shape is what makes it checkable
   then `### Step N` sections that build each concept using only terms defined in
   earlier steps, then how to read the source material with the concepts in hand,
   questions to answer, a "done when" checklist, and references.
-- **`notes.md`** — a predictions-vs-measurements table (write the prediction *before*
-  running the benchmark), the paper numbers worth keeping, worked cross-topic threads,
+- **`notes.md`** — a `## Baseline (provided lane, <machine>, measured <date>)` section
+  recording the provided lane's real output with the analysis, then a
+  predictions-vs-measurements worksheet. **The worksheet's cells are meant to be
+  empty**: they are the reader's exercise, filled in before running the benchmark, not
+  a gap to be backfilled. Then the paper numbers worth keeping, cross-topic threads,
   and open questions.
 - **`experiments/`** — a Rust crate with **lane 1 implemented** and **two lanes
   stubbed**. The stub tests are the specification; the reference numbers live in
-  `notes.md`.
+  `notes.md`. A bench binary must print its provided lanes and a `[stub — ...]` note
+  for the unimplemented ones, then exit 0 — a `todo!()` panic must never take down a
+  measurement above it.
+
+Two topics (4 and 10) deliberately have no provided lane, because their benchmarks
+measure only the reader's own implementation. Their READMEs open by saying so and by
+giving the arithmetic or the external oracle to predict against instead. That is a
+legitimate shape for a topic; inventing a number to fill the slot is not.
 
 ## Conventions
 
@@ -65,8 +75,11 @@ Every topic follows the same shape, because the shape is what makes it checkable
   and add an exercise to construct the case where it holds. (See topic 42's
   multi-hit booster for the worked example.)
 - **Code reading is done against pinned clones** under `~/repos/` rather than vendored
-  here, with the commit recorded in the guide so the `file:line` anchors mean
-  something.
+  here. The commit each clone was read at is recorded **once**, in the pin table at
+  the end of [resources/codebases.md](resources/codebases.md), so the thousands of
+  `file:line` anchors in the guides mean something. Regenerate it with
+  `python3 tools/pin-table.py` after cloning or updating a reference repo — putting
+  a SHA in each guide instead would mean thousands of them drifting separately.
 - **Generators are seeded.** Anyone must be able to reproduce a figure exactly.
 - **Notes capture *why* a design wins** and what it trades away — not summaries.
 
@@ -83,11 +96,25 @@ every push to `master` and deploys to GitHub Pages. Before committing content, b
 locally and check that mermaid diagrams render and internal links resolve — a broken
 link is invisible in markdown and obvious in the book.
 
+A second workflow ([verify.yml](.github/workflows/verify.yml)) runs
+`./verify.sh --summary` and a `-D warnings` build of all 45 crates on every push and
+pull request. It is the gate that keeps the repo's central claim true, so a lane that
+stops running is a red build. Note that `cargo test` is deliberately **not** a gate:
+the stub tests are the specification and are supposed to fail on a fresh clone.
+
+One mdbook wrinkle worth knowing: `src = "."`, so mdbook copies every non-markdown
+file under the repo root into `book/`. It honours neither `.gitignore` nor any exclude
+list, which is why cargo artifacts are pushed outside the clone by
+[.cargo/config.toml](.cargo/config.toml). If you remove that file, run `cargo clean`
+before `mdbook build` or you will copy gigabytes of build output into the book.
+
 ## Running the experiments
 
 ```bash
 ./verify.sh                       # every measured lane, with output
 ./verify.sh --summary             # just the pass/fail table
+./verify.sh --list                # every lane and what it measures, run nothing
+./verify.sh --criterion           # also the slow criterion lanes (topic 0)
 ./verify.sh 40 41                 # only these topics
 
 cd topics/40-security-attack-graphs/experiments

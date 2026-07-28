@@ -41,6 +41,7 @@ pub fn count_branchy(vals: &[f32], t: f32) -> usize {
 /// alternative when you need bit POSITIONS, not just a count — you
 /// will need it in compact_neon below.)
 #[cfg(target_arch = "aarch64")]
+#[allow(unused_variables, reason = "used once the todo!() is implemented")]
 pub fn count_neon(vals: &[f32], t: f32) -> usize {
     todo!("vcltq_f32 + vsubq_u32 mask accumulation + vaddvq_u32")
 }
@@ -62,6 +63,7 @@ pub fn count_neon(vals: &[f32], t: f32) -> usize {
 ///      flatten_bits shape).
 /// Output must EXACTLY match compact_branchy.
 #[cfg(target_arch = "aarch64")]
+#[allow(unused_variables, reason = "used once the todo!() is implemented")]
 pub fn compact_neon(vals: &[f32], t: f32, out: &mut Vec<f32>) {
     todo!("4-bit mask → shuffle LUT → vqtbl1q_u8 → advance by popcount")
 }

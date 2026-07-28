@@ -117,7 +117,7 @@ mod tests {
         // specialist. Common neighbours cannot tell them apart;
         // Adamic/Adar must weight the specialist far more heavily.
         let mut adj: Vec<std::collections::HashSet<u32>> = vec![Default::default(); 110];
-        let mut link = |a: u32, b: u32, adj: &mut Vec<std::collections::HashSet<u32>>| {
+        let link = |a: u32, b: u32, adj: &mut Vec<std::collections::HashSet<u32>>| {
             adj[a as usize].insert(b);
             adj[b as usize].insert(a);
         };

@@ -188,6 +188,15 @@ read it first.
    main+DP-DM masked) and their consistency semantics (topic 8's
    read-your-writes for procedures).
 
+## Done when
+
+- [ ] You can name the four verbs and express connected components as algebra.
+- [ ] You can explain FastSV's `min_2nd` semiring and why it takes the neighbour's grandparent.
+- [ ] You can contrast sampling in FastSV against Afforest and count matrix ops against pointer chases.
+- [ ] You can write triangle counting as a masked multiplication.
+- [ ] You can explain why the flush boundary is the cost in the FalkorDB tie-in.
+- [ ] You wrote answers to all five questions in notes.md, including what `CALL algo.wcc()` must do about pending deltas.
+
 ## References
 
 **Code**

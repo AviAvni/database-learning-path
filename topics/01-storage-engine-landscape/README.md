@@ -4,6 +4,30 @@
 > WAL, buffer pool, MVCC, compaction, columnar layout — is a refinement of the choice
 > made here: **update in place, or write out of place?**
 
+## The problem, measured (bench lane 1, provided — runs today)
+
+`cargo run --release` in `experiments/` — 1.08 M records of 100 B, random key
+order, batches of 1000, synced:
+
+```
+fjall    logical    108000000 B  on-disk     48429915 B  space-amp 0.45x
+redb     logical    108000000 B  on-disk   6833917952 B  space-amp 63.28x
+```
+
+Same data, same durability, **a 140× difference in bytes on disk** — and the
+LSM is *below* 1.0 while the B-tree is at 63×. Neither number is a bug. fjall
+compresses its sorted runs, so it spends read cost to buy space; redb is a
+copy-on-write B-tree being fed random keys in 1080 separate commits, which is
+precisely its worst case, because every commit copies the whole root-to-leaf
+path and cannot free the old pages yet.
+
+That is the RUM conjecture with a price tag attached, and it is why this topic
+comes before the other thirty: you do not get to optimize read, update and
+memory at once, and the choice you make here propagates into every later topic.
+The caveat is as important as the number — change the key order to sequential
+or compact at the end and redb's 63× collapses. One measurement is one point in
+the design space, never a verdict.
+
 ## Outcomes
 
 By the end you can:
