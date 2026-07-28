@@ -1,17 +1,25 @@
 name: book
 
+# The book is built on pull requests as well as on master, because the two ways
+# it breaks — a mermaid diagram that no longer parses, and a SUMMARY.md entry
+# pointing at a moved file — are both invisible in markdown and obvious in the
+# rendered output. Catching those after the merge means catching them after they
+# have already deployed to Pages.
+#
+# Only a push to master deploys. Pull requests build and stop.
+
 on:
   push:
     branches: [master]
+  pull_request:
   workflow_dispatch:
 
+# Least privilege by default; the deploy job elevates for itself.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: book-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,13 +50,52 @@ jobs:
       - name: Bundle PDF into site
         run: cp book/pdf/output.pdf book/html/database-learning-path.pdf
 
+      # Every chapter in SUMMARY.md must have produced a page, and every mermaid
+      # block must have reached the renderer as a mermaid block rather than as a
+      # plain code fence. Both are silent failures in markdown and obvious in the
+      # rendered output, which is the whole reason to check here.
+      - name: Check the rendered book
+        run: |
+          fail=0
+          checked=0
+          while read -r page; do
+            # mdbook renders README.md as the directory's index.html
+            case "$page" in
+              */README.md) html="book/html/${page%README.md}index.html" ;;
+              README.md)   html="book/html/index.html" ;;
+              *)           html="book/html/${page%.md}.html" ;;
+            esac
+            checked=$((checked + 1))
+            if [ ! -f "$html" ]; then
+              echo "::error::SUMMARY.md lists $page but $html was not rendered"
+              fail=1
+            fi
+          done < <(grep -oE '\]\(([^)]+\.md)\)' SUMMARY.md | sed 's/](//; s/)//' | sort -u)
+          echo "checked $checked chapters from SUMMARY.md"
+
+          # print.html concatenates every page, so it is excluded or every
+          # diagram would be counted twice.
+          src=$(grep -rho '^```mermaid' --include='*.md' . --exclude-dir=book --exclude-dir=drafts | wc -l | tr -d ' ')
+          out=$(grep -rho 'class="mermaid"' book/html --include='*.html' --exclude='print.html' | wc -l | tr -d ' ')
+          echo "mermaid blocks: $src in source, $out rendered"
+          if [ "$out" -lt "$src" ]; then
+            echo "::error::$((src - out)) mermaid block(s) did not render as mermaid"
+            fail=1
+          fi
+          exit $fail
+
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push'
         with:
           path: book/html
 
   deploy:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
