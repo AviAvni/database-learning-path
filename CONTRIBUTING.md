@@ -43,7 +43,14 @@ Every topic follows the same shape, because the shape is what makes it checkable
   format: an H1 with the idea in it, a framing lead, **the problem in one sentence**,
   then `### Step N` sections that build each concept using only terms defined in
   earlier steps, then how to read the source material with the concepts in hand,
-  questions to answer, a "done when" checklist, and references.
+  questions to answer, a "done when" checklist, and references. The depth rules
+  that make "using only terms defined in earlier steps" enforceable — define every
+  term at first use, declare each step's input and output, work every formula on
+  concrete numbers — are in
+  [CLAUDE.md](https://github.com/AviAvni/database-learning-path/blob/master/CLAUDE.md#reading-guide-depth)
+  (an absolute link because `CLAUDE.md` is not a book chapter), with
+  [reading-criterion.md](topics/00-performance-toolbox/reading-criterion.md) as the
+  reference chapter.
 - **`notes.md`** — a `## Baseline (provided lane, <machine>, measured <date>)` section
   recording the provided lane's real output with the analysis, then a
   predictions-vs-measurements worksheet. **The worksheet's cells are meant to be
