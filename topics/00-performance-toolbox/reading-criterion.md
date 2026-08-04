@@ -5,13 +5,16 @@ any of them it pays to know exactly what the tool does to raw timings. The
 answer lives in one 370-line file, `analysis/mod.rs`: `common()` (line 39) is
 a pipeline, and every line criterion prints during a bench run maps to a
 specific step there. Before opening the crate, this chapter builds the
-statistics from zero — no prior statistics assumed, every term defined where
-it first appears, and every step stating which array of numbers it eats and
-which it produces. Then it hands you the reading order through the code.
-Three ideas do all the work — bootstrap instead of normality assumptions,
-slope instead of mean, label outliers instead of dropping them.
+statistics from zero — why one timing lies, what warm-up really does, why
+criterion fits a line instead of taking an average, which of the two datasets
+it derives from a run each stage actually reads, and how it manufactures a
+confidence interval without assuming anything about the noise. Then it hands
+you the reading order through the code. Three ideas do all the work —
+bootstrap instead of normality assumptions, slope instead of mean, label
+outliers instead of dropping them.
 
-All line numbers below are criterion **0.5.1**, the version this repo pins.
+Every anchor below is criterion **0.5.1**, the version this repo pins, quoted
+with the line numbers the code occupies in that version.
 
 ## The problem in one sentence
 
@@ -55,27 +58,34 @@ measuring, so the transient effects from Step 1 — cold caches, empty
 allocator free lists, un-boosted clocks, lazy initialization — settle into a
 steady state.
 
-But cache-warming is the *side effect*. Look at what `warm_up` actually
-returns (`routine.rs:257`):
+But cache-warming is the *side effect*. `warm_up` is declared at
+`routine.rs:257`; **the line to focus on is 277**, its only `return`:
 
 ```rust
-loop {
-    (*f)(&mut b, black_box(parameter));      // run it, record nothing
-    total_iters += b.iters;
-    elapsed_time += b.elapsed_time;
-    if elapsed_time > how_long {             // how_long = warm_up_time, default 3 s
-        return (elapsed_time.as_nanos() as u64, total_iters);
-    }
-    b.iters = b.iters.wrapping_mul(2);       // 1, 2, 4, 8, 16, ... iterations
-}
+// routine.rs:269–281 — the loop body of warm_up (blank lines 271, 273, 279 elided)
+269    loop {
+270        (*f)(&mut b, black_box(parameter));   // run it, record nothing
+272        b.assert_iterated();
+274        total_iters += b.iters;
+275        elapsed_time += b.elapsed_time;
+276        if elapsed_time > how_long {          // how_long = warm_up_time, default 3 s
+277            return (elapsed_time.as_nanos() as u64, total_iters);   // ← the payload
+278        }
+280        b.iters = b.iters.wrapping_mul(2);    // 1, 2, 4, 8, 16, ... iterations
+281    }
 ```
 
-It doubles the batch size until three seconds have gone by, then hands back
-*how long it ran* and *how many iterations it got through* — which the caller
-divides into one number (`routine.rs:158`):
+Line 277 is the whole argument of this step: what warm-up hands back is not a
+warmed cache — you cannot return one — but **two counters**, a duration and an
+iteration count. Line 280 is what makes them large enough to be worth dividing:
+the batch doubles every pass, so three seconds of warm-up covers far more
+iterations than three seconds of one-at-a-time timing would.
+
+The caller divides those two numbers into one:
 
 ```rust
-let met = wu_elapsed as f64 / wu_iters as f64;   // mean execution time, ns/iteration
+// routine.rs, inside Routine::sample
+158    let met = wu_elapsed as f64 / wu_iters as f64;   // mean execution time, ns/iteration
 ```
 
 That is the whole point: `met` is what lets criterion size its measurement
@@ -97,13 +107,16 @@ and too short for the clock (Step 1). Criterion collects `sample_size`
 samples (default 100), and under **linear sampling** the batch sizes grow
 arithmetically: batch *i* runs `i × d` iterations, for one step size `d`.
 
-`d` is chosen so the whole ladder fills the measurement budget
-(`lib.rs:1402–1428`):
+`d` is chosen so the whole ladder fills the measurement budget. The three
+lines that matter sit in the `Linear` arm of `iteration_counts`
+(`lib.rs:1402–1428`), with a warning block between 1409 and 1427 elided here:
 
 ```rust
-let total_runs = n * (n + 1) / 2;                              // 1+2+...+n batches' worth
-let d = ((m_ns as f64 / met / total_runs as f64).ceil() as u64).max(1);
-(1..(n + 1)).map(|a| a * d).collect::<Vec<u64>>()              // [d, 2d, 3d, ..., nd]
+// lib.rs, ActualSamplingMode::Linear arm — 1407, 1408 and 1428
+1407    let total_runs = n * (n + 1) / 2;              // 1+2+...+n batches' worth
+1408    let d = ((m_ns as f64 / met / total_runs as f64).ceil() as u64).max(1);
+        // ... 1409–1427: expected_ns, and the d == 1 warning described below ...
+1428    (1..(n + 1)).map(|a| a * d).collect::<Vec<u64>>()      // [d, 2d, 3d, ..., nd]
 ```
 
 Worked through, for the 70.1 µs function in "the problem in one sentence",
@@ -142,10 +155,15 @@ This is the step the pipeline diagram hides. From the single sample of
 Step 3, `common()` derives two separate things:
 
 ```rust
-let avg_times = iters.iter().zip(times.iter())
-    .map(|(&iters, &elapsed)| elapsed / iters)      // analysis/mod.rs:124–129
-    .collect::<Vec<f64>>();
-let data = Data::new(&iters, &times);               // analysis/mod.rs:140
+// analysis/mod.rs — 124–129 build one dataset, 140 the other
+124    let avg_times = iters
+125        .iter()
+126        .zip(times.iter())
+127        .map(|(&iters, &elapsed)| elapsed / iters)
+128        .collect::<Vec<f64>>();
+129    let avg_times = Sample::new(&avg_times);
+       // ... 131–139: baseline directory bookkeeping ...
+140    let data = Data::new(&iters, &times);
 ```
 
 - **`avg_times`** — 100 numbers, one **per-iteration average** per sample
@@ -187,15 +205,16 @@ a straight line to those points; the **slope** of the line — how much `y`
 grows per unit of `x` — is the per-iteration cost.
 
 **Least squares** picks the line that minimises the sum of squared vertical
-distances from the points to it. Here is criterion's entire regression
-(`stats/bivariate/regression.rs:20`):
+distances from the points to it. Criterion's entire regression is four lines —
+**focus on 27**, which is the estimate:
 
 ```rust
-pub fn fit(data: &Data<'_, A, A>) -> Slope<A> {
-    let xy = crate::stats::dot(xs, ys);      // Σ xᵢyᵢ
-    let x2 = crate::stats::dot(xs, xs);      // Σ xᵢ²
-    Slope(xy / x2)                           // m = Σxᵢyᵢ / Σxᵢ²
-}
+// stats/bivariate/regression.rs:20–28 (21–22 unpack xs/ys; 23 and 26 blank)
+20     pub fn fit(data: &Data<'_, A, A>) -> Slope<A> {
+24         let xy = crate::stats::dot(xs, ys);   // Σ xᵢyᵢ
+25         let x2 = crate::stats::dot(xs, xs);   // Σ xᵢ²
+27         Slope(xy / x2)                        // m = Σxᵢyᵢ / Σxᵢ²   ← the whole fit
+28     }
 ```
 
 Read the type first: `struct Slope<A>(pub A)` — **one** field. This is a fit
@@ -311,6 +330,8 @@ assumption entirely — pretend your 100 samples *are* the population, and
 simulate the repeat runs by drawing from them:
 
 ```rust
+// ILLUSTRATION — not quoted from the crate; criterion's real loop is
+// stats/univariate/resamples.rs:37–41, wrapped by Sample::bootstrap
 let n = sample.len();
 for _ in 0..nresamples {                       // 100_000 in criterion
     // resample WITH REPLACEMENT, same size — a value may be drawn twice and
@@ -423,13 +444,15 @@ difference, both sets came from the same population. `mixed::bootstrap`
 (`mixed.rs:11`) *builds* that world and measures it:
 
 ```rust
-c.extend_from_slice(a);
-c.extend_from_slice(b);        // POOL both — erase which run each value came from
-// ... then, 100_000 times:
-let resample = resamples.next();                     // draw n_a + n_b, with replacement
-let a: &Sample<A> = Sample::new(&resample[..n_a]);   // arbitrarily call these "new"
-let b: &Sample<A> = Sample::new(&resample[n_a..]);   // and these "base"
-statistic(a, b)                                      // recompute t
+// stats/univariate/mixed.rs — the pooling at 27–28, then the resample loop.
+// Lines 66–70 are the non-rayon path; 38–42 are the identical rayon path.
+27     c.extend_from_slice(a);
+28     c.extend_from_slice(b);      // POOL both — erase which run each value came from
+       // ... 29–65: wrap the pool as a Sample, then rayon/non-rayon dispatch ...
+66         let resample = resamples.next();                   // draw n_a + n_b, w/ replacement
+67         let a: &Sample<A> = Sample::new(&resample[..n_a]);  // arbitrarily call these "new"
+68         let b: &Sample<A> = Sample::new(&resample[n_a..]);  // and these "base"
+70         statistic(a, b)                                    // recompute t
 ```
 
 Pooling then re-splitting at random is what makes it a null distribution:
@@ -441,8 +464,9 @@ The **p-value** is then just a rank — the share of those 100,000 chance-only
 (`stats/mod.rs:63`):
 
 ```rust
-let hits = self.0.iter().filter(|&&x| x < t).count();
-A::cast(cmp::min(hits, n - hits)) / A::cast(n) * tails    // tails = 2
+// stats/mod.rs, Distribution::p_value — 68–73 map Tails to 1 or 2
+67    let hits = self.0.iter().filter(|&&x| x < t).count();
+74    A::cast(cmp::min(hits, n - hits)) / A::cast(n) * tails    // tails = 2
 ```
 
 `min(hits, n − hits)` takes whichever tail the observation sits in, and the
@@ -463,13 +487,15 @@ the mean — `a.mean() / b.mean() - 1.` resampled 100,000 times
 not care (default 0.01, i.e. 1%). From `report.rs:779`:
 
 ```rust
-if lb < -noise && ub < -noise {          // ENTIRE interval below −1%
-    ComparisonResult::Improved
-} else if lb > noise && ub > noise {     // ENTIRE interval above +1%
-    ComparisonResult::Regressed
-} else {
-    ComparisonResult::NonSignificant     // prints "Change within noise threshold."
-}
+// report.rs:784–790, inside compare_to_threshold (declared at 779;
+// 780–782 pull lb/ub off the confidence interval)
+784    if lb < -noise && ub < -noise {          // ENTIRE interval below −1%
+785        ComparisonResult::Improved
+786    } else if lb > noise && ub > noise {     // ENTIRE interval above +1%
+787        ComparisonResult::Regressed
+788    } else {
+789        ComparisonResult::NonSignificant     // "Change within noise threshold."
+790    }
 ```
 
 Note it tests **both bounds**, not the point estimate: an interval straddling
@@ -556,14 +582,131 @@ is what it *compares*.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can explain why criterion times *batches* and fits a line, rather than timing one iteration.
+
+  <details><summary>Answer</summary>
+
+  One iteration is both too short and too noisy: the clock's own resolution is
+  ~20–40 ns, so a short function mostly measures the timer, and any single
+  reading carries whatever the machine was doing at that instant (Step 1).
+  Timing a batch amortises both. The batch sizes then grow *linearly*
+  (`d, 2d, …, 100d`) specifically so that plotting total time against batch
+  size and fitting a line recovers ns-per-iteration as the **slope** — an
+  estimate the largest batches dominate, so a fixed per-sample overhead barely
+  moves it (Steps 3 and 5).
+
+  </details>
+
 - [ ] You can name, for each stage of the pipeline, whether it consumes `avg_times` or the raw `(iters, times)` pairs — and say why the headline and the regression verdict come from different ones.
+
+  <details><summary>Answer</summary>
+
+  `avg_times` feeds `tukey::classify` (Step 6), `estimates()` (Step 7) and the
+  baseline comparison (Step 9). The raw `(iters, times)` pairs feed
+  `regression()` (Step 5) and nothing else.
+
+  The headline `time: [lo mid hi]` is the **slope's** bootstrap CI, because
+  `typical()` returns the slope when it exists (`estimate.rs:114`). The
+  regression verdict is a t-test on **`avg_times`**, i.e. on means. Same run,
+  two different statistics — and under flat sampling there is no slope at all,
+  so the headline silently falls back to the mean.
+
+  </details>
+
 - [ ] You can say what fitting through the origin assumes, and why the slope is still less biased than the mean of the per-iteration averages.
+
+  <details><summary>Answer</summary>
+
+  `Slope` is a one-field struct and `fit` returns `Σxᵢyᵢ / Σxᵢ²`, so the model
+  is `y = m·x`: it assumes total time is *exactly* cost × iters, i.e. zero
+  per-sample overhead. When overhead exists the slope is biased upward too —
+  it is not immune, and the chapter's three-point example shows it landing at
+  +21.4%.
+
+  It is less biased because each point's influence is weighted by `xᵢ²`, so the
+  largest batches — where a fixed overhead is proportionally smallest —
+  dominate. `mean(avg_times)` weights every batch equally, so the *smallest*
+  batch, where overhead is proportionally largest, drags it up hardest: +30.6%
+  on the same three points.
+
+  </details>
+
 - [ ] You can give the reasons taking the minimum is the wrong estimator, not just a noisy one.
+
+  <details><summary>Answer</summary>
+
+  It estimates best-case-ever, a state production code never runs in. Noise is
+  not purely additive — early samples can run at a *higher* pre-throttle clock,
+  so the min can be an unrepresentatively lucky sample. It is an extreme-value
+  statistic determined entirely by one observation, so its sampling
+  distribution is wild and sample-size-dependent, which is why no p-value can
+  be put on a change in it. And a bare point estimate hides whether the spread
+  was 1% or 40%.
+
+  </details>
+
 - [ ] You can state what a bootstrapped confidence interval assumes about the distribution (nothing) and what it therefore cannot rescue you from.
+
+  <details><summary>Answer</summary>
+
+  It assumes nothing about the *shape* of the noise — that is the point of
+  resampling the observed data instead of consulting a normal-distribution
+  table. What it does assume is that your sample is representative of the
+  population, and it cannot rescue you from a sample that isn't: a
+  systematically throttled machine, a benchmark measuring the wrong thing,
+  coordinated omission, or too few samples. Resampling a biased sample yields
+  a confidently narrow interval around the wrong number.
+
+  </details>
+
 - [ ] You can explain how pooling two samples and re-splitting them at random manufactures a null hypothesis, and what the p-value counts.
+
+  <details><summary>Answer</summary>
+
+  Concatenating the new and baseline samples erases which run each value came
+  from. Drawing `n_a + n_b` values from that pool with replacement and slicing
+  them back into two groups produces a pair of samples that differ **by chance
+  alone** — exactly the "there is no real difference" world. Recomputing `t`
+  100,000 times over that world gives the distribution of `t` under the null.
+
+  The p-value is then a rank, not a probability computed from a formula: the
+  share of those chance-only `t` values at least as extreme as the observed
+  one — `min(hits, n − hits) / n × 2`, doubled because the test is two-tailed
+  (criterion asks "different?", not "slower?").
+
+  </details>
+
 - [ ] You can name criterion's two regression gates, say which one runs first, and map each of the three printed verdicts to the gate that produced it.
+
+  <details><summary>Answer</summary>
+
+  Gate 1 is the bootstrapped t-test: `p_value < significance_level` (0.05).
+  Gate 2 is the bootstrapped relative mean-change CI with **both** bounds past
+  ±`noise_threshold` (0.01). Gate 1 runs first and short-circuits.
+
+  | Gate 1 | Gate 2 | Printed |
+  |---|---|---|
+  | fail | never evaluated | `No change in performance detected.` |
+  | pass | fail | `Change within noise threshold.` |
+  | pass | pass | `Performance has improved.` / `regressed.` |
+
+  </details>
+
 - [ ] You have run `cargo bench` in `experiments/` and can point at the warm-up, sample and outlier lines in its output.
+
+  <details><summary>Answer</summary>
+
+  Three lines to find, from `report.rs:506`, `:538` and `:463` respectively:
+  `Benchmarking <name>: Warming up for …` (Step 2's calibration loop);
+  `Benchmarking <name>: Collecting 100 samples in estimated …` — the iteration
+  count in that line is `n(n+1)/2 × d` from Step 3; and
+  `Found N outliers among 100 measurements (…%)` followed by the
+  low/high × mild/severe breakdown, which is Step 6's Tukey fences reported,
+  never applied.
+
+  </details>
 
 ## References
 
