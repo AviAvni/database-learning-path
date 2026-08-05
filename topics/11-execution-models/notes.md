@@ -24,16 +24,16 @@ this box) does batching close, and what does the remainder consist of?
 
 ## Predictions (fill BEFORE implementing vectorized.rs / kernels.rs)
 
-Measured baseline (provided volcano, release, 50M rows, sel 50%):
-**0.277 s = 180.7 M rows/s** — already fast! ~5.5 ns/row including two
-virtual calls per tuple. Modern branch predictors eat stable indirect
-calls; the Volcano tax on an M-series core is NOT mostly call overhead.
+Measured baseline (provided volcano, release, 50M rows, sel 50%), from the
+Baseline block above: **0.484 s = 103.3 M rows/s** — already fast, ~9.7 ns/row
+including two virtual calls per tuple. Modern branch predictors eat stable
+indirect calls; the Volcano tax on an M-series core is NOT mostly call overhead.
 Where will the vectorized win actually come from? (SIMD, ILP, no
 per-row branch.) Predict accordingly:
 
 | engine | predicted M rows/s | predicted ratio vs volcano | actual | actual ratio |
 |---|---|---|---|---|
-| volcano (sel 50) | — | 1× | 180.7 | 1× |
+| volcano (sel 50) | — | 1× | 103.3 | 1× |
 | vectorized (sel 50) | | | | |
 | kernel (sel 50) | | | | |
 
