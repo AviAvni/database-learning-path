@@ -61,7 +61,7 @@ Surprises / dead ends:
 ### FDB / Antithesis (reading-fdb-simulation.md)
 
 1. Disk-lies vs Raft's assumptions (+ VSR/TigerBeetle answer):
-2. Why BUGGIFY branches don't invalidate the test:
+2. Why `buggify()` branches don't invalidate the test:
 3. The four escapes (compiler/kernel/sim-bug/wall-clock) — who catches:
 4. Why simulation outruns real time:
 5. Our engine's remaining nondeterminism sources for M16:
