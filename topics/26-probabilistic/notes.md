@@ -5,6 +5,10 @@ Machine: Apple M3 Pro, macOS. `cargo run --release --bin filter_bench`
 
 ## Measured baselines (provided lanes)
 
+> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 26 (**246 /
+> 299 / 28 ns** for the three lanes below). FINDINGS is canonical where
+> they disagree; cite one run by name and never average them.
+
 | lane | ns/lookup | note |
 |---|---|---|
 | binary search (miss) | 167 | ~23 dependent cache misses over 76 MB |
@@ -49,7 +53,7 @@ they're the record.)
 - [ ] HLL Q2: show sigma() term ⇒ linear counting for n ≪ m.
 - [ ] HLL Q4: ZERO/XZERO/VAL vs roaring containers — the density metric each switches on.
 - [ ] Learned Q1: 4 points where the cone splits but optimal PLA doesn't.
-- [ ] Learned Q4: ALEX under adversarial (clustered) inserts — predict, then paper §5.5.
+- [ ] Learned Q4: ALEX under adversarial (clustered) inserts — predict, then paper §6.2.6.
 - [ ] Roaring Q1: workload where per-chunk adaptivity beats per-matrix (topic 20).
 - [ ] Postgres Q3: BRIN pruning condition; place timestamp / UUIDv4 / monotone ID.
 
