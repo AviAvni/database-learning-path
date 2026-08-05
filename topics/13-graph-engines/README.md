@@ -8,8 +8,8 @@ and what does pattern matching (multi-way Expand) cost?
 ## The problem, measured (bench lane 1, provided — runs today)
 
 `cargo run --release --bin hop_bench` — preferential-attachment graph, 1 M nodes
-/ 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 1000 sources. Max degree
-6565, p50 degree 11:
+/ 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 10 000 random sources and
+from the 100 highest-degree nodes. Max degree 6565, p50 degree 11:
 
 ```
 impl                 source set       ns/query      distinct reached
@@ -24,13 +24,26 @@ whatever the degree distribution under your start node says, and on a scale-free
 graph that distribution is a power law with no useful mean. The median node has
 11 neighbours. The top one has 6565.
 
-Now look at the last column: the slow case reaches *fewer* distinct nodes — 7.9 M
-against 10.2 M — while taking 101× longer. High-degree neighbourhoods overlap
-heavily, so the extra work is redundant rather than productive. That redundancy
-is the opening the CSR and masked-SpMV lanes attack, and it is why graph engines
-are built around set operations on sorted adjacency rather than around pointer
-chasing. It is also why "supernode" is a word in this field and not in the
-others.
+Now the last column, carefully — because it is a trap this repo walked into. The
+checksums are **sums over unequal query counts**: 10 000 random sources against
+100 supernodes. Divide before comparing. Per query, random reaches
+10 220 457 / 10 000 = **1022** distinct nodes and a supernode reaches
+7 890 665 / 100 = **78 907** — **77× more**, not fewer. The earlier reading of
+this table ("the slow case reaches fewer nodes, so the work is redundant") was
+an artifact of comparing a sum of 10 000 with a sum of 100.
+
+What the lane does show is cleaner. Cost per distinct node reached is
+4914 / 1022 = **4.81 ns** from random sources against 495 378 / 78 907 =
+**6.28 ns** from supernodes — only **1.31×** worse. So the 101× is 77× more
+work and 1.3× worse cost per unit of it, and *that* is the finding: a two-hop
+traversal costs what its reachable neighbourhood costs, and the degree
+distribution decides the neighbourhood. The 1.31× residual is the interesting
+part, and this lane cannot say whether it is re-walked overlap or the cache
+pressure of a 79 000-node frontier — it counts distinct nodes, not edges
+traversed. Separating the two is an exercise below. The CSR and masked-SpMV
+lanes attack the residual, which is why graph engines are built around set
+operations on sorted adjacency rather than pointer chasing. It is also why
+"supernode" is a word in this field and not in the others.
 
 ## 1. The adjacency representation menu
 
@@ -157,6 +170,15 @@ over three representations, same power-law graph:
 5. Compare externally: same query on FalkorDB
    (`GRAPH.QUERY ... MATCH (a)-[*1..2]->(b) RETURN count(DISTINCT b)`)
    and neo4j if handy — record in notes.md.
+6. YOU add: a second counter alongside the distinct-node checksum that
+   counts **edges traversed**, and report both normalised per query.
+   The provided lane measures 1022 against 78 907 distinct nodes per
+   query and 4.81 against 6.28 ns per distinct node — it cannot say
+   whether that 1.31× residual is re-walked overlap or the cache cost
+   of a 79 000-node frontier. Edges-per-distinct-node separates them:
+   if the supernode ratio is much higher, the work really is redundant
+   and the visited bitmap is the fix; if it is flat, the residual is
+   memory and only layout helps. Predict which before you measure.
 
 ## Reading guides
 
