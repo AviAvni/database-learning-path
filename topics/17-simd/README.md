@@ -48,8 +48,9 @@ The DB kernel (SIGMOD '15's centerpiece). Three shapes:
  compress:    mask = v .< t
    AVX-512:   vpcompressd (polars filter/avx512.rs:59 — hardware)
    NEON:      no compress! 4-bit mask → LUT of shuffle masks →
-              vqtbl1q (simdjson arm64/simd.h:267-276 does exactly
-              this for 8-byte compaction)
+              vqtbl1q (simdjson arm64/simd.h:283-299,
+              `compress_halves`, does exactly this for 8-byte
+              compaction; :267-276 is the 16-byte `compress`)
 ```
 
 Selectivity decides the winner: branchy wins at ~0%/100% (predicted
@@ -61,9 +62,11 @@ that's the experiments' centerpiece curve.
 x86 `movemask` (bitmask from lanes) has no NEON equivalent —
 the idiom is `vshrn` (shift-right-narrow) folding 16 lanes into a
 64-bit "4 bits per lane" mask (hashbrown group/neon.rs, memchr's
-Vector::movemask). SwissTable = SIMD probing: 16 control bytes per
-group, one `vceqq`+narrow gives candidate slots in 2 instructions —
-topic 2's hash table, now explained at lane level.
+Vector::movemask). SwissTable = SIMD probing: **8** control bytes per
+group on this host — `src/control/group/mod.rs:24-33` picks the NEON
+backend on aarch64 and `neon.rs:16` is `Group(uint8x8_t)`; the familiar
+16 is the SSE2 group. One `vceq`+narrow gives candidate slots in 2
+instructions — topic 2's hash table, now explained at lane level.
 
 ## 5. The masterclass codebases (per reading guide)
 
@@ -78,7 +81,7 @@ topic 2's hash table, now explained at lane level.
   comments; multiple ISA files per kernel (haswell/skylake/neon/
   sve...) dispatched at runtime.
 - **memchr**: `Vector` trait over ISAs; the 4×-unrolled search loop.
-- **Mojo**: `SIMD[type, width]` as a first-class parametric type —
+- **Mojo**: `SIMD[dtype, size]` as a first-class parametric type —
   what `std::simd` wants to be with a compiler behind it.
 
 ## 6. FastLanes (bit-packing at SIMD speed)
@@ -118,7 +121,7 @@ stable stand-in):
 | [reading-simsimd.md](reading-simsimd.md) | SimSIMD: the port/latency table is the design doc |
 | [reading-sigmod15-vectorization.md](reading-sigmod15-vectorization.md) | SIMD for databases: two primitives, four operators |
 | [reading-fastlanes.md](reading-fastlanes.md) | FastLanes: bit-unpacking at memory bandwidth |
-| [reading-mojo-simd.md](reading-mojo-simd.md) | Mojo's `SIMD[type, width]`: width as a type parameter |
+| [reading-mojo-simd.md](reading-mojo-simd.md) | Mojo's `SIMD[dtype, size]`: width as a type parameter |
 
 ## Capstone M17
 
