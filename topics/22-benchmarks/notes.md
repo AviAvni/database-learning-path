@@ -2,6 +2,12 @@
 
 ## Baseline (provided code, Apple M3 Pro, measured 2026-07-10)
 
+> These figures predate the 2026-07-28 re-run recorded in
+> [FINDINGS.md](../../FINDINGS.md) row 22 (Q1 5.2–5.7 GB/s, Q6
+> 9.0–14.4 GB/s, YCSB-E p999 12.9 µs against read-only's 4.0 µs). Same
+> machine, later run; where the two disagree, FINDINGS is canonical.
+> Re-run `./verify.sh 22` before treating any cell below as current.
+
 ### TPC-H choke points (bench_suite, dbgen-lite)
 
 | SF | rows | Q1 oracle ms | Q1 GB/s | Q6 oracle ms | Q6 GB/s |
@@ -10,7 +16,8 @@
 | 0.25 | 1.5M | 10.2 | 5.6 | 2.7 | 15.7 |
 
 Q1 oracle: HashMap entry per row (even with only 6 groups) + 4 f64
-FMAs — hashing dominates, exactly the CP1.2 story: the group domain
+FMAs — hashing dominates, exactly the CP1.3 story (Small Group-By
+Keys, Boncz TPCTC'13 Table 1): the group domain
 is tiny, so a real engine replaces the hash with an array and turns
 Q1 into an expression benchmark. Q6 branchy oracle already at
 15.7 GB/s — the 2% selectivity means the branch is nearly

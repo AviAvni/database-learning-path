@@ -22,7 +22,7 @@ M22's standing regression suite.
 ```mermaid
 graph TD
     Q["a benchmark number"] --> W["workload: mix + distribution<br/>(YCSB: A-F × zipfian/uniform)"]
-    Q --> D["data: scale factor + skew +<br/>correlation (dbgen: none!)"]
+    Q --> D["data: scale factor + skew +<br/>correlation (dbgen: dates only)"]
     Q --> H["harness: open vs closed loop,<br/>think times, warmup, driver cost"]
     Q --> M["metric: tpmC? geomean?<br/>p999? GB/s? recall@10?"]
     W & D & H & M --> V{"change ANY one<br/>⇒ different number"}
@@ -30,8 +30,9 @@ graph TD
 
 ## Choke points, one line each
 
-- **TPC-H Q1**: tiny group domain ⇒ hash table free ⇒ pure
-  expression eval + fused agg (our `q1_flat` makes it explicit).
+- **TPC-H Q1**: tiny group domain (Boncz's CP1.3, Small Group-By Keys)
+  ⇒ hash table free ⇒ pure expression eval + fused agg (our `q1_flat`
+  makes it explicit).
 - **TPC-H Q6**: 2%-selective scan ⇒ SIMD predicates, the "GB/s"
   headline query (our `q6_branchless`, topic 17's filter shapes).
 - **TPC-H Q9**: 6-way join order + LIKE '%green%' + skew — the
