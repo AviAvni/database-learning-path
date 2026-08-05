@@ -17,6 +17,10 @@ so the system must tolerate the tail rather than try to eliminate it.
 
 ### Step 1 — Individual machines are irreducibly variable
 
+> **In:** one server, one request.
+> **Out:** the premise every later step rests on — a single machine's latency
+> distribution has a long tail you cannot engineer to zero.
+
 Before any distributed effect, a single server's latency already has a long tail, caused by:
 
 - **Shared resources**: CPU cores, processor caches, memory and network bandwidth contended by
@@ -31,19 +35,32 @@ The paper's stance: you can trim these, but you cannot remove them all. Plan acc
 
 ### Step 2 — The fan-out arithmetic
 
-The headline calculation. Suppose a server answers slowly 1 time in 100. Alone, that is fine.
-Now fan a query out to 100 such servers and wait for **all** of them:
+> **In:** a per-leaf slow probability `p` and a fan-out width `n` — Step 1 said
+> `p` is irreducible, not that it is large.
+> **Out:** `P(at least one slow) = 1 − (1 − p)^n`, the probability a wait-for-all
+> query is slow.
+
+The headline calculation. **Fan-out** means one request splits into `n` sub-requests, one per leaf
+server; **wait-for-all** (a scatter-gather) means the query cannot answer until every leaf has. If a
+leaf is slow independently with probability `p`, the query is fast only when *all* `n` leaves are
+fast — probability `(1 − p)^n` — so it is slow with probability `1 − (1 − p)^n`. Work it on the
+pairs the topic's crate pins, and the shape appears:
 
 ```
-P(at least one leaf is slow) = 1 - 0.99^100 ≈ 63%
+P(at least one leaf is slow) = 1 − (1 − p)^n      p = per-leaf slow prob, n = fan-out
 
-  1-in-100 slow, 100 leaves, wait-all  →  63% of queries slow
-  1-in-10,000 slow, 2,000 leaves       →  1 - 0.9999^2000 ≈ 18% slow
+  p = 1/100,   n = 100:   1 − 0.99^100    = 1 − 0.3660 = 0.6340  → 63.4%
+  p = 1/1000,  n = 100:   1 − 0.999^100   = 1 − 0.9048 = 0.0952  →  9.5%
+  p = 1/1000,  n = 1000:  1 − 0.999^1000  = 1 − 0.3677 = 0.6323  → 63.2%
+  p = 1/10000, n = 2000:  1 − 0.9999^2000 = 1 − 0.8187 = 0.1813  → 18.1%
 ```
 
-Fan-out converts rare slowness into common slowness: **the component's tail becomes the
-service's median**. Even heroic per-machine engineering (1-in-10,000) does not save a
-2,000-leaf query. The topic's crate pins these exact numbers in tests: 63.4% and 18.1%.
+Read the pairs against each other: driving `p` down 10× (1/100 → 1/1000) buys back the fan-out you
+lost, but only until `n` climbs to match — 1/1000 slowness at 1,000 leaves is the *same* 63% as
+1/100 at 100. Fan-out converts rare slowness into common slowness: **the component's tail becomes
+the service's median**. Even heroic per-machine engineering (1-in-10,000) does not save a
+2,000-leaf query. The topic's crate pins two of these exactly: `p_any_slow(0.01, 100) = 0.633968`
+and `p_any_slow(0.0001, 2000) = 0.1813` (`experiments/src/fanout.rs`).
 
 ```mermaid
 graph LR
@@ -57,6 +74,10 @@ graph LR
 
 ### Step 3 — Table 1: what this looks like in a real Google service
 
+> **In:** one leaf's latency distribution (the p50/p95/p99 of a single random leaf).
+> **Out:** the end-to-end distribution of a 100-leaf fan-out under two gather
+> policies — wait for 95% of leaves, or wait for 100%.
+
 The paper measures a real service, per-leaf versus end-to-end:
 
 ```
@@ -69,10 +90,32 @@ The paper measures a real service, per-leaf versus end-to-end:
 Read the last row against the middle row: **the slowest 5% of leaf requests account for half
 of the 99th-percentile end-to-end latency** (140 ms vs 70 ms). This single table motivates
 every technique that follows — and the "95% row" is itself a technique (Step 7). The local
-simulation reproduces the shape: one-leaf p50 5.6 ms vs 100-leaf-wait-all p50 1000 ms, while
-waiting for only 95% of leaves gives p99 9.9 ms.
+simulation reproduces the shape, and its full gather table is worth staring at because it also
+shows the *cost* of good-enough (all three rows measured, `experiments/src/fanout.rs`):
+
+```
+   wait for            p50        p95        p99
+   one leaf            5.6 ms     9.6 ms    10.0 ms
+   95% of 100          9.6 ms     9.9 ms     9.9 ms
+   all 100          1000.0 ms  1000.0 ms  1000.0 ms
+```
+
+Three readings, and the third is the honest one:
+- **Wait for all 100 is catastrophic**: every percentile is a full 1000 ms stall, because 63.4%
+  of queries hit at least one slow leaf (Step 2) — even the *median* query stalls.
+- **Waiting for 95% rescues the tail**: dropping the slowest 5% removes the stall, so p99 falls
+  to 9.9 ms — essentially the single-leaf p99 (10.0 ms).
+- **But 95% is not free at the median**: p50 rises from 5.6 ms (one leaf) to 9.6 ms, because you
+  now always wait for the 95th-fastest of 100 fast leaves instead of one random leaf. This is the
+  measured headline (`FINDINGS.md`): p99 10.0 → 9.9 ms, **p50 5.6 → 9.6 ms**. Partial response
+  trades median latency for tail latency; it is a choice, not a win.
 
 ### Step 4 — Hedged requests: pay a little extra load to cut the tail
+
+> **In:** one outstanding request plus a delay budget — the paper's budget is the
+> **95th-percentile expected latency** for that request class.
+> **Out:** at most one extra ("hedged") copy and the first answer to return, with
+> the added load bounded to ~5% because only the slowest requests ever hedge.
 
 The simplest within-request technique. Send the request to one replica. If no reply arrives
 within a delay — they use the **95th-percentile expected latency** — send a secondary request
@@ -93,6 +136,11 @@ local `hedge.rs` stub targets the same effect: its reference solution takes p99.
 1000 ms to 18.3 ms at +0.5% extra requests with a 10 ms hedge.
 
 ### Step 5 — Tied requests: cancel at queue-entry, not at completion
+
+> **In:** one request, enqueued on **two** servers at once, each copy tagged with
+> the identity of its twin.
+> **Out:** exactly one execution plus one cross-server cancellation — the duplicate
+> is dequeued before it runs, so the extra work is queue slots, not CPU.
 
 Hedging still waits out the delay. Tied requests go further: enqueue the request on **two**
 servers immediately, each copy tagged with the identity of its twin. When one server **starts
@@ -124,6 +172,11 @@ interference. Disk-read overhead from duplicate dequeues stays under 1%.
 
 ### Step 6 — Why not just probe queue lengths and pick the shorter queue?
 
+> **In:** the tied-request design from Step 5, and its obvious-looking rival —
+> ask both servers how busy they are, then send once to the shorter queue.
+> **Out:** three reasons the probe loses, so tying (commit to both, cancel one)
+> wins.
+
 The obvious alternative — ask both servers how busy they are, then send once — is worse, for
 three reasons:
 
@@ -137,6 +190,11 @@ decide.
 
 ### Step 7 — Cross-request, longer-term techniques
 
+> **In:** slower-moving imbalance — skew and hot spots that persist across many
+> requests, not the per-request jitter Steps 4–6 attack.
+> **Out:** five cross-request tools (micro-partitions, selective replication,
+> latency-induced probation, good-enough results, canary requests).
+
 Within-request tricks handle transient variability; these handle slower-moving imbalance:
 
 - **Micro-partitions**: many more partitions than machines (about 20 per machine; BigTable
@@ -147,12 +205,19 @@ Within-request tricks handle transient variability; these handle slower-moving i
   issuing shadow requests to it, reinstate when it recovers. Counterintuitively, **removing
   capacity improves latency** during overload.
 - **Good-enough results**: once enough leaves respond, answer with what you have — Table 1's
-  95% row shows the payoff (p99 70 ms instead of 140 ms).
+  95% row shows the payoff (p99 70 ms instead of 140 ms; in the paper's smooth distribution the
+  p50 also improves, 12 ms vs 40 ms). But the payoff is distribution-dependent: on the local
+  two-mode model (Step 3), 95% rescues the p99 yet *raises* the p50 (5.6 → 9.6 ms). Reach for it
+  when the alternative is waiting on stragglers, not as a universal speed-up.
 - **Canary requests**: on every large fan-out, send to 1-2 leaves first; fan out fully only if
   the canaries succeed in reasonable time. This guards against an untested code path crashing
   thousands of servers at once. Google applies canaries to every large fan-out query.
 
 ### Step 8 — Mutations are the easy case, and the thesis restated
+
+> **In:** the write (mutation) path, plus every read-side technique from Steps 4–7.
+> **Out:** why writes are the easy case, and the paper's thesis restated — build
+> tail-*tolerant* systems, do not try to erase the tail.
 
 Writes are much easier than reads: they can be taken off the critical path (acknowledge after
 a durable log write, apply asynchronously), and quorum-based systems such as Paxos with 3-5
@@ -194,15 +259,87 @@ tail-tolerant systems that mask it, exactly as fault-tolerant systems mask failu
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can derive 1 − 0.99^100 ≈ 63% and explain "the tail becomes the median" without
       looking at the paper.
+
+  <details><summary>Answer</summary>
+
+  Each leaf is fast with probability 0.99, so all 100 are fast with probability
+  0.99^100 = 0.3660, and a wait-for-all query is slow with probability
+  1 − 0.3660 = 0.6340 — 63.4%. "The tail becomes the median": the crate's leaf is
+  a two-mode mixture — fast (uniform 1–10 ms) or, with probability 0.01, a 1000 ms
+  stall. One leaf's p50 is ~5.6 ms, but the *max* over 100 leaves has a p50 of a
+  full 1000 ms stall (`fanout.rs::the_leaf_tail_becomes_the_service_median`), so
+  the leaf's 1-in-100 tail event is the *median* outcome of the fan-out. The
+  closed form is pinned at `p_any_slow(0.01, 100) = 0.633968`
+  (`experiments/src/fanout.rs`).
+
+  </details>
+
 - [ ] You can state Table 1's half-of-p99 observation and the BigTable hedging result
       (1,800 ms → 74 ms at +2% requests) from memory.
+
+  <details><summary>Answer</summary>
+
+  Table 1 (a real Google service): one random leaf p99 = 10 ms; wait for 95% of
+  leaves p99 = 70 ms; wait for 100% p99 = 140 ms. The slowest 5% of leaf requests
+  are responsible for half the 99th-percentile end-to-end latency (140 − 70 = 70,
+  half of 140). Hedging benchmark: reading 1,000 keys spread over 100 BigTable
+  servers, sending a secondary request after a 10 ms delay cut the 99.9th-percentile
+  from 1,800 ms to 74 ms while sending just 2% more requests — because 98% of
+  requests finished before the hedge fired (paper, "Hedged requests").
+
+  </details>
+
 - [ ] You can explain tied-request cancellation and why it beats queue-length probing.
+
+  <details><summary>Answer</summary>
+
+  Tied requests enqueue on two servers, each copy tagged with its twin's identity;
+  the moment one server *dequeues to start executing*, it sends a cancellation to
+  the twin, which drops the still-queued copy. Sends are staggered by ~2× the
+  average network message delay (≤1 ms) so both do not start at once. It beats
+  probe-then-send because probing suffers staleness (load moves between probe and
+  arrival), hard service-time estimation from queue length alone, and herding (every
+  client piles onto the momentarily-idle server). Tying commits to both queues and
+  lets execution order decide. Table 2: idle-cluster p99.9 98 → 61 ms (−38%); with a
+  concurrent terasort 159 → 108 ms (−32%); tied-under-terasort ≈ unhedged-on-idle.
+
+  </details>
+
 - [ ] The local fan-out simulation's pinned numbers (63.4%, 18.1%, wait-95% p99 9.9 ms) match
       your hand-derived expectations.
+
+  <details><summary>Answer</summary>
+
+  `p_any_slow(0.01, 100) = 0.633968` and `p_any_slow(0.0001, 2000) = 0.1813`
+  (`fanout.rs` tests); the seed-7, 20k-trial simulation lands within 0.02 of 0.634.
+  The gather table: one-leaf p50 5.6 / p99 10.0 ms; 95%-of-100 p50 9.6 / p99 9.9 ms;
+  all-100 p50 = p99 = 1000 ms. Note the trade the numbers force: wait-95% holds the
+  tail at the single-leaf level (p99 10.0 → 9.9) but nearly doubles the median
+  (p50 5.6 → 9.6). Partial response buys tail latency with median latency — do not
+  sell it as free.
+
+  </details>
+
 - [ ] You have completed the hedging stub and observed a tail reduction comparable to the
       reference solution (p99.9 1000 ms → 18.3 ms at +0.5% requests).
+
+  <details><summary>Answer</summary>
+
+  Implement `request_with_hedge` in `experiments/src/hedge.rs`: draw the primary
+  latency; with `hedge_delay = Some(d)`, if the primary exceeds `d` fire a second
+  draw and return `(min(primary, d + secondary), 2)`, otherwise `(primary, 1)`; with
+  `None` return `(primary, 1)`. At `P_SLOW = 0.005` the unhedged p99.9 *is* the
+  1000 ms stall; a 10 ms hedge replaces it with "delay + a second draw" — both draws
+  must stall to stay slow and `p_slow²` is negligible — so p99.9 falls to ~18.3 ms at
+  about +0.5% requests. The pinned contracts: a 10 ms hedge cuts p99.9 by ≥10×; the
+  extra-request fraction stays under 10%; a zero-delay hedge degenerates into sending
+  every request twice.
+
+  </details>
 
 ## References
 
