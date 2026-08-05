@@ -61,8 +61,8 @@ ANCHOR = re.compile(r"[\w./+-]+\.\w+:\d+(?:\s*[-–—]\s*\d+)?")
 # A source file named without a line number, as the reference chapter's headers do
 # it: `// routine.rs, inside Routine::sample`, the numbers being in the gutter.
 NAMED_FILE = re.compile(
-    r"[\w./+-]+\.(?:rs|c|cc|cpp|h|hpp|hh|go|py|java|js|ts|zig|cu|cuh|wgsl|tla|lean"
-    r"|scala|kt|swift|cs|rb|erl|ex|sql|toml|proto|m|mm)\b"
+    r"[\w./+-]+\.(?:rs|c|cc|cpp|cxx|h|hpp|hh|hxx|go|py|java|js|ts|zig|cu|cuh|wgsl"
+    r"|tla|lean|scala|kt|swift|cs|rb|erl|ex|sql|toml|proto|m|mm)\b"
 )
 GUTTER = re.compile(r"^\s*\d+\s")
 COMMENT = re.compile(r"^\s*(//|#|--|/\*|\*|;)")
