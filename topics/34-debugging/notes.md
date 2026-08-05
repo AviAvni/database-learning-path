@@ -63,7 +63,8 @@ numbers, not noise.
   perf_context_imp.h:27/:45/:81/:88, perf_step_timer.h:13/:29,
   histogram.h:21/:46/:84/:110, statistics_impl.h:42,
   statistics.cc:549; FalkorDB src/slow_log/slow_log.{c,h}.
-- rr facts verified from the ATC'17 PDF (arXiv:1705.05937), pp. 1–8:
+- rr facts verified from the extended technical report (arXiv:1705.05937 — the
+  ~21-page edition, not the shorter ATC'17 conference paper), pp. 1–8:
   RCB counter, seccomp-bpf in-process interception, RR page, < 2×
   slowdown, one-thread-at-a-time limitation.
 - Crate: 3 provided tests green (workload.rs), 6 stub tests fix
