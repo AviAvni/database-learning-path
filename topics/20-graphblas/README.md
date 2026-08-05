@@ -24,10 +24,14 @@ replace the M13 adjacency core.
 
 Switch heuristics are *numbers in the code*, not magic:
 sparse→bitmap when `nnz > bitmap_switch * nrows*ncols`
-(GB_convert_sparse_to_bitmap_test.c:32-38, default per-op table);
-hyper↔sparse via `hyper_switch` on the count of non-empty vectors
+(GB_convert_sparse_to_bitmap_test.c:32-38), where `bitmap_switch` is
+indexed by `min(vlen, vdim)`, **not by the operator** — 0.04 at
+dimension 1 rising to **0.40 above 64** (GB_Global.c:181-189, selected
+by GB_Global.c:486-497), so every graph-sized matrix reads the same
+0.40; hyper↔sparse via `hyper_switch` on the count of non-empty vectors
 (GB_conform_hyper.c:52); all applied by `GB_conform`
-(GB_conform.c:33-89) after every operation. Why hypersparse matters
+(GB_conform.c:150, cases at :157-160, :166-169, :175-184, :190-193)
+after every operation. Why hypersparse matters
 to FalkorDB: node IDs are a namespace, most rows of a relation
 matrix are empty — CSR's rowptr alone for 10M nodes = 80 MB *per
 relation type* without it.
@@ -50,8 +54,12 @@ work ∝ flops — mask only FILTERS"]
 coarse tasks (own whole vectors) and fine tasks (teams share one
 vector); each task independently picks **Gustavson** (dense
 workspace of size m — the SPA) or **hash** (table sized 2×next-pow2
-of estimated flops) — hash wins when the workspace would be cold,
-Gustavson when the hash would exceed m/16 (:57). A *flopcount* pass
+of estimated flops) — hash wins when the workspace would be cold.
+The comment at GB_AxB_saxpy3.c:57-58 still says "m/16"; the shipped
+rule is Gustavson when `flmax >= cvlen/2`
+(GB_AxB_saxpy3_slice_balanced.c:65) or `hash_size >= cvlen/12` (:94),
+and since `hash_size ≥ 2·flmax` always, no resize path exists. A
+*flopcount* pass
 (GB_AxB_saxpy3_flopcount.c) sizes everything first — cudf's
 size/retrieve two-phase (topic 18), five years earlier.
 
@@ -71,9 +79,12 @@ _template.c) is direction-optimizing BFS written in linear algebra:
    work ∝ rows still unvisited × early-exit — SpMV dot engine,
    each unvisited vertex scans ITS in-edges, stops at first hit
 
- switch push→pull: frontier growing AND (nq > n/β1  OR
-   pushwork > unexplored/α)          α=8, β1=8   (:184-187, :261)
- switch pull→push: frontier shrinking below n/β2, β2=512
+ the whole heuristic is off while edges_unexplored < n  (:248-251)
+ switch push→pull: pushwork > unexplored/α         α=8    (:253-262)
+ switch pull→push: frontier shrinking below n/β2,  β2=512 (:263-278)
+   — the two tests sit in mutually exclusive branches, not an OR,
+   and LAGraph's α=8, β1=8, β2=512 are not Beamer's α=14, β=24
+   (SC'12 §VI-B)
 ```
 
 The semiring is `ANY_SECONDI` (:140-143): ANY = "any parent will do"
@@ -105,15 +116,18 @@ matrices are fast to read, slow to mutate one edge at a time":
  Delta_Matrix = M (settled GrB_Matrix, hypersparse CSR)
               + delta-plus  DP (pending additions)
               + delta-minus DM (pending deletions)
-              + the same trio TRANSPOSED        (delta_matrix.h:110-113)
+              + the same trio TRANSPOSED        (delta_matrix.h:108-115,
+                                                state table :26-106)
 
- read:   A ≡ (M + DP) minus DM
+ read:   A ≡ (M + DP) minus DM, probed DP → DM → M
+         (delta_isStored.c:26/32/39 — legal because DP ∩ DM = ∅)
  write:  O(1)-ish into DP/DM (bitmap/hash-friendly, tiny)
  sync:   Delta_Matrix_wait — M ←(M ∪ DP) \ DM, clear deltas
-         (delta_wait.c:13-46: deletions via GrB_transpose-as-copy
-          with GrB_DESC_RSCT0 mask trick, additions via assign)
- mxm:    (A*(M+DP))<!A*DM> — delta_mxm.c:44-86 folds pending state
-         into ONE masked multiply instead of forcing a sync
+         (delta_wait.c:36-57: deletions via GrB_transpose-as-copy
+          with GrB_DESC_RSCT0 mask trick, additions via assign;
+          thresholds at :89 and :97)
+ mxm:    (A*M)<!A*DM> + A*DP — delta_mxm.c:104 masks only the
+         settled multiply; the eWiseAdd of A*DP at :107 is unmasked
 ```
 
 This is topic 3's LSM memtable+tombstones, rebuilt over matrices —

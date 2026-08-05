@@ -2,6 +2,12 @@
 
 ## Baseline (provided kernels, Apple M3 Pro, measured 2026-07-10)
 
+> These figures predate the re-run recorded in
+> [FINDINGS.md](../../FINDINGS.md) row 20 (SpMV **20.7 → 12.3 GB/s**,
+> sweep **175×**). Same machine, later run; where the two disagree,
+> FINDINGS is canonical. Re-run `./verify.sh 20` before treating any
+> cell below as current — and never blend the two runs in one sentence.
+
 gb_bench, RMAT edge_factor 8, best-of-N.
 
 ### SpMV (PLUS,TIMES) — the bandwidth story
