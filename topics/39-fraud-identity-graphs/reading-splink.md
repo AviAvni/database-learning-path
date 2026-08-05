@@ -16,6 +16,9 @@ and ties each stage back to the miniature Rust reimplementation in this topic's 
 
 ### Step 1 — The Linker façade: a model is comparisons + blocking rules
 
+> **In:** nothing yet — a settings object (comparison ladders + blocking rules) and a chosen `db_api` dialect.
+> **Out:** a `Linker` whose every downstream method emits generated SQL for one of the five stages below.
+
 `Linker` (`linker.py:66`) is the API surface. You construct it with a settings object —
 a list of comparisons (how to compare each field, as a ladder of agreement levels) and a
 list of blocking rules (which candidate pairs to even look at) — plus a `db_api` that
@@ -35,6 +38,9 @@ The five-stage pipeline:
 ```
 
 ### Step 2 — Blocking: SQL self-joins instead of n² pairs
+
+> **In:** the raw record table and the blocking rules from Step 1's settings.
+> **Out:** a deduplicated candidate-pair table — 271,012 pairs from the 112,492,500 full space (415×, experiment).
 
 `block_using_rules_sqls` (`blocking.py:747`) compiles each blocking rule into a SQL
 self-join (e.g. equal `dob`), and unions multiple rules with deduplication so a pair
@@ -57,6 +63,9 @@ surname) becomes a hot partition exactly like a skewed shard.
 
 ### Step 3 — u probabilities: random pairs are almost all nonmatches
 
+> **In:** the raw records — no labels, no blocking.
+> **Out:** per-level u = [0.0052 0.0021 0.0003 0.0051 0.0006], the nonmatch agreement rates.
+
 `estimate_u_using_random_sampling` (`linker_components/training.py:163`) estimates u —
 the probability that a *nonmatching* pair agrees on a comparison level — by sampling
 random record pairs and requiring no labels at all: in the full n² space, almost every
@@ -69,16 +78,22 @@ sampling almost never draws a match, which is why m needs EM on blocked pairs (S
 
 ### Step 4 — m and the prior via EM, one session per blocking rule
 
+> **In:** the blocked candidate pairs from Step 2, with the u's from Step 3 held fixed.
+> **Out:** per-level m = [0.80 0.86 0.94 0.78 0.90] and the prior p = 0.184.
+
 `estimate_parameters_using_expectation_maximisation` (`linker_components/training.py:231`)
 runs ONE EM session per blocking rule, and — the crucial trick — *excludes* the comparisons
 on the blocking-rule columns from that session: every candidate pair agrees on them by
 construction, so including them degenerates the fit. m values estimated by multiple
 sessions are averaged, and the prior p is fitted alongside. The core loop is
-`expectation_maximisation` (`expectation_maximisation.py:225`); the E-step SQL is built at
-`expectation_maximisation.py:18` (`compute_new_parameters_sql`), the M-step
-(`maximisation_step`) at `:193`. E-step: score every blocked pair with current m/u/p to
-get a match probability. M-step: recompute m, u, p as probability-weighted agreement
-rates. Repeat to convergence — each iteration is one SQL round trip.
+`expectation_maximisation` (`expectation_maximisation.py:225`), iterating from `:253`.
+E-step (labelled `# Expectation step` at `:260`): the prediction SQL is built by
+`predict_from_comparison_vectors_sqls` (called at `:268`) — score every blocked pair with
+current m/u/p to get a match probability. M-step: `compute_new_parameters_sql` (defined
+`:45`, "compute m and u counts from the results of predict", called `:278`) aggregates
+those probabilities into new m/u counts, and `maximisation_step` (`:193`, called `:293`)
+writes them back as the new parameters. Repeat to convergence — each iteration is one SQL
+round trip.
 
 ```
   session A: block on last_name        session B: block on dob
@@ -94,6 +109,9 @@ The experiment reproduces the degeneracy: keep the blocked field in and the fitt
 p races to 1.0; mask it and you get m = [0.80 0.86 0.94 0.78 0.90], p = 0.184.
 
 ### Step 5 — Comparison ladders: graded agreement, per-level m/u
+
+> **In:** the trained m and u from Steps 3–4, one pair attached to each ladder rung.
+> **Out:** a per-level match weight of log2(m/u) bits.
 
 A comparison is not boolean. `ComparisonLevel` (`comparison_level.py:148`) represents one
 rung of an ordered ladder, each rung carrying its own m (`comparison_level.py:190`) and u
@@ -112,6 +130,9 @@ so the "else" rung soaks up disagreement and carries a negative weight.
 
 ### Step 6 — Term frequency: "Smith" is worth fewer bits
 
+> **In:** a scored ladder rung from Step 5 plus a per-column token-frequency table.
+> **Out:** the same weight scaled by the token's rarity — an additive correction in bits.
+
 `_tf_adjustment_sql` (`comparison_level.py:667`) implements term-frequency adjustment:
 agreeing on the surname "Smith" carries less evidence than agreeing on a rare surname,
 so the adjustment scales the level's weight by the token's frequency relative to the
@@ -123,6 +144,9 @@ reused across predictions, and the adjustment is a multiplicative factor on the 
 (additive in log space), so it composes with the ladder without changing the model shape.
 
 ### Step 7 — Predict: sum the bits, squash to a probability
+
+> **In:** the candidate pairs (Step 2), the trained per-level weights (Steps 5–6), and the prior (Step 4).
+> **Out:** a match probability per pair, 1/(1+2^(-mw)).
 
 `predict()` (`linker_components/inference.py:294`) is the user-facing scoring entry point:
 block, compute the comparison-vector level per field per pair, then sum. The pairwise
@@ -145,14 +169,17 @@ richer dependency model, because independence is what keeps scoring a single SQL
 
 ### Step 8 — Clustering: connected components in SQL
 
+> **In:** the scored pairs from Step 7, thresholded at 12 bits.
+> **Out:** one cluster id per record — the connected components of the thresholded graph.
+
 `cluster_pairwise_predictions_at_threshold` (`linker_components/clustering.py:43`)
-thresholds the pairwise scores and calls the iterative connected-components algorithm in
-`graph_operations/connected_components.py:121` — a union-find-equivalent computed as
-repeated SQL passes until representatives stabilize, yielding one cluster id per record.
-The experiment does the same with an in-memory union-find: linking at 12 bits gives
-precision 0.989, recall 0.992, in 48 ms for 15k records — same algorithm, different
+thresholds the pairwise scores and calls the iterative connected-components solver
+`solve_connected_components` (`connected_components.py:121`) — a union-find-equivalent
+computed as repeated SQL passes until representatives stabilize, yielding one cluster id
+per record. The experiment does the same with an in-memory union-find: linking at 12 bits
+gives precision 0.989, recall 0.992, in 48 ms for 15k records — same algorithm, different
 substrate. The dialect layer (`dialects.py:24`, `SplinkDialect`) is why all of this ports:
-DuckDB at `:270`, Spark at `:402`, SQLite at `:532`, PostgreSQL at `:674` — one model,
+DuckDB at `:270`, Spark at `:402`, SQLite at `:532`, PostgreSQL at `:573` — one model,
 four engines. Every stage in this guide — blocking, EM, prediction, clustering — is
 generated SQL, which is the whole reason the same settings object runs single-node
 DuckDB during development and a Spark cluster in production.
@@ -168,13 +195,13 @@ All paths under `splink/internals/` in `~/repos/splink` @ `04189f5`.
 | 2 | Pre-flight comparison counts per blocking rule | `blocking_analysis.py:349` |
 | 3 | u from random sampling, no labels | `linker_components/training.py:163` |
 | 4 | One EM session per blocking rule, blocked columns excluded | `linker_components/training.py:231` |
-| 4 | EM core loop; E-step SQL; M-step | `expectation_maximisation.py:225`, `:18`, `:193` |
+| 4 | EM core loop; E-step SQL; M-step | `expectation_maximisation.py:225`, E-step `:268`, M-step `:45`/`:193` |
 | 5 | `ComparisonLevel`; m at `:190`, u at `:191`; weight `log2(m/u)` | `comparison_level.py:148`, `:426` |
 | 5 | Graded levels: Levenshtein / JaroWinkler / Jaro | `comparison_level_library.py:406`, `:458`, `:493` |
 | 6 | Term-frequency adjustment SQL | `comparison_level.py:667` |
 | 7 | `predict()` entry point; scoring SQL; prior + weights → probability | `linker_components/inference.py:294`, `predict.py:42`, `:203` |
-| 8 | Threshold + clustering; iterative connected components in SQL | `linker_components/clustering.py:43`, `graph_operations/connected_components.py:121` |
-| all | `SplinkDialect`: DuckDB/Spark/SQLite/PostgreSQL | `dialects.py:24`, `:270`, `:402`, `:532`, `:674` |
+| 8 | Threshold + clustering; iterative connected components in SQL | `linker_components/clustering.py:43`, `connected_components.py:121` |
+| all | `SplinkDialect`: DuckDB/Spark/SQLite/PostgreSQL | `dialects.py:24`, `:270`, `:402`, `:532`, `:573` |
 
 ## Questions to answer in notes.md
 
@@ -186,10 +213,79 @@ All paths under `splink/internals/` in `~/repos/splink` @ `04189f5`.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can sketch the five-stage pipeline from memory and name the file that owns each stage.
+
+  <details><summary>Answer</summary>
+
+  Blocking compiles rules to SQL self-joins in `block_using_rules_sqls`
+  (`blocking.py:747`); u comes from `estimate_u_using_random_sampling`
+  (`training.py:163`); m and the prior p come from
+  `estimate_parameters_using_expectation_maximisation` (`training.py:231`),
+  whose loop is `expectation_maximisation` (`expectation_maximisation.py:225`);
+  scoring is `predict()` (`inference.py:294`) assembling SQL in `predict.py:42`;
+  clustering is `cluster_pairwise_predictions_at_threshold` (`clustering.py:43`)
+  calling `solve_connected_components` (`connected_components.py:121`).
+
+  The `Linker` façade (`linker.py:66`) owns them all, and none of them touches a
+  record in Python — every stage is a generated SQL string handed to the chosen
+  `SplinkDialect` (`dialects.py:24`).
+
+  </details>
+
 - [ ] You can explain, in bits, how a pair's match weight is assembled (prior + per-level `log2(m/u)` + TF adjustment) and squashed via `1/(1+2^(-mw))`.
+
+  <details><summary>Answer</summary>
+
+  Each field lands on the first ladder rung it satisfies, contributing that
+  rung's `log2(m/u)` bits (`comparison_level.py:426`). Term frequency adds a
+  per-token correction (`_tf_adjustment_sql`, `comparison_level.py:667`): an
+  agreement on a rare surname is worth more bits than one on "Smith". The prior
+  enters as `log2(p/(1-p))` in `_combine_prior_and_mws` (`predict.py:203`); with
+  the experiment's p = 0.184 that is `log2(0.184/0.816) ≈ -2.15` bits.
+
+  All the per-field weights simply add because Fellegi–Sunter assumes
+  conditional independence (naive Bayes), so the total match weight `mw` is a
+  sum, and the probability is the logistic squash `1/(1+2^(-mw))` — a match
+  weight of 0 bits means an even-odds pair at p = 0.5.
+
+  </details>
+
 - [ ] You can state why each EM session masks its own blocking columns, and reproduce the degeneracy in the local experiment.
+
+  <details><summary>Answer</summary>
+
+  A session blocked on `dob` only ever sees pairs that already agree on `dob`,
+  so the observed agreement rate on that field is 1.0 for matches and nonmatches
+  alike. If EM is allowed to fit `m(dob)` from that, the field looks perfectly
+  discriminating and the fitted prior p races to 1.0 to explain the universal
+  agreement. Excluding the blocking-rule comparisons from the session
+  (`training.py:231`) removes the degenerate column.
+
+  The experiment reproduces both branches: keep the blocked field in and p → 1.0;
+  mask it and you recover m = [0.80 0.86 0.94 0.78 0.90], p = 0.184. m values
+  from several sessions are then averaged, which is why one masked column per
+  session still yields an estimate for every field.
+
+  </details>
+
 - [ ] You have run or re-read `experiments/src/er.rs` and matched each of its phases (u sampling, masked EM, blocking, 12-bit threshold, union-find) to its splink counterpart.
+
+  <details><summary>Answer</summary>
+
+  `er.rs` mirrors the pipeline: 200k random pairs give
+  u = [0.0052 0.0021 0.0003 0.0051 0.0006] (Step 3); masked EM yields
+  m = [0.80 0.86 0.94 0.78 0.90], p = 0.184 (Step 4); blocking cuts
+  112,492,500 pairs to 271,012 (415×, Step 2); a 12-bit threshold plus an
+  in-memory union-find gives precision 0.989, recall 0.992 in 48 ms for 15k
+  records (Step 8).
+
+  Each phase is the same algorithm as its splink counterpart on a different
+  substrate: the Rust reimplementation runs arrays in memory, while splink emits
+  the identical logic as SQL for DuckDB, Spark, SQLite, or PostgreSQL.
+
+  </details>
 
 ## References
 

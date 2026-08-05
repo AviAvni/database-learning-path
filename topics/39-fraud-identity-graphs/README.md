@@ -107,9 +107,10 @@ a middle account contributes min(inflow, outflow) and is penalized
 λ × max(...) for imbalance, so parking money or camouflage transfers
 *hurt* the score. Same near-greedy peeling, same style of guarantee.
 On CBank's real 6.13M-account / 43.98M-transfer data with a labeled
-ring (4 sources, 12 mules, 2 destinations, ~452M yuan) it scores
+ring (4 sources, 12 mules, 2 destinations; the central mule v5 alone
+passes ≈452.1M yuan, in ≈ out) it scores
 FAUC 0.761/0.843 vs FRAUDAR's 0.529/0.704, and holds F1 ≥ 0.9 down to
-injected volumes of 76M vs FRAUDAR's 180M. Covered as a reading guide
+injected volumes of $76M vs FRAUDAR's $180M. Covered as a reading guide
 plus exercise 5 — the peeling machinery is the same as fraudar.rs.
 
 ## Production shape: splink (cloned under ~/repos/splink @ 04189f5)
@@ -119,14 +120,14 @@ plus exercise 5 — the peeling machinery is the same as fraudar.rs.
 | `linker.py:66` | `Linker` — the API façade; settings = comparisons + blocking rules |
 | `linker_components/training.py:163` | `estimate_u_using_random_sampling` — u without labels |
 | `linker_components/training.py:231` | `estimate_parameters_using_expectation_maximisation(blocking_rule)` — one session per pass |
-| `expectation_maximisation.py:225` | the EM core; E-step `:18`, M-step `maximisation_step:193` |
+| `expectation_maximisation.py:225` | the EM core; E-step `predict_from_comparison_vectors_sqls` at `:268`, M-step `compute_new_parameters_sql` `:45`/`:278` inside `maximisation_step:193` |
 | `comparison_level.py:148` | `ComparisonLevel` — m at `:190`, u at `:191`; match weight log2(m/u) at `:426` |
 | `comparison_level.py:667` | `_tf_adjustment_sql` — term-frequency: "Smith" agreement is worth less |
 | `comparison_level_library.py:406/:458/:493` | Levenshtein / Jaro-Winkler / Jaro levels — agreement is graded, not boolean |
 | `predict.py:203` | prior + match weights → probability 1/(1+2^(−mw)); pairwise scoring SQL at `:42` |
 | `blocking.py:747` | `block_using_rules_sqls` — blocking passes as SQL self-joins |
 | `linker_components/clustering.py:43` | threshold → `connected_components.py:121` — clusters, exactly lane 3's union-find |
-| `dialects.py:24` | one model, four engines: DuckDB `:270`, Spark `:402`, SQLite `:532`, PostgreSQL `:674` |
+| `dialects.py:24` | one model, four engines: DuckDB `:270`, Spark `:402`, SQLite `:532`, PostgreSQL `:573` |
 
 ## Reading guides
 
