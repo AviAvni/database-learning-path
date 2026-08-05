@@ -74,9 +74,10 @@ queries.
 ## 2. SQLite's VDBE — the bytecode VM that refuses to die
 
 [`~/repos/sqlite/src/vdbe.c`](https://github.com/sqlite/sqlite) — one giant dispatch loop
-(vdbe.c:1049 `switch( pOp->opcode )`), 199 `case OP_` opcodes, each
-op a fixed struct (vdbeInt.h:55 `struct VdbeOp`: opcode + p1..p5
-operands). `EXPLAIN SELECT ...` prints the program.
+(vdbe.c:1049 `switch( pOp->opcode )`), 190 top-level `case OP_` opcodes
+(`grep -c 'case OP_'` says 199 — nine of those are inner-switch cases and
+a doc comment), each op a fixed struct (src/vdbe.h:55 `struct VdbeOp`:
+opcode + p1..p5 operands). `EXPLAIN SELECT ...` prints the program.
 
 ```
  SELECT a+1 FROM t WHERE b < 10;
@@ -139,21 +140,25 @@ JIT only (NOT whole-pipeline: the executor stays interpreted;
 llvmjit_expr.c:80 `llvm_compile_expr` compiles `ExprState` step
 arrays, emitting one basic block per step, llvmjit_expr.c:302-307).
 Two LLJIT instances at opt0/opt3 (llvmjit.c:100-101). Gated by
-`jit_above_cost` (planner.c:699-700) — a *planner cost estimate*
-threshold. Failure mode: estimate says expensive, query is short,
-you pay 50 ms of LLVM for a 5 ms query. That's why every Postgres
-ops guide says "try jit=off". Guide:
-[reading-postgres-jit.md](reading-postgres-jit.md).
+`jit_above_cost` = 100000, with `jit_optimize_above_cost` = 500000
+choosing the opt3 instance and `jit_inline_above_cost` = 500000
+enabling cross-module inlining (guc_parameters.dat:1458+) — all three
+are *planner cost estimate* thresholds, not measured times. And at this
+pin the `jit` GUC itself boots to **false** (guc_parameters.dat:1451-1456,
+`variable => 'jit_enabled'`), so the cautionary tale ends with the
+project agreeing: the failure mode is that the estimate says expensive,
+the query is short, and you pay tens of ms of LLVM for a 5 ms query.
+Guide: [reading-postgres-jit.md](reading-postgres-jit.md).
 
 ## 6. GraphBLAS's JIT — compile the KERNEL, cache it forever
 
 SuiteSparse takes a third road: the JIT unit is not a query but a
 *kernel specialization* (semiring × types × sparsity formats).
 `Source/jitifyer/GB_jitifyer.c` — encode the problem to a hash
-(GB_encodify_mxm.c:55-59), look up an in-memory hash table
-(GB_jitifyer.c:2119), fall back to an on-disk cache of compiled
+(GB_encodify_mxm.c:58-61), look up an in-memory hash table
+(GB_jitifyer.c:2122), fall back to an on-disk cache of compiled
 `.so` files, fall back to invoking THE C COMPILER at runtime and
-`dlopen`ing the result (GB_jitifyer.c:1565,1937). Compile once per
+`dlopen`ing the result (GB_jitifyer.c:1576,1937). Compile once per
 type-combo ever, not per query — amortization across the process
 lifetime, not across rows. FalkorDB inherits this whole machinery.
 Guide: [reading-graphblas-jit.md](reading-graphblas-jit.md).
@@ -175,9 +180,12 @@ the eval.rs interpreter is the FalkorDB analogue of ExprState.
 
 [`~/repos/cranelift-jit-demo/src/jit.rs`](https://github.com/bytecodealliance/cranelift-jit-demo) is the whole recipe (461
 lines): JITBuilder/JITModule (:39-41), FunctionBuilder translates
-AST→CLIF IR (:135, :189), then declare→define→finalize→pointer
-(:69-90). Cranelift sits at Umbra's design point: fast single-pass
-compiles (~10-100× faster than LLVM), decent code, pure Rust.
+AST→CLIF IR (:135, FunctionTranslator at :187-192), then
+declare→define→finalize→pointer (`compile()` :53-93). Cranelift sits at
+Umbra's design point: fast single-pass compiles, decent code, pure Rust.
+For what "fast single-pass" is worth against LLVM, the sourced numbers
+are Umbra's own (Table 3: 108× the compile speed of LLVM -O3 for code
+1.2× slower) rather than a folk figure.
 Guide: [reading-cranelift-jit-demo.md](reading-cranelift-jit-demo.md).
 
 ## Experiments (`experiments/`)
