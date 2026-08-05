@@ -125,7 +125,8 @@ load.
 ```
 
 PowerGraph's argument (OSDI'12): natural graphs are power-law
-(P(d) ∝ d^−α, α≈2; Twitter's follower graph has in-degree α=1.7 and 1%
+(P(d) ∝ d^−α, α≈2; Twitter's follower graph has a heavier in-degree
+tail than out-degree (Fig 1) and 1%
 of vertices adjacent to nearly half the edges), so *balanced edge-cuts
 barely beat random* — Theorem 5.1: random vertex placement cuts
 1−1/p of edges. Cutting **vertices** instead works: assign each *edge*
