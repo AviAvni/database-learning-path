@@ -70,7 +70,7 @@ analysis.
 | split code/data t-tags: **1305×** vs 4.68× for a single t-tag (forward analysis) | SLEUTH Table 11 |
 | 174 entities correctly identified, **0 incorrectly, 2 missed** across 8 campaigns | SLEUTH Table 7 |
 | >99.9% of audit events were benign activity | SLEUTH §6.3 |
-| BloodHound: **104** node/edge kinds, **63** traversable, **31** derived by post-processing | `graphschema/ad/ad.go` |
+| BloodHound: **104** node/edge kinds, **64** traversable, **31** derived by post-processing | `graphschema/ad/ad.go` |
 
 ## Cross-topic threads (worked)
 

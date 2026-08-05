@@ -18,6 +18,9 @@ company — and no per-object permission review can see the difference.**
 
 ### Step 1 — An edge means "control of the source yields control of the target"
 
+> **In:** the directory as a list of objects, each carrying an ACL.
+> **Out:** the graph reframe — nodes are principals or resources, edges are rights oriented so that traversal *is* privilege escalation — and why "can Alice become Domain Admin?" is a shortest-path query the AD console cannot ask.
+
 That one sentence is the entire data model. A *node* is a principal or a resource: a user, a
 group, a computer, a GPO, a certificate template. An *edge* is a right, oriented so that
 traversal means privilege escalation. `Alice -MemberOf-> Engineering` means controlling Alice
@@ -27,37 +30,47 @@ Admin?" is `MATCH p = shortestPath((alice)-[*1..]->(da))` and nothing else. The 
 felt like a revelation in 2016 is that the directory's own tooling has no way to ask it: the
 console shows you one object's ACL at a time, and composition is invisible one object at a time.
 
-### Step 2 — The ontology: 104 kinds, 63 of them traversable
+### Step 2 — The ontology: 104 kinds, 64 of them traversable
+
+> **In:** the edge-means-control model from Step 1.
+> **Out:** the kind namespace (104 `StringKind` constants) and its four purposeful partitions — `Relationships` (88 edge kinds), `ACLRelationships` (30), `PathfindingRelationships` (64), `PostProcessedRelationships` (31) — and why the pathfinding subset is a query-time edge-kind filter.
 
 `graphschema/ad/ad.go:28` onward is a wall of constants — `graph.StringKind("User")`,
 `StringKind("GenericAll")`, `StringKind("ADCSESC1")` — 104 of them, node kinds and edge kinds in
 one namespace. What matters is that the file then partitions them into *purposeful* sets:
 
 ```go
-func Relationships() []graph.Kind          // ad.go:1151 — everything
-func ACLRelationships() []graph.Kind       // ad.go:1154 — rights that come from a DACL
-func PathfindingRelationships() []graph.Kind  // ad.go:1160 — the 63 an attacker may walk
-func PostProcessedRelationships() []graph.Kind // ad.go:1172 — the 31 that are DERIVED
+// graphschema/ad/ad.go — the four partitions (non-adjacent in the file; each line keeps its real number)
+1151  func Relationships() []graph.Kind             // everything: 88 edge kinds
+1154  func ACLRelationships() []graph.Kind          // 30 rights that come from a DACL
+1160  func PathfindingRelationships() []graph.Kind  // the 64 an attacker may walk
+1172  func PostProcessedRelationships() []graph.Kind // the 31 that are DERIVED
 ```
 
-`PathfindingRelationships` is the attacker's alphabet, and it is smaller than the full set: some
-edges (`Contains`, structural containment) exist for display or for post-processing but do not
-by themselves grant control. A traversal that ignores this distinction reports paths that are not
-attacks. This is a *query-time edge-kind filter*, and it is exactly the mask your Cypher engine
-has to push down into the CSR scan — see the capstone.
+`PathfindingRelationships` is the attacker's alphabet, and it is smaller than the full 88-kind edge
+set: some collected rights are deliberately *excluded* because they do not, on their own, grant
+control. `GetChanges` and `GetChangesAll` — the two directory-replication rights — are a clean
+example: both appear in `Relationships` and `ACLRelationships` (they are real, collected ACEs), but
+neither is in `PathfindingRelationships`, because only their *conjunction* is dangerous, and
+post-processing synthesizes that conjunction into a single `DCSync` edge (Step 3). A traversal that
+walked `GetChanges` alone would report a path that is not an attack. This is a *query-time edge-kind
+filter*, and it is exactly the mask your Cypher engine has to push down into the CSR scan — see the
+capstone.
 
 ### Step 3 — 31 edge kinds are materialized views
+
+> **In:** the four partitions, and the 31-kind `PostProcessedRelationships` set.
+> **Out:** why edges like `AdminTo` / `DCSync` / `ADCSESC*` are *derived* by a post-ingest pass and written back as real edges — a batch materialized view, which is topic 27's question in disguise.
 
 `AdminTo` is not collected. Nor is `CanRDP`, nor `DCSync`, nor the ADCS certificate-abuse family
 `ADCSESC1..ADCSESC13`. They are *derived* by a post-processing pass and written back into the
 graph as real edges. `analysis/ad/post.go:84`:
 
 ```go
-// PostDCSync: an attacker who holds both GetChanges and GetChangesAll on the domain
-// can replicate secrets — so synthesize one DCSync edge instead of making every
-// query re-derive the conjunction.
-func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGroupData)
-    (*post.AtomicPostProcessingStats, error)
+// analysis/ad/post.go — an attacker holding both GetChanges and GetChangesAll on the domain
+// can replicate secrets, so post-processing synthesizes one DCSync edge instead of making
+// every query re-derive the conjunction.
+84  func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGroupData) (*post.AtomicPostProcessingStats, error) {
 ```
 
 The trade is the one topic 1 calls RUM and topic 27 calls incremental view maintenance: pay once
@@ -68,14 +81,28 @@ misconfiguration into a single edge. The whole pipeline is declared in one place
 `analysis/analysis.go:346`:
 
 ```go
-func newPipeline() analysisPipeline {
-    return analysisPipeline{
-        {analysisStep: model.AnalysisStepADPostProcessing(),    operation: adPostProcessingOperation},
-        {analysisStep: model.AnalysisStepAzurePostProcessing(), operation: azurePostProcessingOperation},
-        {analysisStep: model.AnalysisStepTagging(),             operation: taggingOperation},
-        {name: DataQuality,                                     operation: dataQualityOperation},
-    }
-}
+// analysis/analysis.go — the post-ingest pipeline, four ordered stages
+345  // The definition of our analysis pipeline
+346  func newPipeline() analysisPipeline {
+347  	return analysisPipeline{
+348  		{
+349  			analysisStep: model.AnalysisStepADPostProcessing(),
+350  			operation:    adPostProcessingOperation,
+351  		},
+352  		{
+353  			analysisStep: model.AnalysisStepAzurePostProcessing(),
+354  			operation:    azurePostProcessingOperation,
+355  		},
+356  		{
+357  			analysisStep: model.AnalysisStepTagging(),
+358  			operation:    taggingOperation,
+359  		},
+360  		{
+361  			name:      DataQuality,
+362  			operation: dataQualityOperation,
+363  		},
+364  	}
+365  }
 ```
 
 Four ordered stages, run after every ingest. That is a batch view-maintenance schedule, and the
@@ -84,15 +111,19 @@ question topic 27 spends a whole topic on.
 
 ### Step 4 — Principal sets are roaring bitmaps
 
+> **In:** the derived-edge pass, which is set algebra over node ids.
+> **Out:** roaring bitmaps (`cardinality.Duplex[uint64]`) as the principal-set representation, and the recognition that this is topic 23's postings lists holding principals instead of document ids.
+
 Every interesting operation here is set algebra over node ids: "principals with `GetChanges`"
 intersected with "principals with `GetChangesAll`", "everything reachable from these seeds" minus
 "everything already tagged". BloodHound stores those sets as roaring bitmaps —
 `cardinality.Duplex[uint64]` — and `analysis/ad/post.go:244` is the workhorse:
 
 ```go
-// FetchNodeIDsByKind fetches a bitmap of node IDs where each node has at least one
-// kind assignment that matches the given kind.
-func FetchNodeIDsByKind(tx graph.Transaction, targetKind graph.Kind) (cardinality.Duplex[uint64], error)
+// analysis/ad/post.go — roaring bitmaps as principal sets
+242  // FetchNodeIDsByKind fetches a bitmap of node IDs where each node has at least one kind assignment
+243  // that matches the given kind.
+244  func FetchNodeIDsByKind(tx graph.Transaction, targetKind graph.Kind) (cardinality.Duplex[uint64], error) {
 ```
 
 This is topic 23's postings-list structure doing identity management. The intersection that
@@ -102,23 +133,23 @@ principals instead of document ids.
 
 ### Step 5 — Traversal: parallel BFS with a shared bitmap as the visited set
 
+> **In:** roaring-bitmap principal sets and the derived graph.
+> **Out:** the parallel BFS whose visited set is a thread-safe roaring bitmap, with `CheckedAdd` as the atomic test-and-set, and `direction` as the forward/backward switch that defense needs.
+
 `analysis/ad/membership.go:81`:
 
 ```go
-func FetchPathMembers(ctx context.Context, db graph.Database, root graph.ID,
-                      direction graph.Direction, queryCriteria ...graph.Criteria)
-                      (cardinality.Duplex[uint64], error) {
-    traversalMap := cardinality.ThreadSafeDuplex(cardinality.NewBitmap64())
-    return traversalMap, traversal.New(db, post.MaximumDatabaseParallelWorkers).BreadthFirst(ctx, traversal.Plan{
-        Root: graph.NewNode(root, graph.NewProperties()),
-        Driver: func(...) ([]*graph.PathSegment, error) {
-            // ... for each neighbour:
-            if traversalMap.CheckedAdd(next.Node.ID.Uint64()) {
-                nextSegments = append(nextSegments, nextSegment)
-            }
-        },
-    })
-}
+// analysis/ad/membership.go — parallel BFS; the thread-safe roaring bitmap is the visited set
+ 81  func FetchPathMembers(ctx context.Context, db graph.Database, root graph.ID, direction graph.Direction, queryCriteria ...graph.Criteria) (cardinality.Duplex[uint64], error) {
+ 82  	traversalMap := cardinality.ThreadSafeDuplex(cardinality.NewBitmap64())
+ 84  	return traversalMap, traversal.New(db, post.MaximumDatabaseParallelWorkers).BreadthFirst(ctx, traversal.Plan{
+     	// … Driver visits each neighbour of the current segment:
+ 95  		for next := range cursor.Chan() {
+ 96  			nextSegment := segment.Descend(next.Node, next.Relationship)
+ 98  			if traversalMap.CheckedAdd(next.Node.ID.Uint64()) {
+ 99  				nextSegments = append(nextSegments, nextSegment)
+100  			}
+101  		}
 ```
 
 Three things to notice. The traversal is *parallel* over a worker pool. The visited set is a
@@ -130,19 +161,23 @@ matters for defense, and it is the one lane 2's dominator analysis builds on.
 
 ### Step 6 — Tier Zero: the label the product is organised around
 
+> **In:** cheap forward/backward reachability from Step 5.
+> **Out:** the two labeled node sets — Tier Zero and Owned — that every product question reduces to, and lane 2's measured tiered-vs-flat contrast.
+
 `analysis/tiering/tiering.go:37`:
 
 ```go
-const (
-    StrTagTierZero = "Tag_Tier_Zero"
-    StrTagOwned    = "Tag_Owned"
-)
-
-func IsTierZero(node *graph.Node) bool {
-    if node.Kinds.ContainsOneOf(KindTagTierZero) { return true }
-    startSystemTags, _ := node.Properties.Get(common.SystemTags.String()).String()
-    return strings.Contains(startSystemTags, ad.AdminTierZero)
-}
+// analysis/tiering/tiering.go — the Tier Zero predicate (string tags at :28, kind tags at :33)
+28  	StrTagTierZero = "Tag_Tier_Zero"
+29  	StrTagOwned    = "Tag_Owned"
+37  func IsTierZero(node *graph.Node) bool {
+38  	if node.Kinds.ContainsOneOf(KindTagTierZero) {
+39  		return true
+40  	} else {
+42  		startSystemTags, _ := node.Properties.Get(common.SystemTags.String()).String()
+43  		return strings.Contains(startSystemTags, ad.AdminTierZero)
+44  	}
+45  }
 ```
 
 Tier Zero is "assets whose compromise is game over"; `Owned` is "assets the attacker already
@@ -159,6 +194,9 @@ misplaced Domain Admin tokens, **no single node cut frees a single user**. Same 
 and the second one has no remediation you can rank.
 
 ### Step 7 — Asset-group selectors: user-defined node sets, diffed
+
+> **In:** labeled node sets, and a way to declare more of them.
+> **Out:** analyst-declared selectors (by object id or arbitrary Cypher), expanded along known parent/child paths and kept current as a *diff* rather than a rewrite — with two operational details worth stealing.
 
 `analysis/agt.go:137` (`FetchNodesFromSeeds`) and `:562` (`SelectNodes`) implement "an analyst
 declares a set of nodes — by object id, or by an arbitrary Cypher selector — and the system
@@ -189,9 +227,9 @@ Repo: [`~/repos/bloodhound`](https://github.com/SpecterOps/BloodHound) @ `196838
 
 ## Questions to answer in notes.md
 
-1. `PathfindingRelationships` (63 kinds) is a strict subset of `Relationships` (104). Pick two
-   kinds that are excluded and explain, in attacker terms, why walking them would produce a path
-   that is not an attack.
+1. `PathfindingRelationships` (64 kinds) is a strict subset of the 104-kind ontology (and of the
+   88-kind `Relationships` edge set). Pick two kinds that are excluded and explain, in attacker
+   terms, why walking them would produce a path that is not an attack.
 2. The 31 post-processed edges are a materialized view refreshed after every ingest. Sketch what
    incremental maintenance would cost instead, for `DCSync` specifically: which writes invalidate
    it, and how would you index for that?
@@ -207,13 +245,81 @@ Repo: [`~/repos/bloodhound`](https://github.com/SpecterOps/BloodHound) @ `196838
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can state the edge semantics in one sentence and derive the shortest-path formulation
       from it.
+
+  <details><summary>Answer</summary>
+
+  Edge semantics: `A → B` means *control of A yields control of B*, oriented so that traversal is
+  privilege escalation. Because control composes transitively, "can A become Domain Admin?" is
+  exactly "is there a directed path `A →* DA`?" — `MATCH p = shortestPath((a)-[*1..]->(da))`. A
+  per-object ACL review sees one hop at a time; the query sees the composition, which is why the
+  reachable set is most of the company while the membership answer is five names.
+
+  </details>
+
 - [ ] You can name the four kind partitions and explain what each is for.
+
+  <details><summary>Answer</summary>
+
+  From `graphschema/ad/ad.go`: `Relationships()` (:1151, **88** edge kinds) is the full edge
+  alphabet; `ACLRelationships()` (:1154, **30**) are the rights that come from a DACL;
+  `PathfindingRelationships()` (:1160, **64**) is the subset an attacker may actually walk — the
+  traversal mask; `PostProcessedRelationships()` (:1172, **31**) are the derived edges written back
+  after ingest. The whole namespace is **104** `StringKind` constants (16 node kinds + 88 edge
+  kinds).
+
+  </details>
+
 - [ ] You can explain why 31 edge kinds are derived, and connect that to topic 27.
+
+  <details><summary>Answer</summary>
+
+  `AdminTo`, `DCSync`, `CanRDP`, the `ADCSESC*` family, etc. are conjunctions or closures over
+  collected rights — e.g. `DCSync` = `GetChanges` ∧ `GetChangesAll` on the domain. Materializing
+  them once per ingest (`newPipeline`, `analysis.go:346`) turns every later path query into a plain
+  traversal instead of a per-hop predicate evaluation: RUM's read/update trade (topic 1), i.e. a
+  batch materialized view. Topic 27's question is why refresh in bulk rather than incrementally on
+  write.
+
+  </details>
+
 - [ ] You can point at the roaring bitmap in the traversal and say what it replaces.
+
+  <details><summary>Answer</summary>
+
+  `FetchPathMembers` (`membership.go:81`) uses `traversalMap`, a `cardinality.ThreadSafeDuplex`
+  roaring bitmap, as its visited set; `CheckedAdd` — an atomic test-and-set — replaces a per-node
+  lock, so the parallel frontier expansion is race-free without one. It is topic 23's postings-list
+  membership test doing identity management: a roaring AND derives `DCSync`, a roaring membership
+  check dedupes the BFS frontier.
+
+  </details>
+
 - [ ] Your `chokepoint.rs` reproduces the tiered/flat contrast: 1992-user blast radius vs none.
+
+  <details><summary>Answer</summary>
+
+  Tiered directory: one group has a **1992 / 2000 = 99.6%** blast radius and a single cut collapses
+  exposure `2000 → 8`. Flat directory (three unmanaged service-account groups plus two misplaced
+  Domain Admin tokens): the *same* exposure number, but **no single-node cut frees a single user** —
+  there is no remediation you can rank. Same headline, only one is actionable.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five: (1) two pathfinding-excluded kinds explained in attacker terms (e.g. `GetChanges` /
+  `GetChangesAll`); (2) the incremental-maintenance cost of `DCSync` and how to index for it; (3)
+  why `CheckedAdd` beats `Contains`-then-`Add` in a parallel BFS; (4) what "% of users with a path
+  to Tier Zero" measures given that sessions are *sampled* live; (5) three misconfigurations that
+  create a no-choke-point flat directory, and which to fix first.
+
+  </details>
 
 ## References
 

@@ -21,6 +21,9 @@ ever un-establishes a fact, the two questions have the same answer.**
 
 ### Step 1 — The state-based attack graph, and its size
 
+> **In:** the network as boolean state variables, exploits as state transitions.
+> **Out:** why the state-based attack graph is exponential — 229 bits → 2²²⁹ reachable states at five hosts — and the one-line escape the rest of the chapter earns.
+
 Sheyner et al. (Oakland'02) model the network as a collection of boolean variables — which
 service runs where, which host trusts which, what privilege the attacker holds on each machine —
 and an exploit as a state transition. The attack graph is then the set of reachable states with
@@ -40,6 +43,9 @@ nodes" to record which bits an attacker can turn on — *if* turning one on neve
 off.
 
 ### Step 2 — Attributes and exploits
+
+> **In:** the escape hint from Step 1 — count the *facts* an attacker can establish, not the states.
+> **Out:** the flat model — attributes (the graph's nodes) and exploits (pre/postcondition transforms) — and why per-host instantiation makes the exploit count quadratic (two-host) or cubic (three-host).
 
 The replacement model is deliberately flat. Let `A = {a₀ … a_N}` be **attributes**: atomic facts
 about the system. An attribute can be a vulnerability ("host 3 runs a vulnerable sshd"), a
@@ -67,6 +73,9 @@ vulnerabilities × 3 hosts = 18 attributes, 3 connectivity relations × 9 host p
 
 ### Step 3 — Monotonicity, stated precisely
 
+> **In:** attributes and exploits from Step 2.
+> **Out:** the exact assumption — a fact, once satisfied, is never un-satisfied — with its three technical consequences and the disjointness corollary the polynomial bound rests on.
+
 > "The precondition of a given exploit is never invalidated by the successful application of
 > another exploit. In other words, the attacker never needs to backtrack."
 
@@ -83,6 +92,9 @@ And a fourth, used by the complexity argument: `preConds(e) ∩ postConds(e) = �
 never has an attribute as both input and output.
 
 ### Step 4 — Where the assumption bends, and why it survives
+
+> **In:** the monotonicity assumption from Step 3.
+> **Out:** the three canonical non-monotone exploits — port forward, code green, the sshd-crash postcondition — and the argument that modelling each monotonically loses nothing an attacker could not recover.
 
 The paper is honest about this and the examples are worth remembering:
 
@@ -101,6 +113,9 @@ assumption wasn't at least as plausible as in the 'port forward' or 'code green'
 are choosing a model, not proving a theorem about reality.
 
 ### Step 5 — `markAttributes`: BFS over facts, in layers
+
+> **In:** a monotone exploit set and the initially satisfied attributes.
+> **Out:** the layered fixpoint that marks every reachable attribute with the round it first became satisfied, and its **O(|A|²·|E|)** cost.
 
 With monotonicity, forward reachability is a fixpoint computed layer by layer. Layer 1 is
 everything one exploit can establish from the initial state; layer n is everything reachable in n
@@ -125,6 +140,9 @@ exploits to establish the attribute, which is what `findShort` later uses.
 
 ### Step 6 — The three analyses you get for free
 
+> **In:** the marked attribute/exploit graph from Step 5 and a goal attribute.
+> **Out:** findMinimal / findAll / findShort with their three correctness results, and where NP-completeness actually sits (minimum-cardinality, not minimal).
+
 Once the marked attribute/exploit graph exists, you do not need to materialize an attack tree:
 
 - **`findMinimal(S, att)`** — one minimal attack: recursively pick a minimal exploit set covering
@@ -142,6 +160,9 @@ difference before you promise an optimizer.
 
 ### Step 7 — Cut sets: §2.3, one paragraph, the whole defensive story
 
+> **In:** the marked graph and a goal attribute.
+> **Out:** the defensive question — which nodes or edges to remove to disconnect the goal from the initial state — reduced to standard graph algorithms, and this repo's lane-2 dominator-tree realization of it.
+
 > "It is also useful to think in terms of 'cut sets' of either exploits or attributes. These
 > approaches ask the question: what set of exploits (edges) or attributes (nodes) in our graph
 > must be removed to disconnect the goal state from the initial state? Standard graph analysis
@@ -154,6 +175,9 @@ pass prices every single-node cut exactly — measured 0.8 ms against 543 ms for
 reachability re-runs, agreeing on every node.
 
 ### Step 8 — MulVAL: the fixpoint is a Datalog derivation
+
+> **In:** the same monotone model, re-expressed as Datalog interaction rules.
+> **Out:** the derivation graph (AND derivation nodes, OR fact nodes) that tabled evaluation produces, and the three complexity theorems — O(N²) steps, O(N²) graph size, O(N² log N) to build.
 
 Ou, Boyer & McQueen (CCS'06) make the same move as a logic program. A MulVAL interaction rule:
 
@@ -194,6 +218,9 @@ puts MulVAL beside Sheyner's toolkit on the same inputs: Sheyner's is off the ch
 MulVAL is at ~1 second at 50.
 
 ### Step 9 — Cycles and "useless edges"
+
+> **In:** a derivation graph that tabling already kept from looping during evaluation.
+> **Out:** why the *recorded trace* can still contain meaningless back edges, and the paper's derivability-based definition of a useless edge (not a DFS heuristic, which Fig 8 shows is wrong).
 
 Tabling stops the *evaluation* from looping, but the recorded trace can still contain cycles,
 because two rules can be mutually satisfiable:
@@ -264,14 +291,102 @@ you have read topic 27, this is stratified negation and provenance-tracking terr
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can state monotonicity in one sentence and list its three technical consequences.
+
+  <details><summary>Answer</summary>
+
+  One sentence: *the precondition of an exploit is never invalidated by another
+  exploit's success — the attacker never has to backtrack.* Three consequences
+  (Ammann §2): (1) attributes go *unsatisfied → satisfied* and never the
+  reverse; (2) **no negation in preconditions**, since an unsatisfied attribute
+  can still become satisfied later; (3) pre- and postconditions are
+  **conjunctions** — a disjunctive precondition is modelled by splitting the
+  exploit in two. Plus the corollary the bound uses: `preConds(e) ∩ postConds(e)
+  = ∅`.
+
+  </details>
+
 - [ ] You can derive `O(|A|²·|E|)` from the two facts the paper gives.
+
+  <details><summary>Answer</summary>
+
+  Fact one: `Uₙ` only grows and is bounded by `A`, so there are at most `|A|`
+  layers. Fact two: because `preConds(e) ∩ postConds(e) = ∅`, each layer applies
+  every exploit at most once against the newly satisfied attributes, i.e. at
+  most `|A|·|E|` work. `|A|` layers × `|A|·|E|` per layer = **O(|A|²·|E|)**. The
+  layer index is not bookkeeping — it is the minimum number of chained exploits
+  to reach the attribute, which is exactly what `findShort` consumes.
+
+  </details>
+
 - [ ] You can explain the difference between minimal and minimum attacks, and which is NP-complete.
+
+  <details><summary>Answer</summary>
+
+  A **minimal** attack is locally irreducible: remove any one exploit and it no
+  longer reaches the goal. `findMinimal` returns one in `O(|E|²)`. A
+  **minimum-cardinality** attack is the globally smallest such set; finding it
+  is **NP-complete** (Sheyner et al.). A minimal attack can be far larger than
+  the minimum — "minimal" promises only that nothing in *this* set is redundant,
+  not that no smaller set exists.
+
+  </details>
+
 - [ ] You can draw a logical attack graph with both node types and say which is AND and which OR.
+
+  <details><summary>Answer</summary>
+
+  Two node types (MulVAL Figs 4–5): a **derivation node** ▭ is one rule
+  application and is an **AND** — every child fact must hold. A **fact node** ◯
+  is one attribute and is an **OR** — any incoming derivation suffices.
+  **Primitive facts** ● are leaves supplied by the scanner. So a fact is true if
+  *any* derivation of it fires; a derivation fires only if *all* its
+  precondition facts are true.
+
+  </details>
+
 - [ ] You can quote §2.3's cut-set paragraph and connect it to the dominator tree in `chokepoint.rs`.
-- [ ] Your `chokepoint.rs` reproduces lane 2: exact agreement with the naive oracle on every node,
-      and the tiered/flat contrast.
+
+  <details><summary>Answer</summary>
+
+  §2.3: "what set of exploits (edges) or attributes (nodes) … must be removed to
+  disconnect the goal state from the initial state? Standard graph analysis
+  algorithms can be applied." In the reverse graph rooted at the goal, node `d`
+  dominates `u` iff every path from `u` to the goal crosses `d`, so a single
+  dominator-tree pass prices every single-node cut exactly. Lane 2 measures it
+  at **0.8 ms** versus **543 ms** for 3400 individual reachability re-runs,
+  agreeing with the naive oracle on every node.
+
+  </details>
+
+- [ ] Your `chokepoint.rs` reproduces lane 2: exact agreement with the naive oracle on every node, and the tiered/flat contrast.
+
+  <details><summary>Answer</summary>
+
+  Tiered directory: the top choke point covers **1992 / 2000 = 99.6%** of
+  exposure, and the greedy cut collapses the reachable set `2000 → 8 → 5`. Flat
+  directory: **no single-node cut frees anyone** — only the gateway cut
+  (2000×5 → 8) is structural. The dominator pass and the per-node naive oracle
+  return the *same* verdict on every node; dominators just deliver it in 0.8 ms
+  instead of 543 ms.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five: (1) monotonicity of `MemberOf` / `HasSession` / `GenericAll` and
+  what monotone `HasSession` over-reports; (2) where the O(N⁶)-vs-O(N²)
+  accounting difference goes; (3) reconstructing the §3 layer numbers and why
+  `findShort` needs them but `findMinimal` does not; (4) incremental maintenance
+  of the derivation graph under config changes (topic-27 IVM, and what a
+  retraction means when the analysis is monotone); (5) the flat-directory no-cut
+  result restated as a statement about the minimum cut set.
+
+  </details>
 
 ## References
 

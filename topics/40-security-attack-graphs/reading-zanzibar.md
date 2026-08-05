@@ -22,6 +22,9 @@ request, without ever using a stale ACL on new content.**
 
 ### Step 1 — Relation tuples: one row shape for everything
 
+> **In:** the authorization question "can user U do R to object O?".
+> **Out:** the single relation-tuple row shape — `object#relation@user`, where `user` may itself be a `userset` — that unifies ACLs, groups and inheritance, plus the versioned primary key that makes snapshot reads possible.
+
 ```
    ⟨tuple⟩   ::= ⟨object⟩ '#' ⟨relation⟩ '@' ⟨user⟩
    ⟨object⟩  ::= ⟨namespace⟩ ':' ⟨object_id⟩
@@ -47,6 +50,9 @@ timestamp)` — note `commit timestamp` in the key: multiple versions live in di
 is what makes snapshot reads at any timestamp within the GC window possible.
 
 ### Step 2 — Userset rewrite rules: three leaf types
+
+> **In:** stored relation tuples from Step 1.
+> **Out:** the three rewrite leaf kinds (`_this`, `computed_userset`, `tuple_to_userset`) that define a relation without storing every tuple, combined by union / intersection / exclusion — and where SpiceDB evaluates each.
 
 Storing a tuple per object per relation would be wasteful and rigid, so relations are defined by
 *rewrite rules* in a namespace config (Figure 1 in the paper):
@@ -78,6 +84,9 @@ Leaves combine with union, intersection and exclusion. In SpiceDB the whole tree
 `:623` `checkComputedUserset` and `:699` `TraitsForArrowRelation` handling the two derived kinds.
 
 ### Step 3 — Check is a graph traversal, stated as one recursion
+
+> **In:** relation tuples and rewrite rules.
+> **Out:** Check as one recursion (direct membership ∨ recursive userset membership), its concurrent-with-cancellation evaluation and read pooling, and lane 3's measured linear-in-depth×width cost.
 
 §3.2.3, and it is worth memorising:
 
@@ -112,6 +121,9 @@ Linear in depth × width, exactly as the recursion predicts. That is the curve L
 flatten.
 
 ### Step 4 — Leopard: the transitive closure as two sorted integer lists
+
+> **In:** the deep or wide group structures that make Check's pointer-chasing expensive.
+> **Out:** the Leopard index — `GROUP2GROUP` and `MEMBER2GROUP` named sets stored as ordered integer lists — that turns a membership check into an `O(min(|A|,|B|))` skip-list intersection (topic 23's galloping intersect).
 
 §3.2.4. For namespaces with deep or wide group structure, Zanzibar precomputes membership into a
 specialised index over "named sets" of `(T, s, e)` tuples — set type, set id, element id. Group
@@ -154,6 +166,9 @@ Topic 1's RUM conjecture with a security label.
 
 ### Step 5 — What the index costs you: freshness
 
+> **In:** the offline-built Leopard index, stale by construction.
+> **Out:** the incremental layer (Watch API → `(T,s,e,t,d)` updates merged at query time), the tens-of-thousands-of-events fan-out a single tuple change can cause, and Leopard's measured latency and QPS.
+
 An offline pipeline reads periodic snapshots of the tuples, recursively expands the ACL graph,
 and ships shards that Leopard servers hot-swap. Which means the index is *stale by construction*
 and cannot serve a consistent read on its own. The fix is an incremental layer: Leopard's indexer
@@ -171,6 +186,9 @@ Performance: Leopard serves **1.56M QPS median / 2.22M p99**, responding in **un
 median and under 1 ms at p99**. Shards are usually served entirely from memory.
 
 ### Step 6 — Zookies and the new enemy problem
+
+> **In:** a cache that, in authorization, is a correctness decision rather than a latency one.
+> **Out:** the two "new enemy" failures (§2.2 Examples A and B), and the zookie protocol — an opaque token encoding a timestamp ≥ every prior ACL write — whose `≥` guarantee lets most checks be served from a local replica.
 
 A cache is normally a latency decision. In authorization it is a correctness decision, and the
 paper gives two concrete failures (§2.2):
@@ -212,6 +230,9 @@ Same median, 4× the p95, because `Recent` often needs the leader replica.
 
 ### Step 7 — Hot spots: the frontier
 
+> **In:** popular objects concentrating bursty read traffic on single storage servers.
+> **Out:** the four hot-spot mechanisms (consistent-hashing cache trees, timestamp quantization, a lock table, prefetch + delayed eager cancellation), and why a 10% hit rate is worth it when it protects the tail — it prevents 500K internal RPC/s.
+
 §3.2.5 opens with "We found the handling of hot spots to be the most critical frontier in our
 pursuit of low latency and high availability." Popular objects concentrate reads on one storage
 server, and authorization traffic is bursty by nature (one search results page fires hundreds of
@@ -237,6 +258,9 @@ they prevent **500K internal RPCs per second** from creating hot spots." A cache
 building at a 10% hit rate if what it protects is a tail, not a mean.
 
 ### Step 8 — SpiceDB: which parts are essential
+
+> **In:** the paper's mechanisms and the SpiceDB source at pin `8422483`.
+> **Out:** which mechanisms are inherent to the problem (recursion, rewrite tree, set algebra, reverse traversal, canonicalized cache key, lock table, fan-out bound) versus Google-shaped (Spanner/TrueTime, Leopard as a separate service, Slicer).
 
 Reading the implementation tells you which of the above is Google-specific and which is inherent.
 Inherent, all present in `internal/`:
@@ -299,14 +323,85 @@ Repo: [`~/repos/spicedb`](https://github.com/authzed/spicedb) @ `8422483`, paths
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can write the relation tuple grammar from memory and explain why the user slot holds a
       userset.
+
+  <details><summary>Answer</summary>
+
+  `⟨tuple⟩ ::= ⟨object⟩'#'⟨relation⟩'@'⟨user⟩`, `⟨object⟩ ::= ⟨namespace⟩':'⟨object_id⟩`,
+  `⟨user⟩ ::= ⟨user_id⟩ | ⟨userset⟩`, `⟨userset⟩ ::= ⟨object⟩'#'⟨relation⟩`. The user slot holds a
+  userset so that groups, nesting and ACL inheritance are all the *same* row shape — there is no
+  separate group table — which "unifies the concepts of ACLs and groups and supports efficient
+  reads and incremental updates". The primary key `(shard ID, object ID, relation, user, commit
+  timestamp)` carries the commit timestamp, so versions coexist for snapshot reads.
+
+  </details>
+
 - [ ] You can state the Check recursion and name the two leaf kinds that make it recursive.
+
+  <details><summary>Answer</summary>
+
+  `CHECK(U, object#relation) = ∃ tuple object#relation@U ∨ ∃ tuple object#relation@U' where
+  U' = object'#relation' s.t. CHECK(U, U')`. It bottoms out on `_this` (the stored tuples). The two
+  leaf kinds that introduce recursion are `computed_userset` (same object, different relation) and
+  `tuple_to_userset` (the *arrow* — follow a tupleset, then evaluate a relation on each returned
+  object). The paper calls it "pointer chasing", expensive when groups are deep or wide.
+
+  </details>
+
 - [ ] You can explain Leopard's two set types and why the intersection is `O(min(|A|,|B|))`.
+
+  <details><summary>Answer</summary>
+
+  `GROUP2GROUP(s)` = groups directly or indirectly under `s`; `MEMBER2GROUP(u)` = groups `u` is a
+  *direct* member of. Then `U ∈ G ⟺ MEMBER2GROUP(U) ∩ GROUP2GROUP(G) ≠ ∅`. Index tuples are
+  ordered integer lists in a skip list, so the intersection iterates the *smaller* set and *seeks*
+  into the larger — `O(min(|A|,|B|))` seeks, not `O(|A|+|B|)`. That is why "user in 3 groups" vs
+  "group with 100,000 descendants" costs almost nothing; lane 3 finds a needle in a 500,000-element
+  list in tens of probes.
+
+  </details>
+
 - [ ] You can give both new-enemy examples and explain how a zookie prevents each.
+
+  <details><summary>Answer</summary>
+
+  Example A (neglecting ACL update order): Alice removes Bob from a folder ACL, then has Charlie
+  move docs into the folder; Bob must not see them. Example B (old ACL on new content): Alice
+  removes Bob from a doc's ACL, then has Charlie add content; Bob must not see it. On each content
+  change the client requests a **zookie** — an opaque token encoding a global timestamp ≥ every
+  prior ACL write — stored atomically with the content. Later checks pass the zookie and evaluate at
+  any snapshot **≥** it, so a check can never run against an ACL older than the content it guards.
+
+  </details>
+
 - [ ] Your `authz.rs` reproduces lane 3: 19→559 tuple reads against 4→12 index probes across
       nesting depth 2→32, with the index agreeing with pointer chasing on every pair.
+
+  <details><summary>Answer</summary>
+
+  Pointer chasing (`check_pointer`) reads **19** tuples at depth 2 rising to **559** at depth 32
+  (0.46 → 11.28 µs) — linear in depth × width, as the recursion predicts. The Leopard index
+  (`LeopardIndex::build` + `intersect_galloping`) stays flat: **4 → 12** probes, ~0.01 µs, ~1000×
+  cheaper at depth 32, for a 1.7× space cost (6672 stored tuples → 11393 index entries). Both must
+  return the identical membership verdict on every pair.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five: (1) one policy per rewrite leaf kind and which makes Check's cost depend on data not
+  schema; (2) reconciling the 10% delegate cache hit rate with the "80% or it's not worth it"
+  instinct; (3) why rounding evaluation timestamps *up* is safe under the zookie `≥` guarantee while
+  rounding down is a bug; (4) the break-even write rate for incremental closure maintenance, set up
+  with ~500 updates/s and 1.56M QPS; (5) whether Leopard's precomputed closure survives conditional
+  (caveated) membership.
+
+  </details>
 
 ## References
 
