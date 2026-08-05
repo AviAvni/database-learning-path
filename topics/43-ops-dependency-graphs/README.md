@@ -243,9 +243,14 @@ And then the part that will look familiar from topic 10: Table 3 is a
 set of **query rewrite rules** that push projection, selection and
 aggregation as close as possible to the source tracepoints —
 `Π_{p,q}(P ⋈ Q) → Π_p(P) ⋈ Π_q(Q)`, `σ_q(P ⋈ Q) → P ⋈ σ_q(Q)`, and so
-on. Measured effect: one query goes from ~600 tuples/s to **6 tuples/s
-per DataNode**. Predicate pushdown and join placement, in a tracing
-system, for a hundredfold reduction in tuple traffic.
+on. Table 3's own target is the number of tuples **packed into the
+baggage** — happened-before joins carried in-band. The separately
+measured ~600 tuples/s → **6 tuples/s per DataNode** headline is §4's
+*process-level (intermediate) aggregation*, which aggregates emitted
+tuples within each process and reports globally once per second. Two
+optimizations, two metrics: keep them apart. Predicate pushdown and
+join placement, in a tracing system, plus in-process pre-aggregation
+for a hundredfold reduction in emitted-tuple traffic.
 
 ## Reading guides
 
@@ -310,7 +315,9 @@ rare-path recall 1.000 → 0.001, p99 error 0% → 25.6% as the rate goes
    given two tracepoint predicates, return the pairs where one causally
    precedes the other within a request. Then implement Pivot Tracing's
    Table 3 pushdown rules and measure the reduction in tuples that have
-   to cross the join — their reported figure is ~600/s down to 6/s.
+   to cross the join — that is Table 3's metric (packed tuples). The
+   paper's ~600/s → 6/s figure is a different one: emitted tuples under
+   process-level aggregation (§4). Measure both if you can.
 
 ## Cross-topic threads
 
@@ -327,8 +334,9 @@ rare-path recall 1.000 → 0.001, p99 error 0% → 25.6% as the rate goes
   alerts, and hedged requests are one of the few mitigations that work
   against a gray failure.
 - **Topic 10 (query planning) ↔ 43**: Pivot Tracing's Table 3 is
-  predicate pushdown and join placement, and the 600 → 6 tuples/s result
-  is exactly the win an optimizer exists to produce.
+  predicate pushdown and join placement; the 600 → 6 tuples/s result is
+  §4's process-level pre-aggregation. Both are wins an optimizer exists
+  to produce — pushdown and partial aggregation.
 - **Topic 26 (probabilistic structures) ↔ 43**: a real trace pipeline
   cannot store per-edge latency raw. Histograms, t-digests and
   count-min sketches are what M43's edge weights have to be.
@@ -356,4 +364,5 @@ rare-path recall 1.000 → 0.001, p99 error 0% → 25.6% as the rate goes
   Dapper's 426 bytes; localization latency on a 10,000-service graph vs
   `ops_bench` lane 2; **top-1 accuracy under sampling** — the number the
   whole topic converges on; and happened-before join cost with and
-  without pushdown, against Pivot Tracing's 600 → 6 tuples/s.
+  without pushdown, against Pivot Tracing's 600 → 6 tuples/s (which is
+  its emitted-tuple, aggregation-side figure).
