@@ -30,8 +30,8 @@ nonzero at all because we filter out items each user already has —
 everybody is being handed the same list. Pixie's unmodified Algorithm 1
 does personalize, but **45% of what it returns is the bestseller list
 again**, because an unbiased walk's visit distribution drifts toward
-degree. That is Pixie's own complaint, stated in §3.1: "In classical
-random walk low degree nodes with fewer edges contribute less signal.
+degree. That is Pixie's own complaint, stated in §1: "In classical
+random walks low degree nodes with fewer edges contribute less signal.
 This is undesirable because smaller boards ... are more likely to
 produce highly relevant recommendations."
 
