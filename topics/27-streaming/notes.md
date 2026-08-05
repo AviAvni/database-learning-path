@@ -6,6 +6,12 @@ Machine: Apple M3 Pro, macOS. `cargo run --release --bin ivm_bench`
 
 ## Measured baselines (provided full-recompute lanes — the enemy, priced)
 
+> An earlier run than the one the README's opening lane and
+> [FINDINGS.md](../../FINDINGS.md) row 27 report (**triangle 141.6 ms,
+> wedge 1111.0 ms, re-BFS 31.2 ms**). Where the two disagree, FINDINGS is
+> canonical; cite one run or the other by name and never average them.
+> Re-run `./verify.sh 27` before treating any cell below as current.
+
 | standing query | full recompute / batch | notes |
 |---|---|---|
 | triangle count | 97.2 ms | O(m·d̄) sorted-intersect sweep; count 1366 after last batch |
