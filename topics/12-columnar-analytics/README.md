@@ -46,8 +46,9 @@ repeat runs put this lane anywhere from 24 to 76 GB/s depending on machine
 state. A bandwidth-bound single number wants an error bar; take the high end as
 the target.
 
-Second, **this lane used to print 19 047 619 GB/s** — roughly 20 000× the
-machine's bandwidth. The timing loop let LLVM hoist the pure fold out of its own
+Second, **this lane used to print 19 047 619 GB/s** — 19,047,619 / 150 ≈
+**127 000×** the machine's peak memory bandwidth, and ~250 000× the 76 GB/s this
+lane actually reaches. The timing loop let LLVM hoist the pure fold out of its own
 repetition loop, so two of three reps timed nothing and best-of-3 reported
 0.000 s. A `black_box` on the input fixed it. Topic 0's first failure mode,
 found in this repo's own code, which is the best argument going for why the
