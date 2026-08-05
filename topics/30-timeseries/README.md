@@ -67,7 +67,7 @@ graph TD
     G -->|"chunk format"| VM
     P -->|"columnar + object store"| IOX
     G -->|"scale out"| M
-    G -.->|"different regime:<br/>100M Hz telemetry"| B
+    G -.->|"different regime:<br/>120 Hz/stream, 1.4M points/s/server"| B
 ```
 
 ## 2. The one-table summary
