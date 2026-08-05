@@ -49,7 +49,7 @@ RMAT scale 16 (n=65,536, m=1.82M directed, max deg 9,751) vs uniform
 | Dijkstra ×3 sources | 33.7 ms, 343K pops | — |
 | CC union-find | 18,844 comps, 4.2 ms, all m edges | — |
 
-The TC row is the whole "skew matters" lecture: same n and m, 2883×
+The TC row is the whole "skew matters" lecture: same n and m, 2882×
 more triangles — hub neighborhoods intersect. Any TC benchmark on
 uniform data measures a different algorithm.
 

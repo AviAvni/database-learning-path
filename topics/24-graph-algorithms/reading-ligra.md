@@ -9,18 +9,26 @@ frontier is, its two physical representations, the push/pull choice,
 the one threshold that automates it, and what a whole algorithm looks
 like when it's reduced to a single edge function.
 
+*Source pinned (resources/codebases.md): ligra @`8763202`; anchors
+re-checked with `tools/pinned-source.py`.*
+
 ## The problem in one sentence
 
 Every frontier algorithm faces the same per-round choice — push from
 the frontier's out-edges or pull over all vertices' in-edges — and
-getting it wrong costs up to 10× per round (topic 20's BFS numbers);
-Ligra moves that choice out of every algorithm and into one framework
-function with one threshold: **|frontier| + its out-degree sum vs
-m/20**.
+getting it wrong can make a single round traverse the graph's *entire*
+edge set when a small fraction of it would have done; Ligra moves that
+choice out of every algorithm and into one framework function with one
+threshold: **|frontier| + its out-degree sum vs m/20**.
 
 ## The concepts, step by step
 
 ### Step 1 — the frontier: the set of vertices that matter this round
+
+> **In:** a graph algorithm that proceeds in rounds.
+> **Out:** the *frontier* — the active vertex set this round — and the
+> single quantity (its size relative to n) that everything in Ligra
+> keys off.
 
 A **frontier** is the set of active vertices in the current round of
 a graph algorithm — in BFS, the vertices discovered last round whose
@@ -33,6 +41,11 @@ stragglers — a wave. The frontier's size, relative to the whole
 graph, is the single quantity everything in Ligra keys off.
 
 ### Step 2 — two physical representations: id array vs bitmap
+
+> **In:** a frontier that can be tiny or huge.
+> **Out:** its two physical forms — a sparse id array (small
+> frontiers) and a dense boolean array of size n (big frontiers) — and
+> the cost trade Ligra switches between automatically.
 
 A set of vertices can be stored two ways, and the right one depends
 on its size. Ligra's `vertexSubset` is physically EITHER:
@@ -52,6 +65,11 @@ converts between them automatically as the wave grows and shrinks.
 
 ### Step 3 — push vs pull: whose edges do you traverse?
 
+> **In:** one round of updates to run.
+> **Out:** the two directions — push (iterate the frontier's
+> out-edges, good when small) and pull (iterate every vertex's
+> in-edges with early exit, good when large) — and which wins when.
+
 There are two ways to run one round of updates, with different cost
 shapes. **Push** iterates the frontier and follows each member's
 out-edges — work proportional to the frontier's out-degree sum, ideal
@@ -63,9 +81,15 @@ trick: once one in-neighbor claims the vertex, stop scanning
 an early in-edge, so pull touches far fewer than m edges — while push
 would faithfully traverse the frontier's entire (huge) out-degree sum
 and fight write contention doing it. Small frontier: push wins. Big
-frontier: pull wins. Same asymptotics, ~10× apart in constants.
+frontier: pull wins. Same asymptotics; which direction wins can swing
+the per-round cost by a large constant factor.
 
 ### Step 4 — the switch: edgeMap and the m/20 threshold
+
+> **In:** the push/pull choice from Step 3.
+> **Out:** `edgeMap`'s one comparison — |frontier| + its out-degree
+> sum vs (graph edges)/20 — that automates the choice for every
+> algorithm.
 
 Ligra's `edgeMap` packages Step 3's choice behind one comparison, so
 every algorithm inherits direction switching without asking:
@@ -81,9 +105,25 @@ every algorithm inherits direction switching without asking:
       whether v joins the next frontier
 ```
 
-The switch, as code — everything else in Ligra is plumbing around it:
+That comparison is real code — note that in `ligra.h` the local `m` is
+the *frontier* size (`vs.numNonzeros()`), while the threshold divides
+the *graph's* edge count (`numEdges = GA.m`); the guide's "m/20" means
+graph edges / 20:
+
+```c
+// ligra/ligra.h — edgeMapData, jshun/ligra@8763202
+   237    long numVertices = GA.n, numEdges = GA.m, m = vs.numNonzeros();
+   238    if(threshold == -1) threshold = numEdges/20; //default threshold
+   ...
+   261    if (!(fl & no_dense) && m + outDegrees > threshold) {
+```
+
+The switch, as pseudocode — everything else in Ligra is plumbing
+around it:
 
 ```rust
+// ILLUSTRATION — not quoted; the real switch is ligra/ligra.h:261
+// (threshold :238), dense/pull at ligra.h:59, sparse/push at :111.
 fn edge_map(g: &Graph, front: &VertexSubset, f: &impl Fn(u32, u32) -> bool)
     -> VertexSubset {
     if front.len() + front.out_degree_sum(g) > g.m / 20 {
@@ -112,6 +152,12 @@ reads in-edges, so the graph AND its transpose must both be resident.
 
 ### Step 5 — an algorithm is just F: reading the apps
 
+> **In:** frontier, representation, and switch all owned by the
+> framework.
+> **Out:** what's left of an algorithm — a single per-edge function
+> F(u,v) — read across five apps, ending at PR where the frontier is
+> always everything and Ligra ≡ SpMV.
+
 With frontier, representation, and switch all owned by the framework,
 an algorithm shrinks to its per-edge update function F(u, v) — which
 does the algorithm-specific write and returns whether v joins the
@@ -134,6 +180,11 @@ is identical. Frontiers only earn their complexity when they SHRINK —
 Ligra generalizes the case where they do.
 
 ### Step 6 — Ligra vs GraphBLAS, honestly
+
+> **In:** Ligra's edgeMap model and GraphBLAS's semiring model.
+> **Out:** the honest trade — edgeMap's arbitrary-F expressiveness vs
+> semiring fusability — and the three names (m/20, α/β, dot-vs-saxpy)
+> for the one direction decision.
 
 The two frameworks in this topic's dichotomy trade expressiveness for
 fusability, and neither dominates:
@@ -185,12 +236,54 @@ fusability, and neither dominates:
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can define the frontier and both physical representations.
+  <details><summary>Answer</summary>
+  The frontier is the active vertex set this round (what changed last
+  round). Ligra's vertexSubset stores it either sparse (an array of
+  vertex ids, cheap for small frontiers) or dense (a size-n boolean
+  array, cheap membership tests for big frontiers), converting between
+  them as the wave grows and shrinks.
+  </details>
 - [ ] You can explain push against pull as whose edges you traverse.
+  <details><summary>Answer</summary>
+  Push iterates the frontier and follows out-edges — cost ∝ frontier
+  out-degree sum, best when small. Pull iterates every vertex and scans
+  in-edges asking "is a neighbour in the frontier?", stopping at the
+  first claim — cost bounded by m but far less when the frontier is
+  dense. Small: push. Big: pull.
+  </details>
 - [ ] You can construct a frontier where the m/20 threshold is the wrong call.
+  <details><summary>Answer</summary>
+  Pick a frontier whose out-degree sum is just under (graph edges)/20 —
+  so edgeMap chooses push — but whose *next* frontier is nearly empty,
+  so pull's early exit would almost never fire and pull would scan close
+  to m anyway. The threshold can't see next-frontier fullness, so it
+  mis-picks (Q1).
+  </details>
 - [ ] You can explain why `edgeMapDenseForward` pushes from all vertices and when that is cheaper.
+  <details><summary>Answer</summary>
+  `edgeMapDenseForward` (ligra.h:85) scans out-edges of all vertices
+  without early exit — used when the update isn't "claim once" so
+  early-exit can't apply (e.g. PageRank-style accumulation). It beats
+  pull-with-break when every in-edge must be visited anyway, so the
+  break never saves work (Q2).
+  </details>
 - [ ] You can compare Ligra's model honestly against GraphBLAS's and say what each makes awkward.
+  <details><summary>Answer</summary>
+  Ligra's F is an arbitrary CAS-using function (expressive, but not
+  fusable); GraphBLAS semirings are (monoid, binop) pairs (fusable, but
+  can't express strided sampling like Afforest). Both need G and Gᵀ
+  resident for the pull/dense direction. Neither dominates.
+  </details>
 - [ ] You wrote answers to all five questions in notes.md.
+  <details><summary>Answer</summary>
+  Done when notes.md answers Q1 (the wrong-threshold frontier), Q2
+  (denseForward vs dense), Q3 (mapping BC.C's transpose passes onto
+  LAGr_Betweenness), Q4 (label-prop vs Afforest edges touched), and Q5
+  (edgeMap-callback vs fixed-menu API for a safe embedding).
+  </details>
 
 ## References
 
