@@ -30,7 +30,7 @@ big, cold) on the slow tier.
 ```mermaid
 graph TD
     S3paper["Building a DB on S3 (SIGMOD'08)<br/>prescient: pages on S3, eventual consistency pain"]
-    SF["Snowflake (SIGMOD'16)<br/>shared-data warehouse:<br/>immutable micro-partitions on S3,<br/>stateless virtual warehouses"]
+    SF["Snowflake (SIGMOD'16)<br/>shared-data warehouse:<br/>immutable columnar files on S3,<br/>stateless virtual warehouses"]
     AUR["Aurora (SIGMOD'17)<br/>THE LOG IS THE DATABASE:<br/>only redo crosses the network,<br/>6-way 4/6 quorum storage"]
     SOC["Socrates (SIGMOD'19)<br/>separate durability (XLOG)<br/>from availability (page servers)"]
     NEON["Neon (2021-)<br/>Aurora's idea, open source:<br/>safekeepers (WAL) + pageserver<br/>(page@LSN) + S3 + branches"]
@@ -71,7 +71,7 @@ graph TD
 
 | axis | Aurora | Socrates | Neon | Snowflake | SlateDB |
 |---|---|---|---|---|---|
-| what crosses the network | redo log only | log + pages | WAL to safekeepers | micro-partition files | SSTs + manifest |
+| what crosses the network | redo log only | log + pages | WAL to safekeepers | immutable columnar files | SSTs + manifest |
 | durability | 6-way 4/6 quorum | XLOG service | safekeeper quorum | S3 | S3 (+ optional WAL obj) |
 | page/read service | storage nodes replay | page servers (RBPEX cache) | pageserver + walredo | warehouse-local cache | block cache + part cache |
 | branching/clones | — | snapshots | O(1) LSN branches | zero-copy clone | checkpoint/clone (clone.rs:38) |
