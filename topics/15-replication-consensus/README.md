@@ -51,9 +51,9 @@ survive the failure cases each choice creates.
 
 ```mermaid
 stateDiagram-v2
-    Follower --> Candidate: election timeout\n(randomized!)
+    Follower --> Candidate: election timeout<br/>(randomized!)
     Candidate --> Leader: votes from majority
-    Candidate --> Follower: saw higher term /\ncurrent leader
+    Candidate --> Follower: saw higher term /<br/>current leader
     Candidate --> Candidate: split vote, new term
     Leader --> Follower: saw higher term
 ```
