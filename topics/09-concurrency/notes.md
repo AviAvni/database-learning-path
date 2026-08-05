@@ -15,9 +15,11 @@ Predict FIRST, then measure.
 - **17.8× packed → pad128.** "Independent" counters sharing a line are not
   independent — this is the whole reason redis pads `used_memory`.
 - **pad64 is still 1.8× slower than pad128**: Apple M-series coherence
-  granularity is 128 B. `#[repr(align(64))]`, the x86 default, only HALF-fixes
-  false sharing on this machine. Check every `CachePadded` assumption against
-  the hardware you are actually on.
+  granularity is 128 B. A hand-written `#[repr(align(64))]` — the textbook "pad
+  to one cache line" — only HALF-fixes false sharing on this machine. Note that
+  crossbeam's `CachePadded` is *not* the thing being caught out here: it is
+  `repr(align(128))` on x86-64 and aarch64 alike. Check the 64-byte assumption
+  wherever you wrote it yourself.
 - **Run-to-run variance is large on the packed row** and worth knowing about:
   an earlier run of this same binary recorded 636 ms / 63 M inc/s, i.e. a 59×
   ratio rather than 17.8×. Contended-line throughput depends on how the threads

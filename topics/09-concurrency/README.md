@@ -33,9 +33,13 @@ never "add threads".
 
 The counter table is the same physics one level down: three layouts where every
 thread owns its own counter and touches nobody else's, spanning 17.8×. `pad64`
-— the x86-default `CachePadded` — is still 1.8× off `pad128`, because M-series
-coherence granularity is 128 B. Check that assumption on your own hardware
-before trusting any padding.
+— a hand-written `#[repr(align(64))]`, the textbook "pad to one cache line"
+advice — is still 1.8× off `pad128`, because M-series coherence granularity is
+128 B. Crossbeam's `CachePadded` already knows this: it is
+`repr(align(128))` on x86-64 *and* aarch64 (`crossbeam-utils/src/cache_padded.rs`
+lines 70–77 and 87–94, at the pinned revision), because Sandy Bridge onwards
+prefetches 64-byte lines in pairs. It is the 64-byte assumption in your own
+head, not the crate's, that this lane is testing.
 
 And note which structure is *slowest* single-threaded: crossbeam's lock-free
 set, at 4.21 vs the mutex's 8.65. Atomics and epoch bookkeeping cost real
