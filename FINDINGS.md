@@ -28,7 +28,7 @@ instead.
 | 9 | [Concurrency](topics/09-concurrency/README.md) | A global mutex gets **2.9× slower** from 1 to 16 threads (8.65 → 2.96 Mops/s). Padding "independent" counters to 128 B is worth **17.8×**; 64 B only half-fixes it on M-series. | `./verify.sh 09` |
 | 11 | [Execution Models](topics/11-execution-models/README.md) | Volcano tops out at **103 M rows/s**, and gets *slower* as selectivity rises (74.7 M at 95%) — surviving the filter is what costs, not the filter. | `./verify.sh 11` |
 | 12 | [Columnar Analytics](topics/12-columnar-analytics/README.md) | The scan floor is **24–57 GB/s** on a 150 GB/s machine. This lane previously printed **19,047,619 GB/s** — a hoisted loop, caught by its own implausibility. | `./verify.sh 12` |
-| 13 | [Graph Engines](topics/13-graph-engines/README.md) | The same two-hop query is **101× slower** from supernodes than from random nodes (4.9 µs → 495 µs) — and reaches *fewer* distinct nodes. | `./verify.sh 13` |
+| 13 | [Graph Engines](topics/13-graph-engines/README.md) | The same two-hop query is **101× slower** from supernodes than from random nodes (4.9 µs → 495 µs), because it reaches **77× more** nodes per query — 78,907 against 1022. | `./verify.sh 13` |
 | 14 | [Vector Search](topics/14-vector-search/README.md) | Brute force: **117 QPS** at recall 1.000. That single point is what every ANN index is betting against. | `./verify.sh 14` |
 | 15 | [Replication & Consensus](topics/15-replication-consensus/README.md) | Follower fsync policy alone spans **59×** (341 → 20,174 entries/s). Batching fixes the median and leaves the p99 at 2980 µs. | `./verify.sh 15` |
 | 16 | [Testing & Correctness](topics/16-testing-correctness/README.md) | Seeded crash testing catches planted bugs at **48.8% to 99.6%** per seed — same harness, four wildly different odds of ever finding out. | `./verify.sh 16` |
@@ -38,7 +38,7 @@ instead.
 | 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **20.7 → 12.3 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **175× faster**. | `./verify.sh 20` |
 | 21 | [Formal Methods](topics/21-formal/README.md) | The hand-ordered rewriter answers `(a*2)/2` with `(a << 1) / 2` and stops. One locally-excellent rewrite destroys the cancellation — the phase-ordering trap, in four lines. | `./verify.sh 21` |
 | 22 | [Standard Benchmarks](topics/22-benchmarks/README.md) | TPC-H Q1 and Q6 measured at **5.2–5.7** and **9.0–14.4 GB/s** effective; YCSB-E's p999 is **12.9 µs** against read-only's 4.0 µs. | `./verify.sh 22` |
-| 23 | [Full-Text Search](topics/23-fulltext/README.md) | Exhaustive BM25 spans **0.009 ms to 10.378 ms** across four two-term queries — 272,310 postings against 159. Term rarity, not query complexity. | `./verify.sh 23` |
+| 23 | [Full-Text Search](topics/23-fulltext/README.md) | Exhaustive BM25 spans **0.009 ms to 10.378 ms** across four queries — 272,310 postings against 159. Term rarity, not query complexity. | `./verify.sh 23` |
 | 24 | [Graph Algorithms](topics/24-graph-algorithms/README.md) | Same node and edge count, RMAT vs uniform: **15.6 M triangles vs 5428**, and 447 ms vs 195 ms. Degree skew is the workload. | `./verify.sh 24` |
 | 25 | [Graph ML](topics/25-graph-ml/README.md) | The message-passing kernel *is* an SpMM: **4.31 ms at 16.82 GFLOP/s**, against 5.65 ms for the dense transform beside it. | `./verify.sh 25` |
 | 26 | [Probabilistic Structures](topics/26-probabilistic/README.md) | A point miss costs **246 ns** (binary search) or **299 ns** (BTreeMap); a 224 MB HashSet does it in **28 ns**. That gap is what a filter is bidding for. | `./verify.sh 26` |
@@ -47,7 +47,7 @@ instead.
 | 29 | [Distributed Transactions](topics/29-distributed-txn/README.md) | The workload's own conflict rate goes **0.3% → 99.6%** as Zipf θ moves 0.5 → 1.3. Contention is a property of the data, before any protocol. | `./verify.sh 29` |
 | 30 | [Time-Series](topics/30-timeseries/README.md) | delta+varint gives **11.00 B/sample for all four shapes** — a constant series compresses exactly as well as random noise, because only the timestamp is being compressed. | `./verify.sh 30` |
 | 31 | [CRDTs](topics/31-crdts/README.md) | Last-write-wins on 10 keys with per-write sync loses **94.98%** of writes — 37,991 of 40,000 acknowledged writes that no replica remembers. | `./verify.sh 31` |
-| 32 | [HTAP](topics/32-htap/README.md) | One copy, one coarse lock: adding full scans takes writes from **10.5 M per 2 s to 94**, and p99 from 334 ns to **2.7 s**. Every scan is a write outage. | `./verify.sh 32` |
+| 32 | [HTAP](topics/32-htap/README.md) | One copy, one coarse lock: adding full scans takes writes from **11.4 M per 2 s to 69**, and p99 from 333 ns to **7.49 s**. Every scan is a write outage. | `./verify.sh 32` |
 | 33 | [Temporal Graphs](topics/33-temporal-graphs/README.md) | Static reachability reports 25,031 reachable pairs where time-respecting paths number **137** — **99.5% false positives** on the sparse contact graph. | `./verify.sh 33` |
 | 34 | [Debugging & Diagnosis](topics/34-debugging/README.md) | A closed-loop benchmark reports **p99 = 1.0 µs** where an open-loop one reports **90 ms** on identical work — coordinated omission, a 90,000× lie. | `./verify.sh 34` |
 | 35 | [Overload Control](topics/35-overload/README.md) | A 10-second outage ends at t=40 s. At 140 QPS (of 300 capacity) goodput stays at **zero until t=161 s**; at 280 QPS it **never recovers** — the outage outlives its own trigger. | `./verify.sh 35` |
@@ -57,7 +57,7 @@ instead.
 | 39 | [Fraud & Identity Graphs](topics/39-fraud-identity-graphs/README.md) | Two row-based rankers fail in *opposite* regimes: degree ranking scores **0.00** precision without camouflage, obscurity ranking **0.00** with it. | `./verify.sh 39` |
 | 40 | [Security & Attack Graphs](topics/40-security-attack-graphs/README.md) | A directory reporting **8 privileged accounts, forever** has **1969 of 2000 users** holding a path to Domain Admin — and your exposure number depends on how long the collector ran. | `./verify.sh 40` |
 | 41 | [On-Chain Analytics](topics/41-onchain-analytics/README.md) | The industry-default haircut rule marks **98% of addresses** tainted from one theft; 658 of them are under 0.1% tainted. An 1816 court case does better. | `./verify.sh 41` |
-| 42 | [Recommendations & Social](topics/42-recommendations-social/README.md) | Recommending bestsellers to everyone gets **35.3% hit-rate@50** with **92.2% overlap** between users' lists. Popularity is not a weak baseline. | `./verify.sh 42` |
+| 42 | [Recommendations & Social](topics/42-recommendations-social/README.md) | Recommending bestsellers to everyone gets **34.0% hit-rate@50** with **92.3% overlap** with the global bestseller list. Popularity is not a weak baseline. | `./verify.sh 42` |
 | 43 | [Ops Dependency Graphs](topics/43-ops-dependency-graphs/README.md) | One gray failure: **34 of 55 services alert** and the broken one is not among them — it ranks 35th by failure count, 41st by error rate, at exactly the baseline. | `./verify.sh 43` |
 
 ## How to read this table

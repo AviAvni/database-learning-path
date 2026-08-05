@@ -54,16 +54,21 @@ exposure (canary requests, micro-partitions).
   physical-plan/src/repartition/mod.rs:1150 (RepartitionExec), :1160
   (preserve_order), :398-538 (merge mode, per-(input,output) spill
   channels), :560 (BatchPartitioner), :592 (REPARTITION_RANDOM_STATE,
-  seed 0), :667/:689 (hash ctor), :699 (round-robin ctor), :825
-  (partition_iter), :854 (create_hashes), :675 (hash % strength-
-  reduced), :1329 (execute), :1742 (pull_from_input);
+  seed 0), :679 (new_hash_partitioner; :667 is its doc comment,
+  :689 the Hash state literal, :691 StrengthReducedU64::new), :710
+  (new_round_robin_partitioner; :699 is its doc comment), :825
+  (partition_iter), :854 (create_hashes), :862
+  (partition_reducer.partition_indices — the strength-reduced
+  modulo; :675 is only a doc comment), :1329 (execute), :1742
+  (pull_from_input);
   distributor_channels.rs:55 (channels()), :62 (Gate empty_channels),
   :121 (DistributionSender), :131 (send — parks when ALL buffers
   non-empty); physical-expr/src/partitioning.rs:117 (Partitioning),
   :119/:122 (RoundRobinBatch/Hash). Real finding: EnforceDistribution
   was retired into EnsureRequirements
-  (physical-optimizer/src/ensure_requirements/mod.rs:159;
-  enforce_distribution.rs:18/:76 are helpers + the retirement note).
+  (physical-optimizer/src/ensure_requirements/mod.rs:166, doc comment
+  :157-164; ensure_requirements/enforce_distribution.rs:18/:76 are
+  helpers + the retirement note).
 - Cockroach anchors verified: distsql_check.go:214
   (checkSupportForPlanNode); distsql_physical_planner.go:312
   (mustWrapNode — "no DistSQL-processor equivalent"), :971

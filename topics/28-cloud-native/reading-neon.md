@@ -7,36 +7,46 @@ safekeeper quorum for durability; a pageserver indexes page versions by
 also why a branch costs O(1). This chapter builds those pieces step by
 step — the Postgres contract Neon hooks into, the durability/serving
 split, the version index, reconstruction, and branches — then hands you
-the anchors to walk both crates.
+the anchors to walk both crates. Every anchor below was re-verified
+against the pinned neon clone at `8f60b04`.
 
 ## The problem in one sentence
 
 Give stock Postgres bottomless, branchable storage without touching the
-engine: commits must be durable in ~1 ms (so S3's ~15 ms is off the
-commit path), any page must be readable *as of any point in history*, and
-creating a full copy-on-write branch of a multi-TB database must cost
-O(1), not O(size).
+engine: commits must be durable at local-disk speed (so S3's ~14 ms
+median — our measured raw-S3 p50 — stays off the commit path), any page
+must be readable *as of any point in history*, and creating a
+copy-on-write branch of a multi-TB database must cost O(1), not O(size).
 
 ## The concepts, step by step
 
 ### Step 1 — the Postgres contract: WAL in, pages out
 
+> **In:** an unmodified Postgres and an UPDATE. **Out:** the two-sided
+> contract Neon must honor — accept the WAL stream, answer
+> `GetPage@(key, LSN)` — and the single Postgres interface (smgr) it hooks
+> to do it. Ground floor for every later step.
+
 Postgres stores tables as 8 KB **pages** and, before touching any page,
 appends a **WAL record** (write-ahead log — a small description of the
 change) at a monotonically increasing byte offset called the **LSN** (log
 sequence number). Every page version is therefore addressable as "page X
-as of LSN N", and any version is derivable from an older copy plus the
-WAL records in between (REDO, topic 5). Postgres also has a narrow
-storage-manager interface (**smgr**) — "read page / write page" — that
-Neon replaces with a network hook. That's the entire integration surface:
+as of LSN N", and any version is derivable from an older copy plus the WAL
+records in between (REDO, topic 5). Postgres also has a narrow
+**storage-manager interface (smgr)** — "read page / write page" — that
+Neon replaces with a network hook. That is the entire integration surface:
 Neon receives the WAL stream and must answer one question,
-`GetPage@(key, LSN)`, where key identifies the page. Compute stays
+`GetPage@(key, LSN)`, where **key** identifies the page. Compute stays
 stateless: its local disk is pure cache.
 
 ### Step 2 — split durability from serving: safekeepers and the pageserver
 
-The write path and the read path get different services, sized for
-opposite requirements (the Socrates lesson):
+> **In:** the WAL stream and the `GetPage@(key, LSN)` obligation from
+> Step 1. **Out:** the two separate services those two jobs are handed to,
+> sized for opposite requirements (the Socrates lesson), and which one is
+> on the commit path.
+
+The write path and the read path get different services:
 
 ```
  Postgres (unmodified + smgr hook)
@@ -49,16 +59,22 @@ opposite requirements (the Socrates lesson):
                                          S3 (all layers, all history)
 ```
 
-A commit is durable the moment a **quorum** (2 of 3) of **safekeepers** —
-small nodes whose only job is landing WAL on fast disks, coordinated by a
-term-based, Raft-flavored protocol ("Paxos-ish" per their docs) — has the
-record. Commit latency never touches S3. The **pageserver** consumes the
-WAL stream *asynchronously*: it may lag, crash, or be rebuilt, because
-everything it holds is derivable from WAL + S3. Rosetta to the previous
-chapters: safekeepers = Socrates' XLOG landing zone, pageserver = page
-servers, S3 = XStore — the same decomposition, arrived at independently.
+A commit is durable the moment a **quorum** (a majority — 2 of 3 in the
+standard deployment) of **safekeepers** — small nodes whose only job is
+landing WAL on fast disks, coordinated by a term-based, Raft-flavored
+protocol ("Paxos-ish" per their docs; the on-the-wire message is
+`AppendRequest`, which also carries `commit_lsn`) — has the record. Commit
+latency never touches S3. The **pageserver** consumes the WAL stream
+*asynchronously*: it may lag, crash, or be rebuilt, because everything it
+holds is derivable from WAL + S3. Rosetta to the previous chapters:
+safekeepers = Socrates' XLOG landing zone, pageserver = page servers,
+S3 = XStore — the same decomposition, arrived at independently.
 
 ### Step 3 — the pageserver is an LSM over (key, LSN)
+
+> **In:** the WAL stream the pageserver ingests (Step 2). **Out:** the
+> two-dimensional (key × LSN) index it stores that history in — delta
+> layers and image layers — and the LSM shape that makes it familiar.
 
 The pageserver's job is to index *page versions*, so its key space is
 two-dimensional: (page key × LSN). It stores that history in two kinds of
@@ -68,23 +84,32 @@ layers** hold fully **materialized** pages (the actual 8 KB bytes) as of
 one LSN. Fresh WAL is ingested into delta layers; compaction periodically
 produces image layers so history doesn't have to be replayed from the
 beginning; old layers are uploaded to S3 and dropped from local disk; GC
-deletes history below the retention horizon. The mental model: **an LSM
-(topic 4) over the key space (key, LSN)** — delta layers = level files,
-image layers = the compacted form — topic 4 for the third time, after GIN
-pending lists and differential arrangements (topic 27 notes).
-`LayerMap::search(key, end_lsn)` is the 2-D lookup that answers "which
-layers can contain versions of `key` at or below `end_lsn`".
+deletes history below the retention horizon.
+
+The mental model: **an LSM (topic 4) over the key space (key, LSN)** —
+delta layers = level files, image layers = the compacted form — topic 4
+for the third time, after GIN pending lists and differential arrangements
+(topic 27 notes). `LayerMap::search(key, end_lsn)` is the 2-D lookup that
+answers "which layers can contain versions of `key` at or below
+`end_lsn`".
 
 ### Step 4 — reconstruction: REDO on the read path
 
-`GetPage@(key, LSN)` is answered by *rebuilding* the page: find the
-newest image layer at or below the requested LSN, collect every delta
-(WAL record) between that image and the LSN, and replay them — using an
-actual sandboxed Postgres subprocess (**walredo**) as the replay engine,
-so Neon never reimplements record semantics. Topic 5's REDO, promoted
-from crash recovery to the everyday read path. The loop, reduced:
+> **In:** the (key, LSN) layer index from Step 3 and a `GetPage@(key, LSN)`
+> request. **Out:** the reconstruction algorithm — one image layer plus a
+> replay of the deltas above it — and which cost it puts on the read path.
+
+`GetPage@(key, LSN)` is answered by *rebuilding* the page: find the newest
+image layer at or below the requested LSN, collect every delta (WAL
+record) between that image and the LSN, and replay them — using an actual
+sandboxed Postgres subprocess (**walredo**) as the replay engine, so Neon
+never reimplements record semantics. Topic 5's REDO, promoted from crash
+recovery to the everyday read path. The loop, reduced:
 
 ```rust
+// ILLUSTRATION — not literal neon code. The real gather+replay lives in
+// pageserver/src/tenant/timeline.rs:4491 (get_vectored_reconstruct_data)
+// with the ancestor walk at :4548; replay is walredo.rs:173/:473.
 fn get_page(tl: &Timeline, key: Key, lsn: Lsn) -> Page {
     let (mut tl, mut lsn) = (tl, lsn);
     let mut deltas = vec![];
@@ -106,52 +131,66 @@ fn get_page(tl: &Timeline, key: Key, lsn: Lsn) -> Page {
 ```
 
 The cost gradient: a read needs at most **one** image layer but possibly
-**many** delta layers — so compaction (creating fresh image layers) is
-what caps read latency (Q1). One more subtlety: because the pageserver
-may lag the safekeepers, compute sends the LSN it needs with each
-request, and the pageserver *waits* until it has ingested up to that LSN
-rather than serving a stale page (Q3).
+**many** delta layers — concretely, every WAL record written to `key`
+since the last image at or below `lsn` must be replayed, so if compaction
+last cut an image for `key` at L0 and the request asks for L0 + K bytes of
+WAL, walredo replays exactly the records in that K-byte window. So
+compaction (creating fresh image layers) is what caps read latency (Q1).
+One more subtlety: because the pageserver may lag the safekeepers, compute
+sends the LSN it needs with each request, and the pageserver *waits* until
+it has ingested up to that LSN rather than serving a stale page (Q3).
 
 ### Step 5 — branches: a branch is two numbers
 
+> **In:** the immutable, LSN-indexed layer history from Steps 3–4. **Out:**
+> why creating a branch is O(1) — it writes two numbers and copies nothing
+> — plus the two costs (deep ancestor walks, harder GC) that buys.
+
 A **branch** (timeline) is metadata: `(parent timeline, branch LSN)` —
-created in O(1), copying nothing, because history is already immutable
-and indexed by LSN (Step 3). Reads on a child that miss its own layers
-fall through to the parent, *capped at the branch LSN* — the
-`Found::Nothing` arm in the Step 4 loop, and exactly our branch.rs stub.
-The same trick as Snowflake's file-list clones and SlateDB's
-manifest-reference clones, at page granularity. Two costs to watch: a
-deep branch chain makes reads walk many ancestors (Neon bounds this by
-materializing image layers *into* child timelines over time — Q4), and
-GC gets harder — a layer may be garbage for the child but live for the
-parent, so every child's branch LSN becomes a retain point (Q2).
+created in O(1), copying nothing, because history is already immutable and
+indexed by LSN (Step 3). Concretely, branching a 1 TB database copies zero
+bytes; it writes one `(ancestor_timeline_id, ancestor_lsn)` tuple. Reads
+on a child that miss its own layers fall through to the parent, *capped at
+the branch LSN* — the `Found::Nothing` arm in the Step 4 loop, and exactly
+our branch.rs stub. The same trick as Snowflake's file-list clones and
+SlateDB's manifest-reference clones, at page granularity.
+
+Two costs to watch: a deep branch chain makes reads walk many ancestors
+(Neon bounds this by materializing image layers *into* child timelines
+over time — Q4), and GC gets harder — a layer may be garbage for the child
+but live for the parent, so every child's branch LSN becomes a retain
+point (Q2).
 
 ## Where each step lives in the code
 
-Pageserver anchors (Steps 3–5, the read path):
+All line numbers verified against the pinned clone `neon@8f60b04`.
+
+Pageserver anchors (Steps 1, 3–5, the read path):
 
 | anchor | what it is |
 |---|---|
 | `pageserver/src/pgdatadir_mapping.rs:258` | `get_rel_page_at_lsn` — the public question: (relation, block, LSN) → page (Step 1's contract) |
-| `pageserver/src/tenant/timeline.rs:1227/:1339` | `Timeline::get` / `get_vectored` — batched key×LSN reads (Step 4) |
-| `timeline.rs:4491` | `get_vectored_reconstruct_data` — gather image + deltas needed to rebuild each page (Step 4) |
-| `timeline.rs:4548` | the **ancestor walk**: keys not found on this timeline are re-asked of `ancestor_timeline` capped at the branch LSN — our branch.rs stub verbatim (Step 5) |
-| `tenant/layer_map.rs:71/:448/:596` | `LayerMap::search(key, end_lsn)` — which layers can contain versions of `key` below `end_lsn`; a 2-D (key × LSN) search structure (Step 3) |
-| `tenant/storage_layer/delta_layer.rs:213` | `DeltaLayer` — sorted (key, LSN) → WAL record files (Step 3) |
-| `tenant/storage_layer/image_layer.rs:148` | `ImageLayer` — materialized pages at one LSN (Step 3) |
-| `pageserver/src/walredo.rs:55/:173/:473` | `PostgresRedoManager::request_redo` → `apply_wal_records` in a *sandboxed Postgres subprocess* — topic 5's REDO on the read path (Step 4) |
+| `pageserver/src/tenant/timeline.rs:1227` | `Timeline::get` — single-key read entry (Step 4) |
+| `pageserver/src/tenant/timeline.rs:1339` | `Timeline::get_vectored` — batched key×LSN reads (Step 4) |
+| `pageserver/src/tenant/timeline.rs:4491` | `get_vectored_reconstruct_data` — gather image + deltas needed to rebuild each page (Step 4) |
+| `pageserver/src/tenant/timeline.rs:4548` | the **ancestor walk**: keys not found on this timeline defer to `ancestor_timeline`, and `:4575` lowers the query to `ancestor_lsn` (the branch-point cap) — our branch.rs stub verbatim (Step 5) |
+| `pageserver/src/tenant/layer_map.rs:71` | `struct LayerMap` — the per-timeline index of which layers exist (Step 3) |
+| `pageserver/src/tenant/layer_map.rs:448` | `LayerMap::search(key, end_lsn)` — the single-key 2-D lookup; `:596 range_search` is its vectored form (Step 3) |
+| `pageserver/src/tenant/storage_layer/delta_layer.rs:213` | `struct DeltaLayer` — sorted (key, LSN) → WAL-record files (the mmap'd data lives in `DeltaLayerInner`) (Step 3) |
+| `pageserver/src/tenant/storage_layer/image_layer.rs:148` | `struct ImageLayer` — materialized pages at one LSN (`ImageLayerInner` holds the bytes) (Step 3) |
+| `pageserver/src/walredo.rs:55` | `struct PostgresRedoManager`; `:173 request_redo` → `:473 apply_wal_records` in a *sandboxed Postgres subprocess* — topic 5's REDO on the read path (Step 4) |
 | `pageserver/src/tenant.rs:4985` | `branch_timeline_impl` — a branch is metadata: (ancestor, ancestor_lsn). O(1). (Step 5) |
 
-For Q2, also look at how `gc_info.insert_child` (tenant.rs:588-592)
-registers `ancestor_lsn` as a retain point.
+For Q2, also look at how `gc_info.insert_child` (`tenant.rs:591`, inside
+`from_timeline` at `:585`) registers `ancestor_lsn` as a retain point.
 
 Safekeeper anchors (Step 2, the write path):
 
 | anchor | what it is |
 |---|---|
-| `safekeeper/src/safekeeper.rs:292` | `AppendRequest` — WAL push protocol messages, term-based (Raft-flavored, "Paxos-ish" per their docs) |
+| `safekeeper/src/safekeeper.rs:292` | `struct AppendRequest` — WAL push message, carries `commit_lsn`; term-based (Raft-flavored, "Paxos-ish" per their docs) |
 | `safekeeper/src/wal_storage.rs` | segment files on safekeeper disk — the durable landing zone |
-| `safekeeper/src/wal_backup.rs` | offload of safekeeper WAL to S3 once pageserver has consumed it |
+| `safekeeper/src/wal_backup.rs` | offload of safekeeper WAL to S3 once the pageserver has consumed it |
 | `safekeeper/src/timeline_eviction.rs` | evict cold timelines from safekeeper disk — even the landing zone tiers to S3 |
 
 Socrates rosetta: safekeepers = XLOG landing zone; pageserver = page
@@ -166,7 +205,7 @@ buy — in *our* tier_bench vocabulary, which lane's latency does it cap?
 
 **Q2.** Branches make GC hard: a layer can be garbage for the child but
 live for the parent (or vice versa). Look at how `gc_info.insert_child`
-(tenant.rs:588-592) registers `ancestor_lsn` as a retain point. State the
+(`tenant.rs:591`) registers `ancestor_lsn` as a retain point. State the
 GC rule in one sentence. (Keep everything ≥ min over children's branch
 LSNs and the PITR horizon.)
 
@@ -185,20 +224,80 @@ image layer (a materialized matrix snapshot at the branch point)?
 
 ## Done when
 
-- [ ] You can state the Postgres contract Neon preserves: WAL in, pages out.
-- [ ] You can explain the safekeeper/pageserver split as durability against serving.
+Answer each before unfolding it.
+
+- [ ] You can state the Postgres contract Neon preserves: WAL in, pages
+  out.
+  <details><summary>Answer</summary>
+
+  Postgres appends WAL records (each at a monotonic LSN) before touching
+  8 KB pages. Neon keeps that untouched and replaces only the smgr
+  read/write hook: it ingests the WAL stream and must answer
+  `GetPage@(key, LSN)` — any page as of any LSN. Compute stays stateless;
+  its local disk is only a cache.
+
+  </details>
+
+- [ ] You can explain the safekeeper/pageserver split as durability
+  against serving.
+  <details><summary>Answer</summary>
+
+  Safekeepers land WAL on fast disk under a term-based majority quorum —
+  that is what makes a commit durable, and S3 never touches the commit
+  path. The pageserver ingests that WAL asynchronously to serve pages; it
+  can lag or be rebuilt because everything it holds derives from WAL + S3.
+  Durability tier ≠ serving tier — the Socrates split, reached
+  independently.
+
+  </details>
+
 - [ ] You can explain why the pageserver is an LSM keyed by (key, LSN).
-- [ ] You can explain reconstruction: REDO on the read path, and what it costs a cold read.
-- [ ] You can explain why a branch is two numbers, and what that makes free.
+  <details><summary>Answer</summary>
+
+  It indexes page *versions*, so the key space is (page key × LSN). Fresh
+  WAL lands in delta layers (records sorted by key, LSN); compaction cuts
+  image layers (materialized pages at one LSN); old layers go to S3.
+  Delta = level files, image = compacted form — an LSM over a 2-D key
+  space, queried by `LayerMap::search`.
+
+  </details>
+
+- [ ] You can explain reconstruction: REDO on the read path, and what it
+  costs a cold read.
+  <details><summary>Answer</summary>
+
+  Find the newest image layer ≤ the requested LSN, collect every delta
+  between it and the LSN, and replay them in a sandboxed walredo Postgres
+  subprocess. Cost = one image read + N delta replays, where N is the WAL
+  written to that key since the last image — so compaction frequency caps
+  read latency. A cold read that must also fetch layers from S3 pays the
+  ~14 ms S3 GET on top.
+
+  </details>
+
+- [ ] You can explain why a branch is two numbers, and what that makes
+  free.
+  <details><summary>Answer</summary>
+
+  A branch is a timeline recording `(parent timeline, branch LSN)` —
+  `branch_timeline_impl` writes that tuple and copies zero bytes, even for
+  a multi-TB database, because history is already immutable and
+  LSN-indexed. Reads that miss the child's own layers fall through to the
+  parent capped at the branch LSN. The costs are deeper ancestor walks and
+  harder GC (each branch LSN is a retain point).
+
+  </details>
 
 ## References
 
 **Code**
-- [neon](https://github.com/neondatabase/neon) — pageserver +
-  safekeeper crates (Rust); read path anchors in
+- [neon](https://github.com/neondatabase/neon) — pageserver + safekeeper
+  crates (Rust), pinned at `8f60b04`; read-path anchors in
   `pageserver/src/pgdatadir_mapping.rs`, `tenant/timeline.rs`,
   `tenant/layer_map.rs`, `tenant/storage_layer/`,
-  `pageserver/src/walredo.rs`; write path in `safekeeper/src/`
-- Neon architecture posts: "Architecture decisions in Neon", "Get page
-  at LSN" docs in `docs/` in-repo (skim `docs/pageserver-storage.md` &
-  `docs/walservice.md` equivalents if present)
+  `pageserver/src/walredo.rs`; write path in `safekeeper/src/`. Every
+  file:line above was re-verified at that commit with
+  `tools/pinned-source.py`.
+- Neon architecture posts and in-repo `docs/` (skim the pageserver-storage
+  and WAL-service design notes) for the safekeeper consensus and layer-map
+  details in prose.

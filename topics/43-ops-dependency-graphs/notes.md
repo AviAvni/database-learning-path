@@ -76,7 +76,7 @@ aggregate, rare-event, or tail — they do not have the same answer.
 | deployment: 40 servers / 34 routers / 54 links / 3 weeks; agent report <40 KB, 10⁵ agents ≈ **10 Mbps** | Sherlock §5–6 |
 | Pivot Tracing: `Q1 ⋈ Q2` on Lamport's →, evaluated **in-band via baggage** | Pivot §3–4 |
 | advice primitives: **OBSERVE, UNPACK, FILTER, PACK, EMIT**; no jumps, no recursion, guaranteed to terminate | Pivot §3 |
-| pushdown rewrites reduce one query from **~600 tuples/s to 6 tuples/s** per DataNode | Pivot §4 |
+| **process-level (intermediate) aggregation** reduces one query's *emitted* tuples from **~600/s to 6/s** per DataNode; Table 3's rewrites target *packed* (baggage) tuples instead | Pivot §4 |
 | "all users of HBase pay the **10% performance overhead**" of SchemaMetrics | Pivot §2.3 |
 | gray failure = **differential observability**: the app sees a problem, the observer does not | Gray Failure §2 |
 
@@ -99,8 +99,9 @@ aggregate, rare-event, or tail — they do not have the same answer.
   retry storm the *sustaining loop* of a metastable failure. Lane 1's
   timeout-generated errors are that loop in miniature.
 - **Topic 10 ↔ 43**: Pivot Tracing's Table 3 is predicate and aggregate
-  pushdown, and the 600 → 6 tuples/s result is exactly the win an
-  optimizer exists to produce. The novelty is only *where* it is applied.
+  pushdown; the 600 → 6 tuples/s result is §4's process-level
+  pre-aggregation. Both are wins an optimizer exists to produce — the
+  novelty is only *where* they are applied.
 - **Topic 26 ↔ 43**: a real trace pipeline cannot store per-edge latency
   raw. Histograms, t-digests and count-min sketches are what M43's edge
   weights have to be, and the p99 row of lane 3 is the reason.

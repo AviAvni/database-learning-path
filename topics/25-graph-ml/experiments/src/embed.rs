@@ -34,7 +34,9 @@ pub fn sigmoid(x: f32) -> f32 {
 ///     s = sigmoid(z_u . c_c');      g = lr * (0 - s)
 ///     symmetric update with c_c'.
 /// (That's the gradient of  log sigma(z.c) + sum_neg log sigma(-z.c') —
-/// PyG's Node2Vec.loss at node2vec.py:135 is this exact expression.)
+/// the classic SGNS two-table form. PyG's Node2Vec.loss
+/// (node2vec.py:140,:142) optimizes the same objective but shares ONE
+/// embedding table for both roles.)
 ///
 /// Init both matrices U(-0.5/dim, 0.5/dim) from ChaCha8Rng::seed_from_u64(seed).
 /// `epochs` full passes over the walks; linear LR decay per epoch is fine

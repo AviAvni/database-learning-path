@@ -21,6 +21,10 @@ the model *learn* which of the 100 to listen to, at the price of
 
 ### Step 1 — the limitation: GCN's weights are structural constants
 
+> **In:** GCN's aggregation weight on each edge (reading-gcn.md).
+> **Out:** the expressiveness gap — a degree constant cannot prefer one
+> neighbour over another. Step 2 replaces the constant with a learned score.
+
 In GCN (reading-gcn.md), the weight on edge (u, v) during aggregation
 is 1/√(d_u·d_v) — computed from degrees alone, identical for every
 layer, every epoch, every input. That makes A_hat precomputable
@@ -32,14 +36,19 @@ routine ones — is beyond what a structural constant can express.
 
 ### Step 2 — attention: score each edge from its endpoints' features
 
+> **In:** the endpoint features `h_u`, `h_v` and the shared transform `W`.
+> **Out:** a raw per-edge score `e_uv`. Step 3 normalizes these into weights.
+
 GAT's move: compute a per-edge score from the *current features* of
 the edge's two endpoints, using a small learned vector `a`. Transform
 both endpoint features with the shared weight matrix W, concatenate,
-dot with `a`, and pass through LeakyReLU (a ReLU variant that leaks a
-small slope for negative inputs, keeping gradients alive):
+dot with `a`, and pass through **LeakyReLU** (a ReLU variant that leaks a
+small slope for negative inputs, keeping gradients alive; GAT fixes the
+negative slope at **0.2**, §2.1, matched by PyG's
+`negative_slope=0.2` default at gat_conv.py:136):
 
 ```
-  e_uv = LeakyReLU( a^T [ W h_u || W h_v ] )      per EDGE (u,v) ∈ A
+  e_uv = LeakyReLU_0.2( a^T [ W h_u || W h_v ] )      per EDGE (u,v) ∈ A
 ```
 
 The score says "how much should v listen to u, given what both look
@@ -51,10 +60,15 @@ systems story — Step 6.
 
 ### Step 3 — softmax: turning scores into weights that sum to one
 
+> **In:** the raw per-edge scores `e_uv` from Step 2.
+> **Out:** normalized attention weights `alpha_uv` summing to 1 over each
+> vertex's in-neighbourhood, and the weighted aggregate `h'_v`. Step 4 maps
+> all three formulas to kernels.
+
 Raw scores have arbitrary scale, so each vertex normalizes the scores
 on its incoming edges with a softmax (exponentiate, divide by the
 sum), yielding attention weights alpha that sum to 1 over each
-vertex's in-neighborhood:
+vertex's in-neighborhood (§2.1, eq. for α_ij):
 
 ```
   alpha_uv = softmax over v's in-edges ( e_uv )
@@ -69,6 +83,9 @@ transposed adjacency resident (question 1 — topic 20's transpose tax
 again).
 
 ### Step 4 — the kernel view: SDDMM + segmented softmax + SpMM
+
+> **In:** the three formulas from Steps 2–3 (score, softmax, weighted sum).
+> **Out:** the three engine kernels they compile to. Step 5 prices them.
 
 Now translate the three formulas into engine kernels. The score
 computation is an **SDDMM** (sampled dense-dense matrix multiply: a
@@ -90,6 +107,9 @@ that were computed microseconds ago:
 The three kernels for one destination row, spelled out:
 
 ```rust
+// ILLUSTRATION — not quoted; PyG's real path is gat_conv.py:392
+// (alpha_j + alpha_i), :403 (leaky_relu), :404 (segmented softmax),
+// :408-409 (message = alpha * x_j). There is no message_and_aggregate.
 fn gat_row(a_t: &Csr, v: u32, wh: &Mat, a_src: &[f32], a_dst: &[f32]) -> Vec<f32> {
     // SDDMM: dense scores, computed ONLY at A's nonzeros (in-edges of v)
     let e: Vec<f32> = a_t.row(v)
@@ -107,31 +127,43 @@ fn gat_row(a_t: &Csr, v: u32, wh: &Mat, a_src: &[f32], a_dst: &[f32]) -> Vec<f32
 }
 ```
 
-PyG anchors: score assembly `alpha_j + alpha_i` at gat_conv.py:392
-(the `a^T [x||y]` split into two halves — a_src·h_u + a_dst·h_v,
-computed as per-NODE terms then added per-edge: an optimization worth
+PyG anchors: score assembly `alpha = alpha_j + alpha_i` at
+gat_conv.py:392 (the `a^T [x||y]` split into two halves — a_src·h_u +
+a_dst·h_v, computed as per-NODE terms `alpha_src`/`alpha_dst` at
+gat_conv.py:330-331 then added per-edge: an optimization worth
 noticing, and question 3's subject — it turns O(m·d) score work into
 O(n·d) + O(m), the classic factor-computation-out-of-the-join move),
-`softmax(alpha, index, ptr)` at :404 (segmented softmax over CSR
-rows), message = `x_j * alpha` at :408. No `message_and_aggregate` —
-the fused SpMM path can't apply because the matrix values are
-recomputed per forward pass.
+`softmax(alpha, index, ptr, ...)` at :404 (segmented softmax over CSR
+rows), message = `alpha.unsqueeze(-1) * x_j` at :408-409. No
+`message_and_aggregate` — the fused SpMM path can't apply because the
+matrix values are recomputed per forward pass.
 
 ### Step 5 — the price list: extra passes and multi-head structure sharing
+
+> **In:** the three-kernel pipeline from Step 4, and the multi-head count K.
+> **Out:** the per-layer edge-pass count against GCN, and the K-fold cost of
+> multi-head. Step 6 draws the materialize-vs-compute line.
 
 Counting edge passes per layer: GCN does one (the SpMM). GAT does the
 SDDMM, the softmax's max pass, its exp-sum pass, and the SpMM — the
 sparse-softmax is a segmented reduction over CSR rows, same shape as
 topic 20's row-wise SpMV, run twice. Call it ~3 extra passes over the
 edges per layer (question 2 turns this into a forward-time estimate
-against our 21 GFLOP/s SpMM lane). **Multi-head attention** (K
-independent attention weightings whose outputs are concatenated — the
-standard variance-reduction trick) multiplies everything by K — it's
-K SpMMs with shared structure, different values. A delta-matrix
-engine would store one structure + K value arrays (FalkorDB's
-multi-value matrix problem, again).
+against the **16.82 GFLOP/s** SpMM lane, FINDINGS.md row 25).
+**Multi-head attention** (K independent attention weightings — the
+standard variance-reduction trick) multiplies everything by K: it's
+K SpMMs with shared structure, different values. The paper concatenates
+the K heads on intermediate layers (`h'_i = ‖_{k=1}^K σ(Σ α_ij^k W^k h_j)`,
+§2.1) but **averages** them on the final prediction layer, where concat
+"is no longer sensible" (§2.1); on Cora it uses K=8 heads of 8 features
+each. A delta-matrix engine would store one structure + K value arrays
+(FalkorDB's multi-value matrix problem, again).
 
 ### Step 6 — the line this pair of papers draws: materialize vs compute
+
+> **In:** GCN's precomputable `A_hat` and GAT's feature-dependent attention.
+> **Out:** the materialized-view vs computed-view distinction that splits the
+> two papers' systems profiles.
 
 GCN's A_hat is a **materialized view**: computed once from the graph,
 reused by every query, invalidated only by graph changes. GAT's
@@ -166,7 +198,7 @@ is the explanation (question 4: what Cypher surface exposes it).
    transpose tax)?
 2. Count edge passes per GAT layer vs GCN layer. On our 566K-edge SBM
    at 21 GFLOP/s SpMM, estimate the forward-time ratio.
-3. The a_src/a_dst per-node split at gat_conv.py:332 turns O(m·d) score
+3. The a_src/a_dst per-node split at gat_conv.py:330-332 turns O(m·d) score
    work into O(n·d) + O(m). Which database trick is this (hint: factor
    computation out of a join)?
 4. GAT attention weights are data — a fraud analyst asks "WHY did this
@@ -177,11 +209,73 @@ is the explanation (question 4: what Cypher surface exposes it).
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can say what GCN's structural constant weights cannot express.
+
+  <details><summary>Answer</summary>
+
+  A GCN edge weight is `1/√(d_u·d_v)` — degree arithmetic, fixed before
+  training and identical every layer and epoch. It is content-blind: it
+  cannot prefer one neighbour over another based on their features, so any
+  task where *which* neighbour matters (one incriminating transaction among a
+  hundred routine ones) is beyond it. GAT makes the weight a learned function
+  of the endpoints' current features instead.
+
+  </details>
+
 - [ ] You can explain why the softmax is over in-edges of v, and what normalizing over out-edges would mean.
+
+  <details><summary>Answer</summary>
+
+  Normalization is per-destination: it is v deciding how to divide its
+  attention among its sources, so the softmax runs over v's in-edges and the
+  weights sum to 1 there. Normalizing over u's out-edges would instead make u
+  ration how much of itself it sends out — a different (and not what the paper
+  wants) semantics. The in-edge choice forces the kernel to iterate
+  in-neighbourhoods, which wants the transposed adjacency A^T resident
+  (topic 20's transpose tax).
+
+  </details>
+
 - [ ] You can decompose a GAT layer into SDDMM, segmented softmax and SpMM.
+
+  <details><summary>Answer</summary>
+
+  SDDMM computes the per-edge scores `e_uv` only at A's nonzeros (a masked
+  dense-dense product); a segmented softmax normalizes each CSR row's scores
+  into `alpha`; the SpMM aggregates `Σ_u alpha_uv · W h_u`. The middle kernel
+  is two passes (a max pass and an exp-sum pass), so a GAT layer is ~3 extra
+  edge passes on top of GCN's single SpMM. PyG runs them at gat_conv.py:392
+  (score), :404 (softmax), :408 (message).
+
+  </details>
+
 - [ ] You can count edge passes per GAT layer against per GCN layer on this topic's 566 K-edge SBM, whose SpMM measures 4.31 ms at 16.82 GFLOP/s.
+
+  <details><summary>Answer</summary>
+
+  GCN is one edge pass (the SpMM). GAT is roughly four: SDDMM, softmax-max,
+  softmax-expsum, SpMM — about 4× the sparse traffic per layer, before the
+  ×K for multi-head. Anchoring to the measured SpMM (4.31 ms at 16.82
+  GFLOP/s, FINDINGS.md row 25) as the unit edge pass, a single-head GAT layer
+  lands near 4×4.31 ≈ 17 ms of sparse work; do the full estimate against your
+  own bench in notes.md, and remember the SDDMM/softmax passes move less data
+  per edge than the 64-wide SpMM, so the true ratio is below 4.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md, including whether GAT is worth engine support at all.
+
+  <details><summary>Answer</summary>
+
+  All five `## Questions` answered in notes.md — the in-edge/transpose
+  question, the edge-pass forward-time estimate, the a_src/a_dst
+  factor-out-of-the-join trick, the Cypher surface for `attention > t`, and
+  the M25 argument from each variant's kernel inventory (whether GCN/SAGE +
+  the vector index already covers the 95% case).
+
+  </details>
 
 ## References
 
@@ -193,5 +287,7 @@ is the explanation (question 4: what Cypher surface exposes it).
 
 **Code**
 - [pytorch_geometric](https://github.com/pyg-team/pytorch_geometric)
-  `torch_geometric/nn/conv/gat_conv.py` — score split :392, segmented
-  softmax :404, message :408; note the absent `message_and_aggregate`
+  `torch_geometric/nn/conv/gat_conv.py` — per-node score halves :330-331,
+  edge score `alpha_j + alpha_i` :392, `leaky_relu` (slope 0.2) :403,
+  segmented softmax :404, message :408-409; note the absent
+  `message_and_aggregate`, and `negative_slope=0.2` default at :136

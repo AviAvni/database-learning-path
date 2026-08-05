@@ -3,12 +3,13 @@
 ## Baseline (provided lane, Apple M3 Pro, measured 2026-07-28)
 
 `cargo run --release --bin hop_bench` — preferential-attachment graph, 1 M
-nodes / 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 1000 sources.
+nodes / 16.0 M directed edges, two-hop `COUNT(DISTINCT)` from 10 000 random
+sources and from the 100 highest-degree nodes.
 Max degree 6565, p50 degree 11.
 
-| impl | source set | ns/query | checksum |
+| impl | source set | ns/query | checksum (sum over the set) |
 |---|---|---|---|
-| adj_list (oracle) | random | 4 914 | 10 220 457 |
+| adj_list (oracle) | random (10 000 sources) | 4 914 | 10 220 457 |
 | adj_list (oracle) | supernodes (top-100 degree) | **495 378** | 7 890 665 |
 | CSR (yours) | | | stub |
 | masked SpMV (yours) | | | stub |
@@ -21,18 +22,27 @@ under your start node says it costs, and on a scale-free graph that is a
 power law with no useful average. The p50 node has 11 neighbours; the top node
 has 6565.
 
-Note the supernode checksum is *smaller* (7.9 M vs 10.2 M distinct nodes
-reached) while taking 101× longer — high-degree neighbourhoods overlap heavily,
-so the work is redundant, not productive. That redundancy is what the CSR and
-SpMV lanes are able to attack; the adjacency-list oracle cannot.
+Note the checksum column is a **sum over the source set**, and the two sets are
+different sizes — 10 000 random sources against 100 supernodes. Normalise before
+comparing anything: random reaches **1022** distinct nodes per query,
+a supernode reaches **78 907** — **77× more**. (An earlier version of this file
+read the raw sums as "the slow case reaches fewer nodes"; it does not, and that
+mistake is worth keeping in mind every time a benchmark prints a total.)
+
+So the 101× decomposes: **77× more nodes reached**, and **1.31× worse cost per
+node reached** (4.81 ns against 6.28 ns). The second factor is the one worth
+chasing, and this lane cannot attribute it — it counts distinct nodes, not edges
+traversed, so re-walked overlap and the cache cost of a 79 000-node frontier look
+identical from here. Exercise 6 in the README adds the edge counter that
+separates them.
 
 Checksums must match across all three implementations per source set — that is
 the correctness gate before any timing comparison means anything.
 
 ## Predictions (fill BEFORE implementing csr.rs / matrix.rs)
 
-Baseline (provided, measured): adj_list 3484 ns/query random,
-294885 ns/query supernodes (85× tail); graph 1M nodes / 16M directed
+Baseline (provided, measured): adj_list 4914 ns/query random,
+495378 ns/query supernodes (101× tail); graph 1M nodes / 16M directed
 edges, max degree 6565, p50 degree 11.
 
 | impl | sources | predicted vs adj_list (×) | actual ns/query |
@@ -46,7 +56,7 @@ edges, max degree 6565, p50 degree 11.
 |---|---|---|
 | does csr beat adj_list at all? (per-node vecs are already contiguous — where's the win?) | | |
 | matrix vs csr: what does the frontier materialization cost? | | |
-| supernode ratio: does CSR shrink the 85× tail or just shift it? | | |
+| supernode ratio: does CSR shrink the 101× tail or just shift it? | | |
 | CSR build time vs adj_list build time | | |
 
 ## Implementation log

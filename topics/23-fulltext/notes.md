@@ -8,6 +8,11 @@ df(t0)=99888 (in 99.9% of docs — "the"), df(t100)=8259, df(t10000)=83.
 
 ### BM25 top-10, exhaustive TAAT oracle
 
+> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 23, which
+> spans **0.009 ms to 10.378 ms** over the same four queries. FINDINGS is
+> canonical for the timings; the posting counts (272,310 and 159) are
+> generator-determined and agree. Cite one run by name, never average.
+
 | query | ms | postings walked | top1 score |
 |---|---|---|---|
 | common∧common [t0 t1 t5] | 8.75 | 272,310 | 0.612 |
@@ -16,7 +21,7 @@ df(t0)=99888 (in 99.9% of docs — "the"), df(t100)=8259, df(t10000)=83.
 | rare∧rare [t9000 t15000] | 0.008 | 159 | 9.208 |
 
 The common∧rare row is the WAND poster child: 99,964 postings walked
-but the rare term (df=83, idf≈9.0) contributes ~93% of the top-1
+but the rare term (df=83, idf≈7.1) contributes ~93% of the top-1
 score — nearly all of t0's 99,888 postings are provably hopeless
 once the heap holds 10 docs that contain t12000. ~32 ns/posting for
 the oracle (hash accumulate dominates — topic 22's Q1 story again).

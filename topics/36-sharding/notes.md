@@ -54,7 +54,7 @@ can spread the rank-0 key's ~10% of traffic. Splitting *between* keys
 - No new clones: redis and cockroach already under ~/repos.
 - Redis anchors verified by grep this session: cluster.h:23
   (CLUSTER_SLOTS = 1<<14), :59 (keyHashSlot, hash-tag carve-out);
-  cluster.c:36 (patternHashSlot), :1191 (getNodeByQuery), :1397
+  cluster.c:35 (patternHashSlot), :1191 (getNodeByQuery), :1397
   (CLUSTER_REDIR_ASK), :1432 (CLUSTER_REDIR_MOVED), :1443
   (clusterRedirectClient), :1680 (askingCommand); cluster_legacy.h:343/:344
   (migrating_slots_to / importing_slots_from); cluster_legacy.c:6072-6075
@@ -66,14 +66,17 @@ can spread the rank-0 key's ~10% of traffic. Splitting *between* keys
   (shouldQueue); split/decider.go:155 (Decider), :222 (Record), :329
   (RecordMax); allocatorimpl/allocator.go:125-127 (AllocatorAction);
   store_rebalancer.go:114 (StoreRebalancer), :218 (RebalanceMode).
-- Papers verified from PDFs: Dynamo (SOSP'07, /tmp/dynamo.pdf, §4 +
+- Papers verified from PDFs: Dynamo (SOSP'07, `.cache/papers/dynamo-sosp07.txt`, §4 +
   §6.1-6.3) — MD5→128-bit ring, tokens/vnodes, N/R/W with common
   (3,2,2), sloppy quorum + hinted handoff, per-range Merkle trees,
   strategies 1/2/3 (strategy-1 bootstrap "almost a day", strategy 3 =
   Q/S tokens, metadata 3 orders smaller, partition-as-file), imbalance
   ratio 20% low load vs 10% high (15% threshold), 99.94% of reads see
-  one version; PowerGraph (OSDI'12, /tmp/powergraph.pdf, pp. 1-8) —
-  GAS, α≈2 natural graphs, Twitter in-degree α=1.7, 1% of vertices ~
+  one version; PowerGraph (OSDI'12, `.cache/papers/powergraph-osdi12.txt`,
+  pp. 1-8) — GAS, α≈2 natural graphs (the paper assigns no numeric α
+  to any real graph; 1.65/1.7/1.8/2.0 are Fig 6 synthetic-curve
+  labels), Twitter's in-degree tail heavier than its out-degree
+  (Fig 1), 1% of vertices ~
   half the edges, Thm 5.1 (random cut 1−1/p), Thm 5.2 (replication
   from degree distribution), Thm 5.3 (vertex-cut ≤ ghosts of any
   edge-cut), greedy Cases 1-4, coordinated vs oblivious, Table 1

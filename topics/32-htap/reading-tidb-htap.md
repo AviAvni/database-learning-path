@@ -9,16 +9,30 @@ engines). Before either, it builds the design step by step: what a
 replica inherits from Raft, why *learner* is the load-bearing word, and
 how a read buys back freshness.
 
+Every code anchor below is verified against the two clones this repo pins:
+TiFlash at `pingcap/tiflash@b5093dd` (2026-07-09) and TiDB at
+`pingcap/tidb@b94006d` (2026-07-10) — the pin table at the end of
+`../../resources/codebases.md` — quoted with the line numbers those files
+occupy at that commit. The paper is Huang et al., *TiDB: A Raft-based HTAP
+Database* (VLDB 2020); section numbers cite that PDF.
+
 ## The problem in one sentence
 
-Bench lane 1 showed scans and writes on one copy starving each other
-(11.4 M writes/2 s → 69) — TiDB's answer is a physically separate
-columnar copy for the scans, and the question that decides everything is:
-how does that copy stay fresh without slowing the writes?
+Bench lane 1 showed scans and writes on one copy starving each other —
+adding a free-running scanner took writes from **11,438,647 in 2 s to 69**
+and p99 write latency from **333 ns to 7.49 s** (the topic README's
+provided-lane output, echoed in `notes.md`). TiDB's answer is a physically
+separate columnar copy for the scans, and the question that decides
+everything is: how does that copy stay fresh without slowing the writes?
 
 ## The concepts, step by step
 
 ### Step 1 — separate the copies: scans get their own machines
+
+> **In:** nothing yet — this step names the one cure the whole topic circles,
+> so the later steps can price it. **Out:** the decision to keep a *second,
+> columnar copy* on separate hardware, which Steps 2–4 then have to keep
+> fresh without taxing the writers.
 
 The only cure for one-copy interference that survives every workload is
 a second copy on separate hardware: OLTP point-writes hit row-format
@@ -29,6 +43,11 @@ left of the trilemma is freshness — a second copy is only as good as the
 mechanism that keeps it current, which is Steps 2–4.
 
 ### Step 2 — the feed is the Raft log itself, not a bolt-on pipeline
+
+> **In:** the second-copy decision from Step 1. **Out:** the feed that fills
+> that copy — the Raft log the primary already produces — and the reason an
+> *inside-the-group* feed can be bounded where the outside pipeline of Step 5's
+> contrast (F1 Lightning) cannot.
 
 TiDB already replicates every write through Raft (topic 15's consensus
 protocol: a leader appends each write to a replicated **log**, and once
@@ -44,11 +63,23 @@ paying seconds of lag. Being inside the consensus group is what makes
 
 ### Step 3 — the learner: receives everything, votes never
 
+> **In:** the Raft-log feed from Step 2. **Out:** the one word — *learner* —
+> that lets the columnar copy consume that feed without ever sitting in the
+> write quorum, so Step 4 can charge the whole freshness bill to the read side.
+
 A Raft **learner** is a replica that receives the log like any follower
 but does not vote in the quorum. That one word carries the OLTP-latency
 guarantee: commit waits only on voters, so adding TiFlash learners adds
 **zero** to write-quorum latency — even when a learner is busy building
-column files or falls minutes behind, no write ever waits for it.
+column files or falls minutes behind, no write ever waits for it. The
+paper states this outright: a learner "does not participate in leader
+elections, nor is it part of a quorum for log replication," and log
+replication to it is asynchronous, so "the leader does not need to wait
+for success before responding to the client" (§2).
+
+A **Region** — the unit the code below operates on — is TiKV's key-range
+shard: one contiguous slice of the key space, replicated by its own Raft
+group. A learner holds the columnar copy of a Region's rows.
 
 ```
    client writes                        analytical query
@@ -67,6 +98,10 @@ would sit inside the write quorum (question 1).
 
 ### Step 4 — freshness is a wait: the learner read
 
+> **In:** a learner (Step 3) that lags the leader by whatever it has not yet
+> applied. **Out:** the per-read operation that buys a consistent snapshot
+> back — a read-index plus a wait — and the timeout that bounds it.
+
 A learner lags by whatever it hasn't applied yet, so a consistent read
 must buy freshness back explicitly. The learner read does it in two
 moves: ask the leader for the current **commit index** (the log position
@@ -76,14 +111,18 @@ that far. Freshness is not a config flag — it's a **wait**, paid per
 read, sized by the current apply lag:
 
 ```rust
-// doLearnerRead, reduced: freshness = read-index + wait-for-apply
+// ILLUSTRATION — not quoted from TiFlash. The real control flow is
+// doLearnerRead (LearnerRead.cpp:35), which calls waitUntilDataAvailable
+// (LearnerRead.cpp:58) under config.waitIndexTimeout() (:61); the M32
+// analogue you build is learner.rs:22 (read_wait). freshness = read-index
+// + wait-for-apply.
 fn learner_read(region: &Region, leader: &Leader, timeout: Duration) -> Option<Snapshot> {
     let commit_idx = leader.read_index();       // "how far is committed, right now?"
     let deadline = Instant::now() + timeout;
     while region.applied_index() < commit_idx { // block until local apply catches up
         if Instant::now() > deadline {
-            return None;                        // caller falls back to the leader:
-        }                                       // safe but expensive
+            return None;                        // real code raises RegionException (:121)
+        }
         wait_for_apply_progress();
     }
     Some(region.snapshot_at(commit_idx))        // now as fresh as any leader read
@@ -91,20 +130,33 @@ fn learner_read(region: &Region, leader: &Leader, timeout: Duration) -> Option<S
 ```
 
 The real thing is `doLearnerRead`
-(`dbms/src/Storages/KVStore/Read/LearnerRead.cpp:35`), with
-`waitIndexTimeout` at `:61` (and the wait-index timestamps at `:66-68`).
-On timeout the caller falls back to reading from the leader — always
-safe, but it re-imports exactly the interference this architecture
-exists to remove. Your `learner.rs::read_wait` is this function reduced
-to arithmetic; bench lane 3 is its wait distribution, and lane 2's
-batch-size table is the pressure that makes waits grow (question 3).
+(`dbms/src/Storages/KVStore/Read/LearnerRead.cpp:35`). It builds the
+regions' snapshot and calls `waitUntilDataAvailable` (`:58`) with two
+budgets — `batchReadIndexTimeout()` for the read-index RPC and
+`waitIndexTimeout()` for the apply wait (`:60-61`) — stamping the wait's
+start and end onto the query context (`:66-68`). When a Region cannot reach
+its read index inside `waitIndexTimeout()`, its status is left non-OK and
+`doLearnerRead` throws a `RegionException` for the unavailable regions
+(`:121`); TiDB catches that, retries, and with fallback enabled can rerun
+the query on TiKV — always safe, but back on the row store the scan and
+writes share one copy again, re-importing exactly the interference this
+architecture exists to remove. Your `learner.rs::read_wait` (`learner.rs:22`)
+is this function reduced to arithmetic; bench lane 3 is its wait
+distribution, and lane 2's batch-size table is the pressure that makes
+waits grow (question 3).
 
 ### Step 5 — one planner prices both engines
+
+> **In:** two live copies — TiKV rows (Step 1) and a fresh-on-read TiFlash
+> learner (Step 4). **Out:** the per-query decision of which copy to scan,
+> made by one cost-based optimizer rather than a static routing rule.
 
 With two copies live, something must decide per query which one to hit —
 and TiDB makes it the *same* cost-based optimizer, pricing row and
 columnar paths together rather than routing by rule. In
-`pkg/planner/core/find_best_task.go`:
+`pkg/planner/core/find_best_task.go` (a **cop task** is a *coprocessor
+task*: one pushed-down read request the planner sends to a storage node,
+tagged for either a TiKV or a TiFlash target):
 
 - `:535` — building cop tasks, distinguishing TiKV vs TiFlash targets.
 - `:1841`, `:1878` — candidate-path retention keeps TiFlash paths alive
@@ -121,7 +173,9 @@ the row path cheaper than the scan (question 4).
 | anchor | step | what to see |
 |---|---|---|
 | tiflash `dbms/src/Storages/KVStore/Read/LearnerRead.cpp:35` | 4 | `doLearnerRead` — read-index then wait-for-apply, freshness as a wait |
-| tiflash `LearnerRead.cpp:61`, `:66-68` | 4 | `waitIndexTimeout` and the wait-index timestamps — the timeout-and-fallback path |
+| tiflash `LearnerRead.cpp:58`, `:60-61` | 4 | `waitUntilDataAvailable` under `batchReadIndexTimeout()` / `waitIndexTimeout()` — the two budgets |
+| tiflash `LearnerRead.cpp:66-68` | 4 | wait-index start/end timestamps stamped on the query context |
+| tiflash `LearnerRead.cpp:121` | 4 | `RegionException` thrown for regions that miss the read index — the timeout-and-fallback path |
 | tidb `pkg/planner/core/find_best_task.go:535` | 5 | building cop tasks, TiKV vs TiFlash targets |
 | tidb `find_best_task.go:1841`, `:1878` | 5 | candidate-path retention — TiFlash paths kept alive so cost decides |
 
@@ -137,7 +191,8 @@ solved.
    would happen to commit p99 if TiFlash were a voting follower doing
    columnar apply?
 2. `read_wait` returns `None` on timeout. What does TiDB do then, and why
-   is falling back to the leader safe but expensive? (LearnerRead.cpp:61.)
+   is falling back to TiKV safe but expensive? (On timeout the real code
+   throws `RegionException` at `LearnerRead.cpp:121`.)
 3. The paper claims fresh analytics, but lane 3 shows waits grow with
    apply-batch size. What pressure pushes TiFlash toward larger batches
    anyway? (Think lane 2's freshness-vs-batch table.)
@@ -153,10 +208,54 @@ solved.
 
 ## Done when
 
-You can explain, in one breath each, why the learner costs writes
-nothing (never in the quorum) and why its reads still see committed data
-(read-index + wait-for-apply) — and point at the line where each claim
-lives.
+Answer each before unfolding it.
+
+- [ ] You can say why adding TiFlash learners costs write latency nothing.
+  <details><summary>Answer</summary>
+
+  A learner receives the log but never votes, and replication to it is
+  asynchronous — the leader "does not need to wait for success before
+  responding to the client" (paper §2). Commit waits only on the voting
+  quorum (Step 3), so a learner that is minutes behind or busy building
+  column files never sits on the write path. This is the mechanism that keeps
+  the bench lane 1 outage (11,438,647 writes/2 s → 69) from happening once the
+  scans move to a separate voting-exempt copy.
+
+  </details>
+
+- [ ] You can say how a learner read still returns committed data despite lag.
+  <details><summary>Answer</summary>
+
+  Two moves (Step 4): ask the leader for the current commit index (Raft
+  ReadIndex, one RPC), then block until the local replica's applied index
+  reaches it — `doLearnerRead` → `waitUntilDataAvailable`
+  (`LearnerRead.cpp:35`, `:58`). Freshness is a per-read *wait*, sized by the
+  current apply lag, not a background setting.
+
+  </details>
+
+- [ ] You can say what happens when that wait times out, and its cost.
+  <details><summary>Answer</summary>
+
+  When a Region misses its read index within `waitIndexTimeout()` (`:60-61`),
+  `doLearnerRead` throws a `RegionException` for the unavailable regions
+  (`LearnerRead.cpp:121`). TiDB retries and, with fallback enabled, can rerun
+  on TiKV. Safe — the row store is always current — but expensive: the scan
+  is back on the same copy as the writes, re-creating the one-copy
+  interference (bench lane 1) the split existed to remove.
+
+  </details>
+
+- [ ] You can say why one optimizer prices both engines instead of a rule.
+  <details><summary>Answer</summary>
+
+  `find_best_task.go` builds cop tasks tagged TiKV-vs-TiFlash (`:535`) and
+  *retains* TiFlash candidate paths beside index paths (`:1841`, `:1878`) so
+  cost, not topology, decides. A rule like "big table → TiFlash" guesses wrong
+  the moment an index makes the row path cheaper than a full columnar scan
+  (question 4); the cost model catches that per query.
+
+  </details>
 
 ## References
 

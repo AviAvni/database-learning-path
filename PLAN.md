@@ -109,7 +109,7 @@ flowchart TD
 
 - **Concepts:** memtable→SST lifecycle, leveled vs tiered vs FIFO compaction, bloom filters (and Monkey's optimal allocation), fractional cascading, compaction debt/write stalls, SST formats & block cache.
 - **Read code:** fjall (read it ALL — it's small), RocksDB `db/compaction/`, `table/block_based/`.
-- **Papers:** "Monkey: Optimal Navigable Key-Value Store" (SIGMOD'17), "Dostoevsky" (SIGMOD'18), RocksDB paper (TODS'21), "Constructing and Analyzing the LSM Compaction Design Space" (VLDB'21).
+- **Papers:** "Monkey: Optimal Navigable Key-Value Store" (SIGMOD'17), "Dostoevsky" (SIGMOD'18), RocksDB paper (FAST'21, also ACM Transactions on Storage 17(4)), "Constructing and Analyzing the LSM Compaction Design Space" (VLDB'21).
 - **Build & bench:** implement a mini-LSM (memtable + SSTs + leveled compaction + bloom filters) — optionally follow skyzh/mini-lsm course; measure write amp with different compaction strategies.
 - **Capstone M4:** LSM-backed alternative persistence (graph snapshots as SSTs); benchmark B+tree vs LSM backends on graph mutation + bulk-load workloads.
 
@@ -237,7 +237,7 @@ flowchart TD
 
 **Why:** The last 10x on a single core. Touched in topic 11 — this is the dedicated deep dive: writing kernels that saturate the CPU.
 
-- **Concepts:** SIMD fundamentals (AVX2/AVX-512 vs ARM NEON/SVE — know both, you're on ARM), autovectorization and why it fails, Rust portable SIMD (`std::simd`) vs intrinsics, branchless selection (masks + compress), SIMD hash probing (SwissTable), SIMD string parsing/comparison, bit-packed decoding at SIMD speed (FastLanes), gather/scatter costs, instruction-level parallelism & dependency chains, Mojo's SIMD-first design (`SIMD[type, width]` as a first-class parametric type — compare its ergonomics vs `std::simd` and intrinsics).
+- **Concepts:** SIMD fundamentals (AVX2/AVX-512 vs ARM NEON/SVE — know both, you're on ARM), autovectorization and why it fails, Rust portable SIMD (`std::simd`) vs intrinsics, branchless selection (masks + compress), SIMD hash probing (SwissTable), SIMD string parsing/comparison, bit-packed decoding at SIMD speed (FastLanes), gather/scatter costs, instruction-level parallelism & dependency chains, Mojo's SIMD-first design (`SIMD[dtype, size]` as a first-class parametric type — compare its ergonomics vs `std::simd` and intrinsics).
 - **Read code:** polars `crates/polars-compute/` kernels, simdjson (the masterclass — read with the paper), hashbrown SIMD group probing, DuckDB compressed-scan kernels, usearch/SimSIMD distance functions, memchr crate, Mojo stdlib + Modular's matmul optimization blog series.
 - **Papers:** "Rethinking SIMD Vectorization for In-Memory Databases" (SIGMOD'15), "Parsing Gigabytes of JSON per Second" (simdjson, VLDB'19), "The FastLanes Compression Layout" (VLDB'23).
 - **Build & bench:** write filter-selection and dot-product kernels four ways: naive scalar, autovectorized, `std::simd`, NEON intrinsics; bench with `perf stat` (IPC, vector-lane utilization); then SIMD-ize a bit-packing decoder and compare against topic 12's scalar version; port one kernel to Mojo and compare both the numbers and the code you had to write.

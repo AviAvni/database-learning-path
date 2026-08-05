@@ -82,14 +82,18 @@ Surprises / dead ends:
 
 1. Why no fsync/sockets/threads in the library:
 2. maybe_commit on matched=[7,5,5,3,2] → commit index:
-3. next_idx decrement optimization (§5.3 footnote):
+3. next_idx decrement optimization (§5.3 body, not a footnote — and
+   the paper doubts it is necessary, while raft-rs implements it):
 4. advance_append pipelining — what still can't reorder:
 5. Ready → M15 stage 2 mapping:
 
 ### qdrant consensus (reading-qdrant-consensus.md)
 
 1. 10K upserts/s through raft = ? (use the 3 ms fsync above):
-2. Active/Dead/Partial ↔ Progress replicate/probe/snapshot:
+2. `ReplicaState`'s eleven variants (`replica_set_state.rs:100-133`) ↔
+   Progress replicate/probe/snapshot — start with Active/Dead/Partial,
+   then say where `ActiveRead` (readable, not a source of truth, `:125`)
+   and `ManualRecovery` land:
 3. qdrant vector-read consistency:
 4. WAL-through-raft: right for a graph DB? FalkorDB's answer:
 5. Storage impl behind ConsensusStateRef:

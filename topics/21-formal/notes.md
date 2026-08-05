@@ -67,45 +67,18 @@ Surprises / dead ends:
 
 ## Questions from the reading guides
 
-### AWS CACM'15 (reading-aws-cacm15.md)
+Each guide now ends with its own `## Questions (answer in notes.md)`
+list — six per guide, and they changed when the guides were rewritten
+against the depth rules. Answer them against the guide you just read
+rather than against a copy that can drift out of sync; several of the
+old entries here encoded claims the rewrite corrected (Z3 does *not* use
+Nelson–Oppen, and Lean's runtime is Beans, not Perceus).
 
-1. Which capstone protocol clears the spec cost/benefit bar:
-2. 35-step vs our 5-step trace — reachable-but-rare:
-3. TLA+ Next action vs proptest state-machine transition:
-4. Small-scope hypothesis: protocols vs B+tree edge cases:
-5. Keeping spec and code honest in CI:
-
-### egg POPL'21 (reading-egg-popl21.md)
-
-1. Hand-trace (a*2)/2 unions; where (/ 2 2) meets 1:
-2. Why memo re-canonicalization loops to fixpoint:
-3. machine.rs Scan cost; classes_by_op index:
-4. Assoc+comm growth per iteration; which limit trips:
-5. Cascades memo vs e-graph — what each has the other lacks:
-
-### Z3 TACAS'08 (reading-z3-tacas08.md)
-
-1. Why Z3's e-graph needs justifications, egg doesn't:
-2. Deferred rebuild vs backtracking trail:
-3. x/x→1 soundness as SMT query (ints vs reals):
-4. Nelson-Oppen equality exchange ↔ join-key exchange:
-5. Trigger selection = index choice of SMT:
-
-### Specifying Systems + raft.tla (reading-tlaplus-raft.md)
-
-1. Rejoin(r) → what invariant breaks → why terms exist:
-2. Longest-log failover: quorum-intersection argument + bad trace:
-3. What "ship everything atomically" would hide:
-4. MVCC visibility as TLA+ sketch (M21 outline):
-5. Why stuttering is essential for refinement:
-
-### Beans + Perceus (reading-lean-perceus.md)
-
-1. Arc costs that borrow inference eliminates:
-2. When the RC==1 reuse check costs more than it saves:
-3. Garbage-free peak memory ↔ buffer pool budgets:
-4. Proof vs TLC vs proptest ranking for DP∩M=∅:
-5. Rust's equivalent of Koka's no-hidden-aliasing:
+- [reading-aws-cacm15.md](reading-aws-cacm15.md) — answers:
+- [reading-egg-popl21.md](reading-egg-popl21.md) — answers:
+- [reading-z3-tacas08.md](reading-z3-tacas08.md) — answers:
+- [reading-tlaplus-raft.md](reading-tlaplus-raft.md) — answers:
+- [reading-lean-perceus.md](reading-lean-perceus.md) — answers:
 
 ## Cross-topic threads
 

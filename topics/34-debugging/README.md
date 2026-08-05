@@ -143,7 +143,7 @@ actually zero.
 | redis | `src/latency.c:182` | `createLatencyReport` — an advice engine over 160-sample rings |
 | redis | `src/debug.c:2643` | `sigalrmSignalHandler` — the watchdog that stack-traces a stuck server |
 | rocksdb | `include/rocksdb/perf_context.h:305` | `PerfContext` — per-query counters, thread-local |
-| rocksdb | `monitoring/perf_context_imp.h:27` | `PERF_TIMER_GUARD` — level-gated, compile-out-able |
+| rocksdb | `monitoring/perf_context_imp.h:45` (live), `:27` (`NPERF_CONTEXT` no-op) | `PERF_TIMER_GUARD` — compile-out-able; the level check is in `PerfStepTimer`'s ctor (`perf_step_timer.h:19`), not the macro |
 | rocksdb | `monitoring/histogram.h:21` | `HistogramBucketMapper` — all of u64 in 109 buckets |
 | FalkorDB | `src/slow_log/slow_log.c` | `SlowLog_Add` — the C surface M34 ports to the Rust engine |
 

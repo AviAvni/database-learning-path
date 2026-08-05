@@ -22,6 +22,11 @@ three in opposite directions.
 
 ### Step 1 — what production adds to the theory
 
+> **In:** the calculus's rule "keep an integral per nonlinear operator."
+> **Out:** the three systems decisions it leaves open — state placement
+> (RAM vs object storage), the consistency unit (which input prefix an
+> output reflects), and index sharing plus recovery.
+
 An IVM engine in production is the delta algebra plus three systems
 decisions. **State placement**: every nonlinear operator's integral
 (join state, aggregate counts) must live somewhere with a cost —
@@ -34,6 +39,11 @@ index, and a restarted node must rebuild its state from something.
 Everything in the two codebases below is one of these three, answered.
 
 ### Step 2 — Materialize: indexes are arrangements are memory
+
+> **In:** SQL view definitions. **Out:** differential dataflows whose
+> "indexes" *are* differential arrangements pinned in RAM and shared by
+> every query that can use them — durability delegated to persist,
+> consistency inherited from timely's frontiers.
 
 Materialize's bet is to change as little theory as possible: the compute
 layer (`src/compute/src/render/`) compiles SQL plans into differential
@@ -51,6 +61,12 @@ serializable.
 
 ### Step 3 — delta joins: the bilinear rule scaled to n inputs
 
+> **In:** an n-way incremental join. **Out:** n dataflows, each starting
+> from one input's changes and looking up the other n−1 inputs' *already
+> existing* arrangements — the bilinear rule generalized so no
+> intermediate arrangements are built, with per-path timestamping to stop
+> double-counting.
+
 An n-way incremental join done as a binary tree needs an arrangement for
 every *intermediate* result — state that exists only to serve the join.
 Materialize's "dogs^3" **delta joins**
@@ -59,14 +75,21 @@ dataflows, each starting from one input's changes and looking up the
 other n−1 inputs' *existing* arrangements — the bilinear rule
 generalized so NO intermediate arrangements are built. The correctness
 subtlety is double-counting: the n paths must not each claim the same
-joint update, so `half_join` (:315, and the newer `half_join2` :402)
-time-stamps lookups — ΔA joins B's arrangement *as of the time just
-before* the delta — our stub's "state BEFORE the delta" rule, industrial
-edition. The cost: delta joins need an arrangement per input per join
-key, so they're chosen when those arrangements already exist (question 1
-maps this onto topic 10's "interesting orders").
+joint update, so `build_halfjoin` (:325, dispatching to the newer
+default `build_halfjoin2` :380) time-stamps lookups — ΔA joins B's
+arrangement *as of the time just before* the delta — our stub's "state
+BEFORE the delta" rule, industrial edition. The cost: delta joins need
+an arrangement per input per join key, so they're chosen when those
+arrangements already exist (question 1 maps this onto topic 10's
+"interesting orders").
 
 ### Step 4 — RisingWave: hand-written executors, state in an LSM on S3
+
+> **In:** the same relational operators, but no differential core.
+> **Out:** hand-written incremental executors, each managing explicit
+> schema'd state tables in Hummock (a shared LSM over object storage);
+> Z-set weights ride as an `Op` enum, and retraction is hand-rolled per
+> operator via degree tables.
 
 RisingWave's bet is the opposite: no differential core, no general delta
 algebra — each relational operator is a hand-written incremental
@@ -79,13 +102,19 @@ with Update split into paired Delete+Insert so downstream operators
 never need "modify". Where differential gets retraction from diff
 arithmetic, RisingWave hand-rolls it per operator:
 `HashJoinExecutor` (hash_join.rs:158) keeps both sides' rows in state
-tables plus **degree tables** (:117 `need_degree_table`, :269) tracking
-match counts, so outer joins can retract their NULL rows when the last
-match leaves. What the per-operator schemas buy: state that is legible
-to S3 spill, per-key TTL, and elastic scaling of a *single* operator
-(question 2).
+tables plus **degree tables** (:118 `need_degree_table`,
+`degree_state_table_l` :269) tracking match counts, so outer joins can
+retract their NULL rows when the last match leaves. What the per-operator
+schemas buy: state that is legible to S3 spill, per-key TTL, and elastic
+scaling of a *single* operator (question 2).
 
 ### Step 5 — barriers: consistency and recovery by checkpoint
+
+> **In:** a distributed dataflow that must stay consistent and recover
+> after a crash. **Out:** Chandy-Lamport **barriers** per epoch —
+> two-input operators align on them, each operator flushes its state
+> tables to Hummock at a barrier, and recovery reloads the last
+> checkpoint and replays the source log since it.
 
 RisingWave's consistency unit is the **barrier** — a Chandy-Lamport-style
 marker injected at sources that flows through the dataflow with the
@@ -100,6 +129,11 @@ recovery means rehydrating from persist — one mechanism per system, both
 subsumed by "know which input prefix your output reflects."
 
 ### Step 6 — the comparison that matters for M27
+
+> **In:** the two systems' opposite bets on state, consistency, and
+> sharing. **Out:** the axis-by-axis table below, and the observation
+> that a single-writer graph engine gets the hard parts free — no barrier
+> alignment (one clock), no distributed frontier (one writer).
 
 | axis | Materialize | RisingWave | M27 (FalkorDB standing queries) |
 |---|---|---|---|
@@ -123,7 +157,7 @@ Materialize — Steps 2–3
 | anchor | what it is |
 |---|---|
 | `render/join/delta_join.rs:47` | "dogs^3" delta-query joins: an n-way join becomes n dataflows, each starting from one input's changes — the bilinear rule generalized so NO intermediate arrangements are built |
-| `delta_join.rs:315/:402` | `half_join` construction (and the newer `half_join2`): ΔA against B's arrangement, time-stamped so the n paths don't double-count — our stub's "state BEFORE the delta" rule, industrial edition |
+| `delta_join.rs:325/:380` | `build_halfjoin` construction (dispatching to the newer default `build_halfjoin2`): ΔA against B's arrangement, time-stamped so the n paths don't double-count — our stub's "state BEFORE the delta" rule, industrial edition |
 | `render/reduce.rs` | the nonlinear ops, each with its arrangement |
 | `src/compute/src/arrangement/` | arrangement sharing across dataflows — one index, many standing queries |
 | `src/persist-client/` | the durable shard log: compute is stateless-ish; state rehydrates from persist (topic 28's disaggregation, applied to IVM) |
@@ -137,9 +171,9 @@ RisingWave — Steps 4–5
 | anchor | what it is |
 |---|---|
 | `common/src/array/stream_chunk.rs:45` | `enum Op { Insert, Delete, UpdateDelete, UpdateInsert }` — Z-set weights as a protocol; Update split into paired Delete+Insert so downstream operators never need "modify" |
-| `stream/src/executor/hash_join.rs:158` | `HashJoinExecutor`: both sides' rows in state tables; `need_degree_table` :117 + degree tables :269 track match counts so outer joins can retract NULLs correctly — hand-rolled weight bookkeeping |
+| `stream/src/executor/hash_join.rs:158` | `HashJoinExecutor`: both sides' rows in state tables; `need_degree_table` :118 + degree state table `degree_state_table_l` :269 track match counts so outer joins can retract NULLs correctly — hand-rolled weight bookkeeping |
 | `executor/barrier_align.rs` | two-input operators align on barriers before emitting — the consistency unit |
-| `executor/aggregate/`, `top_k/` | each nonlinear op = explicit state table schema in Hummock |
+| `executor/aggregate/`, `top_n/` | each nonlinear op = explicit state table schema in Hummock |
 
 ## Questions to answer in notes.md
 
@@ -162,12 +196,66 @@ RisingWave — Steps 4–5
 
 ## Done when
 
-- [ ] You can say what production adds to the theory, in failure modes rather than features.
-- [ ] You can explain Materialize's identity: indexes are arrangements are memory.
-- [ ] You can explain delta joins and why they need an arrangement per input per key.
-- [ ] You can contrast RisingWave's hand-written executors plus LSM-on-S3 state with that.
-- [ ] You can explain what barriers give you for consistency and recovery.
+Answer each before unfolding it.
+
+- [ ] What does production add to the theory, in failure modes rather than features?
+  <details><summary>answer</summary>
+
+  Three decisions the calculus leaves open: state placement (RAM
+  evaporates on crash, object storage survives but costs ms), the
+  consistency unit (outputs must reflect the same input prefix), and
+  sharing/recovery (don't keep 1000 copies of an index; rebuild state on
+  restart). Each is a way the system can go wrong, not a feature.
+
+  </details>
+- [ ] Explain Materialize's identity: indexes are arrangements are memory.
+  <details><summary>answer</summary>
+
+  A Materialize index is a differential arrangement pinned in RAM and
+  shared by every query that can use it, so capacity planning is
+  arrangement accounting. Durability is delegated to persist; consistency
+  comes from timely frontiers.
+
+  </details>
+- [ ] Explain delta joins and why they need an arrangement per input per key.
+  <details><summary>answer</summary>
+
+  An n-way join becomes n dataflows, each driven by one input's changes
+  and looking up the other inputs' existing arrangements — no intermediate
+  state. That requires each input to already be arranged on the join key,
+  and per-path timestamping so the n paths don't double-count a joint
+  update.
+
+  </details>
+- [ ] Contrast RisingWave's hand-written executors plus LSM-on-S3 state with that.
+  <details><summary>answer</summary>
+
+  No differential core: each operator is hand-written with explicit
+  schema'd state tables in Hummock (LSM on S3). Weights ride as the `Op`
+  enum; retraction is hand-rolled (e.g. degree tables for outer joins).
+  The schemas buy S3 spill, per-key TTL, and single-operator elastic
+  scaling.
+
+  </details>
+- [ ] Explain what barriers give you for consistency and recovery.
+  <details><summary>answer</summary>
+
+  A barrier is a per-epoch Chandy-Lamport marker: two-input operators
+  align on it, and each flushes state to Hummock when it has the barrier
+  from all inputs — a globally consistent checkpoint. Recovery reloads the
+  checkpoint and replays the source since it; the checkpoint interval is
+  the replay window.
+
+  </details>
 - [ ] You wrote answers to all questions in notes.md, including the degree-table against diff-arithmetic comparison.
+  <details><summary>answer</summary>
+
+  Both retract the outer-join NULL when the last match leaves: RisingWave
+  with a per-operator degree table and code, differential with one
+  consolidation rule for every operator. RisingWave trades generality for
+  state that is legible to spill, TTL, and per-operator scaling.
+
+  </details>
 
 ## References
 
@@ -179,5 +267,5 @@ RisingWave — Steps 4–5
   (`doc/developer/` — skim "formalism" and "platform")
 - [risingwave](https://github.com/risingwavelabs/risingwave) `src/` —
   stream executors: `src/stream/src/executor/` (hash_join.rs,
-  barrier_align.rs, aggregate/, top_k/); the Op enum:
+  barrier_align.rs, aggregate/, top_n/); the Op enum:
   `common/src/array/stream_chunk.rs:45`; Hummock state store

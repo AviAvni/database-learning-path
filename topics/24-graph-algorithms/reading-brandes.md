@@ -10,17 +10,28 @@ collapses the whole thing. Our `bc::brandes` stub implements it against
 the O(n³) definitional oracle; gapbs's `bc.cc` and LAGraph's
 `LAGr_Betweenness.c` show the two production shapes.
 
+*Sources pinned (resources/codebases.md): gapbs @`b5e3e19`, LAGraph
+@`e2539e2`. Line anchors below were re-checked against those trees with
+`tools/pinned-source.py`. The complexity claims are Brandes 2001
+(J. Math. Sociology); the operation counts are computed from this
+topic's `notes.md` graph (n = 65,536, m = 1,819,338 directed edges).*
+
 ## The problem in one sentence
 
 Betweenness as defined sums over all (source, target) pairs — on our
 65,536-vertex RMAT that is **~2.8 × 10¹⁴ elementary operations
-(n³)**, and Brandes gets the identical numbers for roughly
-n × m ≈ 1.2 × 10¹¹, three orders of magnitude less, without
-approximating anything.
+(n³ = 65,536³ = 2.81 × 10¹⁴)**, and Brandes gets the identical numbers
+for roughly n × m = 65,536 × 1,819,338 ≈ 1.19 × 10¹¹ — about 2,360×
+(≈ three orders of magnitude) less, without approximating anything.
 
 ## The concepts, step by step
 
 ### Step 1 — what betweenness measures: traffic through a vertex
+
+> **In:** a graph, and a vertex v to score.
+> **Out:** two counts that make "traffic through v" precise — σ_st (the
+> number of shortest paths s→t) and σ_st(v) (how many of those pass
+> through v).
 
 Betweenness centrality scores a vertex by how many shortest paths pass
 through it — a bridge vertex connecting two clusters lies on *every*
@@ -43,6 +54,10 @@ n² vertex pairs.
 
 ### Step 2 — the definitional cost: O(n³), and why we keep it anyway
 
+> **In:** the definition from Step 1.
+> **Out:** its literal cost — O(n³) time and O(n²) memory — and the
+> reason we keep the slow version anyway: it is the correctness oracle.
+
 Computing bc directly means: for every pair (s, t), find all shortest
 paths, attribute fractions to every interior vertex — an all-pairs
 computation with a triple loop, O(n³) time and O(n²) memory for the
@@ -54,6 +69,11 @@ the stub must reproduce `bc_brute`'s numbers exactly before it earns
 the right to sample.
 
 ### Step 3 — counting paths with one BFS: σ flows along the BFS DAG
+
+> **In:** one source s.
+> **Out:** depths and shortest-path counts σ_s(v) for *every* vertex,
+> from a single O(E) BFS — which kills the "for every t" half of the
+> pair sum.
 
 The number of shortest paths from a fixed source s to every vertex
 comes out of a single BFS (breadth-first traversal that labels each
@@ -81,6 +101,11 @@ is Step 4's job.
 
 ### Step 4 — the dependency: fold the sum over targets
 
+> **In:** the per-source path counts σ_s from Step 3.
+> **Out:** the *dependency* δ_s(v) = Σ_t σ_st(v)/σ_st — a pure
+> regrouping of the pair sum that names the inner sum over targets so it
+> can be computed without enumerating targets.
+
 Brandes' move is to fix the source s and give a name to the entire
 inner sum over targets — the **dependency** of s on v:
 
@@ -96,6 +121,10 @@ the data structures are unchanged (a BFS queue, some arrays); only the
 order of summation moved.
 
 ### Step 5 — the recurrence: one backward sweep per source
+
+> **In:** the dependency δ_s from Step 4 and the BFS DAG from Step 3.
+> **Out:** the recurrence that computes δ_s(v) for *all* v in one
+> deepest-first backward sweep — the entire speedup, O(V·E) total.
 
 Every shortest path from s through v continues into exactly one DAG
 successor w of v — so partition the paths-through-v by that successor,
@@ -116,14 +145,35 @@ quantities:
   bc(v) = Σ_s δ_s(v).   n sources × O(E) each = O(V·E).
 ```
 
-The recurrence is the entire paper — derive it once by hand
-(partition shortest s→t paths through v by v's DAG successor w; the
-1 accounts for t=w itself: paths *ending at* w also pass through v).
-The factor σ_sv/σ_sw is v's share of the traffic entering w. Because
-δ of a vertex needs δ of its successors (which are deeper), the sweep
-must run deepest-first. Transcribed:
+The recurrence is the entire paper (Brandes 2001, Theorem 6) — derive
+it once by hand (partition shortest s→t paths through v by v's DAG
+successor w; the 1 accounts for t=w itself: paths *ending at* w also
+pass through v). The factor σ_sv/σ_sw is v's share of the traffic
+entering w. Because δ of a vertex needs δ of its successors (which are
+deeper), the sweep must run deepest-first.
+
+Work it on a concrete graph — source s, edges s–a, s–b, a–c, b–c, c–d:
+
+```
+   s          BFS depths: s=0, a=b=1, c=2, d=3
+  / \         σ: σ(s)=1; σ(a)=σ(b)=1; σ(c)=σ(a)+σ(b)=2; σ(d)=σ(c)=2
+ a   b
+  \ /         backward sweep, deepest first (δ starts at 0):
+   c            δ(d) = 0                                    (leaf)
+   |            δ(c) = σ(c)/σ(d)·(1+δ(d)) = 2/2·(1+0) = 1   (w=d)
+   d            δ(a) = σ(a)/σ(c)·(1+δ(c)) = 1/2·(1+1) = 1.0 (w=c)
+                δ(b) = σ(b)/σ(c)·(1+δ(c)) = 1/2·(1+1) = 1.0
+   this single source s adds to bc: a+=1.0, b+=1.0, c+=1, d+=0
+```
+
+The 1/2 is the σ-fraction (a carries half the traffic into c); the
+`(1+δ(c))` is the `+1` for t=c itself plus c's onward dependency
+(δ(c)=1, from the c→d traffic). Transcribed as pseudocode:
 
 ```rust
+// ILLUSTRATION — not quoted; the reader's own stub. The real
+// deepest-first sweep is gapbs bc.cc:123-134 (recurrence at :130);
+// our version lands in experiments/src/bc.rs:83 (brandes).
 // after a forward BFS from s: depth[], sigma[] (path counts),
 // and order = vertices sorted by depth
 fn accumulate(bc: &mut [f64], order: &[u32], g: &Csr,
@@ -144,9 +194,15 @@ fn accumulate(bc: &mut [f64], order: &[u32], g: &Csr,
 Per source: one forward BFS + one backward sweep, both O(E). Over all
 n sources: O(V·E) time, O(V) extra memory per source — the n²
 all-pairs tables of Step 2 never exist. When even n sources is too
-many, sample k of them and scale — gapbs defaults to 16.
+many, sample k of them and scale. (gapbs's `bc.cc` runs **1** source
+by default — `CLIterApp(..., 1)` at bc.cc:234; the GAP *spec* is the
+one that samples, 16 trials of 4 sources each — see reading-gap.md.)
 
 ### Step 6 — the two production shapes: a bitmap vs a batch
+
+> **In:** Steps 3–5 as a single-source algorithm.
+> **Out:** the two production shapes — gapbs's per-source successor
+> *bitmap* and LAGraph's *batched* ns×n source matrix.
 
 Both production codes implement Steps 3–5; they diverge on how the
 backward sweep answers "is (v, w) a DAG edge" and on how many sources
@@ -155,7 +211,7 @@ run at once:
 | | gapbs bc.cc | LAGraph LAGr_Betweenness.c |
 |---|---|---|
 | forward | `PBFS` (:51): CAS on depths, records `succ` BITMAP (:76) — "is (u,v) a DAG edge" = one bit | `frontier`/`paths` are ns×n MATRICES (:110-164) — a BATCH of sources advances as one masked mxm |
-| σ | `path_counts` accumulated at depth boundaries (`depth_index` slices the BFS queue by level) | `paths += frontier` per level, FP64 semiring |
+| σ | `path_counts` accumulated at depth boundaries (`depth_index` slices the BFS queue by level) | `paths += frontier` per level, `plus_first_fp64` semiring (:168) |
 | backward | deepest-first over `depth_index`, reads `succ` | transposed mxm per level with `bc_update` matrix |
 | sampling | k sources, scores scaled | `sources` array — batch size = ns |
 | wins | per-edge constants, one bitmap read per edge | no atomics; 4-32 sources amortize each matrix pass |
@@ -166,6 +222,11 @@ just with 32-row frontier matrices — SpGEMM amortizes what frontier
 code cannot (it would need 32 separate BFS queues).
 
 ### Step 7 — what breaks in practice: the four traps
+
+> **In:** a working single-source Brandes.
+> **Out:** the four boundary conditions (DAG-edge test, σ overflow,
+> unreachable sources, directed/undirected convention) that make the
+> stub *wrong* before they make it slow.
 
 The stub's failure modes are all boundary conditions of Steps 3–5:
 
@@ -217,12 +278,69 @@ The stub's failure modes are all boundary conditions of Steps 3–5:
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can explain what betweenness measures and why the definitional cost is O(n³).
-- [ ] You can derive the dependency recurrence from the definition, using the partition-by-predecessor argument.
+  <details><summary>Answer</summary>
+
+  It scores a vertex by its share of shortest-path traffic:
+  bc(v) = Σ_{s≠v≠t} σ_st(v)/σ_st. The definition ranges over all n²
+  ordered pairs (s,t) and each pair needs its shortest paths and interior
+  attributions — an all-pairs computation, O(n³) time (≈2.8×10¹⁴ ops on
+  this topic's n=65,536 graph).
+
+  </details>
+- [ ] You can derive the dependency recurrence from the definition, using the partition-by-successor argument.
+  <details><summary>Answer</summary>
+
+  Fix s and define δ_s(v) = Σ_t σ_st(v)/σ_st. Partition the shortest s→t
+  paths through v by the DAG successor w of v they use; each contributes
+  v's share of w's traffic, σ_sv/σ_sw, times (1+δ_s(w)). So
+  δ_s(v) = Σ_{w : v∈pred_s(w)} (σ_sv/σ_sw)·(1+δ_s(w)) (Brandes 2001,
+  Theorem 6). The **+1** is t=w itself: paths ending at w also pass
+  through v.
+
+  </details>
 - [ ] You can explain how one BFS counts paths along the level DAG.
+  <details><summary>Answer</summary>
+
+  BFS from s labels depths; the depth-d→depth-(d+1) edges are the BFS
+  DAG. With σ_s(s)=1 and σ_s(v)=Σ σ_s(u) over DAG predecessors u,
+  a single O(E) sweep gives σ for all targets at once — killing the
+  "for every t" loop.
+
+  </details>
 - [ ] You can say why the brute-force version is O(n²) in *memory* as well as O(n³) in time.
+  <details><summary>Answer</summary>
+
+  `bc_brute` materializes all-pairs depths and σ tables — n×n each — to
+  attribute fractions across every pair, so O(n²) storage. Brandes keeps
+  only per-source arrays (depth, σ, δ), O(V) extra beyond the graph.
+  For a *correctness* oracle the O(n²) memory is acceptable because it
+  only ever runs on small test graphs.
+
+  </details>
 - [ ] You can name the four practical traps and say which one bites on a scale-free graph like this topic's RMAT (max degree 9751).
+  <details><summary>Answer</summary>
+
+  (1) accumulate σ only along depth+1 edges and back-propagate strictly
+  deepest-first; (2) σ overflows integers on dense diamonds — use floats
+  for the counts, the ratio stays exact; (3) unreachable vertices have
+  depth −1, contribute nothing, never divide by σ=0; (4) directed-sum on
+  a symmetric graph double-counts — halve to match undirected tools. On
+  RMAT the σ-overflow trap bites: the degree-9,751 hub creates deep
+  diamonds where σ multiplies fast.
+
+  </details>
 - [ ] You wrote answers to all five questions in notes.md.
+  <details><summary>Answer</summary>
+
+  Done when notes.md has your worked recurrence derivation (Q1), the
+  LLC/oracle-fit reasoning (Q2), the bitmap memory-touch count (Q3), the
+  ns batch-size sweet spot (Q4), and the FalkorDB stale-matrix decision
+  (Q5).
+
+  </details>
 
 ## References
 

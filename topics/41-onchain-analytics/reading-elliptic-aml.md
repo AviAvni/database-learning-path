@@ -10,6 +10,11 @@ worth more to a database engineer than a win would have been, because it says so
 about when graph structure pays for itself — and because a single real-world event, the shutdown
 of a dark market in the middle of the test period, breaks every model in the table.
 
+Every number below is quoted from *Anti-Money Laundering in Bitcoin* (Weber et al., KDD 2019 AML
+workshop, [arXiv:1908.02591](https://arxiv.org/abs/1908.02591)): the counts from §2, the scores
+from Table 1 and Table 2. Nothing here is a repo-measured lane — this guide is a reading companion,
+not a bench.
+
 ## The problem in one sentence
 
 **Classify each Bitcoin transaction as licit or illicit from a labelled graph where only 23% of
@@ -19,6 +24,11 @@ under you.**
 ## The concepts, step by step
 
 ### Step 1 — The data set
+
+> **In:** the public Elliptic data set — a labelled sub-graph of the Bitcoin transaction network.
+> **Out:** the raw material every later step consumes: 203,769 nodes, 234,355 edges, 166 features
+> per node, 49 time steps, and a 2%/21%/77% illicit/licit/unlabelled label split. Step 2 dissects
+> the 166 features.
 
 ```
    203,769 node transactions          234,355 directed edge payment flows
@@ -40,6 +50,11 @@ guides in this topic. Circularity worth noticing.
 
 ### Step 2 — Two kinds of feature, and what the split measures
 
+> **In:** the 166-feature node vectors from Step 1.
+> **Out:** a split of those features into 94 *local* (about the transaction itself) and 72
+> *aggregated* (one-hop neighbourhood statistics) — the split that makes the later GCN comparison
+> fair. Step 3 looks at the time dimension.
+
 The 166 features divide sharply:
 
 - **94 local features**: time step, number of inputs/outputs, transaction fee, output volume, and
@@ -48,9 +63,12 @@ The 166 features divide sharply:
   coefficients of the *same* local features taken over the node's one-hop neighbours, forward and
   backward.
 
-So the 72 are a hand-rolled, single-layer, fixed-aggregation message pass. This is the comparison
-the paper is really running: **hand-built one-hop aggregation vs a learned multi-hop one**. Keep
-that in mind when you read the results, because it is a fairer fight than "features vs graphs".
+So the 72 are a hand-rolled, single-layer, fixed-aggregation message pass. (A **message pass** is
+the operation at the heart of a graph neural network: each node updates its own vector from an
+aggregate of its neighbours' vectors; doing it once reaches one-hop neighbours, twice reaches
+two-hop, and so on.) This is the comparison the paper is really running: **hand-built one-hop
+aggregation vs a learned multi-hop one**. Keep that in mind when you read the results, because it
+is a fairer fight than "features vs graphs".
 
 The paper flags the limitation itself: "In building the 72 aggregated features, the problem of
 heterogeneous neighborhoods is addressed by naively constructing statistical aggregates
@@ -58,6 +76,10 @@ heterogeneous neighborhoods is addressed by naively constructing statistical agg
 solution is sub-optimal because it carries a significant loss of information."
 
 ### Step 3 — The temporal structure, and the choice that deletes it
+
+> **In:** the 49 time steps from Step 1, and the edge set from Step 2's neighbourhoods.
+> **Out:** the key structural fact — the 49 steps are *disjoint* graphs with no edges between them
+> — and the train/test split built on it. Step 4 reads the scores this split produces.
 
 Each of the 49 time steps is "a single connected component of transactions that appeared on the
 blockchain within less than three hours between each other; **there are no edges connecting
@@ -70,10 +92,26 @@ detect. Topic 33 spends a whole topic on time-respecting paths; this data set ma
 impossible by construction. That is a modelling decision with consequences, and it is the subject
 of one of the questions below.
 
-The evaluation uses a **70:30 temporal split**: train on steps 1–34, test on 35–49. Temporal, not
-random — correct, and much harder.
+The evaluation uses a **70:30 temporal split**: train on the earliest 34 steps, test on the last
+15 (steps 35–49). A **temporal split** trains only on data from before a cut-off time and tests
+only on data after it, unlike a random split that shuffles all rows together — it is the honest
+way to measure a model that must predict the future, and much harder, because the test
+distribution is genuinely unseen.
 
 ### Step 4 — The results table, read carefully
+
+> **In:** the train/test split from Step 3, the features from Step 2, and seven classifiers
+> (Logistic Regression, Random Forest, MLP, GCN, Skip-GCN, EvolveGCN).
+> **Out:** Table 1 — illicit-class precision, recall and F1 per model — the headline result that
+> the Random Forest beats the GCN. Step 5 is the event that breaks all of them.
+
+First, the metrics, because the whole table is read through them. For the illicit class,
+**precision** is the fraction of transactions *flagged illicit* that really are (`TP / (TP + FP)`);
+**recall** is the fraction of *actually illicit* transactions that were flagged (`TP / (TP + FN)`);
+**F1** is their harmonic mean, `2·P·R / (P + R)`, which is low unless *both* are high. A **GCN**
+(graph convolutional network) is a neural network whose layers are learned message passes (Step 2)
+over the graph; a **node embedding** (`NE`) is the vector a GCN learns for each node, which can be
+fed to another model as extra features.
 
 Illicit-class precision / recall / F1, plus micro-averaged F1. `AF` = all 166 features, `LF` =
 the 94 local ones only, `NE` = node embeddings from a GCN concatenated on.
@@ -112,6 +150,10 @@ Four readings, in order of usefulness:
 
 ### Step 5 — The dark market shutdown: the finding that actually matters
 
+> **In:** the per-time-step predictions of every model from Step 4, plotted over the 15 test steps.
+> **Out:** Figure 2's finding — at time step 43 a real-world event collapses every model's illicit
+> F1, and re-training does not recover it. Step 6 explains why the aggregate metric hides this.
+
 At time step 43 — inside the test period — a dark market closed. Figure 2 plots illicit F1 per
 time step, and every method falls off a cliff there and does not recover.
 
@@ -133,11 +175,33 @@ equivalent move here, which is the honest state of the art.
 
 ### Step 6 — Why 2% illicit changes the whole evaluation
 
-Micro-averaged F1 is above 0.92 for *every* method in the table, including the worst one. It is
-meaningless: with 2% illicit, a classifier that says "licit" always scores well. The paper trains
-the GCN "using a weighted cross entropy loss to provide higher importance to the illicit samples"
-at a 0.3/0.7 ratio and reports illicit-class metrics separately — do the same in any comparable
-setting, and be suspicious of any AML result quoted as accuracy.
+> **In:** the `micro F1` column of Step 4's table and the 2% illicit base rate from Step 1.
+> **Out:** the reason that column is worthless and the illicit-class columns are not — a
+> class-imbalance argument, worked below. Step 7 generalises the lessons.
+
+**Micro-averaged F1** pools true positives, false positives and false negatives across *all*
+classes before computing one score; for single-label classification that makes micro-precision,
+micro-recall and micro-F1 all equal to plain accuracy. So it is above 0.92 for *every* method in
+the table, including the worst one, and it is meaningless here. Work it:
+
+```
+   predict "licit" for every node.
+   let p = fraction illicit.
+
+   full node set, p = 0.02:
+       accuracy = 1 − p = 0.98  →  micro-F1 = 0.98
+   labelled test set actually scored, illicit = 4,545 of (4,545 + 42,019) = 46,564:
+       p = 4,545 / 46,564 = 0.098
+       accuracy = 1 − 0.098 = 0.902  →  micro-F1 ≈ 0.90
+```
+
+Either way the do-nothing classifier scores ~0.90–0.98 micro-F1 — higher than the GCN's *illicit*
+F1 of 0.628. A metric a trivial classifier wins is no metric. That is why the paper reports
+illicit-class precision/recall/F1 separately, and trains the GCN "using a weighted cross entropy
+loss to provide higher importance to the illicit samples" at a 0.3/0.7 ratio. **Weighted cross
+entropy** simply multiplies each class's contribution to the loss by a weight, so mislabelling a
+rare illicit node costs the optimiser more than mislabelling a common licit one — the training-time
+counterpart to reporting the minority class separately.
 
 The paper also frames the business constraint precisely: "Industry standard high false positive
 rates of upwards of 90% inhibit this effort. We want to reduce false positive rates without
@@ -145,6 +209,11 @@ increasing false negative rates." Random Forest's 0.956 precision against Logist
 0.404 is exactly that axis, and it is why the boring model wins in production.
 
 ### Step 7 — What this says about graph ML generally
+
+> **In:** everything above — the fair-fight feature split (Step 2), the results (Step 4), the
+> distribution shift (Step 5), the imbalance (Step 6).
+> **Out:** three transferable rules for deciding when graph structure earns its complexity. This is
+> the guide's takeaway.
 
 Three transferable lessons:
 
@@ -198,13 +267,66 @@ Three transferable lessons:
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can state the data set's size, label balance and temporal structure from memory.
+  <details><summary>Answer</summary>
+
+  203,769 nodes (transactions), 234,355 directed edges (payment flows), 166 features each; 4,545
+  illicit (2%), 42,019 licit (21%), the rest unlabelled (77%); 49 time steps ~2 weeks apart,
+  1,000–8,000 nodes each, and crucially **no edges between time steps** — 49 disjoint graphs
+  (Steps 1 and 3).
+
+  </details>
 - [ ] You can explain the 94/72 feature split and why it makes the GCN comparison a fair fight.
+  <details><summary>Answer</summary>
+
+  94 local features describe the transaction itself; 72 aggregated features are min/max/std/corr of
+  those local features over one-hop neighbours (Step 2). The 72 are therefore a hand-built,
+  single-layer, fixed-aggregation message pass — so Table 1 is really "hand-built one-hop
+  aggregation vs a learned multi-hop GCN", a fairer contest than "features vs graphs".
+
+  </details>
 - [ ] You can give the headline result (RF 0.788/0.796 vs GCN 0.628, Skip-GCN 0.705, EvolveGCN
       0.720) and the paper's explanation for it.
+  <details><summary>Answer</summary>
+
+  Random Forest on all features scores illicit-F1 0.788, and 0.796 with GCN embeddings added — the
+  best row; the plain GCN scores 0.628, Skip-GCN 0.705, EvolveGCN 0.720 (Step 4). The paper's
+  explanation: RF ensembles many decision trees by voting, whereas a GCN ends in a logistic-
+  regression output layer and is "a nontrivial generalization of Logistic Regression" — which sits
+  at the bottom of the table.
+
+  </details>
 - [ ] You can describe the dark market shutdown and why re-training does not fix it.
+  <details><summary>Answer</summary>
+
+  At test time step 43 a dark market closed; Figure 2 shows every model's illicit F1 collapses and
+  never recovers, and even a Random Forest re-trained after every step with fresh ground truth
+  cannot capture the new illicit transactions (Step 5). It is a distribution-shift problem, not a
+  stale-model one: the post-shutdown illicit behaviour is genuinely different, so fitting the old
+  behaviour cannot help.
+
+  </details>
 - [ ] You can say why micro-F1 is the wrong metric here.
+  <details><summary>Answer</summary>
+
+  Micro-F1 pools all classes and equals accuracy for single-label prediction, so a
+  predict-licit-always classifier scores 1 − p: about 0.98 on the full 2%-illicit node set, or
+  ≈0.90 on the labelled test set where illicit is 4,545/46,564 = 9.8% (Step 6). Both beat the GCN's
+  *illicit* F1 of 0.628, so micro-F1 rewards doing nothing — which is why the paper reports
+  illicit-class precision/recall/F1 separately.
+
+  </details>
 - [ ] You wrote answers to all five questions in notes.md.
+  <details><summary>Answer</summary>
+
+  Done when notes.md holds your five written answers — Table 1 recast as learned-vs-hand-built
+  aggregation, two laundering behaviours the missing cross-time edges make undetectable, the
+  worked predict-licit-always micro-F1, concept drift vs covariate shift for the dark-market
+  collapse, and what a licit/illicit super-cluster merge would do to labels, features and F1.
+
+  </details>
 
 ## References
 

@@ -145,7 +145,7 @@
 - [Topic 17 — SIMD & Hardware-Conscious Data Processing](topics/17-simd/README.md)
   - [FastLanes: bit-unpacking at memory bandwidth](topics/17-simd/reading-fastlanes.md)
   - [hashbrown & memchr: movemask without movemask](topics/17-simd/reading-hashbrown-simd.md)
-  - [Mojo's `SIMD[type, width]`: width as a type parameter](topics/17-simd/reading-mojo-simd.md)
+  - [Mojo's `SIMD[dtype, size]`: width as a type parameter](topics/17-simd/reading-mojo-simd.md)
   - [polars-compute: shipping SIMD in stable Rust](topics/17-simd/reading-polars-compute.md)
   - [SIMD for databases: two primitives, four operators](topics/17-simd/reading-sigmod15-vectorization.md)
   - [simdjson: parsing without branches](topics/17-simd/reading-simdjson.md)

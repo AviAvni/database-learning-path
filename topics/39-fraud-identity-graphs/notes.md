@@ -67,8 +67,8 @@ camo 2 — Theorem 3, verified by exercise 2's hand-derivation.
   /tmp/flowscope.pdf (AAAI'20), /tmp/winkler-rl.pdf (Winkler 2006
   survey, pp. 1–22).
 - FRAUDAR facts: metric family g(S) = f(S)/|S|, f sums in-block edge
-  weights; column weight 1/log(d_j + c), c = 5. Axioms 1–3 (node
-  suspiciousness, edge suspiciousness, concentration). Greedy peel =
+  weights; column weight 1/log(d_j + c), c = 5. Axioms 1–4 (node
+  suspiciousness, edge suspiciousness, size, concentration). Greedy peel =
   "exonerate the least suspicious," O(|E| log |V|) with a priority
   tree. Theorem 2: g(returned) ≥ g_OPT/2. Theorem 3: column weights
   are camouflage-resistant — camo edges land on honest columns, the
@@ -82,8 +82,9 @@ camo 2 — Theorem 3, verified by exercise 2's hand-derivation.
   q_i = max(in, out); g = (1/|S|) Σ [(1+λ)f_i − λq_i], λ = 4 — parking
   money or camouflage transfers *lower* the score. Same near-greedy
   peel and guarantee style. CBank 6.13M accounts / 43.98M transfers,
-  labeled ring 4 sources / 12 mules / 2 destinations ≈ 452M yuan:
-  FAUC 0.761/0.843 vs FRAUDAR 0.529/0.704; holds F1 ≥ 0.9 down to 76M
+  labeled ring 4 sources / 12 mules / 2 destinations, central mule v5
+  alone ≈ 452.1M yuan:
+  FAUC 0.761/0.843 vs FRAUDAR 0.529/0.704; holds F1 ≥ 0.9 down to $76M
   injected volume vs FRAUDAR's 180M. Covered as guide + exercise 5
   (no stub module — the peel machinery is fraudar.rs's).
 - Winkler/FS facts: R = P(γ|M)/P(γ|U), thresholds T_λ/T_μ with a
@@ -106,12 +107,13 @@ camo 2 — Theorem 3, verified by exercise 2's hand-derivation.
 - splink anchors (cloned ~/repos/splink @ 04189f5) verified by
   grep/read this session — full table in README, headline set:
   linker.py:66; training.py:163 (u by random sampling) / :231 (EM per
-  blocking rule); expectation_maximisation.py:225 (E `:18`, M `:193`);
+  blocking rule); expectation_maximisation.py:225 (E `:268`, M `:45`/`:278` in
+  `maximisation_step:193`);
   comparison_level.py:148 (m `:190`, u `:191`, weight `:426`,
   tf-adjustment `:667`); predict.py:203 (prior + weights →
   1/(1+2^(−mw))); blocking.py:747; clustering.py:43 →
   connected_components.py:121; dialects.py:24 (DuckDB/Spark/SQLite/
-  PostgreSQL at :270/:402/:532/:674).
+  PostgreSQL at :270/:402/:532/:573).
 - Crate: 3 provided tests green (review_graph.rs — instance shape
   20×80 block / 1600 fraud edges / camo ratio 0.8–1.05; degree-rank
   camo-0 precision < 0.3; obscurity 0.75 at camo 0 → < 0.3 at camo 2).

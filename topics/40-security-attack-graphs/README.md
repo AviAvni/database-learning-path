@@ -51,7 +51,7 @@ the collector**, not of how much privilege exists. Mean shortest path:
 
 An edge means *control of the source yields control of the target*.
 That single rule makes 104 Active Directory concepts into one graph
-with 63 traversable edge kinds, and it makes the pentest report a
+with 64 traversable edge kinds, and it makes the pentest report a
 shortest-path query. `HasSession` is the edge that ruins everything: a
 privileged token sitting on a workstation makes every local admin of
 that box a domain admin, transitively — measured above, two misplaced
@@ -192,7 +192,7 @@ Leopard itself at 1.56M QPS and a **150 µs** median.
 | anchor (`packages/go/`) | what to see |
 |---|---|
 | `graphschema/ad/ad.go:28` | 104 `StringKind` node and edge kinds — the whole ontology as constants |
-| `graphschema/ad/ad.go:1160` | `PathfindingRelationships` — the 63 kinds an attacker may traverse |
+| `graphschema/ad/ad.go:1160` | `PathfindingRelationships` — the 64 kinds an attacker may traverse |
 | `graphschema/ad/ad.go:1172` | `PostProcessedRelationships` — 31 kinds that are *derived*, not collected |
 | `analysis/analysis.go:346` | `newPipeline` — AD post-processing → Azure → tagging → data quality |
 | `analysis/analysis.go:104` | `ExpandGroupMembershipPaths` — nesting expansion as a path query |

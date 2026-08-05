@@ -35,13 +35,13 @@ Predict the speedup for each of the three before implementing, and predict which
 one's incremental version is *slower* to initialize than a full recompute — that
 one is the interesting result, not the 100× one.
 
-## Our motivation numbers first (Apple M3 Pro, 50K nodes / 500K edges, batches of 100 changes, 2026-07-10)
+## Our motivation numbers first (Apple M3 Pro, 50K nodes / 500K edges, batches of 100 changes)
 
 | standing query | full recompute / batch | incremental target |
 |---|---|---|
-| triangle count | 97.2 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
-| 2-hop wedge join | 894.3 ms | ~µs-ms (stub) — bilinear delta rule |
-| reachability from src | 24.7 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
+| triangle count | 141.6 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
+| 2-hop wedge join | 1111.0 ms | ~µs-ms (stub) — bilinear delta rule |
+| reachability from src | 31.2 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
 
 The gap is 3-5 orders of magnitude, and none of it requires cleverness —
 just refusing to touch data that didn't change.

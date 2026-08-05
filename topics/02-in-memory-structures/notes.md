@@ -42,27 +42,24 @@ does a little migration work.
 
 ## Reading answers
 
+Each guide ends with its own `## Questions to answer in notes.md` list, and the
+lists differ in length (4 to 6 questions each). Copy the questions from the
+guide you are on rather than working from a fixed count here — that way this
+file stays right when a guide gains a question.
+
 ### redis dict (reading-redis-dict.md)
-1. Insert into ht[0] during rehash — why a bug:
-2. pauserehash exists for:
-3. empty_visits=10n tail guarantee:
 
 ### redis skiplist (reading-redis-skiplist.md)
-1. Why skiplist + dict both:
-2. Expected search cost at p=0.25, priced vs measured:
 
 ### hashbrown (reading-hashbrown.md)
-1. 7/8 vs 1.0 load factor:
-2. Hash policy paragraph (for M2 decision):
-3. DELETED churn ↔ LSM tombstones:
 
 ### RocksDB memtable (reading-rocksdb-memtable.md)
-1. spans/backward under concurrent CAS:
-2. acquire/release vs SeqCst at line 383:
-3. Miss estimate vs hashbrown number:
 
-### rax / ART / SwissTable talk
-- (questions in each guide)
+### redis rax (reading-redis-rax.md)
+
+### ART paper (reading-art-paper.md)
+
+### SwissTable talk (reading-swisstable-talk.md)
 
 ## Experiment findings
 

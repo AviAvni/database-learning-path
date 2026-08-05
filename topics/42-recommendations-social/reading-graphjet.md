@@ -19,6 +19,11 @@ milliseconds, and never let it grow without bound.**
 
 ### Step 1 — The unconventional bet: one machine
 
+> **In:** nothing yet — this step fixes the design premise the whole engine is built on.
+> **Out:** the single-server bet and its 80 GB arithmetic (10 billion edges × 8 bytes), the
+> constraint every later step honours: the graph lives in one machine's RAM, so the work is *fitting
+> it there* (Steps 4–6) rather than partitioning it.
+
 Twitter's recommendation work began with WTF ("Who To Follow") in 2010, and the first decision
 was the one everybody questions:
 
@@ -39,6 +44,11 @@ real-world problems."
 
 ### Step 2 — Four generations, and what each one got wrong
 
+> **In:** the single-server constraint from Step 1.
+> **Out:** four systems in sequence (Cassovary → Hadoop → MagicRecs → GraphJet) and the failure
+> that killed each — culminating in MagicRecs' reformulation of "B→C edges in a time window" as an
+> **intersection of adjacency lists**, which is the primitive GraphJet turns into a storage engine.
+
 - **Cassovary (2010)** — in-memory, single server, snapshots of the follow graph from HDFS,
   computed *circle of trust* (an egocentric random walk = personalized PageRank) and SALSA. It
   worked. Its limit: snapshots could only be refreshed about once a day, so new users got nothing
@@ -55,6 +65,11 @@ real-world problems."
   express a range of recommendation algorithms rather than one hard-coded rule.
 
 ### Step 3 — The API is five methods, and the omissions are the design
+
+> **In:** MagicRecs' single hard-coded push rule from Step 2.
+> **Out:** GraphJet's five-method interface — insert one edge, iterate a vertex's edges, sample `k`
+> of them (both left and right) — and the three omissions (no delete, no timestamp, sampling *with
+> replacement*) that make Steps 4–8 cheap.
 
 ```
    insertEdge(u, t, r)                  insert user→tweet edge of type r
@@ -83,6 +98,12 @@ is enough for a random walk and much cheaper than a snapshot.
 
 ### Step 4 — Temporal index segments
 
+> **In:** the write-and-sample API from Step 3, plus the "never grow without bound" requirement from
+> the problem sentence.
+> **Out:** the graph split into **temporally-ordered index segments** — one active (writable), the
+> rest immutable, the oldest dropped whole — the structure Steps 5 (id narrowing), 6 (write-side
+> allocator) and 8 (read-side relayout) each exploit.
+
 The graph is partitioned into **temporally-ordered index segments**. Only the newest accepts
 writes; the rest are immutable. A segment older than *n* hours is discarded whole.
 
@@ -108,6 +129,11 @@ adjacency lists, again the same problem.
 
 ### Step 5 — Id mapping and bit-packing
 
+> **In:** a single segment's bounded vertex set from Step 4.
+> **Out:** a segment-internal id — 64-bit external ids hashed into a small per-segment id, then
+> **bit-packed** with the edge type into one 32-bit integer, so an adjacency list is just a
+> `u32` array. Step 6 allocates space for those arrays.
+
 External vertex ids are 64-bit. Within a segment, they are hashed to a segment-internal id using
 double hashing in an open-addressed table — and crucially "we use the hash value as our internal
 vertex id", so the table cannot be rehashed to grow. The workaround is a chain of power-of-two
@@ -121,6 +147,11 @@ for 2²⁹ (approximately 537 million) unique vertex ids." An adjacency list bec
 array of 32-bit integers.
 
 ### Step 6 — Edge pools: the allocator as a model of the data
+
+> **In:** the 32-bit edge entries from Step 5, arriving one at a time into the active segment.
+> **Out:** the **doubling edge-pool allocator** — each adjacency list stored as a chain of
+> power-of-two slices (`P_r` holds slices of `2^r` edges) — whose growth curve *is* a bet that the
+> data follows a power law. Step 8 tears this down once the segment seals.
 
 This is the part to steal. Adjacency lists cannot be kept contiguous as the graph grows (you
 would relocate constantly), so GraphJet stores each list as a chain of **slices** — and the slice
@@ -144,12 +175,30 @@ The justification is a statement about the data, not about memory:
 > an edge incident to a vertex, the more likely that more edges will follow. Hence, it makes
 > sense to exponentially increase the amount of allocated space each time.
 
+**Preferential attachment** is the "rich get richer" process — a vertex that already has many edges
+is disproportionately likely to gain more — and it is the standard generative story for a
+**power-law** degree distribution (a handful of vertices with enormous degree, a very long tail of
+tiny ones). The allocator bakes that assumption into its growth curve.
+
+The general rule for an arbitrary degree `d`: the edges fill pools in order, one slice per pool,
+where pool `P_r`'s slice holds `2^r` edges. A vertex of degree `d` therefore occupies slices in
+`P_1 … P_k`, where `k` is the smallest integer with cumulative capacity
+`2^{k+1} − 2 = 2 + 4 + … + 2^k ≥ d`, and its top slice has `2^{k+1} − 2 − d` unused slots. Check it
+against the degree-25 case: cumulative capacities are `P1→2, P1..P2→6, P1..P3→14, P1..P4→30`, and
+`30 ≥ 25` first at `k = 4`, so the vertex spans `P1..P4` with `30 − 25 = 5` free slots — exactly the
+figure above.
+
 Because the slice sizes are fixed and known, "we know from the vertex degree where to insert the
 next edge and how much space is left in the current slice" — no per-vertex metadata beyond the
 degree and the slot indices. Exercise 5 asks you to build it and measure bytes-per-edge against a
 doubling `Vec`.
 
 ### Step 7 — One writer, no locks
+
+> **In:** the active segment's edge pools from Step 6, written by one thread and read by many.
+> **Out:** the **single-writer, multi-reader** concurrency model — no write–write conflicts to
+> guard, only memory-visibility handled with memory barriers — which is why the entire latch
+> hierarchy topic 9 builds is simply absent here.
 
 "Since we adopt a single-writer, multi-reader design, there is no need to worry about write–write
 conflicts." Edge insertions all come from one thread reading a Kafka queue; reads are served by
@@ -162,6 +211,11 @@ stream produces. The design is worth contrasting with everything topic 9 builds:
 make the writer singular, the entire latch hierarchy disappears.
 
 ### Step 8 — Sealed-segment relayout, and O(1) sampling
+
+> **In:** a segment that has just stopped accepting edges (sealed), still in the write-optimized
+> edge-pool layout of Step 6.
+> **Out:** a compacted, gap-free, read-optimized relayout of that segment, plus the **alias method**
+> that makes cross-segment sampling O(1) — the primitive Step 9's random walks call.
 
 Once a segment stops accepting edges, a background thread rebuilds it:
 
@@ -184,7 +238,14 @@ added after the API call are not visible."
 
 ### Step 9 — SALSA, full and subgraph
 
-The recommendation algorithms are random walks on the bipartite graph. **Full SALSA**: start from
+> **In:** the O(1) edge-sampling primitive from Step 8.
+> **Out:** the two recommendation algorithms that ride on it — full **SALSA** and subgraph SALSA —
+> and the memory-versus-quality trade between them (roughly half the index, at the cost of
+> second-order paths).
+
+The recommendation algorithms are random walks on the bipartite graph. **SALSA** (*Stochastic
+Approach for Link-Structure Analysis*) is a bipartite random walk that alternates sides and ranks
+vertices by how often the walk visits them. **Full SALSA**: start from
 the user (or a *seed set* — the circle of trust, which handles users with no interactions),
 alternate left→right→left, restart with probability α, and rank right-hand vertices by visit
 distribution.
@@ -200,6 +261,10 @@ vertices through other user vertices that are outside of the seed set."
 Fitting in cache and halving the index, at the cost of second-order paths. Both ship.
 
 ### Step 10 — The numbers
+
+> **In:** the complete engine of Steps 4–9, deployed.
+> **Out:** the measured envelope — insertion throughput, per-request latency percentiles, capacity
+> per machine, availability — the figures your own build should be judged against.
 
 Two Intel Xeon 6-core E5-2620 v2 at 2.10 GHz:
 
@@ -219,6 +284,11 @@ the case of catastrophic Kafka failure, GraphJet can continue serving recommenda
 with increasingly stale data in memory)."
 
 ### Step 11 — §7.3, the paragraph for anyone building on Redis
+
+> **In:** the allocator (Step 6) and temporal pruning (Step 4) as the two things that distinguish
+> GraphJet from a generic list store.
+> **Out:** §7.3's verdict — the two specific, named reasons Redis's `LPUSH` cannot be the graph
+> store, which is exactly the gap capstone M42 asks you to close.
 
 > It is possible, of course, to use any key–value store to hold the adjacency lists that comprise
 > a graph, thus serving as a real-time graph store ... but Redis in particular supports a command
@@ -274,13 +344,102 @@ is exactly what capstone M42 asks you to build.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can state the single-server argument and its 80 GB arithmetic.
+
+  <details><summary>Answer</summary>
+
+  Twitter bet the whole graph fits in one server's RAM rather than partitioning it (§2.1): "we took
+  exactly the opposite approach of scaling up on individual large-memory (but still commodity)
+  servers." The arithmetic: a graph of ten billion edges, stored naïvely as an edge list at 8 bytes
+  per edge, is "a mere 80 GB, which is well in the range of memory available on commodity servers."
+  The payoff is that the hard problems become *fitting it in memory* (id narrowing, the doubling
+  allocator) instead of distributed coordination — and the paper openly doubts distributed graph
+  stores are as important as the literature treats them.
+
+  </details>
+
 - [ ] You can name all four generations and what killed each.
+
+  <details><summary>Answer</summary>
+
+  **Cassovary (2010)** — in-memory single server, HDFS snapshots, circle of trust + SALSA; killed by
+  once-a-day snapshot freshness, so new users got nothing (cold start). **RealGraph on Hadoop
+  (2012)** — richer behavioural signals, no longer memory-resident; killed by being batch, "roughly
+  daily," dissonant with the live Twitter experience. **MagicRecs (2013)** — real-time push on
+  edge arrival, its key move recasting "B→C edges in a time window" as an *intersection of adjacency
+  lists*; limited to one hard-coded rule, ~7 s median latency dominated by message propagation.
+  **GraphJet (2014)** — MagicRecs generalized into a real storage engine with a five-method API.
+
+  </details>
+
 - [ ] You can draw the index-segment picture and say what immutability buys.
+
+  <details><summary>Answer</summary>
+
+  A row of temporally-ordered segments; only the newest takes writes (single writer), the rest are
+  read-only, and a segment older than *n* hours is discarded whole. Immutability buys three things
+  (§3.3): pruning is coarse-grained and free (drop a segment, no per-edge expiry — "does not have a
+  noticeable impact on recommendation quality"); only the one active segment needs write-optimized
+  structures, so sealed segments can be relaid out for reads (Step 8); and each segment's bounded
+  vertex set lets 64-bit ids collapse to small segment-internal ids (Step 5). The idea is borrowed
+  from Earlybird.
+
+  </details>
+
 - [ ] You can write the edge-pool layout for an arbitrary degree.
+
+  <details><summary>Answer</summary>
+
+  Pool `P_r` holds slices of `2^r` edges; a vertex fills one slice per pool in order. A degree-`d`
+  vertex spans `P_1 … P_k`, where `k` is the smallest integer with `2^{k+1} − 2 ≥ d` (cumulative
+  capacity `2 + 4 + … + 2^k`), and the top slice has `2^{k+1} − 2 − d` free slots. Degree 25 →
+  cumulative `2, 6, 14, 30`; `30 ≥ 25` at `k = 4`, so `P1..P4` with `30 − 25 = 5` free. The doubling
+  is deliberate: it "implicitly assumes some type of preferential attachment effect," so more edges
+  are expected precisely where edges already exist.
+
+  </details>
+
 - [ ] You can explain why single-writer removes the need for locks entirely.
+
+  <details><summary>Answer</summary>
+
+  All edge insertions come from one thread draining a Kafka queue, so there are no write–write
+  conflicts to serialize — the only remaining concern is that readers see writes, which "judicious
+  use of memory barriers is sufficient to address," and barriers are cheap enough that the penalty
+  is acceptable. It works because a single writer sustains ~1,000,000 edges/s, well above the
+  steady-state engagement rate, so one writer is never the bottleneck. Contrast topic 9: when you
+  can make the writer singular, the entire latch hierarchy disappears.
+
+  </details>
+
 - [ ] You can quote §7.3's two gaps and connect them to capstone M42.
+
+  <details><summary>Answer</summary>
+
+  §7.3: Redis's `LPUSH` could hold adjacency lists, but "the implementation of the command ... lacks
+  the memory allocation optimizations in GraphJet," and "Redis lacks a mechanism for pruning these
+  lists; although it would be possible to implement temporal partitioning, it would basically be
+  replicating some of the main design features in GraphJet." The two gaps are the doubling
+  **allocator** (Step 6) and **temporal pruning via segments** (Step 4) — which is precisely the
+  feature list capstone M42 asks you to add to a Redis-module graph store.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five questions live in `notes.md`'s guide-question checklist. The load-bearing ones: Q1 (no
+  deletes is safe because interactions are point events that can't be undone; no timestamps is safe
+  because window membership carries almost all the signal — both break on a workload with revocable
+  edges or timestamp-sensitive scoring); Q3 (the id table can't rehash because the hash *is* the id,
+  so it grows by a power-of-two chain and lookup probes each table in turn); Q4 (degree-proportional
+  segment selection then uniform within-segment sampling equals uniform over all edges — sampling
+  segments uniformly over-weights low-degree segments). Q2 and Q5 are measurements you run yourself.
+
+  </details>
 
 ## References
 

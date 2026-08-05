@@ -19,6 +19,10 @@ every operator had to know about processes, queues, and partitions.
 
 ### Step 1 — Anonymous inputs: the iterator contract does the heavy lifting
 
+> **In:** an operator (scan, join, sort) and whatever feeds it.
+> **Out:** the discipline that an operator never knows *what* produces its input —
+> the one precondition that lets Step 2 encapsulate parallelism in a new operator.
+
 Volcano makes every operator an iterator with `open`/`next`/`close`. The crucial discipline is that
 inputs are **anonymous**: an operator never knows or cares what produces its input — it just calls
 `next` on an opaque handle. A join pulling from a scan is indistinguishable, from the join's point
@@ -27,6 +31,10 @@ process. That indistinguishability is the entire trick. Parallelism becomes not 
 operators but *one more operator*.
 
 ### Step 2 — Exchange: drop-in parallelism
+
+> **In:** a working single-threaded plan of anonymous-input iterators (Step 1).
+> **Out:** the same plan with one `exchange` operator spliced between two operators
+> — now parallel, with every scan/join/sort's code unchanged.
 
 Because inputs are anonymous, you can splice an exchange operator between any two operators in a
 plan. Scan, join, and sort code runs unchanged, single-threaded, inside each process; exchange forks
@@ -45,6 +53,10 @@ The optimizer reasons about query semantics; exchange placement is a separate, m
 
 ### Step 3 — What happens on open: forks, packets, queues (§4.2)
 
+> **In:** an `exchange` operator's `open` call, driven from its consumer side.
+> **Out:** a forked producer process (or group) shipping **packets** — arrays of
+> records, 1–32,000 per packet — through shared-memory queues to the consumer.
+
 Exchange's consumer side is an ordinary iterator. On `open`, it forks a producer process (or a
 group of them). Producer and consumer exchange data as **packets** — batches of records — through
 shared-memory queues. `next` on the consumer side just unpacks the current packet and blocks on
@@ -56,6 +68,11 @@ forking from one coordinator is suboptimal. Processes can also be "primed" (pre-
 GAMMA) so query start does not pay fork latency.
 
 ### Step 4 — Three kinds of parallelism from one operator
+
+> **In:** the fork-and-route machinery from Step 3, plus a per-record *support
+> function* that picks an output queue.
+> **Out:** all three classic parallel forms — vertical (pipelining), bushy, and
+> intra-operator — from that single operator.
 
 Exchange gives all three classic forms:
 
@@ -83,6 +100,11 @@ termination interesting.
 
 ### Step 5 — Counted end-of-stream, not assumed (§4.3)
 
+> **In:** the j-producers × k-consumers mesh from Step 4, each producer finishing
+> at its own time.
+> **Out:** correct termination — every consumer counts one end-of-stream packet
+> from each producer before it reports end-of-stream upward.
+
 End-of-stream is **counted, not assumed**. Each producer, when done, sends a flagged end-of-stream
 packet to *every* consumer; each consumer must count one from every producer before it reports
 end-of-stream upward. The paper's example: 3 producers × 4 consumers = 12 end-of-stream packets.
@@ -91,6 +113,10 @@ finishes early. Flow control and shutdown are self-scheduling via semaphores —
 coordinator watches the pipeline.
 
 ### Step 6 — The §4.4 variants: broadcast, merging, exchange-in-the-middle
+
+> **In:** the basic exchange from Steps 3–5.
+> **Out:** four refinements — broadcast-by-pinning, the merging exchange,
+> exchange-in-the-middle (the paper's *interchange*), and run-time fork-vs-reuse.
 
 Four refinements, each with a lasting lesson:
 
@@ -101,8 +127,8 @@ Four refinements, each with a lasting lesson:
    draining queues into one big bag. Mixing streams destroys the sort order each producer worked
    to establish. This is the lesson the topic's stub test pins.
 3. **Exchange-in-the-middle.** An exchange that does not fork at all but re-routes partitions
-   between processes created by other exchanges. This variant makes flow control obsolete — and
-   makes vertical parallelism optional.
+   between processes created by other exchanges — the paper calls this variant **interchange**.
+   This variant makes flow control obsolete — and makes vertical parallelism optional.
 4. **Fork vs reuse is a run-time switch**, not a compile-time decision.
 
 ```text
@@ -117,6 +143,10 @@ Four refinements, each with a lasting lesson:
 
 ### Step 7 — A buffer manager built for many processes (§4.5)
 
+> **In:** many producer and consumer processes contending on one shared buffer pool.
+> **Out:** a deadlock-free, two-level-locking buffer manager that never becomes the
+> serialization bottleneck the parallelism was meant to remove.
+
 Shared-memory parallelism needs a buffer manager that will not become the bottleneck or deadlock.
 Volcano uses two-level locking: a pool lock that is **never held during I/O**, plus per-descriptor
 locks; a restart scheme removes hold-and-wait, making the buffer manager deadlock-free by design.
@@ -125,6 +155,11 @@ would cost more than spinning. A read-ahead/write-behind daemon serves FLUSH, RE
 QUIT requests, decoupling I/O from the query processes.
 
 ### Step 8 — The numbers: exchange overhead and the 12× batching swing (§5)
+
+> **In:** the exchange implementation of Steps 3–7, benchmarked on a Sequent
+> Symmetry over 100K-record inputs.
+> **Out:** the measured price of an exchange (25.73 µs/record) and a ~12× batching
+> swing — the economics that drove vectorized execution two decades later.
 
 Measured on a Sequent Symmetry — 12 CPUs, 16 MHz Intel 80386, 100K-record inputs:
 
@@ -182,15 +217,85 @@ top-down vs a scheduler pushing bottom-up) sharpens why exchange needs no schedu
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can sketch the j × k producer/consumer mesh and state the end-of-stream packet count for
       any j and k without looking it up.
+
+  <details><summary>Answer</summary>
+
+  Each of the `j` producers fills packets destined for any of the `k` consumers,
+  chosen per record by the support function, so every producer can reach every
+  consumer — a full `j × k` mesh. On termination each producer sends one flagged
+  end-of-stream packet to *every* consumer, so there are `j × k` end-of-stream
+  packets in total (the paper's example: 3 × 4 = 12). Each consumer must count one
+  from every producer — `j` flags each — before it reports end-of-stream upward.
+  Stop after the first flag and you truncate (a still-working producer's rows are
+  dropped); the symmetric mistake — never reaching the count — hangs forever
+  (§4.3).
+
+  </details>
+
 - [ ] You can explain, in two sentences, why anonymous inputs are the precondition for
       encapsulating parallelism in one operator.
+
+  <details><summary>Answer</summary>
+
+  Because every operator pulls from an opaque input handle and never learns what
+  produces it, an exchange can be spliced between any two operators and neither
+  notices — a join draining a shared-memory queue fed by another process is
+  indistinguishable from a join draining a local scan. If inputs were typed or
+  known, every operator would need process-, queue-, and partition-awareness (as in
+  GAMMA's bracket model), and parallelism could not be confined to one new operator.
+
+  </details>
+
 - [ ] You can name all four §4.4 variants and the failure mode the merging exchange avoids.
+
+  <details><summary>Answer</summary>
+
+  (1) **Broadcast by pinning** — send one packet to many consumers by pinning it in
+  the shared buffer for each, no copy; (2) the **merging exchange** — fuse `k`
+  sorted producer streams, kept grouped by producer; (3) **exchange-in-the-middle /
+  interchange** — no fork, just re-route partitions among existing processes, which
+  makes flow control obsolete; (4) **fork-vs-reuse** as a run-time switch. The
+  merging exchange avoids *order loss*: dumping every producer's packets into one bag
+  and "merging" destroys the sort order each producer established. The merge iterator
+  must distinguish records by their producer — the paper: "it is crucial to
+  distinguish the input records by their producer in order to merge multiple sorted
+  streams correctly."
+
+  </details>
+
 - [ ] You can quote the batching swing (1 vs 83 records/packet) and connect it to vectorized
       execution economics.
+
+  <details><summary>Answer</summary>
+
+  Packet-size sweep: 1 record/packet → 171 s; 2 → 94 s; 50 → 15.0 s; 83 (one page's
+  worth, the default) → 13.7 s — roughly a 12× swing purely from amortizing the
+  per-packet fixed costs (a semaphore signal, one linked-list insertion into the
+  port, buffer fix/unfix) over more records. That is the vectorized-execution
+  argument two decades early: do one synchronization and dispatch per *batch*, not
+  per row. DataFusion's `RecordBatch` is exactly this packet, and round-robin
+  forwards it intact (§5).
+
+  </details>
+
 - [ ] The merging-exchange test against the stub in `experiments/src/exchange.rs` passes with a
       per-producer-stream merge and fails with a single-bag merge.
+
+  <details><summary>Answer</summary>
+
+  The stub's merging-exchange contract pins Step 6's lesson. Implement the merge by
+  keeping one cursor per producer stream and repeatedly emitting the smallest current
+  head (a streaming k-way merge) and the globally sorted output is correct.
+  Implement it by concatenating every producer's packets into one buffer and emitting
+  arrival order, and the per-producer sort order is lost and the test fails. It is the
+  same distinction DataFusion draws between `preserve_order` (its merging
+  `RepartitionExec`) and the default arrival-order interleave.
+
+  </details>
 
 ## References
 

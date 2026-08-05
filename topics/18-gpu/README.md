@@ -72,8 +72,11 @@ happens.
   fill second. GPU code can't `Vec::push` — every output needs its
   size known or an atomic cursor.
 - Group-by: shared-memory aggregation per block when cardinality
-  fits (groupby/hash/compute_shared_memory_aggs.cu), spilling to
-  global-memory atomics when it doesn't — topic 11's two-phase
+  fits (groupby/hash/compute_shared_memory_aggs.cu). It does *not*
+  spill: `compute_single_pass_aggs.cuh:95-122` sets a device
+  `atomic_flag` when a block overflows, copies it to the host,
+  synchronizes, and re-runs the **whole** aggregation in global
+  memory — all-or-nothing, decided on the host. Topic 11's two-phase
   partial aggregation, forced by the memory hierarchy.
 
 ## 5. GPU graph processing (Gunrock) & ANN (CAGRA)

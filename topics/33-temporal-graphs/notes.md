@@ -24,8 +24,8 @@ the measured value of the sorted-stream insight, not a tautology.
 
 ## Guide-question checklist
 
-- [ ] reading-temporal-paths.md Q1–Q5
-- [ ] reading-temporal-motifs.md Q1–Q5
+- [ ] reading-temporal-paths.md Q1–Q6
+- [ ] reading-temporal-motifs.md Q1–Q6
 - [ ] reading-aeong.md Q1–Q5
 - [ ] reading-raphtory.md Q1–Q5
 

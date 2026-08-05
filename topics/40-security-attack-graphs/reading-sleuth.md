@@ -7,7 +7,8 @@ subgraph. The obstacle is not subtlety, it is volume and connectivity. Enterpris
 billions of events a day, more than 99.9% of them benign, and naive backward tracing from an
 alert reaches almost everything — the *dependency explosion* problem. SLEUTH's answer is worth
 reading as a database paper: a purpose-built main-memory graph at under 10 bytes per event
-(against ~250 for a general graph database and ~3 KB for STINGER/NetworkX), plus a tag system
+(against ~250 bytes/edge for STINGER and ~3 KB for NetworkX — the two *main-memory-optimized*
+graph stores the paper actually measures), plus a tag system
 that turns pruning into a shortest-path problem with tag-derived edge costs. The combination gets
 79 hours of audit data analysed in 14 seconds.
 
@@ -20,6 +21,9 @@ prune while it searches, not after.**
 ## The concepts, step by step
 
 ### Step 1 — The provenance graph
+
+> **In:** a host's raw audit log — Windows event logs, Linux audit, or FreeBSD DTrace.
+> **Out:** the OS-neutral provenance graph (subjects = processes, objects = files/pipes/sockets, edges = timestamped information-flow events), and what "an attack" is as a connected subgraph of it.
 
 Two vertex types and one edge type:
 
@@ -36,11 +40,16 @@ SLEUTH normalises Windows event logs, Linux audit and FreeBSD DTrace into the sa
 
 ### Step 2 — Why a general graph database is the wrong tool here
 
+> **In:** the provenance graph and enterprise event volumes (billions to tens of billions/day).
+> **Out:** the memory argument — general graph stores cost too much per edge — and SLEUTH's <10-bytes-per-event encoding (a 6-byte bidirectional edge), the same domain-specific-encoding move as topic 12.
+
 §2 is unusually direct about this, and it is the part a database engineer should read twice.
-Neo4j-class stores use roughly **250 bytes per graph edge**; STINGER and NetworkX about **3 KB**.
+General graph databases (Neo4J, Titan) it dismisses qualitatively — their memory use is simply
+"too high", with no figure. The numbers it *does* give are for the two stores optimized for
+main-memory performance: **STINGER ≈ 250 bytes per graph edge**, **NetworkX ≈ 3 KB per edge**.
 At "billions to tens of billions of events per day" that is terabytes of RAM. SLEUTH's design
-gets to **under 10 bytes per event** — a **25× to 300× reduction** — and the techniques are the
-same ones this book applies to columnar and index storage:
+gets to **under 10 bytes per event** — a **25× (vs STINGER) to 300× (vs NetworkX) reduction** — and
+the techniques are the same ones this book applies to columnar and index storage:
 
 - **32-bit identifiers instead of 64-bit pointers.** Enough for 4 billion objects/subjects per
   host; the largest data set had orders of magnitude fewer.
@@ -67,6 +76,9 @@ encodings beat a general-purpose layout by two orders of magnitude — arriving 
 conclusion from the security side.
 
 ### Step 3 — Tags: two dimensions, and the split that matters
+
+> **In:** the compact provenance graph, and the need to prune traffic that is >99.9% benign.
+> **Out:** the two tag dimensions (trustworthiness t-tags, confidentiality c-tags), the code-vs-data t-tag split, and the conservative propagation rule — plus Table 10's measured payoff for the split.
 
 Every subject and object carries tags summarising *provenance-derived* trust and sensitivity.
 
@@ -103,6 +115,9 @@ but will not cause attacks to go undetected".
 
 ### Step 4 — Detection: four policies about means and motive
 
+> **In:** tagged subjects and objects from Step 3.
+> **Out:** the four objective-based detection policies (means = an untrusted source, recorded by the `unknown` t-tag; motive = a goal-advancing event) attached to trigger points, and how external detectors compose by setting a code t-tag.
+
 SLEUTH deliberately avoids application-specific knowledge and detects on attacker *objectives*
 instead. The reasoning: an attacker needs both motive (an event advances a goal) and means (the
 data or code came from an untrusted source, which is what the `unknown` t-tag records). The four
@@ -121,6 +136,9 @@ flag a subject, set its code t-tag to `unknown`, and every downstream policy inh
 suspicion.
 
 ### Step 5 — Backward analysis as shortest path with tag-derived costs
+
+> **In:** alarms (flagged subjects) and the tagged graph.
+> **Out:** backward analysis reframed as Dijkstra with tag-derived edge costs (0 / high / 1), why it can stop the moment an entry point joins the shortest-path tree, and how it resolves multiple candidate entry points.
 
 This is the algorithmic core. Backward analysis starts from alarms and walks the graph in reverse
 to find entry points (in-degree zero, untrusted — typically network connections). Two problems:
@@ -143,6 +161,9 @@ closest by path cost.
 
 ### Step 6 — Forward analysis and simplification
 
+> **In:** the entry point found by backward analysis.
+> **Out:** forward impact analysis (same cost metric, plus a distance threshold `d_th`) reduced 100×–500×, and the three simplifications that make the graph human-readable.
+
 Forward analysis from the entry point assesses impact, and has the mirror-image size problem:
 "a naive analysis produced impact graphs with millions of edges, whereas our refined algorithm
 reduces this number by **100x to 500x**". Same cost metric, plus a tunable distance threshold
@@ -155,6 +176,9 @@ Three simplifications then produce something a human can read:
 - **Filter repeated events** — collapse N writes between the same pair, keeping first and last.
 
 ### Step 7 — The reduction, measured end to end
+
+> **In:** all of the above, run on the DARPA Transparent Computing campaigns.
+> **Out:** Table 11 read by column — single t-tag 4.68×, split t-tags 1305×, simplification 41.8× — plus the runtime (79 h in 14 s) and accuracy (174 correct / 0 wrong / 2 missed) figures.
 
 Table 11 is the summary the whole paper builds to. For each DARPA Transparent Computing campaign:
 initial event count, final scenario-graph event count, and the reduction attributable to each
@@ -194,9 +218,9 @@ That single rule is the difference between a usable tool and an alert firehose.
 - **§1.1 Approach overview + Fig 1.** The four-stage pipeline. The headline numbers (79 hours in
   14 s at 84 MB; 38.5M events → 130) are here.
 - **§2 Main-memory dependency graph.** Read this as a storage-engine section, because it is one.
-  The comparison against Neo4j/Titan (250 B/edge) and STINGER/NetworkX (3 KB) is the motivation;
-  then work through the encoding bullet by bullet against Step 2 and convince yourself the 6-byte
-  bidirectional edge is real.
+  The motivation is the memory comparison: Neo4J/Titan dismissed as "too high" with no figure,
+  STINGER quoted at ~250 B/edge and NetworkX at ~3 KB/edge; then work through the encoding bullet
+  by bullet against Step 2 and convince yourself the 6-byte bidirectional edge is real.
 - **§3 Tags and attack detection.** §3.1 for the tag lattices; the paragraph on splitting code and
   data t-tags is the one to mark. §3.2 for the four policies and the motive/means argument.
 - **§4 Policy framework + Table 2.** Trigger points as a level of indirection over events. Note
@@ -234,13 +258,86 @@ That single rule is the difference between a usable tool and an alert firehose.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can state the dependency-explosion problem and why post-hoc filtering does not solve it.
+
+  <details><summary>Answer</summary>
+
+  Dependency explosion: naive backward tracing from a single alert follows information-flow edges
+  until it reaches almost every node — an enterprise host emits billions of events/day, >99.9% of
+  them benign, and everything is transitively connected. Post-hoc filtering does not help because
+  you would first have to *materialize* the millions-of-edges graph you are trying to avoid;
+  SLEUTH instead prunes *during* the search — Dijkstra stops the moment an entry point joins the
+  shortest-path tree (Step 5).
+
+  </details>
+
 - [ ] You can explain the <10 bytes/event encoding well enough to sketch the record layout.
+
+  <details><summary>Answer</summary>
+
+  32-bit ids (4 billion entities/host) not 64-bit pointers; events stored *inside* subjects, which
+  removes subject→event pointers and event ids entirely (events outnumber objects/subjects ~100×,
+  so event compactness is what matters); variable-length subject-event records — **4 bytes**
+  typical, up to 16 — with **3-bit** event names for frequent syscalls and **≤8-bit** per-subject
+  object references "like file descriptors"; **delta timestamps** at ms resolution relative to the
+  subject's last event (**16 bits**, with a `timegap` pseudo-event for long gaps); object-event
+  records only for `read`/`write`, stored as a **12-bit** relative index. Net: a bidirectional edge
+  in ~**6 bytes** (4 + 2); 38M events in 329 MB.
+
+  </details>
+
 - [ ] You can name the two tag dimensions, the three t-tag levels, and why code and data t-tags
       are separate.
+
+  <details><summary>Answer</summary>
+
+  Dimensions: **trustworthiness** (t-tags) and **confidentiality** (c-tags). Three t-tag levels:
+  *benign authentic* → *benign* → *unknown*. c-tags: *secret* → *sensitive* → *private* →
+  *public*. A subject carries **two** t-tags — one for its **code**, one for its **data** — because
+  a process that reads an untrusted file has untrusted data but still-trusted code; conflating them
+  over-taints everything downstream. Table 11 measures the split at **1305×** against **4.68×** for
+  a single tag.
+
+  </details>
+
 - [ ] You can explain backward analysis as Dijkstra and give the three edge costs.
+
+  <details><summary>Answer</summary>
+
+  Backward analysis walks the graph in reverse from alarms toward entry points (in-degree zero,
+  untrusted — typically outside network connections). Reuse the tags as edge costs:
+  `unknown → benign` = **0** (the malicious/benign boundary — must be on the path);
+  `benign → benign` = **HIGH** (trusted flows — exclude); `unknown → unknown` = **1** (inside the
+  suspicious region). Dijkstra discovers paths in increasing cost order, so it can **stop as soon
+  as an entry point enters the shortest-path tree**, and it naturally prefers the lowest-cost entry
+  point when several are reachable.
+
+  </details>
+
 - [ ] You can read Table 11 by column and say which stage contributes what.
+
+  <details><summary>Answer</summary>
+
+  The columns are the finding, not the totals. Forward analysis with a *single* t-tag: **4.68×**
+  average. Splitting code and data t-tags: **1305×** — two and a half orders of magnitude from one
+  modelling decision. Simplification (prune / merge / filter): **41.8×**. On L-2 the chain is
+  38.5M events → 130 (297,100× total), of which the split column alone is 2971×.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five: (1) which encoding decisions survive if the graph must be updatable and Cypher-queryable;
+  (2) the mechanism behind the 1305× code/data split, with a concrete two-process example; (3) why
+  **0** (not 1) is the right cost for boundary edges under Dijkstra; (4) the propagation rule stated
+  as a soundness-vs-completeness claim and which is sacrificed; (5) two things the event graph makes
+  harder and one it makes easier, versus a permission graph.
+
+  </details>
 
 ## References
 

@@ -24,6 +24,12 @@ transaction is capped there regardless of how fast the rest of the engine is,
 which is why group commit is not an optimization but a structural requirement —
 and why topic 15's follower-fsync table looks the way it does.
 
+And note who is on which rung. Redis defines `redis_fsync` as `fdatasync()` on
+Linux but as `fcntl(fd, F_FULLFSYNC)` on Apple (`src/config.h:128-135` at the
+pinned revision), so `appendfsync always` on this machine pays the 2.97 ms rung,
+not the 22.67 µs one. The same configuration file, on the same version, means
+two things 131× apart depending on the kernel underneath it.
+
 ## Predictions (fill BEFORE running fsync_ladder)
 
 | Rung | Predicted p50 | Measured p50 | Measured p99 |

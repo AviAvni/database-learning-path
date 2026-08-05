@@ -20,6 +20,10 @@ looks like an ordinary iterator.
 
 ### Step 1 — First, decide whether the plan can distribute at all
 
+> **In:** a logical plan — the tree of planNodes the optimizer produced.
+> **Out:** a per-node verdict (distributable, local-only, or wrapped) so physical
+> planning knows what can fan out.
+
 Not every logical operator has a distributed-processor equivalent. `checkSupportForPlanNode`
 walks the logical plan and votes on each node: distributable, local-only, or somewhere in
 between. Nodes with no DistSQL processor equivalent are not a dead end — `mustWrapNode` wraps
@@ -36,6 +40,11 @@ graph LR
 ```
 
 ### Step 2 — Data placement becomes the parallelism plan
+
+> **In:** the table spans a scan needs, plus the range→leaseholder placement map
+> from topic 36.
+> **Out:** per-node scan work — each node assigned exactly the spans whose ranges
+> it already leads, so placement *is* the parallelism.
 
 This is the bridge from topic 36. `PartitionSpans` takes the table spans a scan needs, consults
 range ownership — the placement map you built in the sharding topic — and partitions the spans
@@ -55,6 +64,10 @@ The consequence cuts both ways: co-located data means zero data movement for the
 fan-out width now equals the number of nodes owning relevant ranges — Step 7 collects the bill.
 
 ### Step 3 — The physical plan: processors connected by streams
+
+> **In:** the logical plan plus Step 2's per-node span assignment.
+> **Out:** a `PhysicalPlan` — processors (typed by spec) wired by location-agnostic
+> `StreamEndpointSpec` streams that may be a local queue or a remote gRPC hop.
 
 `createPhysPlan` and `createPhysPlanForPlanNode` recursively turn the logical plan into a
 `PhysicalPlan` — the under-construction distributed plan, which is nothing more than a set of
@@ -80,6 +93,10 @@ distributed and runs a copy on every node that already has a flow.
 
 ### Step 4 — Routers: Volcano's partitioning policies as protobuf enums
 
+> **In:** a processor's output rows and a required distribution.
+> **Out:** an `OutputRouterSpec` policy — PASS_THROUGH, MIRROR, BY_HASH, or
+> BY_RANGE — that decides which output stream each row takes.
+
 Where Volcano's exchange took C support functions to decide which consumer gets each row,
 DistSQL declares the policy in `OutputRouterSpec` and the wire format enumerates exactly the
 classic options:
@@ -100,6 +117,11 @@ matching keys onto the same node without any join-side awareness.
 
 ### Step 5 — Flows: one fragment per node replaces fork()
 
+> **In:** the `PhysicalPlan` from Step 3, sliced into the processors and streams
+> that belong to one node.
+> **Out:** a running `Flow` per node — processors instantiated from spec,
+> goroutines launched, the last processor run inline in the caller's goroutine.
+
 A `Flow` is the set of processors and streams scheduled on ONE node for one query — the unit the
 gateway ships out instead of forking worker processes. `Setup` instantiates processors from the
 spec, `StartInternal` launches the internal goroutines, and `Run` executes the *last* processor
@@ -117,12 +139,26 @@ gateway node                         remote node 2          remote node 3
 
 ### Step 6 — The exchange's two halves: Outbox and Inbox over gRPC
 
+> **In:** a router's output on the producer node and a consumer waiting on another
+> node.
+> **Out:** an `Outbox` → gRPC `FlowStream` → `Inbox` pipe whose consumer end,
+> `Inbox.Next`, is an ordinary operator iterator — the network hidden.
+
 The vectorized engine splits exchange across the wire. The producer half is `Outbox`: its `Run`
 dials the consumer node and opens a FlowStream RPC, then `sendBatches` serializes record batches
 onto the stream. The consumer half is `Inbox`: `RunWithStream` is where the gRPC handler hands
 the incoming stream to the reader, and `Next` is a plain operator iterator — the downstream join
 or aggregator pulls batches from the Inbox exactly as it would from a local scan. Volcano's
-encapsulation survives the network hop intact.
+encapsulation survives the network hop intact. The signature is the whole point — no stream, no
+node, just a batch:
+
+```go
+// pkg/sql/colflow/colrpc/inbox.go — Inbox.Next, the consumer half of the exchange
+333 func (i *Inbox) Next() (coldata.Batch, *execinfrapb.ProducerMetadata) {
+334 	if i.done {
+335 		return coldata.ZeroBatch, nil
+336 	}
+```
 
 Read the two halves in this order, and the symmetry becomes obvious:
 
@@ -157,6 +193,10 @@ graph TD
 ```
 
 ### Step 7 — The price: fan-out width is tail-latency exposure
+
+> **In:** the fan-out width `PartitionSpans` derived from placement (Step 2).
+> **Out:** the tail-latency bill — a query over ranges on N nodes waits for its
+> slowest flow, exactly topic 37's fan-out math.
 
 Because `PartitionSpans` derives fan-out from placement, a query over ranges on N nodes waits
 for its slowest flow. This is exactly topic 37's fanout lane from "The Tail at Scale": if each
@@ -200,13 +240,72 @@ Paths are relative to `~/repos/cockroach`.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can narrate the full path — logical plan → `checkSupportForPlanNode` →
       `PartitionSpans` → `PhysicalPlan` → per-node `Flow` — without looking at the code.
+
+  <details><summary>Answer</summary>
+
+  `checkSupportForPlanNode` (distsql_check.go:214) votes each planNode
+  distributable / local-only / wrapped, and `mustWrapNode`
+  (distsql_physical_planner.go:312) embeds the ones with no processor equivalent.
+  `PartitionSpans` (:971) splits the scan's spans by leaseholder node, so placement
+  sets the fan-out. `createPhysPlan` / `createPhysPlanForPlanNode` (:3604 / :3632)
+  build the `PhysicalPlan` (physicalplan/physical_plan.go:125) — processors joined
+  by `StreamEndpointSpec` streams (execinfrapb/data.proto:72). The gateway then ships
+  each node its slice as a `Flow` (flowinfra/flow.go:72), set up and started per node.
+  Placement → fragments → streams → flows.
+
+  </details>
+
 - [ ] You can point at the line where the consumer side of a network exchange becomes an
       ordinary iterator, and explain why that keeps every other operator network-oblivious.
+
+  <details><summary>Answer</summary>
+
+  `Inbox.Next` (colflow/colrpc/inbox.go:333) returns
+  `(coldata.Batch, *execinfrapb.ProducerMetadata)` — the exact signature of any
+  vectorized operator, with no stream or node in it. The downstream join or
+  aggregator calls `Next` and cannot tell whether the batch arrived from a local
+  queue or a gRPC `FlowStream` (opened by `Outbox.Run`, outbox.go:218; fed by
+  `sendBatches` :323; handed to the reader in `Inbox.RunWithStream` :212). Because the
+  network hides behind the same iterator contract, every other operator is unchanged
+  from the single-node case — Volcano's anonymous input, now remote.
+
+  </details>
+
 - [ ] You can map all four `OutputRouterSpec` policies to their Volcano exchange ancestors and
       name which one a distributed hash join uses and why.
+
+  <details><summary>Answer</summary>
+
+  From `execinfrapb/data.proto`: PASS_THROUGH (:152) = single consumer, no routing;
+  MIRROR (:154) = broadcast to all consumers (Volcano's broadcast-by-pinning);
+  BY_HASH (:157) = hash of key columns picks the stream; BY_RANGE (:160) = preset key
+  boundaries pick the stream. They are Volcano's support-function policies
+  (round-robin / range / hash, plus broadcast) written as a protobuf enum. A
+  distributed hash join uses **BY_HASH**: hashing the join keys routes matching keys
+  from both inputs to the same node, so each node joins its own partition with no
+  join-side awareness — the runtime router is `hashRouter` (rowflow/routers.go:538)
+  or `HashRouter` (colflow/routers.go:443).
+
+  </details>
+
 - [ ] You have answered all five questions above in `notes.md`, with file:line evidence.
+
+  <details><summary>Answer</summary>
+
+  Each answer should carry the anchor a reader can check against `~/repos/cockroach`:
+  (1) `checkSupportForPlanNode`:214 + `mustWrapNode`:312 — the wrapped planNode runs
+  locally on the gateway, losing distribution; (2) `PartitionSpans`:971 and the
+  stale-leaseholder re-route; (3) `Flow.Run`:566 runs the last processor inline,
+  saving one goroutine per flow per node; (4) `sendBatches`:323 — backpressure is
+  gRPC stream flow control, not an explicit window; (5) the Step 7 model,
+  1 − 0.99^20 ≈ 18.2% at 20-way fan-out versus 63.4% at 100-way, so keeping hot tables
+  on fewer nodes shrinks the tail exposure.
+
+  </details>
 
 ## References
 

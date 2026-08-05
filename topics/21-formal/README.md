@@ -118,7 +118,7 @@ interleaving of a 3-replica, 3-entry model:
 | config | states (distinct) | result |
 |---|---|---|
 | `SyncCommit = TRUE` | 2583 (1080), depth 14 | **Durability holds** |
-| `SyncCommit = FALSE` | 123 checked | **violated at depth 5** |
+| `SyncCommit = FALSE` | 183 (123), depth 5 | **violated at depth 5** |
 
 The counterexample TLC prints is the exact PostgreSQL
 `synchronous_commit = off` data-loss story: Append → Commit (no
@@ -131,20 +131,31 @@ WalReplication.tla` (flip `SyncCommit` in the .cfg to see the trace).
 
 ## 4. Z3 — SMT in one paragraph
 
-CDCL SAT core + theory solvers (linear arithmetic, arrays,
-uninterpreted functions) cooperating via DPLL(T); quantifiers via
-e-matching **over a congruence-closure e-graph** — the same structure
-as egg, built for search instead of rewriting. Z3's modern e-graph
-(`src/ast/euf/euf_egraph.h:23`) literally cites egg's deferred
-congruence repair. Databases meet Z3 in query equivalence checking
-(Cosette, topic 16) and symbolic execution of UDFs.
+A SAT core with two-watch literals, lemma learning from conflict
+clauses, phase caching and non-chronological backtracking (TACAS'08's
+own list) plus theory solvers (linear arithmetic, arrays, uninterpreted
+functions); quantifiers via e-matching **over a congruence-closure
+e-graph** — the same structure as egg, built for search instead of
+rewriting. Note what the paper does *not* say: it names Nelson–Oppen
+only as the traditional method Z3 **avoids**, in favour of model-based
+theory combination (its ref [5]), and "DPLL(T)" appears exactly once,
+under relevancy propagation. Z3's modern e-graph
+(`src/ast/euf/euf_egraph.h:22-23`) mentions egg, but carefully: the
+worklist "is in reality inherited from the legacy SMT solver. It is
+*claimed* to have the same effect as delayed congruence table
+reconstruction from egg." Databases meet Z3 in query equivalence
+checking (Cosette, topic 16) and symbolic execution of UDFs.
 
 ## 5. Lean 4 — proofs, and a runtime worth reading
 
 Proofs are unbounded (no MaxLog=3), but cost weeks not days. Lean's
-own runtime is a systems story: Perceus reference counting with
-reuse tokens gives functional-but-in-place updates — an RC design
-directly relevant to any Rust engine tempted by `Arc` everywhere.
+own runtime is a systems story: **Counting Immutable Beans** (Ullrich &
+de Moura, IFL 2019) reference counting with reuse tokens gives
+functional-but-in-place updates — an RC design directly relevant to any
+Rust engine tempted by `Arc` everywhere. Perceus is Koka's descendant of
+it, and says so: its §5 is "closely based on the reference counting
+algorithm in the Lean theorem prover as described by Ullrich and
+de Moura".
 M21 taste: prove one delta-matrix invariant (`DP ∩ M = ∅` preserved
 by set/remove) in Lean, and compare with the same property as a
 proptest (topic 16).

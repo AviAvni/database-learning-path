@@ -17,7 +17,7 @@ Every technique in this topic is one choice of generator + oracle:
 |---|---|---|
 | property testing | random ops | in-memory model |
 | DST | random ops + FAULTS + sim clock | model + invariants |
-| PQS (SQLancer) | random query around a pivot row | "pivot row must appear" |
+| PQS (SQLancer) | random query around a pivot row per table | "pivot row must appear" |
 | TLP / metamorphic | one query, three partitions | self-consistency |
 | fuzzing | coverage-guided byte mutation | "doesn't crash" |
 | Jepsen/elle | concurrent client histories | linearizability checker |
@@ -82,17 +82,24 @@ The test-oracle problem: for a random query, who knows the right
 answer? SQLancer's insight — you don't need one. You need a second
 query whose result must RELATE to the first:
 
-- **PQS** (pivoted query synthesis): pick a random existing row (the
-  pivot), *synthesize* a WHERE clause that evaluates TRUE on it
-  (rectify NULLs as you go), assert the pivot appears in the result.
-  Finds: expression-evaluation bugs. Needs: an expression evaluator
-  of your own (the cost of PQS).
-- **TLP** (ternary logic partitioning): any predicate p splits rows
-  three ways — `p`, `NOT p`, `p IS NULL` (SQL is 3-valued!). So
-  `Q ≡ Q where p ∪ Q where NOT p ∪ Q where p IS NULL`. Finds:
-  optimizer logic bugs. Needs: nothing but a union.
+- **PQS** (pivoted query synthesis): pick one existing row from *each*
+  table (§3.1 — not one row overall), *synthesize* a WHERE clause that
+  evaluates TRUE on that combination (rectify NULLs as you go), assert
+  the pivot appears in the result. Finds: expression-evaluation bugs —
+  61 of the paper's 99 confirmed bugs, §4.2 Table 3. Needs: an
+  expression evaluator of your own, which is the cost of PQS and the
+  reason SQLancer now lists it as unmaintained (`sqlancer/README.md:80`);
+  the oracle is still present, in eight `Test*PQS.java` files.
+- **TLP** (the paper's title is *Query Partitioning*; ternary logic is
+  the mechanism): any predicate p splits rows three ways — `p`,
+  `NOT p`, `p IS NULL` (SQL is 3-valued!). So
+  `Q ≡ Q where p ⊎ Q where NOT p ⊎ Q where p IS NULL`, where `⊎` is
+  *multiset* union — with plain set union the identity would not hold
+  on duplicates. Finds: optimizer logic bugs. Needs: nothing but a union.
 - **NoREC**: run the query optimized (`WHERE p`) and unoptimized
-  (`SELECT (p) FROM t` counted as booleans) — counts must match.
+  (`SELECT (p IS TRUE) FROM t`, summed) — counts must match. The
+  `IS TRUE` is load-bearing: it collapses NULL to false so the sum
+  counts exactly the rows `WHERE p` would return.
   Finds: predicate-pushdown/index bugs.
 
 ## 3. Fuzzing

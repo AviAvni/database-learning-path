@@ -8,6 +8,13 @@ production math, not exotica.
 
 ## Our motivation numbers first (Apple M3 Pro, 10M sorted u64, 2026-07-10)
 
+> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 26, which
+> measures the same three lanes at **246 ns** (binary search), **299 ns**
+> (BTreeMap) and **28 ns** (HashSet). Where the two disagree, FINDINGS is
+> canonical; cite one run or the other by name and never average them.
+> Re-run `./verify.sh 26` before treating a nanosecond figure below as
+> current — the ratios, which are what the topic is about, hold in both.
+
 | point-miss lookup | ns | memory |
 |---|---|---|
 | binary search over sorted vec | 167 | 76 MB (the data) |
@@ -43,8 +50,9 @@ predictable.
 ```
   k probes, b bits/key:  FPR ≈ (1 − e^(−k/b))^k
   optimal k = b·ln2  →  at 10 bits/key: k≈7, FPR ≈ 0.82%
-  rule of thumb: every +4.8 bits/key HALVES... no — ×10 needs +4.8 bits? 
-  memorize instead: 10 bits/key ≈ 1%, 16 ≈ 0.04%, each bit/key is ~2× FPR
+  rule of thumb: +1.44 bits/key HALVES the FPR; +4.79 bits/key cuts it 10x
+  (log10(1/FPR) = b·ln2²/ln10 = 0.209·b, so one bit/key is ~1.6x)
+  spot-check: 10 bits/key ≈ 0.82%, 16 ≈ 0.046%
 ```
 
 Blocked bloom (RocksDB `FastLocalBloomImpl`, util/bloom_impl.h:144) puts

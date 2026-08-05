@@ -2,6 +2,13 @@
 
 ## Baseline (provided rungs, release, Apple Silicon, measured 2026-07-10)
 
+> A different run of the same lane than
+> [FINDINGS.md](../../FINDINGS.md) row 17 (dot **8.88 → 26.32 GB/s**,
+> branchy at 50% **0.95 GB/s** against the 1.19 below). Where the two
+> disagree, FINDINGS is canonical; cite one run or the other by name and
+> never average them. Re-run `./verify.sh 17` before treating any cell
+> below as current.
+
 N = 4M f32 (16 MB per input — out of L2, into memory), 20 reps.
 
 ### dot product

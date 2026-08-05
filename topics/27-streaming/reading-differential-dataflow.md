@@ -14,12 +14,18 @@ iterate) that our topic-27 stubs are simplified excerpts of.
 Delete one edge from a 500K-edge graph and a maintained reachability
 view must retract every fact derived *through* that edge — across
 however many BFS rounds derived them, while other facts re-derive via
-surviving paths — without falling back to the 24.7 ms full re-BFS our
-insert-only stub would need.
+surviving paths — without falling back to the 31.2 ms full re-BFS our
+insert-only stub would need (this topic's measured reachability lane —
+`../../FINDINGS.md` row 27 / `README.md` "The problem, measured").
 
 ## The concepts, step by step
 
 ### Step 1 — the delta discipline: streams of weighted, timestamped updates
+
+> **In:** a changing collection (a table under inserts, deletes,
+> updates). **Out:** a stream of `(data, time, diff)` updates whose
+> implicit collection at time t is the sum of all updates at times ≤ t —
+> kept canonical by consolidation (sort, sum diffs, drop zeros).
 
 A differential **Collection** is not a table — it is a stream of
 `(data, time, diff)` updates: the record, the logical timestamp it
@@ -36,6 +42,11 @@ matters: a deletion is just more data, so *one* code path handles
 inserts, deletes, and updates — no per-operator retraction logic.
 
 ### Step 2 — arrangements: the indexed update log, shared and compacted
+
+> **In:** a stream of updates that operators need to look up by key.
+> **Out:** an `Arranged` collection whose trace is an LSM-of-batches
+> index of `(key, val, time, diff)`, shared by reference across every
+> operator that reads that key, and compacted against the frontier.
 
 Operators like join need to look up "all updates for key k" — so
 differential builds **arrangements**: `arrange`
@@ -61,6 +72,11 @@ collapse and their diffs consolidate, bounding state.
 
 ### Step 3 — the incremental join: the bilinear rule on traces, with fuel
 
+> **In:** two arranged, changing inputs A and B. **Out:** the output
+> delta ΔA⋈B + A⋈ΔB + ΔA⋈ΔB, computed by joining each new batch against
+> the *other* input's trace — work metered by a fuel loop so a large
+> delta never stalls the worker.
+
 The join of two changing inputs updates by the product rule — new output
 = ΔA⋈B + A⋈ΔB + ΔA⋈ΔB — and `join_traces` (operators/join.rs:69) is
 that rule executed against arrangements: each input is arranged; when a
@@ -75,6 +91,11 @@ Cooperative scheduling at the operator level: topic 7's lesson, again.
 
 ### Step 4 — iteration: lattice timestamps make recursion retractable
 
+> **In:** a recursive loop body (e.g. BFS relaxation) over changing
+> input. **Out:** every derived fact stamped with an **(outer, round)**
+> lattice time, so deleting an input edge retracts exactly the
+> round-and-epoch-dependent facts it produced — no support counting.
+
 This is where differential earns its name. `iterate`
 (operators/iterate.rs:192 `Variable`, `set` :262) runs a loop body
 inside a nested scope where every update carries an **(outer, round)**
@@ -88,17 +109,28 @@ counting, no over-deletion bug — the two failure modes every hand-rolled
 incremental-recursion scheme hits. This is the machinery our insert-only
 `reach.rs` deliberately lacks (the topic README's scope cut).
 
-`examples/bfs.rs:101-107` is the whole algorithm:
+`examples/bfs.rs:98-109` is the whole algorithm (real code, pinned at
+`3f279da` — the closure takes `(scope, inner)`, and the final `reduce`
+keeps the minimum distance, it is not a `...min...` placeholder):
 
 ```rust
-nodes.iterate(|inner| {
-    inner.join_map(&edges, |_k, l, d| (*d, l + 1))   // relax
-         .concat(&nodes)                              // keep roots
-         .reduce(...min...)                           // keep shortest
-})
+// differential-dataflow/examples/bfs.rs @3f279da
+98      let nodes = roots.map(|x| (x, 0));
+101     nodes.clone().iterate(|scope, inner| {
+103         let nodes = nodes.enter(scope);
+104         let edges = edges.enter(scope);
+106         inner.join_map(edges, |_k,l,d| (*d, l+1))   // relax: one hop
+107              .concat(nodes)                          // keep roots
+108              .reduce(|_, s, t| t.push((*s[0].0, 1))) // keep shortest
+109      })
 ```
 
 ### Step 5 — semi-naive evaluation falls out for free
+
+> **In:** a recursive query run round by round. **Out:** semi-naive
+> behavior — each round joins only the *newly derived* diffs against the
+> full relation — with no special code, because unchanged facts emit no
+> updates.
 
 Semi-naive evaluation — the classic Datalog optimization of joining only
 the *newly derived* facts against the full relation each round, instead
@@ -111,6 +143,12 @@ edge across ALL batches); differential gets the guarantee from the
 representation itself — question 3 asks you to line the two up.
 
 ### Step 6 — what the generality costs, and what it buys
+
+> **In:** the topic's three stubs (delta_join, IncrementalTriangles,
+> SemiNaiveReach) — differential with the general machinery deleted.
+> **Out:** a clear ledger of what the real system pays (arrangements,
+> lattice times, compaction) and what that buys (retractions inside
+> recursion — the one thing the stubs cannot do).
 
 Our three stubs are differential with the general machinery deleted:
 `delta_join` = join_traces without times/fuel; `IncrementalTriangles` =
@@ -133,7 +171,7 @@ problem here and an open one in most hand-built IVM systems.
 | `operators/arrange/arrangement.rs:311` (core :336), `Arranged` :45 | 2 | update stream → shared trace (LSM of batches) |
 | `operators/join.rs:69` `join_traces`; `Deferred` :311; fuel :348, :355-395 | 3 | the bilinear rule against traces, work-metered |
 | `operators/iterate.rs:192` `Variable`, `set` :262 | 4 | nested scope, (outer, round) timestamps |
-| `examples/bfs.rs:101-107` | 4–5 | 40 lines that do what our reach.rs stub cannot |
+| `examples/bfs.rs:98-109` | 4–5 | 12 lines that do what our reach.rs stub cannot |
 
 Paper route: the CIDR '13 paper is short — read all of it, twice. First
 pass after Steps 1–3 (collections, arrangements as "indexed
@@ -162,12 +200,62 @@ bug you can now name.
 
 ## Done when
 
-- [ ] You can explain the delta discipline: weighted, timestamped updates.
-- [ ] You can explain what an arrangement is and why sharing one across queries matters.
-- [ ] You can explain the incremental join as the bilinear rule on traces, and what "fuel" is for.
-- [ ] You can explain why lattice timestamps are required for retractable recursion, not merely convenient.
-- [ ] You can show how semi-naive evaluation falls out for free.
+Answer each before unfolding it.
+
+- [ ] Explain the delta discipline: weighted, timestamped updates.
+  <details><summary>answer</summary>
+
+  A collection is a stream of `(data, time, diff)` updates; the collection
+  at time t is the sum of all updates at times ≤ t and never materializes
+  except inside arrangements. One consolidation path (sort, sum diffs,
+  drop zeros) handles inserts, deletes, and updates uniformly.
+
+  </details>
+- [ ] What is an arrangement, and why does sharing one across queries matter?
+  <details><summary>answer</summary>
+
+  An arrangement is an indexed, compacted trace (an LSM of `(key, val,
+  time, diff)` batches) built by `arrange`. It is shared by reference, so
+  two queries joining the same collection on the same key reuse one
+  index instead of each building its own — Materialize's main memory win.
+
+  </details>
+- [ ] Explain the incremental join as the bilinear rule on traces, and what "fuel" is for.
+  <details><summary>answer</summary>
+
+  `join_traces` computes ΔA⋈B + A⋈ΔB + ΔA⋈ΔB by joining each new batch
+  against the other input's trace up to the frontier. Fuel meters the
+  work (`Deferred` state, effort accounting) so a huge delta yields
+  cooperatively instead of stalling the worker.
+
+  </details>
+- [ ] Why are lattice timestamps *required* for retractable recursion, not merely convenient?
+  <details><summary>answer</summary>
+
+  Each derived fact carries an (outer-epoch, round) time. Deleting an
+  input edge must retract exactly the facts derived through it at each
+  round while facts re-derived by surviving paths persist. A total order
+  can't keep a mid-flight iteration from epoch 1 separate from a new
+  change at epoch 2; the product order can, so retractions stay exact.
+
+  </details>
+- [ ] Show how semi-naive evaluation falls out for free.
+  <details><summary>answer</summary>
+
+  At round r+1 the join's inputs are exactly the diffs produced at round
+  r, because unchanged facts emit no updates. So the "join only the new
+  facts" discipline is a consequence of the update representation, not a
+  hand-written optimization.
+
+  </details>
 - [ ] You wrote answers to all questions in notes.md, including the ordering issue in `IncrementalJoin::step`.
+  <details><summary>answer</summary>
+
+  The batch of A must join B's trace as of the frontier *before* B's
+  matching delta is folded in (and vice versa); fold both first and the
+  ΔA⋈ΔB cross term is counted twice. Record the correct order and why.
+
+  </details>
 
 ## References
 
@@ -179,5 +267,5 @@ bug you can now name.
 - [differential-dataflow](https://github.com/TimelyDataflow/differential-dataflow)
   `differential-dataflow/src/` — `consolidation.rs`,
   `operators/arrange/arrangement.rs`, `operators/join.rs`,
-  `operators/iterate.rs`; plus `examples/bfs.rs` — 40 lines that do
+  `operators/iterate.rs`; plus `examples/bfs.rs` — a dozen lines that do
   what our reach.rs stub cannot

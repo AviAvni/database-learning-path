@@ -27,8 +27,8 @@ before you write either.
 
 ## Predictions (fill BEFORE implementing hnsw.rs / quant.rs)
 
-Baseline (provided, measured): brute force 185 QPS at recall 1.0
-(100K × 128-d f32 = 51 MB per scan, 500 queries in 2.70 s).
+Baseline (provided, measured): brute force 117 QPS at recall 1.0
+(100K × 128-d f32 = 51 MB per scan, 500 queries in 4.28 s).
 
 | config | predicted recall@10 | predicted QPS | actual recall | actual QPS |
 |---|---|---|---|---|
@@ -40,7 +40,7 @@ Baseline (provided, measured): brute force 185 QPS at recall 1.0
 
 | question | prediction | actual |
 |---|---|---|
-| hnsw build time for 100K (vs 2.7 s for one brute sweep) | | |
+| hnsw build time for 100K (vs 4.28 s for one brute sweep) | | |
 | ef=16→256: how many × QPS lost for how much recall gained? | | |
 | u8 scan ×4: above or below the hnsw curve? (it's O(n) but 4× fewer bytes) | | |
 | max_level with m=16 on 100K points (ln n / ln m ≈ ?) | | |

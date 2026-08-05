@@ -2,6 +2,13 @@
 
 ## Baseline (provided code, Apple M3 Pro, measured 2026-07-10)
 
+> [FINDINGS.md](../../FINDINGS.md) row 24 reports a later run of the
+> same lanes: **447 ms** RMAT and **195 ms** uniform for triangle count.
+> The counts are identical (15,645,988 and 5,428), so the two runs
+> differ only in timing — cite one run or the other by name and never
+> average them. Re-run `./verify.sh 24` before treating a millisecond
+> figure below as current.
+
 Graphs: RMAT scale 16 (n=65,536, m=1,819,338 directed after
 symmetrize+dedup, max deg 9,751) vs uniform (same n, m=2,096,564,
 max deg 59). Build 258 ms.
@@ -13,7 +20,7 @@ max deg 59). Build 258 ms.
 | Dijkstra ×3 sources | 33.7 ms, 342,909 pops | |
 | CC union-find | 18,844 components, 4.2 ms, all m inspected | |
 
-- TC: same n, comparable m, **2,883× more triangles** on RMAT — hub
+- TC: same n, comparable m, **2,882× more triangles** on RMAT — hub
   neighborhoods intersect; uniform graphs have nothing to count.
   Per-triangle cost is what the skew hides: rmat does 24 ns/triangle
   only because intersections are fat; uniform pays 29 µs/triangle.

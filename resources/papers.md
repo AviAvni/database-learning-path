@@ -18,7 +18,7 @@ foundations that span topics.
 - Buffer/memory: "Are You Sure You Want to Use MMAP?" CIDR'22 · "LeanStore" ICDE'18 · "vmcache" SIGMOD'23
 - Transactions: Berenson "Critique of ANSI Isolation" '95 · Kung/Robinson "Optimistic Methods for Concurrency Control" TODS'81 · "SSI in PostgreSQL" VLDB'12 · "Hekaton" SIGMOD'13 · Wu/Pavlo "In-Memory MVCC Evaluation" VLDB'17
 - Indexing: Leis "ART" ICDE'13 · "Bw-Tree" ICDE'13 + "More Than Buzz Words" SIGMOD'18
-- LSM tuning: "Monkey" SIGMOD'17 · "Dostoevsky" SIGMOD'18 · RocksDB TODS'21 · "LSM Compaction Design Space" VLDB'21
+- LSM tuning: "Monkey" SIGMOD'17 · "Dostoevsky" SIGMOD'18 · RocksDB FAST'21 (also ACM TOS 17(4)) · "LSM Compaction Design Space" VLDB'21
 - Query optimization: Selinger "Access Path Selection" '79 · "How Good Are Query Optimizers, Really?" VLDB'15 · Graefe "Cascades" '95
 - Execution: "MonetDB/X100" CIDR'05 · "Compiled vs Vectorized" VLDB'18 · "Morsel-Driven Parallelism" SIGMOD'14 · Neumann "HyPer compilation" VLDB'11
 - Columnar: "C-Store" VLDB'05 · "Compression + Execution in Column Stores" SIGMOD'06 · "BtrBlocks" SIGMOD'23 · "FSST" VLDB'20

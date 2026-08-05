@@ -85,7 +85,7 @@ edges; news: 15,754 / 19,520): community-level answers win 72-83% on
 comprehensiveness and 62-82% on diversity vs vector RAG, and the root
 level C0 needs 9-43× fewer query tokens than map-reducing source
 texts — 26,657 tokens ≈ 2.6% of the corpus. Indexing cost: 281 min of
-gpt-4-turbo. The trade is explicit: pay once at index time for
+gpt-4-turbo on the Podcast dataset, at a 600-token chunk window. The trade is explicit: pay once at index time for
 structure so every global query is cheap.
 
 ## Zep/Graphiti: the bi-temporal agent memory

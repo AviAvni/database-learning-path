@@ -5,8 +5,9 @@ about the day it's slow because everyone is asking at once. Overload is
 not just "more load than capacity": retries, timeouts, and failover
 create feedback loops in which a *temporary* trigger flips the system
 into a *permanent* zero-goodput state that outlives the trigger —
-Bronson et al. call these **metastable failures**, and they "account
-for many of the largest outages at major web companies." The defenses —
+Bronson et al. call these **metastable failures**, which have "caused
+widespread outages at large internet companies, lasting from minutes to
+hours" (§1). The defenses —
 retry budgets, priority admission control, backpressure — are policies
 a database must carry before the incident, for exactly topic 34's
 reason: you cannot deploy a load shedder to last Tuesday.
@@ -150,12 +151,12 @@ nothing at all).
 CockroachDB's admission package states the reframe in its package doc:
 the goal is to **shift queueing out of the goroutine scheduler** —
 where the runtime picks what runs next — **into admission queues that
-can reorder by priority and tenant** (`admission.go:1`). Slots
+can reorder by priority and tenant** (`admission.go:21-24`). Slots
 (concurrency, occupied-while-running) govern CPU; tokens
 (rate, consumed-at-admission) govern IO, because LSM overload isn't a
 point-in-time queue but debt — L0 read amplification that compactions
 must pay down (topic 4's write stalls, promoted from per-store reflex
-to node-wide policy). The slot count itself is AIMD-adjusted from a
+to node-wide policy). The slot count itself is AIAD-adjusted (additive both ways) from a
 1 ms-sampled `runnable goroutines per CPU` signal — queuing-time
 detection in scheduler clothing.
 
@@ -186,7 +187,7 @@ one node instead of 3,000 services.
 | redis | `src/networking.c:5151` | `checkClientOutputBufferLimits` — backpressure on slow readers |
 | cockroach | `pkg/util/admission/admission.go:1` | the package doc — the whole design in one comment |
 | cockroach | `pkg/util/admission/work_queue.go:813` | `Admit` — where requests wait, ordered by (tenant, priority, ts) |
-| cockroach | `pkg/util/admission/kv_slot_adjuster.go:46` | `CPULoad` — AIMD slots from runnable-goroutine counts |
+| cockroach | `pkg/util/admission/kv_slot_adjuster.go:46` | `CPULoad` — AIAD (additive-both-ways) slots from runnable-goroutine counts |
 | cockroach | `pkg/util/admission/io_load_listener.go:69` | L0 thresholds — LSM debt as an admission signal |
 
 ## Reading guides

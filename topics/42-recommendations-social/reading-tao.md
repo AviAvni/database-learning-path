@@ -18,6 +18,11 @@ hundreds of objects and associations.**
 
 ### Step 1 — Why not memcache over MySQL
 
+> **In:** nothing yet — this step is the autopsy of the system TAO replaced.
+> **Out:** the three failures of a memcache-over-MySQL **lookaside cache** (a cache the client
+> checks first, filling it on a miss) and the thesis they prove — a *narrower* data model buys
+> consistency and control a generic key–value cache cannot. §2.1.
+
 Facebook already had a lookaside cache. TAO exists because three specific things went wrong with
 it, and each is a general lesson:
 
@@ -38,6 +43,12 @@ it, and each is a general lesson:
 The pattern: **a narrower data model buys you consistency and control you cannot get generically.**
 
 ### Step 2 — Objects and associations
+
+> **In:** the "narrower data model" mandate from Step 1.
+> **Out:** the two shapes the whole store is built from — **objects** (typed, keyed nodes; good for
+> repeatable actions) and **associations** (typed, directed, at-most-once edges carrying a 32-bit
+> `time` field) — plus inverse types and the deliberately non-atomic "hanging association" repair.
+> §3.1.
 
 ```
    Object:  (id)              → (otype, (key → value)*)
@@ -62,6 +73,11 @@ system choosing eventual repair over distributed transactions, explicitly.
 
 ### Step 3 — The query API, in full
 
+> **In:** the objects-and-associations model from Step 2.
+> **Out:** the entire query surface — four association reads, three association writes, object CRUD —
+> and, as load-bearing as what is present, the omissions: no multi-hop traversal, no pattern
+> matching, no path queries, and a per-atype limit "typically 6,000". §3.4.
+
 ```
    assoc_get(id1, atype, id2set, high?, low?)
    assoc_count(id1, atype)
@@ -80,6 +96,12 @@ with `pos` or `high`.
 
 ### Step 4 — Creation-time locality, and why lists are newest-first
 
+> **In:** the 32-bit `time` field from Step 2 and the `assoc_range`/`assoc_time_range` calls from
+> Step 3.
+> **Out:** **creation-time locality** (most data is old, most queries want the newest) → association
+> lists stored newest-first, and the cache holding *contiguous prefixes* of them — the one
+> representation choice Steps 5–8 all serve. §3.4.
+
 The organising principle:
 
 > **Association List**: `(id1, atype) → [a_new … a_old]`
@@ -97,6 +119,11 @@ prefixes* of them. Everything downstream follows from that one representation ch
 - And the invalidation rule has to change (Step 6).
 
 ### Step 5 — The caching hierarchy
+
+> **In:** the newest-first prefix lists from Step 4.
+> **Out:** the three-tier path a query takes — follower → leader → MySQL shard — the sharding rule
+> that puts every association on the shard of its `id1` (one hop = one server, which is *why* the API
+> has no traversal), and the master/slave geo split forced by reads outnumbering writes 25×. §4.1–4.5.
 
 Three layers, each solving a different problem:
 
@@ -129,7 +156,25 @@ round trip, plus the work.
 
 ### Step 6 — Refill, not invalidate
 
-The subtle consequence of caching prefixes:
+> **In:** the contiguous-prefix association cache from Steps 4–5.
+> **Out:** TAO's consistency model — globally **eventually consistent**, **read-after-write within a
+> single tier**, maintained by a cache-coherence protocol that *refills* rather than invalidates —
+> and why the prefix representation forces exactly that choice. §6.1, §4.4.
+
+TAO's consistency, stated plainly (§6.1). Normally "objects and associations in TAO are eventually
+consistent; after a write, TAO guarantees the eventual delivery of an invalidation or refill to all
+tiers" — replication lag is usually under a second, and once inputs quiesce all copies converge.
+**Eventual consistency** means replicas may briefly disagree but a write is guaranteed to propagate
+to every tier eventually. On top of that, "TAO provides read-after-write consistency within a single
+tier" — **read-after-write** meaning a client that just wrote is guaranteed to see its own write:
+the master leader returns a *changeset* synchronously when the write succeeds, and that changeset is
+pushed down through the slave leader to the follower tier that originated the write, so a re-read in
+that tier reflects it immediately. A version number in both the store and the cache breaks the race
+when a second follower's update has not yet arrived. It is, in the paper's own framing, "eventual
+consistency with a cache invalidation protocol" — not strong consistency, chosen deliberately for
+availability and efficiency.
+
+The subtle consequence of caching prefixes (§4.4):
 
 > Since we cache only contiguous prefixes of association lists, invalidating an association might
 > truncate the list and discard many edges. Instead, the leader sends a *refill* message to notify
@@ -140,7 +185,23 @@ Invalidate a prefix and the follower loses everything after the invalidated edge
 re-fetch it all. Refill sends the update instead. A cache-coherence protocol designed around the
 *shape* of the cached value — worth remembering next time you reach for a blanket invalidate.
 
+Worked example — a list of 1,000 cached edges, a write that touches the edge at position 500:
+
+```
+invalidate-the-list:  drop positions 0..999  -> 1,000 edges discarded, all re-fetched on next read
+invalidate-at-500:    prefix truncates at 500 -> positions 500..999 (500 edges) discarded and re-fetched
+refill (what TAO does): fetch the one changed edge, splice it in -> 0 edges needlessly discarded
+```
+
+Refill re-fetches one edge; the truncating invalidate would have thrown away up to 500. That gap is
+the whole argument for building the coherence protocol around the cached value's shape.
+
 ### Step 7 — Hot spots: cloning and client-side caching
+
+> **In:** the consistent-hashed shard→follower mapping from Step 5, which spreads load unevenly.
+> **Out:** two hot-spot remedies — **shard cloning** (a hot shard served by several followers) and
+> **access-rate-gated client-side caching** (the client caches only items the follower flags as
+> hot). §5.3.
 
 Shards map to cache servers by consistent hashing, which "can lead to load imbalance: some
 followers will shoulder a larger portion of the request load". Two mechanisms:
@@ -156,6 +217,11 @@ Compare with topic 40's Zanzibar, which solves the same problem with consistent 
 table and timestamp quantization. Same disease, different medicine.
 
 ### Step 8 — Memory engineering
+
+> **In:** the follower cache from Steps 5–7, whose per-entry overhead decides how much of the graph
+> fits in RAM.
+> **Out:** two space tricks — type-partitioned **arenas** over a slab allocator (so one type can't
+> evict another), and the pointerless **14-byte association count** that holds 20% more items. §5.1.
 
 TAO's cache is a slab allocator with LRU and a dynamic slab rebalancer, partitioned into
 **arenas** by object or association type — "This allows us to extend the cache lifetime of
@@ -175,6 +241,11 @@ overhead in a cache holding a social graph.
 
 ### Step 9 — What the workload actually looks like
 
+> **In:** the production trace.
+> **Out:** the two distributions any honest benchmark of this system must reproduce — 1% of counts
+> ≥ 512K (high-degree nodes are real, §5.4) and 64% of non-empty ranges return exactly one edge
+> against limits usually ≥ 1000 — plus the payload sizes. §7.
+
 Two distributions from the production trace, both with long tails you must design for:
 
 - `assoc_count`: **1% of returned counts were ≥512K**. High-degree nodes are not hypothetical.
@@ -192,6 +263,11 @@ Data sizes: average association payload 97.8 bytes (for the 60.5% that carry dat
 average object payload 673 bytes; **39.5% of associations queried contained no data**.
 
 ### Step 10 — The performance envelope
+
+> **In:** everything Steps 5–9 built, deployed on 144 GB Xeon boxes.
+> **Out:** the measured envelope — the hit/miss latency table, the 96.4% read hit rate, throughput
+> rising with hit rate, five-nines-plus availability — and the reading that the tail is made
+> entirely of misses. §8.
 
 144 GB RAM, 2× 8-core Xeon E5-2660 at 2.2 GHz, 10 GbE. Client-observed, including network and the
 PHP client stack:
@@ -252,12 +328,88 @@ mechanism in Steps 6–8 is about protecting the hit rate rather than making mis
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can write the two data shapes and the four association queries from memory.
+
+  <details><summary>Answer</summary>
+
+  Shapes (§3.1): an **object** is `(id) → (otype, (key→value)*)`; an **association** is
+  `(id1, atype, id2) → (time, (key→value)*)`, at most one per (id1, atype, id2), carrying a 32-bit
+  time field. The four association reads (§3.4): `assoc_get(id1, atype, id2set, high?, low?)`,
+  `assoc_count(id1, atype)`, `assoc_range(id1, atype, pos, limit)`, and
+  `assoc_time_range(id1, atype, high, low, limit)` — plus writes `assoc_add`, `assoc_delete`,
+  `assoc_change_type` and object CRUD. Repeatable actions become objects (a comment); at-most-once
+  actions become associations (a like).
+
+  </details>
+
 - [ ] You can define creation-time locality and say what it forces about list ordering and caching.
+
+  <details><summary>Answer</summary>
+
+  **Creation-time locality** (§3.4): "most of the data is old, but many of the queries are for the
+  newest subset." It forces two things: association lists are stored in descending time order
+  (newest first), and the cache holds *contiguous prefixes* of them — so `assoc_range(id1, atype,
+  0, 50)` ("50 most recent comments") is a cheap prefix read, and the optional time bounds on
+  `assoc_get` exist "to improve cacheability for large association lists." It also forces the
+  invalidation policy to change (Step 6): you can't blindly invalidate a prefix.
+
+  </details>
+
 - [ ] You can explain refill-versus-invalidate and why prefix caching demands it.
+
+  <details><summary>Answer</summary>
+
+  Because the cache holds a contiguous prefix, "invalidating an association might truncate the list
+  and discard many edges" (§4.4) — drop the edge at position 500 of a 1,000-edge list and you lose
+  positions 500–999 and must re-fetch all of them. Instead the leader sends a **refill**: it fetches
+  the one changed edge and splices it into the follower's cached list, discarding nothing. The
+  coherence protocol is built around the *shape* of the cached value (a prefix), not the value's key
+  — the general lesson against blanket invalidation.
+
+  </details>
+
 - [ ] You can quote the 25×-reads-to-writes ratio and say which design decisions follow from it.
+
+  <details><summary>Answer</summary>
+
+  "Read misses by followers are 25 times as frequent as writes in our workloads" (§4.5). From it:
+  the master/slave *region* architecture (reads must be served locally even when writes cross an
+  ocean — in-region write latency 12.1 ms versus 74.4 ms = 58.1 + 16.3 from a region 58 ms away);
+  the leader/follower tiering that keeps reads off the database; and the entire emphasis of Steps
+  6–8 on *protecting the hit rate* rather than making misses faster — because at a 96.4% hit rate
+  the tail latency is made almost entirely of the rare misses.
+
+  </details>
+
 - [ ] You can give the hit/miss latency gap and explain why the tail is made of misses.
+
+  <details><summary>Answer</summary>
+
+  From §8's table: a hit is ~1.0–1.3 ms at p50; a miss is 5.0–8.2 ms at p50 and up to 143–187 ms at
+  p99 (e.g. `assoc_count` hit p50 1.1 / miss p99 186.8; `obj_get` hit p50 1.0 / miss p99 186.4).
+  Overall read hit rate is 96.4%. Because 96.4% of requests take ~1 ms and only the 3.6% misses take
+  5–187 ms, the tail of the latency distribution is composed of misses — which is exactly why every
+  mechanism in Steps 6–8 targets the hit rate. Throughput per follower rises from ~350K to ~600K
+  req/s as hit rate goes 85% → 99%; availability over 90 days had a failed-query fraction of
+  4.9 × 10⁻⁶.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five questions are in `notes.md`'s guide-question checklist. The load-bearing ones: Q1 (no
+  multi-hop is a feature because sharding by `id1` makes every association query single-server; two
+  hops would need cross-shard fan-out or denormalization); Q2 (the refill/invalidate edge-count
+  worked in Step 6 — up to 500 edges lost under truncating invalidate, zero under refill); Q4 (the
+  14-byte pointerless count buys ~20% more entries — worth a special case only when counts dominate
+  the working set, as they do here). Q3 and Q5 are analyses you write against the workload and
+  against topic 40's Zanzibar.
+
+  </details>
 
 ## References
 

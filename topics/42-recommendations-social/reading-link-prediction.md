@@ -18,6 +18,12 @@ are to be joined next — using nothing but the topology.**
 
 ### Step 1 — The experimental setup, and why it is honest
 
+> **In:** nothing yet — a network snapshot and the question "who connects next?".
+> **Out:** an honest evaluation design — a training interval that sees only the past, a test interval
+> that hides the future, predictions restricted to **Core** (nodes with ≥ κ = 3 edges in *both*
+> intervals), and top-`n` scoring of a ranked list — plus the five arXiv datasets Steps 2–5 measure
+> on. §2.
+
 Two time intervals: a training interval `[t₀, t₀′]` and a test interval `[t₁, t₁′]`. The predictor
 sees only the training graph. For the arXiv data these are 1994–1996 and 1997–1999.
 
@@ -36,6 +42,11 @@ training edges, of which Core is 1,561 authors with 6,178 old edges and 5,751 ne
 
 ### Step 2 — Why "factor improvement over random" is the only sane metric
 
+> **In:** the ranked top-`n` predictions from Step 1.
+> **Out:** the one interpretable score — **factor improvement over random** — because raw precision
+> is a few percent *by design*; the random baseline is 0.15–0.48% across the datasets (this crate:
+> 0.314%), so every later number is a multiple of that. §4.
+
 > As discussed in Section 1, many collaborations form (or fail to form) for reasons outside the
 > scope of the network; thus the raw performance of our predictors is relatively low. To more
 > meaningfully represent predictor quality, we use as our baseline a *random predictor* which
@@ -46,10 +57,21 @@ Raw accuracy of a few percent sounds terrible and is actually excellent; only th
 interpretable. This topic's crate reproduces the setup exactly, with a random accuracy of
 **0.314%**, and `graphs::evaluate` returns the factor.
 
+Worked example — the factor is `(fraction of the top-n predictions that are real) / (random
+accuracy)`. On `astro-ph`, random is correct 0.475% of the time, and common neighbours scores
+**18.0×** (Figure 3). Invert it: common neighbours' raw precision is `18.0 × 0.00475 = 0.0855`, i.e.
+**8.55%** of its top-n pairs actually collaborate. An 8.55% hit rate reads as a failure and is in
+fact 18× better than chance — which is exactly why the raw number is useless without its baseline.
+
 Keep this metric in mind whenever you see a recommender quoted at "5% precision@10" with no
 baseline attached.
 
 ### Step 3 — Neighbourhood measures
+
+> **In:** the factor-over-random metric from Step 2.
+> **Out:** the four one-line **neighbourhood measures** — common neighbours, Jaccard, Adamic/Adar,
+> preferential attachment — each a function of the two nodes' neighbour sets, and the hub-discount
+> idea Adamic/Adar contributes. §3.
 
 For a node `x`, `Γ(x)` is its neighbour set.
 
@@ -67,7 +89,26 @@ Adamic/Adar's hub discount is the same idea as topic 23's inverse document frequ
 39's FRAUDAR column weights `1/log(d+5)`: **evidence everybody shares is worth less**. Three
 fields, one line of arithmetic.
 
+Worked example — nodes `x` and `y` share two neighbours: `z₁`, a hub with `|Γ(z₁)| = 1000`, and
+`z₂`, a specialist with `|Γ(z₂)| = 4`. Common neighbours scores both the same — it counts 2, one
+per shared neighbour. Adamic/Adar discounts each by `1/log|Γ(z)|`:
+
+```
+Adamic/Adar = 1/ln(1000) + 1/ln(4) = 1/6.9078 + 1/1.3863 = 0.1448 + 0.7213 = 0.8661
+   specialist z₂ contributes 0.7213, hub z₁ contributes 0.1448
+   ratio = ln(1000)/ln(4) = 4.98  ->  the specialist is worth ~5x the hub
+```
+
+The ratio is independent of the log's base, so "≈5×" holds whether you use natural log or log₁₀. Two
+people who both know the same rarely-connected specialist is strong evidence they belong together;
+two people who both follow the same celebrity is almost none.
+
 ### Step 4 — Path-ensemble measures
+
+> **In:** the neighbourhood scores from Step 3, which see only *shared direct* neighbours.
+> **Out:** the **path-ensemble measures** — Katz, hitting/commute time, rooted PageRank, SimRank —
+> which sum over *all* paths between the two nodes, and the popularity trap that reappears inside
+> hitting time. §3.
 
 Shortest-path distance is a weak measure — "For all of our graphs, there are well more than n
 pairs at shortest-path distance two, so our shortest-path predictor simply selects a random subset
@@ -77,9 +118,10 @@ of these distance-two pairs." The better measures sum over *all* paths:
   `(I − βM)^{-1} − I`. "A very small β yields predictions much like common neighbors, since paths
   of length three or more contribute very little."
 - **Hitting / commute time**: expected steps for a random walk from `x` to reach `y`. Both need
-  normalizing by the stationary distribution, "because `H_{x,y}` is quite small whenever `y` is a
-  node with a large stationary probability, regardless of the identity of `x`" — the popularity
-  trap again, arriving from a third direction.
+  normalizing by the **stationary distribution** (the long-run fraction of time an unconstrained
+  random walk spends at each node — large for popular hubs), "because `H_{x,y}` is quite small
+  whenever `y` is a node with a large stationary probability, regardless of the identity of `x`" —
+  the popularity trap again, arriving from a third direction.
 - **Rooted PageRank**: restart at `x` with probability α each step. The reset is there to stop the
   measure depending on "parts of the graph far away from x and y". This is Pixie's walk, and
   HippoRAG's, in its 2003 clothes.
@@ -87,6 +129,11 @@ of these distance-two pairs." The better measures sum over *all* paths:
   fixed point of a recursive definition.
 
 ### Step 5 — Figure 3, and the row that matters
+
+> **In:** every measure defined in Steps 3–4.
+> **Out:** Figure 3's factor-over-random table and its three readings — no single winner,
+> preferential attachment loses badly, Adamic/Adar's discount earns its line — the ordering lane 3
+> reproduces. §4, Figure 3.
 
 Factor improvement over random:
 
@@ -116,7 +163,8 @@ Three readings:
    networks, and by a lot on `cond-mat` (54.8 vs 41.1).
 
 Lane 3 of this crate reproduces the ordering on a synthetic collaboration graph grown with
-preferential attachment and triadic closure:
+preferential attachment and **triadic closure** (if `x` knows `y` and `y` knows `z`, the edge `x–z`
+becomes more likely — the very mechanism common neighbours exploits):
 
 ```
    predictor                  hits / n     factor over random
@@ -130,6 +178,11 @@ Same shape, same loser. (Jaccard edging out Adamic/Adar here rather than the oth
 property of the generator — worth investigating rather than explaining away.)
 
 ### Step 6 — The meta-approaches
+
+> **In:** any base measure from Steps 3–5, written in matrix form.
+> **Out:** three techniques that *compose* with any of them — low-rank approximation, unseen
+> bigrams, clustering — and the lines they draw to matrix-factorization recommenders, smoothing, and
+> Pixie-style graph pruning. §3 (higher-level approaches).
 
 Three techniques that compose with any measure above, and are the bridge to modern methods:
 
@@ -145,6 +198,11 @@ Three techniques that compose with any measure above, and are the bridge to mode
   (58% better F1 at 20% of the edges), arrived at fifteen years earlier from the algorithms side.
 
 ### Step 7 — What this does and does not license
+
+> **In:** the whole catalogue's results from Steps 5–6.
+> **Out:** the correct scope of the finding — topology carries *useful*, not *sufficient*,
+> information, so a graph traversal is a legitimate first-stage *candidate generator*, not the final
+> ranker. This is the architecture all three systems papers in this topic use. §4.
 
 The honest framing, from §4: "a number of methods significantly outperform the random predictor,
 suggesting that there is indeed useful information contained in the network topology alone."
@@ -193,12 +251,84 @@ first-stage retrieval, which is exactly the architecture all three systems use.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can write all four neighbourhood measures from memory.
+
+  <details><summary>Answer</summary>
+
+  With `Γ(x)` the neighbour set of `x` (§3): **common neighbours** `|Γ(x) ∩ Γ(y)|`; **Jaccard**
+  `|Γ(x) ∩ Γ(y)| / |Γ(x) ∪ Γ(y)|` (common neighbours normalized by union size); **Adamic/Adar**
+  `Σ_{z ∈ Γ(x) ∩ Γ(y)} 1/log|Γ(z)|` (each shared neighbour discounted by how many people it knows);
+  **preferential attachment** `|Γ(x)| · |Γ(y)|` (pure degree product). The first three look at what
+  the two nodes have *in common*; preferential attachment does not, which is why it loses.
+
+  </details>
+
 - [ ] You can explain why factor-over-random is the metric and raw accuracy is not.
+
+  <details><summary>Answer</summary>
+
+  Many collaborations form for reasons the graph never sees, so raw precision is a few percent even
+  for a good predictor — the paper uses a random predictor (correct 0.15–0.48% of the time; this
+  crate 0.314%) as the baseline and reports the *ratio*. Worked: on `astro-ph`, common neighbours
+  scores 18.0×, i.e. raw precision `18.0 × 0.00475 = 8.55%`. An 8.55% hit rate reads as failure but
+  is 18× chance. Only the ratio is interpretable — distrust any recommender quoted at "5%
+  precision@10" with no baseline attached.
+
+  </details>
+
 - [ ] You can say why preferential attachment loses, in one sentence connecting it to lane 1.
+
+  <details><summary>Answer</summary>
+
+  Preferential attachment `|Γ(x)|·|Γ(y)|` is the only measure that never checks whether `x` and `y`
+  have anything in common — it just multiplies their degrees, so it ranks pairs of *famous* nodes
+  highly — which is lane 1's popularity baseline in a link-prediction costume, and it fails for the
+  same reason: knowing who is popular is not knowing who will connect (Figure 3: 4.7–15.2× versus
+  common neighbours' 18.0–47.2×; lane 3: 1.9× versus 20.7×).
+
+  </details>
+
 - [ ] You can explain Adamic/Adar's discount and name its two cousins in other topics.
+
+  <details><summary>Answer</summary>
+
+  Adamic/Adar weights each shared neighbour `z` by `1/log|Γ(z)|`, so a rarely-connected specialist
+  counts far more than a hub — worked in Step 3, a degree-4 specialist is worth ~5× a degree-1000
+  hub (`ln 1000 / ln 4 ≈ 4.98`). Its cousins: topic 23's **inverse document frequency** (rare terms
+  weigh more) and topic 39's FRAUDAR column weight `1/log(d+5)` (edges to high-degree nodes count
+  less). The shared statement: evidence that many nodes share is worth less than evidence that few
+  share.
+
+  </details>
+
 - [ ] Your `linkpred.rs` reproduces lane 3's ordering with PA far behind the rest.
+
+  <details><summary>Answer</summary>
+
+  Lane 3's reference ordering on the synthetic graph: preferential attachment 1.9× (6/985 hits),
+  common neighbours 20.7× (64/985), Jaccard 25.6× (79/985), Adamic/Adar 22.3× (69/985) —
+  preferential attachment an order of magnitude behind the neighbourhood measures, matching Figure
+  3's shape. (Jaccard edging Adamic/Adar here, the reverse of the paper's usual order, is a property
+  of the generator — investigate it rather than explain it away.) If your PA lands near the others,
+  your candidate enumeration is probably leaking degree information.
+
+  </details>
+
 - [ ] You wrote answers to all five questions in notes.md.
+
+  <details><summary>Answer</summary>
+
+  The five questions live in `notes.md`'s guide-question checklist. The load-bearing ones: Q1
+  (preferential attachment correctly predicts *how many* edges a node gains, not *which* pairs
+  connect — right marginal, wrong joint); Q2 (Adamic/Adar, IDF and `1/log(d+5)` all instantiate
+  "down-weight evidence shared by high-degree/high-frequency entities"; discounting hubs is wrong
+  when the hub *is* the signal, e.g. a shared rare disease gene); Q3 (hitting time's popularity bias
+  is lane 1's popularity trap, addressed by Pixie's biasing innovation). Q4 and Q5 are experiments
+  and arguments you write yourself.
+
+  </details>
 
 ## References
 

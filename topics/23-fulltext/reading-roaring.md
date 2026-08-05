@@ -10,6 +10,11 @@ their break-even point, the two-level partition, the per-pair
 kernel matrix — and ends with why posting lists (the filter lane of
 a search engine) care.
 
+Source pins: two papers, cited by arXiv id below; the code you
+implement is this repo's `experiments/src/postings.rs` stub; the
+production cousin quoted at the end is RediSearch at `87276ca`. A
+**posting list** here means the set of doc ids that contain a term.
+
 ## The problem in one sentence
 
 Store "the set of doc ids matching a filter" so that both a
@@ -22,6 +27,9 @@ small AND intersect fast — a sorted `Vec<u32>` makes the dense one
 
 ### Step 1 — two ways to store a set of integers, and the break-even
 
+> **In:** a set of integers drawn from a 65,536-value universe.
+> **Out:** two representations (sorted array, bitmap) and the density where their sizes cross — 4096 elements — below which the array is smaller, above which the bitmap is.
+
 A set of integers has two classic representations. A **sorted
 array** stores each member explicitly — cost proportional to *how
 many* members (2 bytes each if values fit u16). A **bitmap** stores
@@ -29,11 +37,24 @@ one bit per *possible* value — cost proportional to the *universe
 size*, membership is one bit test, and intersection is a word-wise
 AND running at 64 members per instruction. Over a 65,536-value
 universe the bitmap costs a flat 8 KiB; the array costs
-2·|set| bytes. Equating them: 8192 bytes / 2 bytes = **4096
-elements** — below that the array is smaller, above it the bitmap
-is. Density decides, and real data mixes both regimes in one set.
+2·|set| bytes. Equating them (worked):
+
+```
+bitmap:  65536 bits / 8 = 8192 bytes                 (flat, any density)
+array:   2 bytes/value · |set|
+equal:   8192 / 2 = 4096 elements                    ← the crossover
+  |set| =  100:  array 200 B    vs bitmap 8192 B   → array wins
+  |set| = 4096:  array 8192 B   vs bitmap 8192 B   → tie
+  |set| =50000:  array 100000 B vs bitmap 8192 B   → bitmap wins (12×)
+```
+
+Below 4096 the array is smaller, above it the bitmap is. Density
+decides, and real data mixes both regimes in one set.
 
 ### Step 2 — the partition: choose a representation every 64K values
+
+> **In:** a full 32-bit value space where density varies across ranges.
+> **Out:** split each u32 into a 16-bit chunk key and 16-bit low half; each chunk stores its low bits in a **container** whose type is chosen by that chunk's local density — capping size at 8 KiB and at 2 bytes/value simultaneously.
 
 Roaring splits each 32-bit value into high and low halves: the high
 16 bits select a **chunk** (one of up to 64K aligned ranges of
@@ -60,17 +81,25 @@ density:
 The guarantee that falls out: every container is at most 8 KiB
 *and* at most 2 bytes per stored value — the adaptive choice caps
 both failure modes. The **run container** ((start, length) pairs —
-run-length encoding, the 2016 paper's addition) handles the third
-regime the first paper missed: long consecutive runs of ids, where
-even a bitmap wastes bits (question 1 asks which posting-list
-shapes produce runs).
+run-length encoding, the 2016 Lemire paper's addition) handles the
+third regime the first paper missed: long consecutive runs of ids,
+where even a bitmap wastes bits. The 2016 paper (§4) only converts
+to a run container when it would be smaller than *both* alternatives
+and there are ≤ 2047 runs — and *only* on an explicit `runOptimize`
+call, never automatically (question 1 asks which posting-list
+shapes produce runs). This repo's Rust stub implements array +
+bitmap only (`postings::Container`), the two the CRoaring reference
+starts from.
 
 ### Step 3 — the kernel matrix: one algorithm per container pair
+
+> **In:** two roaring bitmaps, each a sorted list of typed containers.
+> **Out:** the set operation decomposes into per-chunk kernels, dispatched by the *pair* of container types — each kernel the textbook-optimal algorithm for that shape.
 
 With two (or three) container types, a set operation between two
 roaring bitmaps decomposes into per-chunk operations, each
 dispatched to a specialized **kernel** by the pair of container
-types (§3 of the paper — what the stub implements):
+types (the kernel matrix the stub implements):
 
 | A ∩/∪ B | array | bitmap |
 |---|---|---|
@@ -83,9 +112,13 @@ two sorted arrays → two-pointer merge, escalating to **galloping**
 one) when one side is ≥64× smaller; array vs bitmap → probe each
 array element (one word test each), never touching the bitmap's
 other 65K bits; bitmap vs bitmap → 1024 unconditional word ANDs.
+The stub you fill in stores containers exactly this way and returns
+a plain `Vec<u32>` to compare against the two-pointer oracle:
 
 ```rust
-// the whole design in one match: kernel AND output type chosen per chunk
+// ILLUSTRATION — the design the reader implements in the stub at
+// experiments/src/postings.rs:56-86 (Container enum, ARRAY_MAX = 4096,
+// and()/or() stubs). Real bodies are `todo!()`; fill them to match this.
 fn and(a: &Container, b: &Container) -> Container {
     match (a, b) {
         (Array(x), Array(y))  => two_pointer(x, y),     // gallop if ≥64× skew
@@ -107,6 +140,9 @@ fn and(a: &Container, b: &Container) -> Container {
 
 ### Step 4 — the two details that carry the performance
 
+> **In:** the kernel matrix, which looks like a mechanical case-split.
+> **Out:** the two decisions that actually decide performance — choosing the *output* container type by popcount, and tracking cardinality as a byproduct rather than recomputing it.
+
 The match arms are obvious; two less-obvious decisions do the real
 work:
 
@@ -125,40 +161,51 @@ The general lesson: an adaptive data structure lives or dies by its
 
 ### Step 5 — why posting lists care: the filter lane
 
-Measured in fts_bench: `t0 ∧ t5000` (99888 ∩ 172 docs) costs 52 µs
-with two-pointer — it walks all 99888. Roaring: t0 at df≈100K over
-100K docs is ~1.5 dense chunks → bitmap containers; the 172-element
-side probes 172 times → ~1 µs. Same asymmetry galloping fixes for
-arrays, but roaring ALSO compresses t0 to 8 KiB·2 instead of 400 KB
-— 25× less memory traffic on the dense side, which is where the
-time actually goes (question 3).
+> **In:** the two measured intersections from this topic — dense∩sparse and dense∩dense.
+> **Out:** why roaring turns both the memory and the time of the dense side down by ~25×, and why this is the FILTER lane, not the RANKING lane BM25/WAND own.
+
+Measured in fts_bench (this topic's `notes.md`): `t0 ∧ t5000`
+(99,888 ∩ 172 docs) costs 52 µs with two-pointer — it walks all
+99,888. Roaring: t0 at df≈100K over 100K docs is ~1.5 dense chunks
+→ bitmap containers; the 172-element side probes 172 times → ~1 µs.
+Same asymmetry galloping fixes for arrays, but roaring ALSO
+compresses t0 to 8 KiB·2 instead of 400 KB — 25× less memory
+traffic on the dense side, which is where the time actually goes
+(question 3).
 
 Lucene's `RoaringDocIdSet` and RediSearch's doc tables use exactly
-this for filters (the `docs_ids_only` codec in
-`redisearch_rs/inverted_index/src/codec/doc_ids_only.rs` is the
-varint cousin). Note what roaring does NOT store: tf, positions,
-scores — it's the FILTER lane (Cypher `WHERE n.name CONTAINS ...`
-feeding a graph traversal), not the RANKING lane; BM25/WAND (the
-previous chapters) own that one. And a bitmap container is exactly
-a dense GraphBLAS vector chunk (question 4) — the M20/M23 bridge.
+this for filters (the `doc_ids_only` codec at
+`src/redisearch_rs/inverted_index/src/codec/doc_ids_only.rs` is the
+varint cousin — `RECOMMENDED_BLOCK_ENTRIES = 1000` there, doc_ids_only.rs:26).
+Note what roaring does NOT store: tf, positions, scores — it's the
+FILTER lane (Cypher `WHERE n.name CONTAINS ...` feeding a graph
+traversal), not the RANKING lane; BM25/WAND (the previous chapters)
+own that one. And a bitmap container is exactly a dense GraphBLAS
+vector chunk (question 4) — the M20/M23 bridge.
 
 ## How to read the papers (with the concepts in hand)
 
 Two short papers, both readable in one sitting:
 
-- **Chambi et al. 2014/2016 (arXiv:1402.6407).** §2 is Steps 1–2
-  (the partition and the 4096 crossover); §3 is Step 3's kernel
-  matrix — read it against the `match` above and check every arm.
-  The experiments compare against WAH/Concise (older compressed
+- **Chambi et al. (Software: Practice & Experience 2016,
+  [arXiv:1402.6407](https://arxiv.org/abs/1402.6407)).** §2 is
+  Steps 1–2 (the partition and the 4096 crossover); §3 is Step 3's
+  kernel matrix — read it against the `match` above and check every
+  arm. This paper has TWO container types only (array + bitmap), and
+  the experiments compare against WAH/Concise (older compressed
   bitmaps that lack random access) — skim, the lesson is that
   chunked-and-adaptive beats stream-compressed.
-- **Lemire et al. 2016 (arXiv:1603.06549).** Adds the run container
-  (Step 2's third regime) and SIMD kernels; read the run-container
-  conversion rules ("convert only when smaller") — the same
+- **Lemire et al. (SPE 2016,
+  [arXiv:1603.06549](https://arxiv.org/abs/1603.06549)).** Adds the
+  run container (Step 2's third regime) and SIMD kernels, and
+  describes the CRoaring C reference implementation; read the
+  run-container conversion rules (§4: convert only when smaller than
+  both, ≤2047 runs, only on `runOptimize`) — the same
   transition-logic discipline as Step 4.
-- Then implement the `postings::Roaring` stub — array/bitmap
-  containers with AND/OR against the two-pointer vec oracle —
-  before answering the questions.
+- Then implement the `postings::Roaring` stub
+  (`experiments/src/postings.rs`) — array/bitmap containers with
+  AND/OR against the two-pointer vec oracle — before answering the
+  questions.
 
 ## Questions (answer in notes.md)
 
@@ -183,11 +230,54 @@ Two short papers, both readable in one sitting:
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can derive the 4096 crossover from bytes per value.
+  <details><summary>the arithmetic</summary>
+
+  Bitmap is flat 65536/8 = 8192 bytes. Array is 2 bytes/value.
+  8192/2 = 4096 values is where they cost the same; below it array
+  is smaller, above it bitmap is. A container therefore never
+  exceeds 8 KiB nor 2 bytes/value.
+
+  </details>
 - [ ] You can explain why the representation is chosen per 64K range rather than per set.
+  <details><summary>local vs global density</summary>
+
+  One set can be sparse in some 64K ranges and dense in others.
+  Choosing per chunk (high 16 bits) lets each range pick the smaller
+  representation, so the structure adapts to *local* density instead
+  of paying one global choice.
+
+  </details>
 - [ ] You can name the kernel matrix idea: one algorithm per container pair.
-- [ ] You can say what a 99.9%-dense posting list like this topic's `t0` (df 99 888 of 100 000 docs) should become, and what that costs against the sorted-vec baseline measured here (0.1178 ms for dense∧dense AND).
+  <details><summary>dispatch by type pair</summary>
+
+  Each set op dispatches on (typeA, typeB): array∩array → two-pointer
+  (gallop on skew), array∩bitmap → probe the array into the bitmap,
+  bitmap∩bitmap → 1024 word ANDs + popcount to choose the output
+  type. Each is optimal for that shape.
+
+  </details>
+- [ ] You can say what a 99.9%-dense list like `t0` (df 99,888 of 100,000) should become, and its cost against the sorted-vec baseline.
+  <details><summary>bitmap containers</summary>
+
+  ~1.5 dense chunks → bitmap containers (8 KiB each, ~16 KiB total vs
+  400 KB as a `Vec<u32>`). Intersection with a sparse side probes the
+  small side (~1 µs); dense∩dense is ~1024 word ANDs per chunk —
+  against the sorted-vec baseline measured here (0.1178 ms for
+  dense∧dense, notes.md).
+
+  </details>
 - [ ] You wrote answers to all five questions in notes.md, including the M20 bitmap-container tie-in.
+  <details><summary>check</summary>
+
+  Five answers in notes.md; question 4 explicitly maps a bitmap
+  container to a dense GraphBLAS vector chunk and an array container
+  to a sparse one, comparing the 4096/65536 thresholds to GraphBLAS's
+  format lattice.
+
+  </details>
 
 ## References
 
@@ -199,4 +289,13 @@ Two short papers, both readable in one sitting:
 - Lemire, Ssi-Yan-Kai, Kaser — "Consistently faster and smaller
   compressed bitmaps with Roaring" (SPE 2016,
   [arXiv:1603.06549](https://arxiv.org/abs/1603.06549)) — adds the
-  run container and the SIMD kernels
+  run container (§4, the ≤2047-run / runOptimize rule) and SIMD
+  kernels; describes the CRoaring reference implementation
+
+**Code**
+- This repo — `experiments/src/postings.rs`: `Container` enum
+  (:58-61), `ARRAY_MAX = 4096` (:56), `Roaring::and`/`or` stubs
+  (:79-86), the `vec_and`/`vec_or` oracle (:11, :29)
+- [RediSearch](https://github.com/RediSearch/RediSearch) `@87276ca`
+  `src/redisearch_rs/inverted_index/src/codec/doc_ids_only.rs` — the
+  varint doc-id codec, `RECOMMENDED_BLOCK_ENTRIES = 1000` (:26)
