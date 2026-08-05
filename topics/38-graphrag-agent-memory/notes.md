@@ -51,9 +51,9 @@ sources. At damping 0.5 the meet node gets ~2× a dead-end's mass.
 
 ## Infra notes
 
-- Papers read in full from PDFs: /tmp/hipporag.pdf (arXiv 2405.14831v3),
-  /tmp/graphrag.pdf (arXiv 2404.16130v2), /tmp/zep.pdf (arXiv
-  2501.13956).
+- Papers read in full: arXiv 2405.14831v3 (HippoRAG), 2404.16130v2
+  (GraphRAG), 2501.13956 (Zep). Extract them into `.cache/papers/` with
+  `tools/pinned-source.py` rather than a scratch path.
 - HippoRAG facts: neocortex=LLM / parahippocampal=retrieval encoders
   (synonymy at cosine τ=0.8) / hippocampus=KG+PPR (damping 0.5).
   Two-step OpenIE (NER, then triples). Node specificity sᵢ=|Pᵢ|⁻¹
@@ -72,7 +72,8 @@ sources. At damping 0.5 the meet node gets ~2× a dead-end's mass.
   substitute child summaries on overflow). Query: shuffle+chunk
   summaries, map partial answers scored 0-100 (0 filtered), reduce by
   helpfulness. Podcast corpus 1669 chunks (~1M tokens) → 8,564/20,691;
-  News 3197 (~1.7M) → 15,754/19,520; indexing 281 min gpt-4-turbo.
+  News 3197 (~1.7M) → 15,754/19,520; indexing 281 min gpt-4-turbo on
+  Podcast at a 600-token window (the 8k window is generation-side).
   Win rates vs vector RAG: comprehensiveness 72-83%, diversity 62-82%.
   C0 query cost 26,657 tokens ≈ 2.6% of TS max; root 9-43× fewer
   tokens; C3 26-33% fewer. Claim experiment: 47,075 claims, avg
