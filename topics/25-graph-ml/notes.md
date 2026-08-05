@@ -2,6 +2,14 @@
 
 ## Baseline (provided code, Apple M3 Pro, measured 2026-07-10)
 
+> An earlier run of the same lanes than
+> [FINDINGS.md](../../FINDINGS.md) row 25 (**SpMM 4.31 ms at
+> 16.82 GFLOP/s** against a **5.65 ms** dense transform, i.e. ~71% of
+> dense throughput, not the 81% below). Where the two disagree, FINDINGS
+> is canonical; cite one run or the other by name and never average
+> them. Re-run `./verify.sh 25` before treating any cell below as
+> current.
+
 SBM: 64 blocks x 256 = 16,384 vertices, m=566,564 directed
 (avg_deg 34.6), p_in=0.12, p_out=0.00025, build 34.4 ms.
 
