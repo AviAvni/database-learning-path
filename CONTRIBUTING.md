@@ -50,7 +50,9 @@ Every topic follows the same shape, because the shape is what makes it checkable
   [CLAUDE.md](https://github.com/AviAvni/database-learning-path/blob/master/CLAUDE.md#reading-guide-depth)
   (an absolute link because `CLAUDE.md` is not a book chapter), with
   [reading-criterion.md](topics/00-performance-toolbox/reading-criterion.md) as the
-  reference chapter.
+  reference chapter. Their mechanical half is checked by
+  `python3 tools/check-reading-depth.py` — run it on a guide before committing, and
+  see [Building the book](#building-the-book) for the CI gate.
 - **`notes.md`** — a `## Baseline (provided lane, <machine>, measured <date>)` section
   recording the provided lane's real output with the analysis, then a
   predictions-vs-measurements worksheet. **The worksheet's cells are meant to be
@@ -87,6 +89,18 @@ legitimate shape for a topic; inventing a number to fill the slot is not.
   `file:line` anchors in the guides mean something. Regenerate it with
   `python3 tools/pin-table.py` after cloning or updating a reference repo — putting
   a SHA in each guide instead would mean thousands of them drifting separately.
+  To read a file at that pinned commit — to write an anchor, or to check one that
+  is already there — use `python3 tools/pinned-source.py`:
+
+  ```bash
+  tools/pinned-source.py show lmdb mdb.c -r 1350:1365     # with real line numbers
+  tools/pinned-source.py grep lmdb 'mdb_env_pick_meta' --path mdb.c
+  tools/pinned-source.py check lmdb mdb.c:1356 --contains 'meta page'
+  ```
+
+  It reads your clone when you have one and otherwise fetches the same commit into
+  a gitignored `.cache/`, so anchors stay checkable without cloning every upstream
+  repo the guides cite.
 - **Generators are seeded.** Anyone must be able to reproduce a figure exactly.
 - **Notes capture *why* a design wins** and what it trades away — not summaries.
 
@@ -101,7 +115,14 @@ mdbook serve                      # or: mdbook build
 CI ([.github/workflows/book.yml](.github/workflows/book.yml)) builds HTML and PDF on
 every push to `master` and deploys to GitHub Pages. Before committing content, build
 locally and check that mermaid diagrams render and internal links resolve — a broken
-link is invisible in markdown and obvious in the book.
+link is invisible in markdown and obvious in the book. The same workflow runs
+`tools/check-reading-depth.py --check`, which holds every reading guide that has
+started following the depth rules to all of them:
+
+```bash
+python3 tools/check-reading-depth.py topics/03-btree-internals/   # one topic
+python3 tools/check-reading-depth.py --stats                      # rollout progress
+```
 
 A second workflow ([verify.yml](.github/workflows/verify.yml)) runs
 `./verify.sh --summary` and a `-D warnings` build of all 45 crates on every push and
