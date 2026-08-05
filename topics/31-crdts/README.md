@@ -94,9 +94,9 @@ left+right origins — see `reading-sequence-crdts.md`.
 | automerge | `rust/automerge/src/clock.rs:109`, `:145` | our clock.rs, industrial: `covers()`, the partial order |
 | automerge | `rust/automerge/src/op_set2/op.rs:52` | `succ` — deletion as *successor ops*, not flags |
 | yrs (Yjs) | `yrs/src/block.rs:160`, `:1302`, `:1415` | ID = our Dot; Item = our Element; `integrate()` = the rule you implement in rga.rs |
-| diamond-types | `src/listmerge/merge.rs:142`, `yjsspan.rs:29` | same integrate, but ops in a run-length time DAG; `NOT_INSERTED_YET` spans |
+| diamond-types | `src/listmerge/merge.rs:142`, `yjsspan.rs:16-17` | same integrate, but ops in a run-length time DAG; `NOT_INSERTED_YET` spans |
 | loro | `crates/loro-internal/src/{dag,diff_calc,handler}` | Fugue + fractional_index + generic-btree crates |
-| cr-sqlite | `core/rs/core/src/local_writes/mod.rs:83-133` | LWW-per-column over SQLite; db_version bookkeeping — multi-master as an *extension* |
+| cr-sqlite | `core/rs/core/src/local_writes/after_update.rs:65-123`, `mod.rs:111-137` | LWW-per-column over SQLite; db_version bookkeeping — multi-master as an *extension* |
 
 ## Reading guides
 
