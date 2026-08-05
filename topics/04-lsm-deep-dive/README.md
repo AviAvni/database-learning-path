@@ -52,20 +52,27 @@ flowchart LR
 ```
 
 Reads run the same path in reverse: memtable → sealed → L0 (every run!) → one
-segment per deeper level (disjoint ⇒ binary search by key range). Every skipped
-disk probe is a bloom filter earning its bits.
+table per deeper level (disjoint ⇒ binary search by key range). Every skipped
+disk probe is a bloom filter earning its bits. ("Table" is the `lsm-tree`
+crate's word for what RocksDB calls an SST and what a lot of writing calls a
+segment; this topic follows the crate, because the crate is what you will read.)
 
 ## 2. Inside an SST
 
 ```
- ┌─────────────┬─────────────┬──────┬─────────────┬────────┬─────────┐
- │ data block  │ data block  │  …   │ filter block│ index  │ trailer │
- │ (~4KB, LZ4) │             │      │ (bloom)     │ block  │ /meta   │
- └─────────────┴─────────────┴──────┴─────────────┴────────┴─────────┘
+ ┌─────────────┬─────────────┬──────┬─────────────┬─────────────┬─────────┐
+ │ data block  │ data block  │  …   │ index block │ filter block│ trailer │
+ │ (~4KB, LZ4) │             │      │             │ (bloom)     │ /meta   │
+ └─────────────┴─────────────┴──────┴─────────────┴─────────────┴─────────┘
    inside a data block (restart interval 16):
    [FULL key ∥ v][shared=5,rest ∥ v][shared=7,rest ∥ v]…[FULL key]…[restart offsets]
     ▲ binary search over restart points, linear decode between them
 ```
+
+The index comes before the filter because that is the order `Writer::finish`
+writes them in — index at `src/table/writer/mod.rs:384`, filter at `:388`. The
+trailer is what makes either findable, so the on-disk order is a free choice,
+and different engines make it differently; read the writer rather than assuming.
 
 Prefix truncation *inside* blocks (vs topic 3's B-tree pages which stored full
 keys) works because blocks are immutable — write once, no in-place updates to
@@ -137,7 +144,7 @@ Optionally follow skyzh/mini-lsm alongside — but the point here is the *measur
    `Leveled` (ratio 10) and `Tiered` (K=4).
 4. **The experiment** (`src/bin/write_amp.rs`): load 10M keys (uniform random
    overwrite, 3 passes), count bytes written to disk / bytes of user data —
-   write amp per strategy. Also record: read amp (segments probed per get,
+   write amp per strategy. Also record: read amp (tables probed per get,
    bloom hits/misses), space amp (dir size / live data). Fill the RUM table
    with MEASURED numbers.
 
