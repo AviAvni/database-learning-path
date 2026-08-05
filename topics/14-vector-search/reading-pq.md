@@ -394,6 +394,7 @@ Answer each before unfolding it.
   at the same effective k would need `k·D` floats, which for
   `k = 2^128` is not a storable number. Table I states the general
   form: `k^(1/m)·D` versus `k·D`.
+
   </details>
 
 - [ ] You can state the difference between SDC and ADC and say where each eats its approximation.
@@ -411,6 +412,7 @@ Answer each before unfolding it.
   codes: 16.8 ms / recall@100 0.446 for SDC versus 17.2 ms / 0.652
   for ADC. §III-A's own words: *"one should then use the asymmetric
   version."*
+
   </details>
 
 - [ ] You can explain why chunks must be roughly statistically independent, and what correlated dimensions do to the code.
@@ -430,6 +432,7 @@ Answer each before unfolding it.
   decorrelates before splitting. The topic 12 analogue is
   BYTE_STREAM_SPLIT: regrouping bytes so each stream is internally
   homogeneous, letting a per-stream encoder do its job.
+
   </details>
 
 - [ ] You can compute the per-query ADC table build cost and say at what candidate count it stops mattering.
@@ -446,6 +449,7 @@ Answer each before unfolding it.
   cache to be worth it — `m × 256 × 4 B` is 16 kB at m=16, and §II-B
   warns explicitly about the case where it *"does no longer fit in
   cache memory."*
+
   </details>
 
 - [ ] You can say why IVFADC encodes residuals rather than raw vectors, in terms of the quantizer's dynamic range.
@@ -464,6 +468,7 @@ Answer each before unfolding it.
   bits, PQ code = least significant bits. The consequence to remember
   is that the ADC table depends on the probed cell (Eq. 30-31), so it
   is rebuilt `w` times per query, not once.
+
   </details>
 
 - [ ] You can say what the paper derives in §III-C and why it then tells you not to use it.
@@ -481,6 +486,7 @@ Answer each before unfolding it.
   Equation 13"* and keeps the corrected form only for when you want
   the distances themselves rather than a ranking. This is the repo's
   "report the negative result" rule, in a 2011 paper.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md.
@@ -495,6 +501,7 @@ Answer each before unfolding it.
   centroids."* What changes is the LUT (16 kB vs 64 × 4 × 4 = 1 kB),
   the scan cost (16 adds vs 64), and the resolution within each
   subspace — 4 centroids cannot describe an 2-d chunk usefully.
+
   </details>
 
 ## References

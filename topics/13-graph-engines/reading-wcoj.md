@@ -432,6 +432,7 @@ Answer each before unfolding it.
   first" produces the same shape of intermediate. On this topic's
   graph the max-degree node alone contributes 6 565² = 43 099 225
   intermediate rows.
+
   </details>
 
 - [ ] You can state the AGM bound, compute the fractional edge cover for the triangle, and say which half of it is due to whom.
@@ -448,6 +449,7 @@ Answer each before unfolding it.
   **Lemma 4**, the matching lower bound: an instance exists that
   attains the product, constructed by LP duality against (3.2). "The
   AGM bound" is shorthand for the pair.
+
   </details>
 
 - [ ] You can narrate Generic Join as one variable at a time, say where the intersections happen, and quote its base-case cost.
@@ -465,6 +467,7 @@ Answer each before unfolding it.
   work is charged to the smallest list, which is what forces
   galloping in Step 4 and smallest-list-first ordering in kuzu.
   Overall Õ(m·n·∏|R_F|^{x_F}), Õ hiding a log factor.
+
   </details>
 
 - [ ] You can say when galloping beats a merge intersection, in terms of the two list lengths, with a worked number.
@@ -479,6 +482,7 @@ Answer each before unfolding it.
 
   Power-law degree distributions make the skewed case the common one,
   which is the answer to question 3.
+
   </details>
 
 - [ ] You can explain why `C<A> = A²` is the same algorithm in matrix spelling — and connect it to the masked-SpMV lane here.
@@ -498,6 +502,7 @@ Answer each before unfolding it.
   applied *early*; the late path through `GB_accum_mask`/`GB_masker`
   computes the full product first and then discards, forfeiting the
   argument entirely.
+
   </details>
 
 - [ ] You wrote answers to all questions in notes.md.
@@ -516,6 +521,7 @@ Answer each before unfolding it.
   trigger" question 5 wants — cyclicity is necessary but the honest
   test is ρ*(pattern) versus the intermediate size the best binary
   plan would build.
+
   </details>
 
 ## References

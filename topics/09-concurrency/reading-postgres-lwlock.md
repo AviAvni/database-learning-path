@@ -566,6 +566,7 @@ Answer each before unfolding it.
 
   If you answered `LW_FLAG_RELEASE_OK` you read an older tree. That flag
   carried the same information with the opposite polarity.
+
   </details>
 
 - [ ] A backend takes the lock in SHARED mode on a lock nobody else holds.
@@ -584,6 +585,7 @@ Answer each before unfolding it.
   packed figure), of which **38.3 ns is the ownership transfer**. There is
   no configuration in which readers of an rwlock all keep the line Shared;
   a counter-based rwlock writes on every read acquisition by construction.
+
   </details>
 
 - [ ] Write the lost-wakeup interleaving as a two-thread timeline, then say
@@ -602,6 +604,7 @@ Answer each before unfolding it.
   single location has one modification order: either the release-read sees
   `HAS_WAITERS` and wakes T1, or the decrement preceded T1's second attempt
   and T1 takes the free lock. The file states this at `:1223-1232`.
+
   </details>
 
 - [ ] `LWLockWaitListLock` spins. Why does the loop at `:862-866` read with
@@ -620,6 +623,7 @@ Answer each before unfolding it.
   non-atomic wait (`:862-866`). At 38.3 ns per transfer, 16 spinners
   ×1000 iterations is the difference between ~610 µs of coherence traffic
   and essentially none.
+
   </details>
 
 - [ ] True or false: a backend that has been queued on an LWLock for a
@@ -641,6 +645,7 @@ Answer each before unfolding it.
   queued waiters are signalled and re-try (progress, not starvation-freedom),
   and that `LWLockWakeup` walks the queue in order among those already on
   it.
+
   </details>
 
 - [ ] Your own lock array is 8 bytes per lock. What alignment do you give
@@ -661,6 +666,7 @@ Answer each before unfolding it.
   128-byte pairs, so 64 B-apart variables still travel together. Half the
   advice, most of the win, and a residual you will never find by reading
   about MESI.
+
   </details>
 
 ## References

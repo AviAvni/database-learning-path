@@ -297,6 +297,7 @@ Answer each before unfolding it.
   metadata file — each issued synchronously, then mirrored and shipped
   cross-AZ by the storage layer. All but the redo log are re-derivable
   from it.
+
   </details>
 
 - [ ] You can state the thesis — only the log crosses the network — and
@@ -308,6 +309,7 @@ Answer each before unfolding it.
   removes writer-side checkpoints, dirty-page writeback, and the
   double-write buffer — storage applies redo to pages itself, in the
   background.
+
   </details>
 
 - [ ] You can explain the quorum and protection-group scheme and what
@@ -320,6 +322,7 @@ Answer each before unfolding it.
   availability through the loss of an AZ plus one more node (AZ+1), and
   write availability through the loss of one AZ; 10 GB segments re-replicate
   in ~10 s so the double-fault window is tiny.
+
   </details>
 
 - [ ] You can explain LSN and VDL and why one monotonic counter replaces
@@ -332,6 +335,7 @@ Answer each before unfolding it.
   transaction is durable iff its commit LSN ≤ VDL; recovery truncates
   above the VDL. A point on a line replaces a distributed vote, so there
   are no prepare/commit round trips.
+
   </details>
 
 - [ ] You can say what waits at commit and what does not, and why REDO has
@@ -343,6 +347,7 @@ Answer each before unfolding it.
   commits (group commit). Recovery is fast because storage nodes replay
   redo continuously, so there is no writer-side replay pass: establish the
   VDL, truncate above it, serve; UNDO runs lazily online. Reported < 10 s.
+
   </details>
 
 - [ ] You have this topic's measured latency gap to argue against.
@@ -352,6 +357,7 @@ Answer each before unfolding it.
   14.17 ms and p99 112.99 ms — a 140× median gap and a far worse tail.
   Aurora's answer is to keep pages materialized on its own storage fleet
   rather than read them from an object store on the hot path.
+
   </details>
 
 ## References

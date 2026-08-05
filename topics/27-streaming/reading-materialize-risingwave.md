@@ -200,49 +200,61 @@ Answer each before unfolding it.
 
 - [ ] What does production add to the theory, in failure modes rather than features?
   <details><summary>answer</summary>
+
   Three decisions the calculus leaves open: state placement (RAM
   evaporates on crash, object storage survives but costs ms), the
   consistency unit (outputs must reflect the same input prefix), and
   sharing/recovery (don't keep 1000 copies of an index; rebuild state on
   restart). Each is a way the system can go wrong, not a feature.
+
   </details>
 - [ ] Explain Materialize's identity: indexes are arrangements are memory.
   <details><summary>answer</summary>
+
   A Materialize index is a differential arrangement pinned in RAM and
   shared by every query that can use it, so capacity planning is
   arrangement accounting. Durability is delegated to persist; consistency
   comes from timely frontiers.
+
   </details>
 - [ ] Explain delta joins and why they need an arrangement per input per key.
   <details><summary>answer</summary>
+
   An n-way join becomes n dataflows, each driven by one input's changes
   and looking up the other inputs' existing arrangements — no intermediate
   state. That requires each input to already be arranged on the join key,
   and per-path timestamping so the n paths don't double-count a joint
   update.
+
   </details>
 - [ ] Contrast RisingWave's hand-written executors plus LSM-on-S3 state with that.
   <details><summary>answer</summary>
+
   No differential core: each operator is hand-written with explicit
   schema'd state tables in Hummock (LSM on S3). Weights ride as the `Op`
   enum; retraction is hand-rolled (e.g. degree tables for outer joins).
   The schemas buy S3 spill, per-key TTL, and single-operator elastic
   scaling.
+
   </details>
 - [ ] Explain what barriers give you for consistency and recovery.
   <details><summary>answer</summary>
+
   A barrier is a per-epoch Chandy-Lamport marker: two-input operators
   align on it, and each flushes state to Hummock when it has the barrier
   from all inputs — a globally consistent checkpoint. Recovery reloads the
   checkpoint and replays the source since it; the checkpoint interval is
   the replay window.
+
   </details>
 - [ ] You wrote answers to all questions in notes.md, including the degree-table against diff-arithmetic comparison.
   <details><summary>answer</summary>
+
   Both retract the outer-join NULL when the last match leaves: RisingWave
   with a per-operator degree table and code, differential with one
   consolidation rule for every operator. RisingWave trades generality for
   state that is legible to spill, TTL, and per-operator scaling.
+
   </details>
 
 ## References

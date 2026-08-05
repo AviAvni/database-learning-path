@@ -687,6 +687,7 @@ Answer each before unfolding it.
   alternative is not a slower compiled kernel — it is Step 2's
   per-entry function-pointer path, which is a different asymptotic
   class of overhead.
+
   </details>
 
 - [ ] You can describe the generic fallback's per-entry cost precisely, including the part that is not the call.
@@ -706,6 +707,7 @@ Answer each before unfolding it.
   operators and types, so the same loop becomes a register-resident
   FMA the C compiler can unroll and vectorize. Estimating this as
   "a ~20-cycle call around ~1 cycle of arithmetic" undercounts it.
+
   </details>
 
 - [ ] You can state the JIT grain — the specialization, not the query — and say why that grain makes caching effective.
@@ -723,6 +725,7 @@ Answer each before unfolding it.
   same cost would be absurd in postgres. The denominator is every
   `mxm` call ever made with that shape, in every process, forever;
   postgres's denominator is one query.
+
   </details>
 
 - [ ] You can describe the load ladder and the lifetime of each level — and say how many levels there actually are.
@@ -741,6 +744,7 @@ Answer each before unfolding it.
   a compiler (`:2043`), then `dlopen` (`:2050`); lifetime: forever,
   because it populates level 2; cost: 100 ms-1 s. The PreJIT table
   is not a separate probe — that is the correction.
+
   </details>
 
 - [ ] You can state the cache-key rule — shape in, values out — say what is in this key, and price both ways of getting it wrong.
@@ -763,6 +767,7 @@ Answer each before unfolding it.
   which is silent wrong answers. The three index-width flags are
   the cautionary tale: a new codegen input had to become a new key
   component.
+
   </details>
 
 - [ ] You can explain what PreJIT does, why harvesting from the cache feeds back into the build, and where the JIT self-disables.
@@ -784,6 +789,7 @@ Answer each before unfolding it.
   Together with the `UINT64_MAX` early-out at
   `GB_encodify_mxm.c:46-52`, that is the "never fail, only be
   slower" contract enforced structurally.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including your Cypher expression cache key design.
@@ -801,6 +807,7 @@ Answer each before unfolding it.
   marginally worse. GraphBLAS makes the same choice explicitly:
   matrix *contents* never enter the key, only formats and
   operators. Write down which you chose and what it costs.
+
   </details>
 
 ## References

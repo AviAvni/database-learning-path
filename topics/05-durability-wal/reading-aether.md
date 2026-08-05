@@ -402,6 +402,7 @@ Answer each before unfolding it.
   contention serializing access to in-memory log data structures — a *mutex*.
   Straight from the abstract. Four different resources is the point: the fixes
   are independent and compose.
+
   </details>
 
 - [ ] Which of Aether's fixes bought the most throughput, and by how much?
@@ -415,6 +416,7 @@ Answer each before unfolding it.
   ELR to prevent log-induced lock contention", so the 68% curve is
   FlushPipelining + ELR. The paper expects the ranking to invert as core counts
   rise.
+
   </details>
 
 - [ ] Sketch a consolidation array, and say what it bounds.
@@ -429,6 +431,7 @@ Answer each before unfolding it.
   protecting the log buffer, rather than the number of threads in the system"
   (§5.1) — a constant instead of something that grows with core count. Peak at
   3–4 slots (§A.4).
+
   </details>
 
 - [ ] Point at the postgres code that embodies Aether's log-buffer work — and
@@ -445,6 +448,7 @@ Answer each before unfolding it.
   (`NUM_XLOGINSERT_LOCKS`, `xlog.c:157`) partition waiting via
   `MyProcNumber % 8` with migration on contention (`xlog.c:1429–1448`); they are
   a lock array, not a consolidation array.
+
   </details>
 
 - [ ] Group commit converts a per-commit cost into a per-batch cost. On this
@@ -457,6 +461,7 @@ Answer each before unfolding it.
   group commit the ceiling is 1/T = **337 commits/s** flat, regardless of
   offered load. Note what group commit does not fix: each commit still waits
   about 2.97 ms, and that residual wait is bottlenecks (b) and (c).
+
   </details>
 
 - [ ] Why must the log buffer's *release* be serialized even after §5.2 removes
@@ -470,6 +475,7 @@ Answer each before unfolding it.
   (§5.2). No mutex is required, but each thread must wait for its predecessor to
   release before releasing its own region — which is why postgres publishes an
   `insertingAt` value per insertion lock and has `WaitXLogInsertionsToFinish`.
+
   </details>
 
 ## References

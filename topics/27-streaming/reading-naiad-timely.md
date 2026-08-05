@@ -244,56 +244,70 @@ Answer each before unfolding it.
 
 - [ ] What does a logical timestamp say about a message?
   <details><summary>answer</summary>
+
   Not wall-clock time but the unit of input the message derives from —
   the epoch (which round of input a source injected), extended with loop
   counters inside iteration. It makes "results for epoch t" a
   well-defined set even while later epochs are in flight.
+
   </details>
 - [ ] State the completeness problem and what a frontier answers.
   <details><summary>answer</summary>
+
   A count/min operator must not emit epoch t's final answer while a
   message with timestamp ≤ t could still arrive. The frontier is the
   proven statement "no message with timestamp ≤ t will ever arrive at
   this input," so the operator knows when it may finalize t.
+
   </details>
 - [ ] Explain could-result-in and progress tracking — and why one count isn't enough.
   <details><summary>answer</summary>
+
   `(t1,l1)` could-result-in `(t2,l2)` iff a graph path adjusts t1 to
   `Ψ[l1,l2](t1) ≤ t2`. Each active pointstamp carries an occurrence count
   (outstanding events) and a precursor count (active pointstamps ahead of
   it in could-result-in order). A pointstamp is in the frontier when its
   precursor count is zero — occurrence count alone can't tell you it is
   safe (§2.3).
+
   </details>
 - [ ] Why must loop nodes edit the timestamp, and what does order become inside a loop?
   <details><summary>answer</summary>
+
   Ingress appends a loop coordinate `0`, feedback increments the last
   coordinate, egress pops it (§2.1). Without the feedback increment,
   could-result-in has a cycle and no frontier ever advances. Inside a
   loop, timestamps compare pointwise — a partial order (lattice) — and
   the frontier is an antichain, not a single number.
+
   </details>
 - [ ] Why can progress counts transiently go negative, and why is that safe?
   <details><summary>answer</summary>
+
   A consume (−1) can be observed before the matching produce (+1) under
   reordering, so a per-time count can dip below zero. Only the *sums*
   determine the frontier and they converge to the true occurrence counts,
   so no frontier is ever advanced prematurely — the distributed property
   Naiad states in §3.3.
+
   </details>
 - [ ] Contrast this with heuristic watermarks and say what each guarantees.
   <details><summary>answer</summary>
+
   Flink/MillWheel watermarks are heuristics ("probably nothing older than
   t−5s") that stragglers can violate; timely frontiers are proofs derived
   from could-result-in and cannot be wrong. Heuristics buy low latency
   with occasional error; frontiers buy exactness at the cost of
   coordination.
+
   </details>
 - [ ] You wrote answers to all questions in notes.md.
   <details><summary>answer</summary>
+
   Including where FalkorDB's single-writer serialization makes the frontier
   proof trivial (one clock, one writer — most of §3.3's distributed
   machinery is unnecessary for M27).
+
   </details>
 
 ## References

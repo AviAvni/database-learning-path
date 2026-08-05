@@ -250,49 +250,59 @@ Answer each before unfolding it.
 
 - [ ] You can state Lightning's constraint and the only interface it can use.
   <details><summary>Answer</summary>
+
   The OLTP systems (Spanner, F1 DB) may not be modified or slowed, and there
   is more than one of them (Step 1). So analytics must use interfaces they
   already expose; the only one carrying every write is the changelog, tailed
   by Changepump (§4.8) — "log shipping inside the OLTP engine, which in
   general cannot [be changed]" (§2) is exactly what it works around.
+
   </details>
 
 - [ ] You can say what multi-engine support forces — and, crucially, what it does *not*.
   <details><summary>Answer</summary>
+
   It forces an engine-neutral **schema**: the two-level logical/physical
   schema (§4.6). It does *not* force a new version format — "every change
   committed to Lightning retains its original commit timestamp" (§3), because
   both F1 DB and Spanner are timestamp-MVCC. The version currency is shared;
   only the schema/format is translated. (An earlier draft of this guide had
   this backwards.)
+
   </details>
 
 - [ ] You can explain the safe timestamp and why the read never blocks.
   <details><summary>Answer</summary>
+
   A replica's safe timestamp is the max commit timestamp it has applied with
   no gaps (§4.1). A query reads at the `min()` safe timestamp across the
   replicas it touches — consistent by construction, immediate, and stale by
   the replication delay (§7.1, Figure 4), inside a ~10-hour queryable window
   (§4.1). This is the opposite trade from `doLearnerRead` (`LearnerRead.cpp:35`),
   which waits for *now*.
+
   </details>
 
 - [ ] You can say what Lightning does when the safe timestamp is too stale.
   <details><summary>Answer</summary>
+
   Lightning itself does **table-level failover** back to the OLTP database
   under a configurable staleness threshold (§4.9.3), because it "prefers data
   availability over data freshness" (§7.1). The `Refuse::TooStale` branch in
   the sketch is *this repo's* M32 synthesis (refuse-rather-than-lie), not a
   Lightning mechanism — worth keeping straight.
+
   </details>
 
 - [ ] You can fill in the copies-vs-coupling grid and name each cell's freshness mechanism.
   <details><summary>Answer</summary>
+
   Single-copy/single-engine → HANA (merge-on-read); separate-copy/single-engine
   → HyPer (re-fork); single-copy/separate-engine → file-level offload; and
   separate-copy/separate-engine → TiFlash (learner wait) and Lightning (safe
   timestamp). Each trades freshness/isolation/cost differently; the grid's
   axis is the survey's, the placements are this guide's synthesis (Step 6).
+
   </details>
 
 ## References

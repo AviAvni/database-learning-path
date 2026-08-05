@@ -391,6 +391,7 @@ Answer each before unfolding it.
   upserts to different points have no ordering requirement at all, so
   even a free fsync would leave the data plane paying for a property
   it does not use.
+
   </details>
 
 - [ ] You can state qdrant's heartbeat and election timeouts in milliseconds, and explain why they are far above the paper's recommendation.
@@ -415,6 +416,7 @@ Answer each before unfolding it.
   The paper's own framing covers this: §5.6's `broadcastTime ≪
   electionTimeout` puts the fsync inside broadcastTime, so a system
   with slow durable writes must widen the election timeout to match.
+
   </details>
 
 - [ ] You can describe the real `process_ready` ordering, and say why sending before persisting is correct there.
@@ -441,6 +443,7 @@ Answer each before unfolding it.
   vote responses, which are the evidence the leader counts. The second
   constraint is at :996 — apply after the HardState save, so `applied`
   never exceeds `commit`.
+
   </details>
 
 - [ ] You can say how many replica states qdrant really has, and name a case where "active" and "readable" disagree.
@@ -463,6 +466,7 @@ Answer each before unfolding it.
   `ProgressState::Snapshot` (catching up by bulk transfer), `Active`
   is `Replicate`, and `Dead` has no Raft analogue at all — Raft never
   removes a voter for lagging, it just keeps probing.
+
   </details>
 
 - [ ] You can explain how a failed replica turns a consensus-free write path into one that blocks on a Raft commit.
@@ -487,6 +491,7 @@ Answer each before unfolding it.
   replica still claims to be a source of truth without it — is how
   you lose acked data during the next failover. That is precisely the
   hole plain valkey WAIT leaves open.
+
   </details>
 
 - [ ] You can say where the raft log and HardState are persisted, and whether either write is demonstrably durable.
@@ -510,6 +515,7 @@ Answer each before unfolding it.
   entirely on what the `atomicwrites` crate does on commit, which is
   outside qdrant's source. Given Figure 2 lists `votedFor` as
   must-be-durable-before-responding, that is the line to go read.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including where the raft log and HardState are persisted.
@@ -527,6 +533,7 @@ Answer each before unfolding it.
   consensus.rs:997/1044. So "which replicas may answer" is agreed even
   when "what those replicas contain" is not. Writing that sentence
   down is the point of the question.
+
   </details>
 
 ## References

@@ -279,48 +279,60 @@ Answer each before unfolding it.
 
 - [ ] You can state relaxation as the one move all SSSP algorithms share.
   <details><summary>Answer</summary>
+
   For an edge u→v of weight w, if dist[u]+w < dist[v] then lower dist[v]
   to dist[u]+w. Every SSSP algorithm is just a policy for *which* edges
   to relax and *in what order*; a relaxation later overwritten by a
   better one is wasted work.
+
   </details>
 - [ ] You can explain the Dijkstra/Bellman-Ford trade as order against parallelism, and where Δ sits on that dial.
   <details><summary>Answer</summary>
+
   Dijkstra imposes a total order (relax out of the global minimum) — zero
   waste, zero parallelism. Bellman-Ford drops order — full parallelism,
   up to |V|× re-relaxation. Δ-stepping keeps Dijkstra order *between*
   Δ-width buckets and Bellman-Ford freedom *within* one, trading a
   measurable amount of re-relaxation for parallel width.
+
   </details>
 - [ ] You can say exactly which algorithm Δ=1 gives you with integer weights.
   <details><summary>Answer</summary>
+
   Δ=1 puts each integer distance in its own bucket, so buckets are
   settled in strict increasing order — that is Dial's-bucket Dijkstra.
   It is cheaper than a binary heap because bucket insert/extract is O(1)
   (array indexing) rather than O(log n).
+
   </details>
 - [ ] You can name the three traps inside the bucket loop and why a lost CAS is acceptable.
   <details><summary>Answer</summary>
+
   (1) skip stale entries whose dist has dropped below the current
   bucket's floor; (2) grow the bins vector lazily — you don't know
   max_dist/Δ in advance; (3) drain a bucket to empty, since light edges
   (w<Δ) can refill it. A lost CAS in gapbs (sssp.cc:74-83) just rechecks
   dist and retries; because `min` is an idempotent monotone monoid, the
   extra relaxation can never write a wrong final value.
+
   </details>
 - [ ] You can write SSSP as MIN_PLUS matrix multiplication.
   <details><summary>Answer</summary>
+
   Over the tropical (min,+) semiring, one relaxation round is
   dist' = dist min.+ (dist ⊗ A): every vertex takes the min over its
   in-neighbours of dist[u]+w(u,v). Δ-buckets are a sparsity filter on
   which entries of dist participate in each vxm.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, and predicted a Δ for weights uniform in 1..=255 before running the lane against the measured Dijkstra oracle (notes.md: 33.7 ms for 3 sources, 342,909 heap pops).
   <details><summary>Answer</summary>
+
   Done when notes.md has your relaxations-vs-Δ prediction filled in
   *before* the run, plus the answers to Q2–Q5, and your prediction is
   compared against the measured Dijkstra baseline (33.7 ms / 342,909
   pops across 3 sources).
+
   </details>
 
 ## References

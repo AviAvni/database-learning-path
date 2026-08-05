@@ -219,6 +219,7 @@ Answer each before unfolding it.
   full-text search, and a write path that stores externally-computed
   embeddings back as `vecf32` properties (`:219/:234/:312`). Three index
   types, one store.
+
   </details>
 - [ ] You can write the single Cypher query that replaces the client-side relationship expansion.
   <details><summary>Answer</summary>
@@ -232,6 +233,7 @@ Answer each before unfolding it.
   index as a leaf operator feeding the expand, not a black box called k
   times — i.e. a join order that keeps the ANN result set streaming into
   the pattern match.
+
   </details>
 - [ ] You can name all four systems smells and say which one `SET c.embedding = vecf32(...)` inside a loop is.
   <details><summary>Answer</summary>
@@ -242,6 +244,7 @@ Answer each before unfolding it.
   write is a separate batch from entity creation (`vector_store.py`
   `:219/:234/:312`), so there is a staleness window with no
   read-your-writes guarantee (topic 8).
+
   </details>
 - [ ] You can say what statistic would give the router a cost model.
   <details><summary>Answer</summary>
@@ -253,6 +256,7 @@ Answer each before unfolding it.
   recall@k, so a plan that expands can be priced against one that does
   not. That is exactly topic 9's cardinality-estimation machinery, absent
   here.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, including the M25 acceptance test that puts pattern and similarity in one query.
   <details><summary>Answer</summary>
@@ -263,6 +267,7 @@ Answer each before unfolding it.
   plan (vector predicate pushed into the pattern match, distances
   returned by the index, no Python rerank), and verified to return the
   same answers this SDK produces by its k+1 round trips on the same data.
+
   </details>
 
 ## References

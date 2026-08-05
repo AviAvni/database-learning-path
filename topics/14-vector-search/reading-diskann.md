@@ -382,6 +382,7 @@ Answer each before unfolding it.
   number of random sectors from an SSD takes almost the same time as
   one sector."* The budget that remains is about twelve dependent
   round trips for a 3 ms query.
+
   </details>
 
 - [ ] You can explain what `α > 1` does to greedy walk length, and why that is the property Vamana is buying.
@@ -403,6 +404,7 @@ Answer each before unfolding it.
   98% 5-recall@5. Why this property: on SSD, hops are round trips, so
   hop count *is* latency, and Vamana buys it with degree (flat
   layout) instead of with a hierarchy (RAM).
+
   </details>
 
 - [ ] You can describe the block layout and count the SSD reads per hop it achieves.
@@ -420,6 +422,7 @@ Answer each before unfolding it.
   reading 512B"*, so it is capacity the transfer size gives you for
   free, and the implementation packs further records into it. Do not
   say "each node is padded to a 4 KB page"; the paper does not.
+
   </details>
 
 - [ ] You can explain the division of labour in the search loop: PQ steers, f32 ranks, W reads in flight — and what recall failure each part is responsible for.
@@ -439,6 +442,7 @@ Answer each before unfolding it.
   suggests 4 or 8, says W=1 degenerates to plain greedy search, and
   warns that *"if W is too large, say 16 or more, then both compute
   and SSD bandwidth could be wasted."*
+
   </details>
 
 - [ ] You can state the paper's headline numbers with the configuration attached, and name the two that are commonly misquoted.
@@ -455,6 +459,7 @@ Answer each before unfolding it.
   nothing to do with what fraction of the SSD is read per query.
   Also worth attaching: 1-recall@1 is a stricter metric than the
   recall@10 this topic's bench measures.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the M28 object-storage preview.
@@ -471,6 +476,7 @@ Answer each before unfolding it.
   chain*: DiskANN's design assumes round trips are cheap enough that
   a dozen of them fit in the latency budget, and that assumption is
   the thing object storage removes.
+
   </details>
 
 ## References

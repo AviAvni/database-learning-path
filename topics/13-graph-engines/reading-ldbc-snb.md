@@ -443,6 +443,7 @@ Answer each before unfolding it.
   metric is a *pair* — the geometric mean of read query execution
   times and the geometric mean of daily-batch load time (§6.3, p.69).
   Nothing converts one metric into the other.
+
   </details>
 
 - [ ] You can explain why correlated data is the point rather than a realism garnish — and connect it to the 101x supernode gap this topic measures.
@@ -461,6 +462,7 @@ Answer each before unfolding it.
   supernodes but a bounded tail, where this topic's preferential
   attachment generator produces a 6 565-degree node on 1 M nodes and
   the 101× two-hop gap that follows from it.
+
   </details>
 
 - [ ] You can say what running updates during reads prevents a vendor from doing, and what Parameter Curation deliberately removes.
@@ -480,6 +482,7 @@ Answer each before unfolding it.
   matching intermediate-result sizes. It is the 101× effect,
   deliberately engineered out so that a mean is a meaningful summary.
   Your own bench keeps the two lanes apart instead.
+
   </details>
 
 - [ ] You can state what a pinned scale factor and an audit rule are for, and reproduce the spec's own derivation of the 2.5-hour floor.
@@ -502,6 +505,7 @@ Answer each before unfolding it.
   updates; TCR ≥ 0.001, so the shortest legal replay is 2.628 hours,
   which just covers the 0.5 + 2 = 2.5 hours required. A faster engine
   must move to a bigger SF or run out of updates.
+
   </details>
 
 - [ ] You wrote answers to all questions in notes.md, including what you intend to steal for M22.
@@ -521,6 +525,7 @@ Answer each before unfolding it.
   three representative queries, and p99 reporting. Skip: Parameter
   Curation — deliberately, because the skew it removes is this
   topic's actual finding.
+
   </details>
 
 ## References

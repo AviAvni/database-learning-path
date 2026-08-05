@@ -319,6 +319,7 @@ Answer each before unfolding it.
   writers; no ACID deletes the write-ahead log, MVCC and lock manager; the analytical engine keeps
   the working set in RAM in a scan-friendly layout. The paper pushes further to the "infinite COST"
   conjecture — no amount of distribution beats one good thread on this workload.
+
   </details>
 - [ ] You can draw the Figure 2 transaction record from memory, with bit widths.
   <details><summary>Answer</summary>
@@ -327,6 +328,7 @@ Answer each before unfolding it.
   inputs and outputs inline. Each input/output entry is 128 bits: Spent/spending tx 32, Address ID
   32, Value 60, Address type 4 (Step 2). Inputs and outputs are stored inline, not normalized —
   a deliberate ~19% duplication.
+
   </details>
 - [ ] You can explain the snapshot illusion in three sentences.
   <details><summary>Answer</summary>
@@ -336,6 +338,7 @@ Answer each before unfolding it.
   reconstructed from the current one: a `chain` records its height, and the library rewrites
   later-spent outputs as unspent and blocks reads past that height. It is free MVCC that exists
   only because the structure grows and never mutates in place.
+
   </details>
 - [ ] You can read Table 3 by row and say which queries a graph engine legitimately loses and why.
   <details><summary>Answer</summary>
@@ -346,6 +349,7 @@ Answer each before unfolding it.
   (`Calculate fee`, `Locktime change`) lose by 300–500×, because a property graph pays a pointer
   chase per input where BlockSci pays a sequential read (Step 7). It is a benchmark of storage
   layout on scan-shaped queries, not "graph databases are slow".
+
   </details>
 - [ ] You can name the two Bitcoin distribution facts the parser exploits.
   <details><summary>Answer</summary>
@@ -354,6 +358,7 @@ Answer each before unfolding it.
   (2) Only 8.6% of addresses are used more than once, but those account for 51% of all occurrences
   → a heavy tail, so a never-evicting multi-use cache captures half the traffic cheaply (Step 5).
   Together they justify the bloom-filter / multi-use-cache / RocksDB three-tier parser.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
@@ -363,6 +368,7 @@ Answer each before unfolding it.
   refutes it, the query-plan predicate that splits Table 3's winners from losers, the
   break-even for the 19% inline-layout cost, and a measurement distinguishing the three
   explanations for supercluster growth.
+
   </details>
 
 ## References

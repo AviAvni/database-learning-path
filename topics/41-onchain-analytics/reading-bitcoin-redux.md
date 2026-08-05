@@ -348,6 +348,7 @@ Answer each before unfolding it.
   *commodity*, not money, no exception applies and stolen coins remain reclaimable — which is the
   entire reason a forward tracer has legal teeth. The paper *assumes* commodity status rather than
   asserting it as settled law.
+
   </details>
 - [ ] You can give the Linode and Flexcoin haircut-vs-FIFO numbers from memory.
   <details><summary>Answer</summary>
@@ -356,6 +357,7 @@ Answer each before unfolding it.
   ("just over 1.35%"). Flexcoin (2014): haircut 10,421,112 addresses ("over 57%"), FIFO 15,265
   accounts (*Bitcoin Redux* §3.3). The repo's synthetic lane 1 echoes it: 98.0% of addresses
   tainted, 658 of them under 0.1% ([FINDINGS.md](../../FINDINGS.md) row 41).
+
   </details>
 - [ ] You can explain "lossless" and why it makes backwards tracing possible.
   <details><summary>Answer</summary>
@@ -365,6 +367,7 @@ Answer each before unfolding it.
   number of hops and you can trace a coin's heritage backwards, not just taint forwards. Haircut
   destroys it on the first merge: a product of fractions like 2/9 × 3/7 is a number, not a history,
   and cannot be inverted.
+
   </details>
 - [ ] You can write `extract_taint`'s three branches without looking.
   <details><summary>Answer</summary>
@@ -373,6 +376,7 @@ Answer each before unfolding it.
   a `name: 0` run. (2) Whole run fits (`:153`) — pop it, subtract its value, keep it. (3) Run
   straddles the cut (`:157–162`) — split it, keep the front piece with the same `name`, push the
   remainder back on the front of the queue. Branch 3 is the load-bearing one.
+
   </details>
 - [ ] Your `taint.rs` reproduces lane 2: poison 394.67×, haircut 1.00× over 97.9% of UTXOs, FIFO
       1.00× over 0.9%.
@@ -382,6 +386,7 @@ Answer each before unfolding it.
   taint at every merge); haircut conserves it (1.00×) but smears it across 97.9% of UTXOs (3657 of
   3734); FIFO conserves it (1.00×) and confines it to 0.9% (32 of 3734 UTXOs, the largest holding
   22.5%). Throughput: 20,400 tx in 6.6 ms ≈ 3.1M tx/s.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
@@ -389,6 +394,7 @@ Answer each before unfolding it.
   Done when notes.md holds your five written answers — the arbitrariness-of-ordering argument, the
   source of poison's extra money, an unbounded-queue-despite-coalescing sequence, the mixer claim
   restated in terms of sets and notice, and the on-chain-coverage blind spot shared with topic 40.
+
   </details>
 
 ## References

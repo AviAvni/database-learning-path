@@ -237,49 +237,61 @@ Answer each before unfolding it.
 
 - [ ] You can name the four verbs and express connected components as algebra.
   <details><summary>Answer</summary>
+
   The verbs are mxv, mxm, semiring, and mask. CC as algebra is FastSV:
   a parent array improved each round by hooking (mngp = min(mngp, A·gp)
   via mxv with MIN_SECOND) and shortcutting (gp_new = parent(parent)),
   converging in O(log n) bulk rounds instead of per-edge union-find.
+
   </details>
 - [ ] You can explain FastSV's `min_2nd` semiring and why it takes the neighbour's grandparent.
   <details><summary>Answer</summary>
+
   MIN_SECOND multiplies by taking the *second* operand (the neighbour's
   grandparent value gp[u]) and ignoring the matrix entry (the edge
   value), then reduces with MIN. Hooking wants the smallest grandparent
   label among neighbours; a weighted MIN_TIMES would fold edge weights
   into the label and corrupt it (Q1).
+
   </details>
 - [ ] You can contrast sampling in FastSV against Afforest and count matrix ops against pointer chases.
   <details><summary>Answer</summary>
+
   FastSV samples columns *inside* the matrix ops (FASTSV_SAMPLES per
   row, bulk-synchronous), staying algebraic; Afforest samples per-vertex
   neighbour offsets with an asynchronous union-find and a final sweep
   that skips the identified giant component. Same "skip inside-GC edges"
   idea; the test is rounds×bulk-pass (FastSV) vs edges-inspected
   (Afforest's <50% of m).
+
   </details>
 - [ ] You can write triangle counting as a masked multiplication.
   <details><summary>Answer</summary>
+
   ntri = sum((L*U').*L): multiply the triangles of A to enumerate
   wedges, and use A itself as a mask so only wedges that close are
   computed. The mask prunes the SpGEMM (never materializing L*U'), which
   is why triangle *density* — not matrix shape — picks dot vs saxpy.
+
   </details>
 - [ ] You can explain why the flush boundary is the cost in the FalkorDB tie-in.
   <details><summary>Answer</summary>
+
   The algorithms are solved; FalkorDB's cost is around them —
   exporting/flushing the delta-matrix-backed A into a GrB_Matrix before
   the call, and materializing full result vectors after. M24's design
   question is whether algorithms can run masked over the DM/DP directly
   and stream top-k instead.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, including what `CALL algo.wcc()` must do about pending deltas.
   <details><summary>Answer</summary>
+
   Done when notes.md answers Q1 (min_2nd), Q2 (ops vs chases and why
   Afforest wins wall-clock), Q3 (urand starves the dot mask), Q4
   (sink-rank error), and Q5 (the three delta-handling options and their
   consistency semantics).
+
   </details>
 
 ## References

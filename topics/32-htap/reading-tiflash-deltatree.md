@@ -271,6 +271,7 @@ Answer each before unfolding it.
 
 - [ ] You can trace one write from the Raft learner to where it physically lands.
   <details><summary>Answer</summary>
+
   It appends into the Segment's in-memory `MemTableSet` via `writeToCache`
   (`Segment.h:217`) — not into stable, and *not* via `placeUpsert` (`:715`,
   which is the read/place path). The delta cache holds up to
@@ -278,20 +279,24 @@ Answer each before unfolding it.
   spilling to a persisted column file (`DeltaValueSpace.h:65`). Nothing
   rewrites a sorted column file on the write path — that was the whole point
   of Step 1.
+
   </details>
 
 - [ ] You can trace one scan and say why it does not re-sort the delta.
   <details><summary>Answer</summary>
+
   A scan is the two-way merge of Step 4: walk stable and delta in key order,
   delta shadows stable on equal keys. It stays cheap because the DeltaIndex
   (`DeltaIndex.h:27`) already maps each delta row to its stable-sort position
   (`placed_rows`, `:35`), built once per delta change and reused — a cached
   in-memory index, not a per-scan sort. Your `replica.rs::scan_sum_a`
   (`replica.rs:41`) omits it deliberately and re-sorts every time.
+
   </details>
 
 - [ ] You can name the two folds and the sizes that trigger them.
   <details><summary>Answer</summary>
+
   MinorCompaction (`Delta/MinorCompaction.h`) folds small persisted column
   files *within* the delta; segmentMergeDelta (`DeltaMergeStore.h:668`)
   rebuilds stable with the delta applied and empties the delta. The triggers
@@ -299,16 +304,19 @@ Answer each before unfolding it.
   `dt_segment_delta_limit_rows = 80000` (`:158`), forced merge at
   `dt_segment_force_merge_delta_rows = 134217728` (`:162`), writes stalled at
   `dt_segment_stop_write_delta_rows = 268435456` (`:164`).
+
   </details>
 
 - [ ] You can state the invariant both folds must preserve, and why a Segment matters.
   <details><summary>Answer</summary>
+
   A fold must be invisible: scans return identical results before and after,
   and stable holds one version per key in sorted order (modulo MVCC snapshots,
   question 5). Segments (`Segment.h:84`, targeting
   `dt_segment_limit_rows = 1000000`, `Settings.h:156`) make that fold
   O(segment) not O(table), so a hot key range's merges never tax the cold
   99% — the improvement over HANA's whole-table merge (Step 3).
+
   </details>
 
 ## References

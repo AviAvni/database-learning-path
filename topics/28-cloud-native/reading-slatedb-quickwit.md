@@ -254,6 +254,7 @@ Answer each before unfolding it.
   median, ~1,130× at the tail. So SlateDB batches many puts per WAL SST
   and lets callers choose `AwaitDurable` vs no-sync; reads (memtable → L0 →
   runs) are unchanged.
+
   </details>
 
 - [ ] You can explain why the manifest is the whole database and what that
@@ -265,6 +266,7 @@ Answer each before unfolding it.
   checkpoints. Publishing a new manifest version is the single atomic state
   change (the linearization point), which is what lets writer and compactor
   add objects concurrently without a lock.
+
   </details>
 
 - [ ] You can explain single-writer fencing from one conditional PUT.
@@ -276,6 +278,7 @@ Answer each before unfolding it.
   carrying the epoch, so a fenced/zombie writer's next manifest write fails
   and it must die. Consensus is outsourced to S3's conditional PUT — no
   leases, no election timeout.
+
   </details>
 
 - [ ] You can describe the cache ladder that buys back the latency,
@@ -287,6 +290,7 @@ Answer each before unfolding it.
   with ranged GETs located via the SST index. A miss costs the measured
   ~14 ms plus a per-GET fee, so warm reads stay in RAM/local disk; Quickwit
   runs the same ladder over byte-ranges and whole splits.
+
   </details>
 
 - [ ] You can explain checkpoints and clones as copying the manifest, not
@@ -298,6 +302,7 @@ Answer each before unfolding it.
   that references the parent's SSTs — zero bytes copied. Same
   copy-on-write shape as Neon branches and Snowflake clones, at SST
   granularity.
+
   </details>
 
 - [ ] You can explain hedged requests and predict their effect on the
@@ -311,6 +316,7 @@ Answer each before unfolding it.
   hedged p99 at ~30–35 ms (a rescued straggler pays the p95 deadline plus a
   fresh sample). The fat tail (≈8× the median) is amputated without hurting
   the median.
+
   </details>
 
 ## References

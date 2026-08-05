@@ -547,6 +547,7 @@ Answer each before unfolding it.
   OLC B+Tree specifically the honest figure is about **2×**. The
   "order of magnitude more code" claim is from a different paper entirely —
   Leis et al. §3.2, footnote 5.
+
   </details>
 
 - [ ] Both papers measured CAS failure rates. Give both, convert each to
@@ -567,6 +568,7 @@ Answer each before unfolding it.
   head. The 2013 paper's arithmetic was right; its three workloads simply
   never contained the case. Contention is a property of the workload's
   concentration on one word, not of the algorithm.
+
   </details>
 
 - [ ] SIGMOD '18 found that disabling CAS changed nothing. Why, and why is
@@ -587,6 +589,7 @@ Answer each before unfolding it.
   instruction. It also means the whole §6.3 decomposition, being
   single-threaded and pinned, cannot measure coherence effects at all;
   the authors say so rather than letting the reader assume otherwise.
+
   </details>
 
 - [ ] What did the 2013 Bw-tree get compared against, on what machine, and
@@ -605,6 +608,7 @@ Answer each before unfolding it.
   Second, a design justified by exploding core counts was never tested
   above four physical cores; SIGMOD '18 ran 20 and 40 threads (§5), which
   is where §6.2's 1078% abort rate appeared.
+
   </details>
 
 - [ ] An OLC reader traverses four nodes. How many shared cache lines does
@@ -622,6 +626,7 @@ Answer each before unfolding it.
   coherence traffic of writing four latches twice each. At 20 threads OLC
   is **3.9× faster** (§4). Priced with this topic's constant, 8 contended
   writes × 38.3 ns ≈ 306 ns of pure interconnect per lookup.
+
   </details>
 
 - [ ] LeanStore's `HybridLatch` is `alignas(64)`. Is that right on the
@@ -642,6 +647,7 @@ Answer each before unfolding it.
   crossbeam's `CachePadded` is `repr(align(128))` on aarch64 *and* x86-64
   (`crossbeam-utils/src/cache_padded.rs:70-77`). "Pad to a cache line" is
   not the rule; "pad to 128 bytes, then measure" is.
+
   </details>
 
 - [ ] Why must a thread that finds a half-finished SMO complete it rather
@@ -662,6 +668,7 @@ Answer each before unfolding it.
   intermediate state. That is a large part of what Leis et al. mean by "an
   order of magnitude more code" (§3.2), and what SIGMOD '18's §3 ("Missing
   Components") had to reconstruct from a paper that did not state it.
+
   </details>
 
 ## References

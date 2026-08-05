@@ -219,53 +219,67 @@ Answer each before unfolding it.
 
 - [ ] Why is position identity in an append-only log?
   <details><summary>answer</summary>
+
   Records are only ever appended, so a record's offset (its position in
   the partition) never changes and uniquely names it. No separate
   per-message id or broker-side index is needed — "where was I?" is one
   integer.
+
   </details>
 - [ ] Explain the dumb-broker/smart-consumer split and what it moves to the client.
   <details><summary>answer</summary>
+
   The broker stores no per-consumer state (§3.1 "stateless broker"); the
   consumer holds its own `(partition, offset)`. This moves progress
   tracking, rewind, and replay to the client and lets any number of
   independent consumers read the same log without broker bookkeeping.
+
   </details>
 - [ ] State the mechanical bet: sequential IO plus the OS page cache.
   <details><summary>answer</summary>
+
   Writes are sequential appends; there is no in-process message cache
   (the OS page cache serves segment files); delivery uses `sendfile`,
   which the paper says avoids 2 of 4 copies and 1 of 2 syscalls (§3.1).
   Cheap enough to retain ~7 days of history.
+
   </details>
 - [ ] Why is ordering per partition only, and what does that forbid?
   <details><summary>answer</summary>
+
   A total order across partitions would need coordination and isn't
   required: correctness only needs same-key updates not to reorder. Route
   each key to a fixed partition and per-partition order is per-key order.
   It forbids relying on a global order across keys/partitions.
+
   </details>
 - [ ] Where does the offset live for each delivery semantic?
   <details><summary>answer</summary>
+
   Store the offset before processing → at-most-once; after → at-least-once
   (Kafka's own guarantee, §3.3). Exactly-once requires committing the
   offset atomically with the output (idempotent/transactional sink) — a
   consumer-side property, not a broker one.
+
   </details>
 - [ ] Explain log compaction as turning a topic into a table changelog.
   <details><summary>answer</summary>
+
   Compaction retains the latest record per key (with tombstones for
   deletes for a grace period), so a late consumer can read the compacted
   prefix to reconstruct the current table, then follow the live tail.
   (This is a post-2011 feature — see the Kreps blog, not the paper.)
+
   </details>
 - [ ] You wrote answers to all questions in notes.md, including what FalkorDB's existing log already gives M27.
   <details><summary>answer</summary>
+
   FalkorDB already has a log (Redis replication / AOF, topic 5). The open
   choice for M27 is whether standing-query subscribers consume the raw
   mutation log (Kafka-style rebuild) or per-query result deltas
   (Materialize SUBSCRIBE-style), and what the server must persist for a
   disconnected subscriber — the Step 6 retention-window trade.
+
   </details>
 
 ## References

@@ -536,6 +536,7 @@ Answer each before unfolding it.
   transaction's last frame and resumes the chain from *its* checksum (`:1923`).
   Both damaged suffixes vanish; nothing is undone, because nothing was ever
   applied.
+
   </details>
 
 - [ ] Explain why a valid checksum is not sufficient to accept a frame.
@@ -549,6 +550,7 @@ Answer each before unfolding it.
   (`wal.rs:1747–1768`) increments `salt_1` and draws a fresh random `salt_2`, so
   a stale frame's copied salts no longer match the header's and the scan stops
   at `:1815` before it ever computes a checksum.
+
   </details>
 
 - [ ] Turso's checkpoint sorts its work list. Say what it sorts by and what
@@ -563,6 +565,7 @@ Answer each before unfolding it.
   `BTreeMap<usize, Arc<Buffer>>` keyed by page id, and `write_pages_vectored`
   merges consecutive runs into `writev` calls — its example turns nine pages
   into three syscalls (`sqlite3_ondisk.rs:648–658`).
+
   </details>
 
 - [ ] Someone benchmarks turso on a Mac, sees 40 000 commits/s, and calls it
@@ -578,6 +581,7 @@ Answer each before unfolding it.
   (`translate/pragma.rs:716–726`) → `fcntl(F_FULLFSYNC)` (`io/unix.rs:462`),
   measured at 2.97 ms, a ceiling of **337/s**. Their number is 131× too high
   for the guarantee they claimed.
+
   </details>
 
 - [ ] Turso has no full-page-write machinery and no `checkpoint_timeout`
@@ -592,6 +596,7 @@ Answer each before unfolding it.
   state instead of in bursts: every commit writes 4 KB + 24 bytes per dirtied
   page, whatever the transaction changed, and read latency degrades with WAL
   length until a checkpoint runs (Step 5).
+
   </details>
 
 ## References

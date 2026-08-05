@@ -237,6 +237,7 @@ Answer each before unfolding it.
   lets each tier be sized, priced, and replicated for one job instead of
   overpaying for both — the thesis of the abstract: the log tier gives
   durability, the storage tier gives availability.
+
   </details>
 
 - [ ] You can name the four tiers and what each owns.
@@ -247,6 +248,7 @@ Answer each before unfolding it.
   servers (each owns a ~128 GB partition, replays log, answers
   `getPage(pageId, LSN)`); XStore (Azure blob storage — the cheap, durable,
   all-versions floor).
+
   </details>
 
 - [ ] You can explain why commit latency reduces to one small append to
@@ -258,6 +260,7 @@ Answer each before unfolding it.
   append is acknowledged. Everything else (fan-out to page servers,
   destaging to the SSD cache and XStore) happens asynchronously, off the
   commit path, so commits never wait on blob storage.
+
   </details>
 
 - [ ] You can explain why page servers are caches and therefore
@@ -269,6 +272,7 @@ Answer each before unfolding it.
   or be rebuilt with no data loss — the only cost is cache warm-up time.
   That is what lets Socrates scale them out one-per-partition and treat
   them as cattle.
+
   </details>
 
 - [ ] You can explain what RBPEX preserves across a restart and why that
@@ -280,6 +284,7 @@ Answer each before unfolding it.
   comes back warm. It matters because a miss falls through to XStore, and
   our bench measures that floor at S3 p50 14.17 ms / p99 112.99 ms versus
   0.10 ms local — a cold cache would pay that tail thousands of times.
+
   </details>
 
 ## References

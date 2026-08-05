@@ -571,6 +571,7 @@ Answer each before unfolding it.
   (`:26`), then DM (`:32`), then M (`:39`), returning early. An entry
   that was just written costs one probe; only an entry absent from
   both deltas pays all three.
+
   </details>
 
 - [ ] You can explain why CSR is hostile to single-edge inserts, and compute the cost on this topic's 16 M-edge graph.
@@ -590,6 +591,7 @@ Answer each before unfolding it.
   10 000 (`config.h:19`), so one rebuild is amortised over 10 000
   writes — a 10 000× reduction in rebuild work per write, by
   construction.
+
   </details>
 
 - [ ] You can say when dot beats saxpy for a BFS step, in terms of frontier size against matrix dimension, and quote the two Ω's.
@@ -608,6 +610,7 @@ Answer each before unfolding it.
   eligibility test fails or stops paying, and saxpy — the default set
   at `GB_AxB_meta_adotb_control.c:36` — streams the whole thing
   instead.
+
   </details>
 
 - [ ] You can explain what a mask pushes into the kernel, what it saves, and the one case where passing a mask saves nothing.
@@ -629,6 +632,7 @@ Answer each before unfolding it.
   `GB_AxB_meta.c:15-18` warns the algorithm may choose to defer the
   mask to it. A deferred mask costs the intermediate you were hoping
   to avoid.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the Delta_Matrix-to-LSM vocabulary mapping.
@@ -646,6 +650,7 @@ Answer each before unfolding it.
   additions), so a delete-heavy workload can compact tombstones
   without rewriting for additions. The one place it is looser: there
   is no level hierarchy — one M, one DP, one DM, full stop.
+
   </details>
 
 ## References

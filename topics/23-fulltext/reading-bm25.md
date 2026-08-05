@@ -276,43 +276,55 @@ Answer each before unfolding it.
 
 - [ ] You can explain where idf comes from, rather than asserting it.
   <details><summary>the derivation, not the formula</summary>
+
   From the binary independence model (§3.1): sum per-term log-odds of
   relevance; with no relevance judgments, set R=r=0, and the RSJ
   weight reduces to the idf of Eq 3.3, `log((N−df+0.5)/(df+0.5))`. It
   is the no-relevance-information special case of a probabilistic term
   weight, not an axiom.
+
   </details>
 - [ ] You can derive the tf saturation limit and say what it approaches as tf grows.
   <details><summary>the ceiling</summary>
+
   `tf·(k1+1)/(tf+k1) → k1+1` as tf→∞ (the tantivy/Lucene §3.5.1 form;
   the bare Eq 3.11 form `tf/(tf+k1) → 1`). At k1=1.2 the ceiling is
   2.2; tf=1 gives 1.0 (45%), tf=11 ≈ 1.98 (90%).
+
   </details>
 - [ ] You can explain what b controls and predict its effect on a corpus with near-uniform lengths.
   <details><summary>soft length normalization</summary>
+
   b scales how much tf is divided by len/avg_len (Eq 3.12: factor
   `1−b+b·len/avg_len`). On near-uniform lengths (our 50–150 corpus)
   len/avg≈1 so the factor ≈1 for any b — b barely moves scores. On
   tweets+books the same b swings scores hard.
+
   </details>
 - [ ] You can say why WAND needs BM25's score ceiling and what a scorer without one costs.
   <details><summary>the monotone bound</summary>
+
   WAND skips any doc whose summed per-term ceilings can't beat θ.
   BM25's ceiling is `idf·(k1+1)` (tantivy `max_score`, bm25.rs:184).
   A scorer without a static upper bound (a neural reranker) can't be
   skipped safely, so it must run as a second stage over WAND's
   candidates.
+
   </details>
 - [ ] You can state what the +0.5 smoothing terms are doing.
   <details><summary>Jeffreys prior</summary>
+
   They keep `(N−df+0.5)/(df+0.5)` finite and defined at df=0 and df=N
   — a Jeffreys (½-count) prior on the presence/absence probabilities,
   so no term produces ±∞.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>check</summary>
+
   Five answers in notes.md, each tied to an equation/section of the
   monograph or a line of bm25.rs — not folklore.
+
   </details>
 
 ## References

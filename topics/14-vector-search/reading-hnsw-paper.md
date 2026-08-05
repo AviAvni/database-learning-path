@@ -447,6 +447,7 @@ Answer each before unfolding it.
   by the caller after the index exists, so it is a product feature
   rather than a defect: one index serves a cheap 0.90-recall path and
   an expensive 0.999-recall path.
+
   </details>
 
 - [ ] You can derive why `mL = 1/ln(M)` gives an expected max level of `ln(n)/ln(M)`.
@@ -461,6 +462,7 @@ Answer each before unfolding it.
   top non-empty layer is where the expectation reaches 1:
   `n·M^(-j) = 1 ⇒ j = ln n / ln M`. For n = 10⁶ and M = 16 that is
   `13.8155 / 2.7726 = 4.98`, about five layers.
+
   </details>
 
 - [ ] You can state what Algorithm 4's neighbour selection does differently from taking the M nearest, and what breaks if you take the nearest.
@@ -480,6 +482,7 @@ Answer each before unfolding it.
   `extendCandidates` and `keepPrunedConnections`, are off by default
   (§4.1) and absent from qdrant's implementation
   (`links_container.rs:47-71`).
+
   </details>
 
 - [ ] You can say why `ef >= k` is required and what happens at exactly `ef = k`.
@@ -496,6 +499,7 @@ Answer each before unfolding it.
   greedy descent and recall drops sharply. Implementations clamp: for
   example usearch defaults `expansion_search` to 64
   (`index.hpp:1573`), comfortably above a typical k=10.
+
   </details>
 
 - [ ] You can account for HNSW's memory at n=1M, d=128, M=16, splitting vectors from links.
@@ -512,6 +516,7 @@ Answer each before unfolding it.
   reserved capacity, ~14% above the occupied one. Either way the
   ratio is what matters: quantizing vectors is the memory lever
   ([reading-pq.md](reading-pq.md)), shrinking the graph is not.
+
   </details>
 
 - [ ] You can name one place where a production implementation deviates from the paper, and say what the deviation changes.
@@ -528,6 +533,7 @@ Answer each before unfolding it.
   (`links_container.rs:47-71`). (d) qdrant's serve-time `ef` defaults
   to `ef_construct` rather than to anything derived from k
   (`config.rs:48`).
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md.
@@ -540,6 +546,7 @@ Answer each before unfolding it.
   question 5's skip-list analogue is that a skip list also has a
   single fixed head — the entry point is the top-level sentinel, and
   descending from it is exactly Alg. 5's ef=1 phase.
+
   </details>
 
 ## References

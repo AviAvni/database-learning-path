@@ -801,6 +801,7 @@ The header's byte 1–2 field points at it.
 
 Sanity check the arithmetic closes: content-area start + (sum of live cell
 sizes) + (sum of freeblock sizes) + fragment count = `U`.
+
 </details>
 
 - [ ] Explain what `balance_non_root` pools, and why the bound is 3.
@@ -821,6 +822,7 @@ from *both* neighbours, so it can usually be fixed without changing the
 parent's cell count; and holding the window at a constant makes every balance
 O(1) pages no matter how big the tree is. Wider windows pack pages better but
 make each insert's worst case worse.
+
 </details>
 
 - [ ] Compute the interior fanout `F` of a table b-tree on a 4,096-byte page
@@ -841,6 +843,7 @@ so **3 pages touched** including the leaf.
 
 And the point of Step 1's caveat: that 3 does not predict latency. This topic's
 `README.md` shows lookups going 862 → 1101 ns while `d` stays at 3.
+
 </details>
 
 - [ ] State the fragment-counter guard in `find_free_slot` and explain why the
@@ -858,6 +861,7 @@ to defragmentation (Step 3).
 
 Note what the 60 is: a **validity invariant** — a page whose counter exceeds it
 is corrupt — not a threshold that triggers anything by itself.
+
 </details>
 
 - [ ] Give the two branches of the overflow spill rule, and say which one
@@ -876,6 +880,7 @@ overflow page including the last is full. The **second** branch is the one that
 leaves a partial page: a 100 KB row at `U = 4096` gives `K = 4192 > 4061 = X`,
 falls back to 489 local bytes, and its 25th and last overflow page holds
 3,703 of 4,092 bytes.
+
 </details>
 
 - [ ] Say where a page freed by a balance goes, and why the file does not
@@ -894,6 +899,7 @@ The file does not shrink because nothing ever truncates it: `allocate_page`
 (`pager.rs:5250`) reuses freelist pages first and only extends the file when
 the list is empty (`:5302–5303` → `AllocateNewPage` `:5450`). Reclaiming the
 space to the filesystem is a separate explicit operation, `VACUUM`.
+
 </details>
 
 ## References

@@ -903,6 +903,7 @@ and `1/P` round trips. At P=1 that is 2 / 4 / 1; at P=256 it is 0.0078 / 0.0156
 The `notes.md` "syscalls per op" column is `2.0/P` computed from that model —
 nobody ran `dtrace`. It is the client-side floor: a real client could do worse
 (a partial write, a short read), never better.
+
 </details>
 
 - [ ] You can perform the division that turns 44,088 ops/s into 12,321,414 ops/s
@@ -927,6 +928,7 @@ calls `2/P` a floor on the improvement, not a ceiling.
 
 The payload is irrelevant: 40 bytes at even 10 GB/s is 4 ns, 0.02% of 22.681 µs.
 The 22.681 µs is context switches and wakeups.
+
 </details>
 
 - [ ] You can show, arithmetically, why a single-threaded server cannot reach
@@ -947,6 +949,7 @@ At P=16 the bill is `0.125 × 1170 = 146 ns`, 15% of budget, and the target
 becomes reachable. So any "1M ops/s" headline is pipelined, multi-threaded, or
 measured on hardware with much cheaper syscalls — and the first question to ask
 is what `-P` was.
+
 </details>
 
 - [ ] You can explain why `beforesleep` runs *before* `aeApiPoll` and what would
@@ -968,6 +971,7 @@ importantly the ordering is what lets redis skip registering a write event at
 all: because the flush is guaranteed to happen before the sleep, `addReply` can
 merely set a flag and link the client into `clients_pending_write`
 (`networking.c:291-298`) instead of calling into the kernel.
+
 </details>
 
 - [ ] You can narrate one full loop iteration with three pipelined clients —
@@ -1005,6 +1009,7 @@ how much it can consume per event so the other 100 still get served. If it never
 drains, `closeClientOnOutputBufferLimitReached` (`networking.c:5215`)
 disconnects it and bumps `stat_client_outbuf_limit_disconnections` — RESP has no
 way to ask it to slow down.
+
 </details>
 
 - [ ] You can name the four conditions guarding the big-argument zero-copy and
@@ -1027,6 +1032,7 @@ sds *becomes* the string object (`createObject(OBJ_STRING, c->querybuf)`,
 handed a fresh buffer. When it fails — a pipelined client sent more bytes after
 the big `SET` — the code falls to `createStringObject` at `:3303-3304` and pays
 the copy.
+
 </details>
 
 - [ ] You can say what `TCP_NODELAY` disables, where redis sets it, and why the
@@ -1051,6 +1057,7 @@ and the 279× would shrink into meaninglessness. `notes.md` records
 `TCP_NODELAY` in the baseline header for exactly this reason. Note the trade
 redis makes: having told the kernel not to coalesce, it must coalesce itself,
 which is what Step 6 is.
+
 </details>
 
 - [ ] You can explain what `lookahead` buys that a one-command-at-a-time loop
@@ -1072,6 +1079,7 @@ on the critical path of the next. The valkey chapter of this topic measures what
 that is worth. Note the dependency chain: this optimization only exists because
 a *pipelined client* handed the server sixteen commands in one read. Pipelining
 buys syscalls first and cache parallelism second.
+
 </details>
 
 ## References

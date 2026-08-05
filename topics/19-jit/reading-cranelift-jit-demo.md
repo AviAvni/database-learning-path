@@ -638,6 +638,7 @@ Answer each before unfolding it.
   `get_finalized_function`. Note also that `compile()` returns
   `*const u8` (`:53`, `:92`) — the typed cast is not part of the
   ladder.
+
   </details>
 
 - [ ] You can explain what `FunctionBuilder` handling SSA construction saves you from doing.
@@ -658,6 +659,7 @@ Answer each before unfolding it.
   inserts the parameters and arguments. `seal_block` is the one
   obligation it hands back — you must tell it when a block has no
   further predecessors.
+
   </details>
 
 - [ ] You can state the lifetime contract on the returned pointer and every invariant the `transmute` is assuming.
@@ -679,6 +681,7 @@ Answer each before unfolding it.
   non-trapping. The compiler checks none of these; that is why
   `run_code` is an `unsafe fn` and why its doc comment at `:44`
   warns that wrong types "may corrupt the program's state".
+
   </details>
 
 - [ ] You can time `compile()` across expression depths and say whether it is linear in node count, and convert that into a break-even row count.
@@ -698,6 +701,7 @@ Answer each before unfolding it.
   0.9683 µs, so 100 µs of compile pays back in 103 rows and 500 µs
   in 516. Against the *vectorized* lane the denominator may be zero
   or negative — record that as a finding, not a failure.
+
   </details>
 
 - [ ] You can name the three API changes in this pin that will break an older cranelift tutorial.
@@ -714,6 +718,7 @@ Answer each before unfolding it.
   replacing the older `brz`/`brnz` pair. This is why the
   `Cargo.toml:11-15` version lock is in Step 6's gotcha list rather
   than a footnote.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including how you will handle non-f64 values in M19.
@@ -732,6 +737,7 @@ Answer each before unfolding it.
   call-free at the cost of compiling nothing when any node is
   unsupported. Defend whichever you pick with the fraction of real
   Cypher expressions that are pure numeric — count it, don't guess.
+
   </details>
 
 ## References

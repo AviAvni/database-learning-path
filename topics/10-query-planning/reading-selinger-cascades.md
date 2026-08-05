@@ -576,6 +576,7 @@ Answer each before unfolding it.
   each level-2 entry plus the remaining relation. Total memo entries:
   `2^3 − 1 = 7`, against `3! = 6` orderings — at n = 3 the DP is not yet
   winning, which is exactly Step 4's point.
+
   </details>
 
 - [ ] Define an interesting order the way the paper does, not the way summaries
@@ -592,6 +593,7 @@ Answer each before unfolding it.
   is what makes keeping one plan per order affordable. The paper also states the
   negative: with no GROUP BY or ORDER BY there are no interesting orders from
   the query block at all, and the cheapest path simply wins.
+
   </details>
 
 - [ ] For n = 5, 10 and 15, give n!, the number of considerations the DP makes,
@@ -614,6 +616,7 @@ Answer each before unfolding it.
   switches to greedy at the same count. For context, Selinger also excludes all
   bushy trees, a space of `(2n-2)!/(n-1)!` = 3.5 × 10²¹ at n = 15; JOB §6.2
   Table 2 measured that exclusion as costing 1.00-1.06× at the median.
+
   </details>
 
 - [ ] Which of Selinger's 1979 constants is still in postgres unchanged, and
@@ -631,6 +634,7 @@ Answer each before unfolding it.
   it is policy rather than measurement: the defaults must be "small enough to
   ensure that indexscans will be used if available", and 0.01 was tried and
   found too large.
+
   </details>
 
 - [ ] In Cascades, distinguish a group, an expression and the memo — and say
@@ -647,6 +651,7 @@ Answer each before unfolding it.
   and the factor is multiplicative down the tree. Selinger's relation-set memo
   is the special case where the only equivalence is join reordering; a Cascades
   group can hold any logically equivalent expressions, "e.g., of a predicate".
+
   </details>
 
 - [ ] Cascades needs branch-and-bound pruning and Selinger does not. Why?
@@ -666,6 +671,7 @@ Answer each before unfolding it.
   on demand… only to create all members of the group that match a given
   pattern", which is precisely what Volcano did *not* do, and what made the
   exhaustive first phase untenable.
+
   </details>
 
 - [ ] Enforcers and interesting orders solve the same problem. State the
@@ -683,6 +689,7 @@ Answer each before unfolding it.
   exchange/shuffle planning in a distributed engine with no new machinery, and
   because "enforcers such as sorting are normal operators in all ways" they get
   costed and optimized like anything else.
+
   </details>
 
 ## References

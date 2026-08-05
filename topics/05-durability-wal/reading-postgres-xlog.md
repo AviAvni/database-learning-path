@@ -461,6 +461,7 @@ Answer each before unfolding it.
   byte-position-to-`XLogRecPtr` conversions, which have to skip page headers,
   are deliberately outside at `:1182–1184`. Copying then happens under one of
   `NUM_XLOGINSERT_LOCKS = 8` insertion locks, so eight backends memcpy at once.
+
   </details>
 
 - [ ] Point at the single line that makes group commit work, and say what a
@@ -474,6 +475,7 @@ Answer each before unfolding it.
   backend's flush already covered its LSN. On the `F_FULLFSYNC` rung that is
   2.97 ms of latency it did not pay, and it is why N committers can exceed the
   337 commits/s that one committer is capped at.
+
   </details>
 
 - [ ] State the `needs_backup` test in words, and say what recovery does with
@@ -487,6 +489,7 @@ Answer each before unfolding it.
   whole 8 KB page over whatever is on disk before applying any later delta to
   it, so a page that was torn mid-write is never read, only overwritten. The
   price is the post-checkpoint WAL sawtooth: one 8 KB image per hot page.
+
   </details>
 
 - [ ] Postgres recovery has no undo pass. Say what makes that possible and
@@ -500,6 +503,7 @@ Answer each before unfolding it.
   no rollback machinery (contrast ARIES, `reading-aries.md`). The cost is paid
   elsewhere: dead tuples must be reclaimed by vacuum, tables bloat between
   vacuums, and long-running readers pin old versions.
+
   </details>
 
 - [ ] A colleague says "postgres fsyncs on every commit, and an fsync costs
@@ -516,6 +520,7 @@ Answer each before unfolding it.
   `fcntl(F_FULLFSYNC)`, `fd.c:467`) is **2.97 ms** — 131× apart. The default is
   `open_datasync` or `fdatasync` (`xlogdefs.h:78–84`), i.e. the middle rung,
   which on macOS leaves the data in the drive's volatile cache.
+
   </details>
 
 ## References

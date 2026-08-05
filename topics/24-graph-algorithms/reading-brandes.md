@@ -282,38 +282,47 @@ Answer each before unfolding it.
 
 - [ ] You can explain what betweenness measures and why the definitional cost is O(n³).
   <details><summary>Answer</summary>
+
   It scores a vertex by its share of shortest-path traffic:
   bc(v) = Σ_{s≠v≠t} σ_st(v)/σ_st. The definition ranges over all n²
   ordered pairs (s,t) and each pair needs its shortest paths and interior
   attributions — an all-pairs computation, O(n³) time (≈2.8×10¹⁴ ops on
   this topic's n=65,536 graph).
+
   </details>
 - [ ] You can derive the dependency recurrence from the definition, using the partition-by-successor argument.
   <details><summary>Answer</summary>
+
   Fix s and define δ_s(v) = Σ_t σ_st(v)/σ_st. Partition the shortest s→t
   paths through v by the DAG successor w of v they use; each contributes
   v's share of w's traffic, σ_sv/σ_sw, times (1+δ_s(w)). So
   δ_s(v) = Σ_{w : v∈pred_s(w)} (σ_sv/σ_sw)·(1+δ_s(w)) (Brandes 2001,
   Theorem 6). The **+1** is t=w itself: paths ending at w also pass
   through v.
+
   </details>
 - [ ] You can explain how one BFS counts paths along the level DAG.
   <details><summary>Answer</summary>
+
   BFS from s labels depths; the depth-d→depth-(d+1) edges are the BFS
   DAG. With σ_s(s)=1 and σ_s(v)=Σ σ_s(u) over DAG predecessors u,
   a single O(E) sweep gives σ for all targets at once — killing the
   "for every t" loop.
+
   </details>
 - [ ] You can say why the brute-force version is O(n²) in *memory* as well as O(n³) in time.
   <details><summary>Answer</summary>
+
   `bc_brute` materializes all-pairs depths and σ tables — n×n each — to
   attribute fractions across every pair, so O(n²) storage. Brandes keeps
   only per-source arrays (depth, σ, δ), O(V) extra beyond the graph.
   For a *correctness* oracle the O(n²) memory is acceptable because it
   only ever runs on small test graphs.
+
   </details>
 - [ ] You can name the four practical traps and say which one bites on a scale-free graph like this topic's RMAT (max degree 9751).
   <details><summary>Answer</summary>
+
   (1) accumulate σ only along depth+1 edges and back-propagate strictly
   deepest-first; (2) σ overflows integers on dense diamonds — use floats
   for the counts, the ratio stays exact; (3) unreachable vertices have
@@ -321,13 +330,16 @@ Answer each before unfolding it.
   a symmetric graph double-counts — halve to match undirected tools. On
   RMAT the σ-overflow trap bites: the degree-9,751 hub creates deep
   diamonds where σ multiplies fast.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
+
   Done when notes.md has your worked recurrence derivation (Q1), the
   LLC/oracle-fit reasoning (Q2), the bitmap memory-touch count (Q3), the
   ns batch-size sweet spot (Q4), and the FalkorDB stale-matrix decision
   (Q5).
+
   </details>
 
 ## References

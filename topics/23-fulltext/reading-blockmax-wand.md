@@ -246,47 +246,59 @@ Answer each before unfolding it.
 
 - [ ] You can explain the threshold θ and why top-k means most documents are provably irrelevant.
   <details><summary>θ and the discard rule</summary>
+
   θ is the k-th best score seen so far (root of a size-k min-heap).
   Once the heap is full, any doc scoring ≤ θ cannot enter it and is
   discarded unscored. θ only rises, so more docs become skippable as
   the query proceeds.
+
   </details>
 - [ ] You can compute a pivot from term upper bounds and say what makes the jump safe.
   <details><summary>the pivot and its guarantee</summary>
+
   Sort cursors by doc id; accumulate per-term ceilings; the first
   cursor whose running sum exceeds θ marks pivot_doc. Every doc below
   it can contain only the preceding terms, whose ceilings sum to ≤ θ
   — so skipping to pivot_doc cannot drop a true top-k doc. Safe
   because the bounds are true, not because they are tight.
+
   </details>
 - [ ] You can explain what per-block ceilings fix about the global upper bound.
   <details><summary>looseness of the global max</summary>
+
   A term's global ceiling is set by its single best doc and is wildly
   loose elsewhere. Per-128-doc block ceilings are tight locally, so
   a pivot whose block maxima sum ≤ θ is exposed as a false positive
   and skipped via a shallow (metadata-only) move — no 128-posting
   decode.
+
   </details>
 - [ ] You can say why block-max helps most on common terms, and check it against this topic's measured oracle: 10.378 ms and 272,310 postings for `t0∧t1∧t5` against 0.009 ms and 159 postings for two rare terms.
   <details><summary>variance of block maxima</summary>
+
   Common terms have huge, mostly-hopeless posting lists whose
   per-block maxima vary a lot under Zipf tf; block-max prunes the
   low-max blocks that the single global ceiling could never rule out.
   The oracle figures (FINDINGS row 23) show the cost is all in the
   dense lists: 272,310 postings / 10.378 ms vs 159 / 0.009 ms — term
   rarity, not query complexity.
+
   </details>
 - [ ] You can state what breaks if the scorer stops having a ceiling.
   <details><summary>no bound, no skip</summary>
+
   Every skip in WAND rests on a true static upper bound. A scorer
   without one (a neural/vector similarity, M14) can't be bounded, so
   no doc can be safely skipped — it must run as a second stage over
   WAND's BM25 candidates (M23's hybrid).
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>check</summary>
+
   Five answers in notes.md, each tied to a measured repo number or a
   Ding & Suel section/table — not to the vague "2.5–4×" folklore.
+
   </details>
 
 ## References

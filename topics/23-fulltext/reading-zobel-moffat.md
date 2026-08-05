@@ -239,45 +239,57 @@ Answer each before unfolding it.
 
 - [ ] You can explain granularity: what each posting carries and what that costs.
   <details><summary>the ladder</summary>
+
   doc ids (boolean) → +frequencies (BM25 ranking) → +positions
   (phrase/proximity, ~3× size) → +fields (per-field weighting). Each
   rung buys query types with index bytes; pay only where a query type
   needs it. RediSearch encodes this as ten codec modules.
+
   </details>
 - [ ] You can state the difference between doc-sorted and impact-sorted postings and which query strategy each enables.
   <details><summary>the fork</summary>
+
   Doc-sorted → cheap ordered intersection + skipping (DAAT/WAND).
   Impact-sorted → trivial top-k early termination but no ordered
   merge (intersection needs a hash). Block-max WAND keeps doc-sorted
   order and adds per-block impact metadata to get both.
+
   </details>
 - [ ] You can explain why storing gaps works, and how Zipf makes it work.
   <details><summary>gaps + Zipf</summary>
+
   Store deltas between consecutive ids, not the ids. Average gap ≈
   N/df, so the *long* lists (common terms, big df) have the *smallest*
   gaps — a term in half the corpus has gap ≈2, ~2 bits vs 32. Zipf
   concentrates postings in a few common terms, so this wins on the
   bytes that dominate.
+
   </details>
 - [ ] You can explain the TAAT/DAAT distinction and which one this topic's oracle lane implements.
   <details><summary>traversal order</summary>
+
   TAAT walks each term's whole list into per-doc accumulators — no
   skipping. DAAT advances one cursor per term in doc-id lockstep,
   finishing each doc — enables skipping. The repo oracle
   (`bm25::oracle_topk`, bm25.rs:32) is TAAT; WAND is DAAT.
+
   </details>
 - [ ] You can say what capped accumulators bound and how that differs from WAND's guarantee.
   <details><summary>heuristic vs exact</summary>
+
   Capping accumulators (~1% of docs) bounds work by dropping most
   docs' partial scores — a heuristic that loses a little ranking
   quality. WAND bounds work via true score ceilings and returns the
   *exact* top-k. Same goal, one approximate and one safe.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>check</summary>
+
   Five answers in notes.md, each tied to a concept above or a measured
   repo number — the df=N/2 gap (Q1) worked, the accumulator-vs-WAND
   exactness contrast (Q2) stated.
+
   </details>
 
 ## References

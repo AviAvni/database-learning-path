@@ -528,6 +528,7 @@ Answer each before unfolding it.
   access got ~100× faster while dependent random access did not, so
   the same thousand neighbours are 1000 × 110 ns = 110 µs as a chain
   walk and 4 000 B / 10 GB/s = 0.4 µs as a CSR slice — a 275× reversal.
+
   </details>
 
 - [ ] You can compute expand cost for a 1000-edge node as dependent loads, compare it to a CSR slice, and say what decides the cold-cache case.
@@ -546,6 +547,7 @@ Answer each before unfolding it.
   decides which — insertion order does, because a relationship record
   is appended where the free list puts it, not where its chain
   neighbours are.
+
   </details>
 
 - [ ] You can say what the doubly-linked relationship chain buys and what it costs on insert and delete, with the byte counts.
@@ -564,6 +566,7 @@ Answer each before unfolding it.
 
   Insert is where it wins outright: ~170 B touched versus ~32 MB for
   an in-place CSR insert on a 16 M-edge graph — about 188 000×.
+
   </details>
 
 - [ ] You can state the modern version of the index-free adjacency argument — the one that survives the disk era ending — and name the format caveat on the 15/34 numbers.
@@ -586,6 +589,7 @@ Answer each before unfolding it.
   default (same widths, page-end padding —
   `PageAlignedV5_0.java:58`), and Enterprise's block format is a
   different layout entirely. Quote the number with its family.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the 15 B versus 34 B field accounting.
@@ -604,6 +608,7 @@ Answer each before unfolding it.
   Sixteen of the relationship record's 34 bytes — 47% — are chain
   maintenance. That is the storage cost of Step 4's design, paid on
   every edge.
+
   </details>
 
 ## References

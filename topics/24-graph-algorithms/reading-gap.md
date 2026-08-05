@@ -228,49 +228,61 @@ Answer each before unfolding it.
 
 - [ ] You can explain what a kernel is and why the spec binds the kernel rather than the implementation.
   <details><summary>Answer</summary>
+
   A kernel is an algorithm pinned by input and output only, so any
   implementation over any data structure can be timed on the identical
   task. The spec is an interface: it forks implementations (GAP's
   L1-stop, ignore-dangling PR spec is why `LAGr_PageRankGAP` is a
   separate function), so whatever you specify is what everyone builds.
+
   </details>
 - [ ] You can explain why degree skew changes the work and not just the clock — this topic measures max degree 9751 on RMAT against 59 on uniform, with triangle counts of 15.6 M against 5428.
   <details><summary>Answer</summary>
+
   Same n and m, but a degree-9,751 hub concentrates edges, so
   neighbour-list intersections (triangles) and any O(degree²) per-vertex
   cost explode where they were trivial on uniform data (15,645,988 vs
   5,428 triangles). The counter is running a different job, not the same
   job slower.
+
   </details>
 - [ ] You can explain why diameter sets the round count and why road networks are therefore in the suite.
   <details><summary>Answer</summary>
+
   A frontier algorithm advances one distance-level per round, so the
   diameter *is* the round count and per-round frontier size is the only
   parallelism. Twitter/kron (diameter ~10-20) give million-vertex
   frontiers; road (diameter ~1000s) gives thousands of tiny sequential
   rounds — flipping the SSSP ranking.
+
   </details>
 - [ ] You can say why many trials from random sources are required, and what source luck does to a single measurement.
   <details><summary>Answer</summary>
+
   On a skewed graph, a hub source reaches everything in ~2 hops while a
   leaf source adds rounds — same work, very different clock. GAP runs 64
   trials/64 sources for BFS/SSSP and 16 trials of 4 sources for BC
   (Table 1) and reports all of them, so one lucky source can't silently
   inflate the headline number.
+
   </details>
 - [ ] You can state the baseline problem: reference code that is itself state of the art.
   <details><summary>Answer</summary>
+
   The classic sin is beating a strawman. GAP ships gapbs — reference
   kernels that are themselves state-of-the-art (direction-optimizing
   BFS, delta-stepping, Brandes with a successor bitmap, Afforest) — so a
   claimed win over gapbs actually means something.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
+
   Done when notes.md answers Q1 (which kernels flip on road vs twitter),
   Q2 (when redundant-relaxation loses), Q3 (BC source-sampling error and
   stratification), Q4 (pr.cc vs pr_spmv.cc on kron), and Q5 (why
   community detection is benchmark-hostile).
+
   </details>
 
 ## References

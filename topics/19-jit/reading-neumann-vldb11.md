@@ -502,6 +502,7 @@ Answer each before unfolding it.
   buffer. Neumann's measurement of the combined effect is Table 3:
   **132 million instructions vs MonetDB's 1,184 million on Q1
   (9.0×)**, with L1-I misses at 2,793 vs 187,471 (67×).
+
   </details>
 
 - [ ] You can define pipelines and pipeline breakers and identify both in a plan you draw yourself.
@@ -517,6 +518,7 @@ Answer each before unfolding it.
   directly about "block-oriented execution models". In the hash-join
   plan above, the build side and the group-by table are full
   breakers; a filter is not a breaker at all; a sort is.
+
   </details>
 
 - [ ] You can explain how produce/consume turns a tree walk into one flat loop, and why push-based codegen produces one loop where pull-based produces several.
@@ -536,6 +538,7 @@ Answer each before unfolding it.
   necessarily one *function* — outer joins would blow up
   exponentially if fully inlined, so HyPer emits LLVM functions and
   only guarantees that the 99% hot path stays inside one.
+
   </details>
 
 - [ ] You can state the LLVM cocktail rule and say which parts of an expression should stay interpreted.
@@ -554,6 +557,7 @@ Answer each before unfolding it.
   precompiled code. Postgres draws exactly this line —
   `llvmjit_expr.c` generates the common opcodes and falls back to
   calling the interpreter's C function otherwise.
+
   </details>
 
 - [ ] You can compute the break-even row count for a compiled expression from a compile time and two per-row rates, and explain why the answer differs by six orders of magnitude between OLTP and OLAP.
@@ -571,6 +575,7 @@ Answer each before unfolding it.
   s) bought only +4.8% throughput (161,794 → 169,491 tps): there was
   never any per-tuple overhead to remove, because TPC-C transactions
   touch under 30 tuples each.
+
   </details>
 
 - [ ] You can state the paper's measured speedups with their baselines named, including the query where compilation wins nothing.
@@ -587,6 +592,7 @@ Answer each before unfolding it.
   2–4 faster". Q5's tie is the honest headline: where the query is
   memory-bound rather than instruction-bound, removing
   interpretation removes nothing.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the VLDB '18 counter-result on hash-probe-heavy queries.
@@ -605,6 +611,7 @@ Answer each before unfolding it.
   and issues fewer concurrent misses. That is topic 13's MLP
   argument applied to codegen — and Neumann's own Table 2 Q5 tie
   already showed it in 2011.
+
   </details>
 
 ## References

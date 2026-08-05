@@ -518,6 +518,7 @@ Answer each before unfolding it.
   synchronisation, at the cost of a one-time conversion and an
   inability to mutate — which is exactly why deletes need
   `graph_layers_healer.rs`. Same trade as topic 13's CSR.
+
   </details>
 
 - [ ] You can explain percolation: why a selective filter shatters a proximity graph rather than just shrinking it.
@@ -537,6 +538,7 @@ Answer each before unfolding it.
   `hnsw/build.rs:386` samples at survival 2/K (the variable named
   `percolation` is the drop fraction, `1 − 2/K = 0.9375`), three
   times with different RNG draws, taking the max (:389-400).
+
   </details>
 
 - [ ] You can describe the per-query decision qdrant makes and name the inputs it uses (cardinality estimate, thresholds).
@@ -554,6 +556,7 @@ Answer each before unfolding it.
   exact scan when the survivor list is small enough. The asymmetry
   justifies the machinery: a wrong brute-force choice wastes CPU
   visibly; a wrong HNSW choice returns wrong answers silently.
+
   </details>
 
 - [ ] You can say what ACORN's 2-hop expansion costs in scoring work and what it buys in connectivity.
@@ -572,6 +575,7 @@ Answer each before unfolding it.
   actually removed. Versus `payload_m`: extra links are RAM spent at
   build time and only for payload keys you declared; ACORN is CPU
   spent at query time and works for arbitrary filters.
+
   </details>
 
 - [ ] You can compute where the percolation cliff sits for qdrant's default graph, and what the code samples instead.
@@ -585,6 +589,7 @@ Answer each before unfolding it.
   at the bifurcation. The variable `percolation` at :386 is
   `1 − 2/K = 0.9375`, the fraction *dropped*, which is easy to
   misread as the survival fraction.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including why `full_scan_threshold` is expressed in bytes.
@@ -598,6 +603,7 @@ Answer each before unfolding it.
   d=128 f32 (512 B each) but only 1 666 points at d=1536 (6144 B
   each). A point-count knob would silently mean twelve times more
   work on the larger collection.
+
   </details>
 
 ## References

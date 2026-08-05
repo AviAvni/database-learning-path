@@ -269,6 +269,7 @@ Answer each before unfolding it.
   2008 no cross-object atomicity and only eventual consistency. You buy
   cheap, eleven-nines-durable, elastic capacity at the cost of a
   per-request fee and tens-of-ms latency (our bench: S3 p50 14.17 ms).
+
   </details>
 
 - [ ] You can explain why the 2008 pages-on-S3 attempt failed.
@@ -278,6 +279,7 @@ Answer each before unfolding it.
   once: eventual consistency broke read-your-writes, there was no way to
   commit many page-objects atomically, and per-request fees dominated at
   4–16 KB objects. One behavior, three failures.
+
   </details>
 
 - [ ] You can state the fix — never modify an object — and where the
@@ -290,6 +292,7 @@ Answer each before unfolding it.
   can be large (megabytes), amortizing per-request cost; Snowflake stores
   them as PAX/hybrid-columnar files (its docs later call them
   micro-partitions).
+
   </details>
 
 - [ ] You can explain a table version as a list of files, and pruning as
@@ -302,6 +305,7 @@ Answer each before unfolding it.
   B-trees: per-file min/max zone maps let a query skip any file whose range
   can't hold a match — e.g. a day predicate over a year of daily files
   skips ~364/365 ≈ 99.7%.
+
   </details>
 
 - [ ] You can explain how caches and consistent hashing claw back the gap,
@@ -314,6 +318,7 @@ Answer each before unfolding it.
   measured 140× gap (S3 p50 14.17 ms vs local 0.10 ms) on warm scans;
   locality is a performance hint, not a correctness requirement, because
   S3 stays the source of truth.
+
   </details>
 
 ## References

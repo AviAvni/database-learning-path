@@ -485,6 +485,7 @@ Answer each before unfolding it.
 
   None of the three is linearizability; all three are cheaper, which
   is the point of naming them separately.
+
   </details>
 
 - [ ] You can state what statement, WAL-byte and row shipping each make hard, and point at the line where valkey pays the statement tax.
@@ -509,6 +510,7 @@ Answer each before unfolding it.
 
   M15 stage 1 ships physical WAL bytes, so it has none of this
   problem and all of the coupling one.
+
   </details>
 
 - [ ] You can explain what a fencing token prevents that a timeout cannot, and name the pinned line where Raft checks one.
@@ -535,6 +537,7 @@ Answer each before unfolding it.
   valkey's real epochs — `currentEpoch` / `configEpoch`,
   `src/cluster_legacy.h:278-281` — are monotonic but live in cluster
   gossip, not in the replication stream.
+
   </details>
 
 - [ ] You can define linearizability precisely enough to say why it is a recency guarantee and not an isolation level.
@@ -557,6 +560,7 @@ Answer each before unfolding it.
   So "we're serializable" does not answer "will my read see my
   write", and "we're linearizable" does not answer "can two of my
   updates interleave".
+
   </details>
 
 - [ ] You can state the cost per read of ReadIndex versus a leader lease, and say which one raft-rs makes you opt into.
@@ -586,6 +590,7 @@ Answer each before unfolding it.
   For M22, `Safe` is the default answer: one RTT is cheap next to the
   measured 2133 µs p99 the write path already carries, and it costs
   no assumption you cannot test.
+
   </details>
 
 - [ ] You can fill in the 2x3 matrix of {async, semi-sync, raft} x {read-your-writes, monotonic reads, consistent prefix}.
@@ -614,6 +619,7 @@ Answer each before unfolding it.
   implies all three. Raft with *unguarded leader reads*: none are
   guaranteed, per Step 5's deposed-leader case — which is the whole
   reason `ReadOnlyOption` exists.
+
   </details>
 
 - [ ] You can trace the WAIT-1-then-failover sequence and name both the ch. 5 guarantee that broke and the ch. 9 property that would have held.
@@ -643,6 +649,7 @@ Answer each before unfolding it.
   `F_FULLFSYNC` runs at 337 commits/s, which is why this topic's
   per-entry-fsync row sits at 341 entries/s. A cheap `fsync(2)` that
   returns in microseconds on that platform proved nothing.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including why FLP does not doom Raft in practice.
@@ -668,6 +675,7 @@ Answer each before unfolding it.
   `HEARTBEAT_INTERVAL = 3` (`experiments/src/raft.rs:33-35`), a
   3.3–6.7× ratio where raft-rs ships 10× (`src/config.rs:112,115-116`,
   where the constant is literally `HEARTBEAT_TICK * 10`).
+
   </details>
 
 ## References

@@ -507,6 +507,7 @@ of an index". A second cap, `index_granularity_bytes`, defaults to 10 MiB
 Concretely: at 100 B/row the row cap binds (8192 rows ≈ 800 KiB). At 4 KiB/row the byte cap
 binds and a granule is 2560 rows. At 1 MiB/row it is 10 rows. Without the byte cap, a
 "granule" of 8192 × 1 MiB would be an 8 GB read quantum.
+
 </details>
 
 - [ ] `WHERE user_id = 42` and `WHERE user_id % 2 = 0` on `ORDER BY user_id` take different
@@ -528,6 +529,7 @@ recursively splitting each mark range into `merge_tree_coarse_index_granularity`
 provably cannot hold. It is bounded by `merge_tree_generic_exclusion_search_max_steps`
 (`Settings.cpp:1600`); when the budget runs out, unanalysed ranges are "accepted as a
 whole" (`:1603`) — correct, but reading more granules than necessary.
+
 </details>
 
 - [ ] A mark is two 64-bit offsets = 16 bytes. A 200-column table with 10 billion rows has
@@ -547,6 +549,7 @@ Measured result, from the class comment at `:38-41`: ~3 bytes/mark for integer c
 ~5 for string columns, ~0.3 for trivial marks in LowCardinality dictionary files. At 3
 B/mark the 244 million marks cost ~732 MB rather than 3.9 GB, and random access is still
 O(1) (`:33-34`).
+
 </details>
 
 - [ ] Ingest outruns merges. Trace what a client sees, in order, and say what ClickHouse is
@@ -565,6 +568,7 @@ merge their outputs, so query cost grows with part count. Rather than let scans 
 without bound, the engine converts the problem into back-pressure on writers — a
 deliberate choice to fail the ingest path loudly instead of the query path quietly. This is
 topic 4's write-vs-read amplification dial with the thresholds written down.
+
 </details>
 
 - [ ] ClickHouse's `Delta` codec and Parquet's `BYTE_STREAM_SPLIT` both shrink nothing.
@@ -586,6 +590,7 @@ next to each other. Same move, different axis: neither removes information, both
 The practical consequence is that `CODEC(Delta)` alone is close to a no-op — the chain
 mechanism (`CompressionCodecMultiple.cpp:44-67`) exists precisely so these can be composed
 with a real compressor, and decompression undoes them in reverse order (`:86`).
+
 </details>
 
 ---

@@ -1141,6 +1141,7 @@ Answer each before unfolding it.
   before T1 and T2 — and it is what licenses both the commit-ordering
   optimisation (§3.3.1) and safe-retry rule 1, "do not abort anything until T3
   commits" (§5.4). It is drawn in the source at `predicate.c:4454-4457`.
+
   </details>
 
 - [ ] Place both doctors transactions on that structure, and say which one
@@ -1159,6 +1160,7 @@ Answer each before unfolding it.
   its `>= 2` test, and writes nothing. Aborting T1 instead would have left it
   concurrent with T2, so the same structure could re-form — §5.4's reasoning
   for preferring the pivot.
+
   </details>
 
 - [ ] Postgres detects rw-antidependencies two different ways. Name both, say
@@ -1176,6 +1178,7 @@ Answer each before unfolding it.
   (§5.2), checked by every writer via `CheckForSerializableConflictIn`
   (`predicate.c:4265`). Only the second direction costs anything, and it is the
   source of §8.1's 10–20% CPU overhead.
+
   </details>
 
 - [ ] A serializable transaction reads 40 rows scattered one per page across a
@@ -1195,6 +1198,7 @@ Answer each before unfolding it.
   table produces an rw edge against you, even to rows you never read. More false
   edges, more false aborts — and never a wrong answer. That one-directionality
   is the paper's recurring safety argument.
+
   </details>
 
 - [ ] Why can a read-only transaction never be the pivot — and why is that not
@@ -1213,6 +1217,7 @@ Answer each before unfolding it.
   `predicate.c:4525-4526` and the safe-snapshot rule of §4.2, under which a
   read-only transaction drops its SIREAD locks and degrades to plain
   `REPEATABLE READ`.
+
   </details>
 
 - [ ] Name the number this guide reports for SSI's throughput cost, and the
@@ -1230,6 +1235,7 @@ Answer each before unfolding it.
   compared because the repo has measured **no MVCC implementation and no SSI at
   all**: the `mvcc txn/s` and `aborts` columns are still `stub`. Any claim here
   that MVCC beats a mutex would be unmeasured.
+
   </details>
 
 ## References

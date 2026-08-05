@@ -276,6 +276,7 @@ Answer each before unfolding it.
   illicit (2%), 42,019 licit (21%), the rest unlabelled (77%); 49 time steps ~2 weeks apart,
   1,000–8,000 nodes each, and crucially **no edges between time steps** — 49 disjoint graphs
   (Steps 1 and 3).
+
   </details>
 - [ ] You can explain the 94/72 feature split and why it makes the GCN comparison a fair fight.
   <details><summary>Answer</summary>
@@ -284,6 +285,7 @@ Answer each before unfolding it.
   those local features over one-hop neighbours (Step 2). The 72 are therefore a hand-built,
   single-layer, fixed-aggregation message pass — so Table 1 is really "hand-built one-hop
   aggregation vs a learned multi-hop GCN", a fairer contest than "features vs graphs".
+
   </details>
 - [ ] You can give the headline result (RF 0.788/0.796 vs GCN 0.628, Skip-GCN 0.705, EvolveGCN
       0.720) and the paper's explanation for it.
@@ -294,6 +296,7 @@ Answer each before unfolding it.
   explanation: RF ensembles many decision trees by voting, whereas a GCN ends in a logistic-
   regression output layer and is "a nontrivial generalization of Logistic Regression" — which sits
   at the bottom of the table.
+
   </details>
 - [ ] You can describe the dark market shutdown and why re-training does not fix it.
   <details><summary>Answer</summary>
@@ -303,6 +306,7 @@ Answer each before unfolding it.
   cannot capture the new illicit transactions (Step 5). It is a distribution-shift problem, not a
   stale-model one: the post-shutdown illicit behaviour is genuinely different, so fitting the old
   behaviour cannot help.
+
   </details>
 - [ ] You can say why micro-F1 is the wrong metric here.
   <details><summary>Answer</summary>
@@ -312,6 +316,7 @@ Answer each before unfolding it.
   ≈0.90 on the labelled test set where illicit is 4,545/46,564 = 9.8% (Step 6). Both beat the GCN's
   *illicit* F1 of 0.628, so micro-F1 rewards doing nothing — which is why the paper reports
   illicit-class precision/recall/F1 separately.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
@@ -320,6 +325,7 @@ Answer each before unfolding it.
   aggregation, two laundering behaviours the missing cross-time edges make undetectable, the
   worked predict-licit-always micro-F1, concept drift vs covariate shift for the dark-market
   collapse, and what a licit/illicit super-cluster merge would do to labels, features and F1.
+
   </details>
 
 ## References

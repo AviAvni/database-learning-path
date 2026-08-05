@@ -240,49 +240,61 @@ Answer each before unfolding it.
 
 - [ ] You can define the frontier and both physical representations.
   <details><summary>Answer</summary>
+
   The frontier is the active vertex set this round (what changed last
   round). Ligra's vertexSubset stores it either sparse (an array of
   vertex ids, cheap for small frontiers) or dense (a size-n boolean
   array, cheap membership tests for big frontiers), converting between
   them as the wave grows and shrinks.
+
   </details>
 - [ ] You can explain push against pull as whose edges you traverse.
   <details><summary>Answer</summary>
+
   Push iterates the frontier and follows out-edges — cost ∝ frontier
   out-degree sum, best when small. Pull iterates every vertex and scans
   in-edges asking "is a neighbour in the frontier?", stopping at the
   first claim — cost bounded by m but far less when the frontier is
   dense. Small: push. Big: pull.
+
   </details>
 - [ ] You can construct a frontier where the m/20 threshold is the wrong call.
   <details><summary>Answer</summary>
+
   Pick a frontier whose out-degree sum is just under (graph edges)/20 —
   so edgeMap chooses push — but whose *next* frontier is nearly empty,
   so pull's early exit would almost never fire and pull would scan close
   to m anyway. The threshold can't see next-frontier fullness, so it
   mis-picks (Q1).
+
   </details>
 - [ ] You can explain why `edgeMapDenseForward` pushes from all vertices and when that is cheaper.
   <details><summary>Answer</summary>
+
   `edgeMapDenseForward` (ligra.h:85) scans out-edges of all vertices
   without early exit — used when the update isn't "claim once" so
   early-exit can't apply (e.g. PageRank-style accumulation). It beats
   pull-with-break when every in-edge must be visited anyway, so the
   break never saves work (Q2).
+
   </details>
 - [ ] You can compare Ligra's model honestly against GraphBLAS's and say what each makes awkward.
   <details><summary>Answer</summary>
+
   Ligra's F is an arbitrary CAS-using function (expressive, but not
   fusable); GraphBLAS semirings are (monoid, binop) pairs (fusable, but
   can't express strided sampling like Afforest). Both need G and Gᵀ
   resident for the pull/dense direction. Neither dominates.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
+
   Done when notes.md answers Q1 (the wrong-threshold frontier), Q2
   (denseForward vs dense), Q3 (mapping BC.C's transpose passes onto
   LAGr_Betweenness), Q4 (label-prop vs Afforest edges touched), and Q5
   (edgeMap-callback vs fixed-menu API for a safe embedding).
+
   </details>
 
 ## References

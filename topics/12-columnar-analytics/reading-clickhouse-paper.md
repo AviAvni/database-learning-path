@@ -443,6 +443,7 @@ reason (§3.4). Replication can ship whole files, or re-derive them locally, bec
 is deterministic and never patched (§3.6). Snapshot isolation is reference-counting on
 versioned parts (§3.7). Idempotent inserts are a 100-entry hash set over parts rather than
 an index over rows (§3.5).
+
 </details>
 
 - [ ] ClickBench is the benchmark ClickHouse leads. Which of its own pruning features does
@@ -463,6 +464,7 @@ evidence for the thesis; winning with it enabled would only show that indexes wo
 
 The honest caveat in the same section: Umbra, a research system, still posts the best hot
 geometric mean. ClickHouse's claim is bounded to production-grade databases.
+
 </details>
 
 - [ ] ClickHouse could not run 11 of the 22 TPC-H queries. What was missing, and what does
@@ -483,6 +485,7 @@ optimization** — the part of a database you need when data is normalized and q
 joins, which is exactly the workload ClickHouse spent fifteen years not having. §6.2.2 says
 "automatic subquery decorrelation and better optimizer support for joins are planned for
 implementation in 2024".
+
 </details>
 
 - [ ] `ReplacingMergeTree` deduplicates by primary key. Why is that not a unique
@@ -504,6 +507,7 @@ chronological ordering of parts", which is why "alternative mechanisms for updat
 deletes not based on tombstones are required". A tombstone needs to know which record is
 newer; a flat set of parts does not carry that. Replacing merges substitute the part's
 creation timestamp, or an explicit version column you supply.
+
 </details>
 
 - [ ] A replica needs to catch up on a merge another node performed. Give both ways it can
@@ -525,6 +529,7 @@ This is also the boundary condition worth naming: anything non-deterministic ins
 — a wall-clock reference in a TTL expression, a random tie-break in a replacing merge —
 would break the substitution and force file shipping. Which is why the replication log
 records *state transitions* ("parts Y+Z merged into W"), not the data itself.
+
 </details>
 
 ---

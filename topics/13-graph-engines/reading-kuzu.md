@@ -508,6 +508,7 @@ Answer each before unfolding it.
   between one node's rows and the next node's, and `offsets[i+1] −
   offsets[i]` would count the gap. The length column is what makes the
   gaps invisible to a reader.
+
   </details>
 
 - [ ] You can describe the persistent-CSR-plus-transient-overlay scheme per node group, and state its worst-case update cost in rows.
@@ -531,6 +532,7 @@ Answer each before unfolding it.
   All of a node's out-edges live in the group indexed by its source
   id, so a 6 565-degree node keeps forcing the same group's rebuild
   while the other seven groups do nothing.
+
   </details>
 
 - [ ] You can say why Intersect requires sorted adjacency lists, what breaks without that, and which line guarantees it.
@@ -548,6 +550,7 @@ Answer each before unfolding it.
   `appendVectorWithSorting`. One method. That is also why Step 2's
   CSR ordering matters — the storage already delivers sorted lists,
   so the build side is cheap.
+
   </details>
 
 - [ ] You can estimate intermediate sizes for a triangle count under a binary plan against a WCOJ plan on this topic's 16 M edge graph.
@@ -567,6 +570,7 @@ Answer each before unfolding it.
   [reading-wcoj.md](reading-wcoj.md): the upper bound is Grohe–Marx's,
   the matching lower bound is Atserias–Grohe–Marx's, and "AGM bound"
   names the pair.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md.
@@ -585,6 +589,7 @@ Answer each before unfolding it.
   is piecewise-monotonic rather than monotonic. Frame-of-reference or
   delta encoding per run wins; a single global delta encoding does
   not, because it hits a large negative delta at every run boundary.
+
   </details>
 
 ## References

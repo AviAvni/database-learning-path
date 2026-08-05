@@ -273,45 +273,57 @@ Answer each before unfolding it.
 
 - [ ] Why do Z-sets make deletion a first-class value, and why can't plain sets?
   <details><summary>answer</summary>
+
   Z-sets attach an integer weight to every element and form an abelian
   group, so a deletion is just adding the element with weight −1 and every
   value has a negation. Plain sets have no subtraction — there is no set
   that "removes" another — so a change and a collection cannot share a
   type. Group structure is the precondition for I and D (Step 1).
+
   </details>
 - [ ] Name the four operators and write incrementalization in one line.
   <details><summary>answer</summary>
+
   z⁻¹ (delay), I (integrate, running sum), D (differentiate, a − z⁻¹(a)),
   and a lifted query Q. Incrementalization is Q^Δ := D ∘ Q ∘ I (Def 3.1).
+
   </details>
 - [ ] Prove the bilinear rule by expanding `Q^Δ = D∘Q∘I`.
   <details><summary>answer</summary>
+
   Expand D(I(a)×I(b))[t] = I(a)[t]×I(b)[t] − I(a)[t−1]×I(b)[t−1]. Write
   I(a)[t] = I(a)[t−1] + a[t] and likewise for b, multiply out, and the
   cross terms collect into Theorem 3.4: a×b + z⁻¹(I(a))×b + a×z⁻¹(I(b)).
   The delayed integrals z⁻¹(I(·)) are why the code keeps *delayed* traces
   (the arrangements / states-before-the-deltas).
+
   </details>
 - [ ] Explain the chain rule and why it covers a whole dialect, not one query.
   <details><summary>answer</summary>
+
   (Q1∘Q2)^Δ = Q1^Δ ∘ Q2^Δ (Prop 3.2), proved by inserting I∘D = id
   between the two stages. So you give each primitive its ^Δ form once and
   compose; no per-query delta derivation is ever needed — that is what
   Feldera's SQL-to-circuit compiler exploits.
+
   </details>
 - [ ] Say how recursion is handled by nested circuits.
   <details><summary>answer</summary>
+
   δ₀ introduces an inner stream from an outer value (§5); an inner loop
   with its own clock and a z⁻¹ back-edge iterates the query to fixpoint
   within one outer tick; ∫ reads the fixpoint back out. No
   partially-ordered timestamps — the nesting is staged, outer then inner.
+
   </details>
 - [ ] You wrote answers to all questions in notes.md, including the wedge count.
   <details><summary>answer</summary>
+
   This topic measures the full-recompute wedge join at 1111.0 ms per
   100-change batch (`../../FINDINGS.md` row 27 / README measured lane).
   Your notes should carry the DBSP circuit for the wedge count and mark
   which arrows carry deltas vs integrals.
+
   </details>
 
 ## References

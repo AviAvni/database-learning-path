@@ -695,6 +695,7 @@ Four ways to lose:
 
 And the safety net: `:265-268` throws `FatalException` if nothing qualifies, which is why
 `UNCOMPRESSED` is permanently in the menu.
+
 </details>
 
 - [ ] `final_analyze` is supposed to return estimated bytes. Give two encoders where the
@@ -716,6 +717,7 @@ A different kind of not-really-bytes: **ALP** samples 256 of a row group's 122,8
 (`fsst.cpp:38`). Their scores are extrapolations, not measurements. The rule is that encoders
 whose *training* is expensive sample; encoders whose analyze pass is just counting (RLE,
 bit-packing, dictionary) measure everything.
+
 </details>
 
 - [ ] `RLEFilter` is the 2006 paper running in production. Say what it does and what the
@@ -739,6 +741,7 @@ That is exactly Abadi §6.2's accounting, which puts the aggregation cost at
 `CanEmitConstantVector` at `:333-347`: when a run spans a full 2,048-value vector,
 `RLEScanConstant` (`:349-359`) emits a `CONSTANT_VECTOR` holding one value — Abadi's
 `isOneValue()` block property, by another name.
+
 </details>
 
 - [ ] Bit-packing has four modes but only one arithmetic comparison decides between the two
@@ -767,6 +770,7 @@ The structural point is that `Flush` is a **priority cascade**, not a race — i
 first mode that applies rather than scoring all four. And `BitpackingFinalAnalyze:337-344`
 runs this very function with `EmptyBitpackingWriter` (`:47-63`, all method bodies empty), so
 the analyze estimate and the compressor are literally the same code.
+
 </details>
 
 - [ ] `CheckZonemap` returns five results, not three. Name the two extra ones and say what
@@ -792,6 +796,7 @@ downgraded to `NO_PRUNING_POSSIBLE` unless the update statistics agree (`:448-46
 string zone maps are only the first 12 bytes (`string_stats.hpp:34`, truncation marked at
 `string_stats.cpp:391-396`), so a URL column's min/max usually compares `https://www.` and
 prunes nothing.
+
 </details>
 
 ---

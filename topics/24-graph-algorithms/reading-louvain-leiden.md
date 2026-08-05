@@ -273,47 +273,59 @@ Answer each before unfolding it.
 
 - [ ] You can define modularity and say what it scores.
   <details><summary>Answer</summary>
+
   Q = (1/2m) Σ_ij [A_ij − γ·k_i·k_j/2m]·δ(c_i,c_j): the fraction of
   edges inside communities minus what a degree-preserving random graph
   would put there. It scores "are there more internal edges than chance
   predicts?" — and mentions connectivity nowhere.
+
   </details>
 - [ ] You can reproduce Figure 1's failure: how a bridge vertex ends up disconnected from its own community.
   <details><summary>Answer</summary>
+
   A vertex v holds community C connected. Louvain evaluates v's ΔQ
   against its neighbours' communities and moves it out (positive gain
   there), never checking that removing v splits C. C's two halves keep
   C's label as disconnected islands, then aggregation fuses them into
   one super-vertex permanently (paper §2, Fig. 1).
+
   </details>
 - [ ] You can state the general root cause — greedy plus irreversible is unfixable — and what Leiden's refinement changes.
   <details><summary>Answer</summary>
+
   Greedy local moves score decisions locally; irreversible aggregation
   removes the undo path, so errors accumulate monotonically. Leiden adds
   a refinement phase that re-clusters within each community from
   singletons before aggregating, so aggregation only fuses genuinely
   connected pieces — restoring the undo path.
+
   </details>
 - [ ] You can explain the resolution limit and what γ does about it.
   <details><summary>Answer</summary>
+
   At γ=1 modularity can't resolve communities smaller than ~√(2m)
   (Fortunato & Barthélemy 2007): small real groups get merged. Raising
   γ scales up the null-model penalty so smaller communities survive;
   the paper's CPM objective removes the size-dependence entirely.
+
   </details>
 - [ ] You can map one Leiden iteration onto SPA and SpGEMM steps.
   <details><summary>Answer</summary>
+
   ΔQ evaluation is a SPA-style accumulator keyed by community id (topic
   20's SPA). Aggregation is the quotient graph S·A·Sᵀ — two masked
   SpGEMMs. So one iteration ≈ two SpGEMMs plus the local-move kernel,
   with a seed fixed for reproducibility.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, including the topic-16 property test for community connectivity.
   <details><summary>Answer</summary>
+
   Done when notes.md answers Q1–Q5, and Q5 is a concrete property test:
   for each output community, run one BFS (or FastSV on the induced
   subgraph) and assert it reaches every member — the test Louvain fails
   and Leiden passes.
+
   </details>
 
 ## References

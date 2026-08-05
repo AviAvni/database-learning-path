@@ -212,6 +212,7 @@ Answer each before unfolding it.
 
 - [ ] You can say why adding TiFlash learners costs write latency nothing.
   <details><summary>Answer</summary>
+
   A learner receives the log but never votes, and replication to it is
   asynchronous — the leader "does not need to wait for success before
   responding to the client" (paper §2). Commit waits only on the voting
@@ -219,34 +220,41 @@ Answer each before unfolding it.
   column files never sits on the write path. This is the mechanism that keeps
   the bench lane 1 outage (11,438,647 writes/2 s → 69) from happening once the
   scans move to a separate voting-exempt copy.
+
   </details>
 
 - [ ] You can say how a learner read still returns committed data despite lag.
   <details><summary>Answer</summary>
+
   Two moves (Step 4): ask the leader for the current commit index (Raft
   ReadIndex, one RPC), then block until the local replica's applied index
   reaches it — `doLearnerRead` → `waitUntilDataAvailable`
   (`LearnerRead.cpp:35`, `:58`). Freshness is a per-read *wait*, sized by the
   current apply lag, not a background setting.
+
   </details>
 
 - [ ] You can say what happens when that wait times out, and its cost.
   <details><summary>Answer</summary>
+
   When a Region misses its read index within `waitIndexTimeout()` (`:60-61`),
   `doLearnerRead` throws a `RegionException` for the unavailable regions
   (`LearnerRead.cpp:121`). TiDB retries and, with fallback enabled, can rerun
   on TiKV. Safe — the row store is always current — but expensive: the scan
   is back on the same copy as the writes, re-creating the one-copy
   interference (bench lane 1) the split existed to remove.
+
   </details>
 
 - [ ] You can say why one optimizer prices both engines instead of a rule.
   <details><summary>Answer</summary>
+
   `find_best_task.go` builds cop tasks tagged TiKV-vs-TiFlash (`:535`) and
   *retains* TiFlash candidate paths beside index paths (`:1841`, `:1878`) so
   cost, not topology, decides. A rule like "big table → TiFlash" guesses wrong
   the moment an index makes the row path cheaper than a full columnar scan
   (question 4); the cost model catches that per query.
+
   </details>
 
 ## References

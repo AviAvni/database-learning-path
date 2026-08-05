@@ -498,6 +498,7 @@ Answer each before unfolding it.
   and `k > other_level` breaks at `:161`). So **A⋈B⋈C has no bushy plans at
   all** — bushy first becomes possible at level 4, as 2+2. After each level,
   `set_cheapest` (`pathnode.c:268`) runs on every finished joinrel.
+
   </details>
 
 - [ ] For n = 5, 10 and 15 relations, compare n! against the number of
@@ -520,6 +521,7 @@ Answer each before unfolding it.
   scaling — which is precisely why `geqo_threshold` is 12
   (`guc_parameters.dat:1191`) and not 50. (Counts computed here for a complete
   join graph; connectedness pruning makes the real numbers smaller.)
+
   </details>
 
 - [ ] Name the three default selectivities and explain why `0.005` rather than
@@ -534,6 +536,7 @@ Answer each before unfolding it.
   that nearly all pages will be hit anyway". It is a *policy* constant
   disguised as an estimate. The same comment ties `DEFAULT_NUM_DISTINCT` to it:
   200 = 1/0.005 (`:52`), so the two fallbacks agree with each other.
+
   </details>
 
 - [ ] Three unknown equality predicates on a 10,000,000-row table. What does
@@ -547,6 +550,7 @@ Answer each before unfolding it.
   is 100,000 rows, that nested loop runs 100,000× more iterations than planned.
   This is the mechanism behind the JOB paper's finding (§4.1) that disabling
   non-index nested-loop joins removed *every* timeout from their workload.
+
   </details>
 
 - [ ] `add_path` is often summarized as "keep the cheapest path plus one per
@@ -563,6 +567,7 @@ Answer each before unfolding it.
   comment at `:545-548` blames platform-specific floating-point roundoff. And
   parameterized paths are forced to have no pathkeys (`:472-473`) so they
   cannot win on sort order.
+
   </details>
 
 - [ ] Above `geqo_threshold` relations, what exactly is being searched — trees
@@ -581,6 +586,7 @@ Answer each before unfolding it.
   `pool_size = clamp(2^13, 50, 250) = 250`, `generations = pool_size = 250`
   (`geqo_main.c:339-349`, `:366`), one evaluation per generation (`:230`) —
   roughly 500 cost evaluations total.
+
   </details>
 
 ## References

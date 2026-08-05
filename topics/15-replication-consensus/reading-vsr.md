@@ -440,6 +440,7 @@ Answer each before unfolding it.
   **viewstamp** ⟨viewid, timestamp⟩ that named the protocol. VR
   Revisited §4.2 says it replaced viewstamps with "take the log from
   the latest previous active view".
+
   </details>
 
 - [ ] You can state VSR's normal-operation quorum exactly, and say why it looks smaller than Raft's.
@@ -460,6 +461,7 @@ Answer each before unfolding it.
   handling: sender behind → drop the message; sender ahead → do a
   state transfer (§5.2) before processing. Raft's rule is symmetric —
   a higher term always demotes you.
+
   </details>
 
 - [ ] You can explain what round-robin primary selection removes from the protocol, what it costs, and where the two different quorum sizes appear.
@@ -481,6 +483,7 @@ Answer each before unfolding it.
   STARTVIEWCHANGE from **f other** replicas (step 2); the new primary
   installs the view after **f + 1 including itself** (step 3). Both
   are majorities of 2f+1, counted from different starting points.
+
   </details>
 
 - [ ] You can compare DOVIEWCHANGE's whole-log shipping against Raft's incremental repair, with numbers, and say when each is cheaper.
@@ -502,6 +505,7 @@ Answer each before unfolding it.
   frequent divergence favour shipping once. The selection rule is
   also strictly simpler in VSR — max on `(v', n)` in one place versus
   Raft's per-follower `nextIndex` walk.
+
   </details>
 
 - [ ] You can write the failure sequence the no-disk argument depends on, and quote the condition the paper attaches to it.
@@ -532,6 +536,7 @@ Answer each before unfolding it.
   The price being declined is measurable here: 337 commits/s at a
   real `F_FULLFSYNC` (topic 5), 341 entries/s with a per-entry
   follower fsync versus 20,174 without (this topic).
+
   </details>
 
 - [ ] You can say why the recovery protocol needs a nonce, and what the second condition on its responses is for.
@@ -555,6 +560,7 @@ Answer each before unfolding it.
 
   And responders must have status `normal` — a replica in the middle
   of its own view change or recovery answers nothing.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the TigerBeetle checksum point.
@@ -580,6 +586,7 @@ Answer each before unfolding it.
   (checksum) and then truncate. Replication is what lets you *repair*
   it. TigerBeetle is not in this repo's pin table, so treat these as
   pointers rather than pinned anchors.
+
   </details>
 
 ## References

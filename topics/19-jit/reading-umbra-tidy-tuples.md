@@ -668,6 +668,7 @@ Answer each before unfolding it.
   pointer-linked graphs, or the multi-pass instruction selection —
   Copy-and-Patch §7.4 independently observes that `-O0` "bogs down
   in instruction selection."
+
   </details>
 
 - [ ] You can name three concrete ways Umbra IR differs from LLVM IR, and correct the claim that its instructions are fixed-size.
@@ -691,6 +692,7 @@ Answer each before unfolding it.
   The layout is justified by three properties of the generator:
   it only appends, it has high locality, and every instruction has
   the program's lifetime.
+
   </details>
 
 - [ ] You can say what register allocation scheme Flying Start actually uses and what the paper measured when it tried a better one.
@@ -710,6 +712,7 @@ Answer each before unfolding it.
   reduction in execution time** on average (§5.5, Fig. 15) — which
   is why the heuristic exists at all rather than everything living
   on the stack as in §4.2's Algorithm 1.
+
   </details>
 
 - [ ] You can explain why continuation-passing plus the GHC calling convention is what makes copy-and-patch work.
@@ -732,6 +735,7 @@ Answer each before unfolding it.
   register configurations, and the generator picks the matching one
   — which is also why the high-level library reaches 98,831
   stencils / 17.5 MB while the WebAssembly one is 1,666 / 35 kB.
+
   </details>
 
 - [ ] You can say what state must be transferable for an adaptive swap at a morsel boundary, and why the swap is safe there and nowhere else.
@@ -751,6 +755,7 @@ Answer each before unfolding it.
   (ICDE 2018, [18] in the Umbra paper) go further and switch "even
   half-way through a query"; Umbra's two-tier version is the same
   idea with Flying Start replacing the bytecode interpreter.
+
   </details>
 
 - [ ] You can compute the break-even runtime that makes an optimizing compile worth it, and explain why that bar moved by two orders of magnitude.
@@ -770,6 +775,7 @@ Answer each before unfolding it.
   formula with M19's numbers: `rows = compile_µs / (1.053 −
   0.0847)`, so 500 µs of cranelift compile pays back after 516
   rows.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including your measured cranelift compile time for a depth-8 expression.
@@ -786,6 +792,7 @@ Answer each before unfolding it.
   row count — and if the JIT lane does not beat the vectorized lane
   per row, record that too: a negative denominator is a finding
   about autovectorization, not a failed experiment.
+
   </details>
 
 ## References

@@ -545,6 +545,7 @@ Answer each before unfolding it.
   9, 128 or 310 depending only on the textual order of relations in `FROM` —
   q-errors of 866.67, 288.89, 20.31 and 8.39. Even the *best* of the four is
   8× low.
+
   </details>
 
 - [ ] Figure 3 shows the error growing with join count. Say precisely what
@@ -559,6 +560,7 @@ Answer each before unfolding it.
   (§3.2) is the fraction of estimates wrong by ≥10×: PostgreSQL 16% at one
   join, 32% at two, 52% at three; DBMS A 15%, 25%, 36%. Saying "median q-error
   reaches 10²–10⁴ at six joins" misreads the figure.
+
   </details>
 
 - [ ] Three predicates with selectivities 0.20, 0.05 and 0.25 on a 2,500,000-row
@@ -575,6 +577,7 @@ Answer each before unfolding it.
   compounds to 3⁶ = 729× after six. (The selectivities here are stated
   assumptions for the arithmetic, not measurements from the paper; the paper's
   measured version is Figure 3.)
+
   </details>
 
 - [ ] Rank cardinality estimation, cost model and search by measured impact,
@@ -591,6 +594,7 @@ Answer each before unfolding it.
   costs 1.20 at the median (Table 3), and restricting bushy to left-deep costs
   1.00–1.06 at the median (Table 2). Note that all three of these are measured
   *with the layers below held at truth* — that is what makes them comparable.
+
   </details>
 
 - [ ] The paper's cost-model replacement is often called "Cout". Why is that
@@ -606,6 +610,7 @@ Answer each before unfolding it.
   Cout. It is also explicitly a *main-memory* model — it does not model I/O at
   all, which is why §2.5's fully-cached setup matters when you decide whether
   the result transfers to your system.
+
   </details>
 
 - [ ] Why could TPC-H never have found this result?
@@ -620,6 +625,7 @@ Answer each before unfolding it.
   36M-row `cast_info`) and a *query set* (33 structures × 2–6 variants = 113
   queries, 3–16 joins, 8 on average) rather than a measurement. The data
   distribution is part of the benchmark.
+
   </details>
 
 ## References

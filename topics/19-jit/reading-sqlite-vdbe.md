@@ -541,6 +541,7 @@ Answer each before unfolding it.
   from 7 to 511 nodes because the per-node dispatch cost is paid per
   row and scales with node count. Flattening removes the pointer
   chase; only compiling removes the dispatch.
+
   </details>
 
 - [ ] You can say why a register machine beats a stack machine here, and count the ops for `a*b + c*d` under each.
@@ -557,6 +558,7 @@ Answer each before unfolding it.
   the code generator must do register allocation. SQLite pays it
   because dispatch, at ~5–20 cycles, is the expensive resource and
   compile-time register allocation is free.
+
   </details>
 
 - [ ] You can explain what dispatch cost bytecode removes and what it leaves behind, and state correctly how SQLite dispatches.
@@ -575,6 +577,7 @@ Answer each before unfolding it.
   expression interpreter is Postgres —
   `execExprInterp.c:119-122`, `EEO_DISPATCH()` → `goto *((void *)
   op->opcode)`.
+
   </details>
 
 - [ ] You can trace `OP_Yield` and explain how flattening gives coroutines for free.
@@ -591,6 +594,7 @@ Answer each before unfolding it.
   live in the coroutine's own VDBE registers, which are never
   reused by the caller, so nothing else needs saving.
   `OP_InitCoroutine:1215` seeds the register with `p3 - 1`.
+
   </details>
 
 - [ ] You can compute why SQLite has never needed a JIT, from a compile time and two measured per-row rates.
@@ -608,6 +612,7 @@ Answer each before unfolding it.
   transactions touch under 30 tuples, so switching HyPer's codegen
   from C++ to LLVM bought +4.8% throughput and a 20× compile-time
   reduction — the compile time was the only thing that mattered.
+
   </details>
 
 - [ ] You can state the true size and layout of the instruction set, and how you counted.
@@ -626,6 +631,7 @@ Answer each before unfolding it.
   bytes exactly in a plain 64-bit build, growing to 32/40/56 under
   `SQLITE_ENABLE_EXPLAIN_COMMENTS`, `SQLITE_VDBE_COVERAGE` and
   `VDBE_PROFILE`.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including a sketch of a bytecode lane for this topic's `Expr` enum.
@@ -644,6 +650,7 @@ Answer each before unfolding it.
   below `vector` (11.8 M rows/s), which pays one dispatch per node
   per *batch*. If it lands near `vector`, your interpreter lane was
   measuring allocation, not dispatch.
+
   </details>
 
 ## References

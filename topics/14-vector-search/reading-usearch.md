@@ -523,6 +523,7 @@ Answer each before unfolding it.
   draw's `E[extra levels] = 1/(M−1) = 0.0667`, the average is
   `142 + 68 × 0.0667 = 146.5 B`. The vector itself is stored
   separately — the tape is graph structure only.
+
   </details>
 
 - [ ] You can explain what the node tape buys over `Vec<Vec<u32>>` per level, in allocations and in locality.
@@ -537,6 +538,7 @@ Answer each before unfolding it.
   128 B for 32 u32 + ~32 B of allocator headers). And the second-order
   win is Step 5's: a tape that never reallocates is a tape readers can
   walk without a lock.
+
   </details>
 
 - [ ] You can say why link slots are preallocated to the maximum rather than grown.
@@ -552,6 +554,7 @@ Answer each before unfolding it.
   take a lock. The price is slack — a node with 3 links occupies
   slots for 16 — paid in bytes to buy both O(1) addressing and
   lock-free reads.
+
   </details>
 
 - [ ] You can describe the concurrency scheme — striped writer locks, lock-free readers — and what it assumes about readers.
@@ -570,6 +573,7 @@ Answer each before unfolding it.
   neighbor count, never a dangling pointer. Cross-checking a
   concurrent *update* (as opposed to insert) is what `index_dense.hpp`'s
   slot versioning is for.
+
   </details>
 
 - [ ] You can say where usearch applies a search predicate, and why that makes its filtered-search failure mode the opposite of qdrant's.
@@ -587,6 +591,7 @@ Answer each before unfolding it.
   scoring, cutting the frontier itself, which is genuine percolation —
   and precisely why qdrant needs a cardinality planner and ACORN-1
   (`graph_layers.rs:155`) and usearch does not.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including your own tape-or-vec decision for `hnsw.rs`.
@@ -603,6 +608,7 @@ Answer each before unfolding it.
   never-reallocate invariant is doing work no amount of tuning
   recovers. Whichever you choose, write down the M you fixed it at —
   `node_bytes_` shows the tape's size is frozen the moment M is.
+
   </details>
 
 ## References

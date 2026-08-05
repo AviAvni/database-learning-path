@@ -453,6 +453,7 @@ Answer each before unfolding it.
   pinned strictly after the bag was sealed, so it never held a pointer into
   it. With a threshold of 1 the argument fails: a reader pinned at `E−1`
   may have loaded pointers to nodes retired at `E−1` after it pinned.
+
   </details>
 
 - [ ] Roughly what does a `pin()` cost when the thread is already pinned,
@@ -469,6 +470,7 @@ Answer each before unfolding it.
   non-atomic. Everything a reader writes frequently is thread-private;
   everything shared is either read-mostly or `CachePadded`. That is the
   design, in one sentence.
+
   </details>
 
 - [ ] `try_advance` is O(threads). Compute what that costs per operation at
@@ -488,6 +490,7 @@ Answer each before unfolding it.
   out of the hot instruction path. Hazard pointers pay the same O(T) scan
   **per free** rather than per 128 pins; that divisor is the entire
   argument for epochs.
+
   </details>
 
 - [ ] Name the single thread behaviour that wedges the scheme, and the two
@@ -506,6 +509,7 @@ Answer each before unfolding it.
   the collector a window. Their signatures invalidate every `Shared` you
   held, so the compiler makes you re-load your pointers — the protocol
   violation you would otherwise commit is a type error.
+
   </details>
 
 - [ ] `try_advance` loads each thread's epoch with `Relaxed`. Where does
@@ -524,6 +528,7 @@ Answer each before unfolding it.
   If you copy this pattern into your own collector, copy the fences too;
   dropping them is the classic bug that passes on x86 (where loads are
   acquire-ish anyway) and fails on the ARM Mac you are running on.
+
   </details>
 
 - [ ] Retiring a node touches shared memory how often, and what happens on
@@ -542,6 +547,7 @@ Answer each before unfolding it.
   on purpose: without it the thread could stamp its garbage with an epoch
   older than the unlink it just performed, and under-stamped garbage is
   garbage freed too early.
+
   </details>
 
 ## References

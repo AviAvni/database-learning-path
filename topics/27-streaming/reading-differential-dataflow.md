@@ -204,45 +204,57 @@ Answer each before unfolding it.
 
 - [ ] Explain the delta discipline: weighted, timestamped updates.
   <details><summary>answer</summary>
+
   A collection is a stream of `(data, time, diff)` updates; the collection
   at time t is the sum of all updates at times ≤ t and never materializes
   except inside arrangements. One consolidation path (sort, sum diffs,
   drop zeros) handles inserts, deletes, and updates uniformly.
+
   </details>
 - [ ] What is an arrangement, and why does sharing one across queries matter?
   <details><summary>answer</summary>
+
   An arrangement is an indexed, compacted trace (an LSM of `(key, val,
   time, diff)` batches) built by `arrange`. It is shared by reference, so
   two queries joining the same collection on the same key reuse one
   index instead of each building its own — Materialize's main memory win.
+
   </details>
 - [ ] Explain the incremental join as the bilinear rule on traces, and what "fuel" is for.
   <details><summary>answer</summary>
+
   `join_traces` computes ΔA⋈B + A⋈ΔB + ΔA⋈ΔB by joining each new batch
   against the other input's trace up to the frontier. Fuel meters the
   work (`Deferred` state, effort accounting) so a huge delta yields
   cooperatively instead of stalling the worker.
+
   </details>
 - [ ] Why are lattice timestamps *required* for retractable recursion, not merely convenient?
   <details><summary>answer</summary>
+
   Each derived fact carries an (outer-epoch, round) time. Deleting an
   input edge must retract exactly the facts derived through it at each
   round while facts re-derived by surviving paths persist. A total order
   can't keep a mid-flight iteration from epoch 1 separate from a new
   change at epoch 2; the product order can, so retractions stay exact.
+
   </details>
 - [ ] Show how semi-naive evaluation falls out for free.
   <details><summary>answer</summary>
+
   At round r+1 the join's inputs are exactly the diffs produced at round
   r, because unchanged facts emit no updates. So the "join only the new
   facts" discipline is a consequence of the update representation, not a
   hand-written optimization.
+
   </details>
 - [ ] You wrote answers to all questions in notes.md, including the ordering issue in `IncrementalJoin::step`.
   <details><summary>answer</summary>
+
   The batch of A must join B's trace as of the frontier *before* B's
   matching delta is folded in (and vice versa); fold both first and the
   ΔA⋈ΔB cross term is counted twice. Record the correct order and why.
+
   </details>
 
 ## References

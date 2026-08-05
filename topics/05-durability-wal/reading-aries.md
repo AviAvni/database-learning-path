@@ -509,6 +509,7 @@ Answer each before unfolding it.
   policy, a page may never get written to nonvolatile storage if the page always
   contains uncommitted updates." No-steal can be *unsatisfiable*, not merely
   slow.
+
   </details>
 
 - [ ] Explain repeating history in two sentences, and give the concrete failure
@@ -523,6 +524,7 @@ Answer each before unfolding it.
   LSN 10, a loser's update at 20 and a non-loser's at 30, selective redo skips 20
   and redoes 30, leaving `page_LSN = 30`; undo's `page_LSN ≥ 20` test then says
   yes and undoes update 20 **although it was never applied to the page**.
+
   </details>
 
 - [ ] State the redo test in full — all three levels — and say what the `ELSE`
@@ -538,6 +540,7 @@ Answer each before unfolding it.
   reached disk after the checkpoint, so the table's RecLSN was stale, and fixing
   it lets every later record for that page be filtered at level (2) instead of
   being fetched.
+
   </details>
 
 - [ ] In what order does the undo pass process a log with two losers? Use Step 7.
@@ -549,6 +552,7 @@ Answer each before unfolding it.
   Fig. 12). In Step 7 that is **80 (T1), 70 (T3), 50 (T1), 30 (T1)** — it
   alternates between the transactions. It is *not* "roll back T1 completely, then
   roll back T3"; that would read the log backward once per loser.
+
   </details>
 
 - [ ] How many CLRs does a recovery write, and does a second crash change the
@@ -562,6 +566,7 @@ Answer each before unfolding it.
   so undo resumes at `max(UndoNxtLSN)` and never revisits a compensated record.
   A loser whose `UndoNxtLSN` has reached 0 is finished off by Fig. 10's trailing
   loop with an `end` record and no undo work at all.
+
   </details>
 
 - [ ] What does a fuzzy checkpoint write, and what does it deliberately *not* do?
@@ -574,6 +579,7 @@ Answer each before unfolding it.
   system, or flush pages — "ARIES does not require that any dirty pages be forced
   to nonvolatile storage during a checkpoint." Recovery pays for that later, and
   the bill is bounded by `min(RecLSN)`.
+
   </details>
 
 ## References

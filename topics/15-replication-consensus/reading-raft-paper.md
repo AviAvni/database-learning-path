@@ -439,6 +439,7 @@ Answer each before unfolding it.
   Figure 2's state box contains a `log[]` and not a snapshot of the
   data. `lastApplied` is the pointer that turns the agreed log back
   into agreed state.
+
   </details>
 
 - [ ] You can say what a term is and what it fences.
@@ -456,6 +457,7 @@ Answer each before unfolding it.
   also fences the node itself: seeing a higher term forces it back to
   follower and adopts the new term. Two integers of state buys the
   entire stale-leader problem.
+
   </details>
 
 - [ ] You can state exactly which state must be persisted before responding, and why the rest need not be.
@@ -476,6 +478,7 @@ Answer each before unfolding it.
   forgets its vote can grant a second one in the same term, and two
   candidates can each reach a majority that counts that node — two
   leaders in one term.
+
   </details>
 
 - [ ] You can state the up-to-dateness comparison in the paper's own order, and both safety rules.
@@ -496,6 +499,7 @@ Answer each before unfolding it.
   terms by counting replicas." A leader advances `commitIndex` only by
   majority-replicating an entry from its own term; older entries
   commit indirectly beneath it.
+
   </details>
 
 - [ ] You can walk Figure 8's five panels and name the exact inference that fails without the current-term rule.
@@ -518,6 +522,7 @@ Answer each before unfolding it.
   one, so that node votes for S5. Replicating a current-term entry
   raises the shared node's last term to the leader's, restoring the
   inference.
+
   </details>
 
 - [ ] You can explain why a leader never overwrites its own entries, and what that means for the follower repair loop.
@@ -537,6 +542,7 @@ Answer each before unfolding it.
   Cost: O(divergence) round trips, which §5.3's term-skip
   optimisation reduces to O(diverging terms) and raft-rs implements
   at raft.rs:2539-2554.
+
   </details>
 
 - [ ] You can state §5.6's timing inequality with the paper's bounds, and say what sits inside broadcastTime.
@@ -559,6 +565,7 @@ Answer each before unfolding it.
   randomness caps the worst case over 1000 trials at 513 ms — and the
   paper still recommends 150–300 ms rather than the 12–24 ms that
   measured best, to keep the left-hand ≪ comfortable.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, and can predict what `partition_test` must show: 99 never commits, and is truncated everywhere after the heal.
@@ -576,6 +583,7 @@ Answer each before unfolding it.
   *applied* 99, so no client could have observed it. A test that only
   checks the logs converge would pass even for an implementation that
   applied and then un-applied it.
+
   </details>
 
 ## References

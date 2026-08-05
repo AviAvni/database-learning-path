@@ -673,6 +673,7 @@ data, many operators need never decode at all.
 §6.2 measures the gap on 1000-record sorted runs: **10.3×** for bit-vector, **3.94×** for
 group-by-self dictionary, **3.3×** for RLE, **1.1×** for value-at-a-time dictionary, and
 nothing at all for LZ and null suppression, which "cannot operate on encoded data".
+
 </details>
 
 - [ ] C-Store stores "only projections". Say what that costs, and name the structure that
@@ -697,6 +698,7 @@ maintenance". So `k` sort orders cost `k` copies of the data *plus* the permutat
 them together *plus* rewriting those permutations on every merge. That is what did not
 survive — ClickHouse keeps a base table and buys extra sort orders as optional, lazily
 populated projections instead.
+
 </details>
 
 - [ ] Bit-vector encoding beat every other scheme by 10.3× in one experiment and was
@@ -725,6 +727,7 @@ means it only shrinks below cardinality `w` — "as soon as the column cardinali
 
 The authors' own conclusion is the one to keep: "the proper choice of encoding type for a
 column depends not just on data characteristics, but also on the expected query workload."
+
 </details>
 
 - [ ] The properties API has exactly three predicates. Name them, and say why none of them
@@ -750,6 +753,7 @@ general, not just for RLE" and "in general, not just for bit-vector compression"
 The practical test of the abstraction is that FSST, FastPFOR, Roaring bitmaps and
 Pseudodecimal have all been added to column stores since 2006 without anyone writing a new
 join operator.
+
 </details>
 
 - [ ] The 2006 machine read cold data at 50–60 MB/s. Compute the factor against this topic's
@@ -775,6 +779,7 @@ than quotes. And the corollary discipline: always say whether a GB/s figure coun
 bytes moved or logical bytes processed — at our Step 6 column's 7.99× ratio the same scan is
 honestly describable as 3.0 GB/s or 24 GB/s. When it is describable as 19,047,619 GB/s —
 about 127,000× a 150 GB/s bus — it is a hoisted loop, not a discovery.
+
 </details>
 
 ---

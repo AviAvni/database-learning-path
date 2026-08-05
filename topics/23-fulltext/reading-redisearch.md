@@ -240,39 +240,49 @@ Answer each before unfolding it.
 
 - [ ] You can state the constraint that shapes the whole design: mutable now, or nothing.
   <details><summary>the single-threaded command loop</summary>
+
   A Redis write command must leave the document queryable when it
   returns, inside a (mostly) single-threaded loop with no merge
   threads. That rules out immutable-segments + background merge and
   forces one in-place-mutable posting list per term.
+
   </details>
 - [ ] You can describe the chained growable block structure per term and the write path through it.
   <details><summary>ThinVec of byte-buffer blocks</summary>
+
   `InvertedIndex<E>` (core.rs:30) holds a `ThinVec<IndexBlock>`; each
   `IndexBlock` (core.rs:75) is a growable `Vec<u8>` of varint entries.
   `add_record` (core.rs:195) varint-appends `doc_id − delta_base`
   (:219-224) to the last block, chaining a fresh block at delta 0
   when `from_u64` returns None (:226-238).
+
   </details>
 - [ ] You can explain the codec ladder — one trait, many encoders, chosen at compile time — and why that is a codegen decision rather than a runtime one.
   <details><summary>Encoder as a type parameter</summary>
+
   Ten codec modules (codec/mod.rs:10-19) each `impl Encoder`
   (:53, `encode` :74). `InvertedIndex<E>` carries the codec as a type
   parameter (`PhantomData<E>`), so the compiler monomorphizes it and
   the per-record `IndexFlags` branch the C code paid disappears; FFI
   picks the concrete type once (inverted_index_ffi/src/lib.rs:105).
+
   </details>
 - [ ] You can explain how GC, `gc_marker` and `unique_id` let readers survive concurrent deletes.
   <details><summary>compact-in-place + two guards</summary>
+
   GC (gc.rs: `scan_gc` :214, `apply_gc` :242) rewrites blocks to drop
   deleted docs, invalidating cursors. `gc_marker` (bumped at :340) is
   compared by a cursor to detect a stale position; `unique_id`
   catches ABA (index dropped and reallocated at the same address).
+
   </details>
 - [ ] You wrote answers to all questions in notes.md.
   <details><summary>check</summary>
+
   Five answers in notes.md, including the varint-vs-bitpack
   bytes/posting computation (Q4) and the FalkorDB cursor-validation
   mapping (Q2).
+
   </details>
 
 ## References

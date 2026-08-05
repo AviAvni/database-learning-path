@@ -679,6 +679,7 @@ Answer each before unfolding it.
   `open_vals_cursor`, `timestamp`, `safe_timestamp`, `timestamp_impl`,
   `compact`. Note that `Transactor` (`tr.rs:37`) is a struct wrapping
   `Box<dyn Transactable>`, not the trait itself.
+
   </details>
 
 - [ ] Name one guarantee, one capability and one unspecified behaviour in this
@@ -697,6 +698,7 @@ Answer each before unfolding it.
   test suite ships both outcomes: `multiwriter_same_keys_conflict.rs` (mem,
   rocksdb, surrealkv) asserts `unwrap_err()` for the second and third committer,
   `multiwriter_same_keys_allow.rs` (tikv) asserts `unwrap()` for all three.
+
   </details>
 
 - [ ] Three transactions each `set` the same key, then commit in order. Give
@@ -710,6 +712,7 @@ Answer each before unfolding it.
   `multiwriter_same_keys_allow.rs:1`, `:27-29` (three `unwrap`s) and `:33`. The
   API calls are identical in both files; only the cargo feature and the
   assertions differ. That is the interface declining to specify the semantics.
+
   </details>
 
 - [ ] What does `putc(key, val, None)` mean, and how does it differ from
@@ -724,6 +727,7 @@ Answer each before unfolding it.
   `Error::TransactionConditionNotMet` (`:363`). The reason `putc` matters is
   that `get` + `putc` is enough to build first-committer-wins *above* the
   interface, on an engine that does not provide it below.
+
   </details>
 
 - [ ] Snapshot reads delete one class of cache invalidation. Which — and which
@@ -740,6 +744,7 @@ Answer each before unfolding it.
   lookups so the removal is observed"; and (2) **eviction**, since the cache is
   a bounded `quick_cache` with a weight budget (`cache/tx/mod.rs:41-46`). "A
   within-transaction cache never invalidates" is therefore too strong.
+
   </details>
 
 - [ ] What has this repo measured about surrealdb, and what does the topic's
@@ -754,6 +759,7 @@ Answer each before unfolding it.
   serialized everything, and *fastest* on the 64-key row because that working
   set is cache-resident. The `mvcc txn/s` and `aborts` columns are `stub`: this
   repo has **not** measured MVCC beating a mutex.
+
   </details>
 
 ## References

@@ -503,6 +503,7 @@ Umbra, which is why Q19 gets *faster* (99 ms → 69 ms) when the column is compr
 The caveat on the second one: it requires both operands to share a symbol table (§3.4).
 Across blocks with independently trained tables, you are back to decompressing — which is
 what happened in the §6.6 join experiment.
+
 </details>
 
 - [ ] Compress 8 MB of strings that share no substrings whatsoever. What does FSST produce,
@@ -521,6 +522,7 @@ What stops it shipping is *scheme selection*, not the scheme. DuckDB analyses a 
 applied at `:202`) so FSST only wins the comparison when it is clearly better. BtrBlocks
 does the equivalent by testing every viable scheme on a 640-value sample and keeping the
 best observed ratio (§3.1).
+
 </details>
 
 - [ ] Where does the popular one-line summary "FSST is like LZ4 but with random access"
@@ -541,6 +543,7 @@ compression speed.
 It also hides the failure case (§6.3): on the Silesia binaries FSST is 25% *worse* than
 LZ4, and on large XML/JSON files 2–2.5× worse. FSST's premise is many short strings with
 shared substrings.
+
 </details>
 
 - [ ] BtrBlocks spends 1.2% of its compression time deciding which scheme to use. Why is
@@ -558,6 +561,7 @@ than the best achievable cascade.
 The shortcut's cost is that 3.3%, plus the risk of a mis-estimate on data whose local
 structure differs from the sample — which is why the sample is 10 *runs* rather than 640
 scattered values: a run-length estimate needs locality to be meaningful (§3.1, Figure 2).
+
 </details>
 
 - [ ] Parquet+Zstd compresses better than BtrBlocks (8.24× vs 7.06×) yet costs 1.77× more
@@ -579,6 +583,7 @@ $1.70** (Table 5).
 The general form: when data arrives over a channel, the decompressor must keep up
 *measured in channel bytes*. Better ratios make that harder, not easier, because each
 channel byte expands into more work.
+
 </details>
 
 ---

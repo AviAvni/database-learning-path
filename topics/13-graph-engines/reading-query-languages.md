@@ -436,6 +436,7 @@ Answer each before unfolding it.
   Do not try this with a 2-edge pattern: on a simple graph, distinct
   edges force distinct endpoints, so trail and node-isomorphism agree
   and the demonstration collapses.
+
   </details>
 
 - [ ] You can explain what GQL's restrictors and selectors make explicit that Cypher left implicit — and the asymmetry between them.
@@ -459,6 +460,7 @@ Answer each before unfolding it.
 
   What is still not expressible: cross-pattern isomorphic match modes
   — §7.1 lists them as a Language Opportunity, deferred.
+
   </details>
 
 - [ ] You can say what property graphs and RDF actually disagree about, beyond syntax.
@@ -478,6 +480,7 @@ Answer each before unfolding it.
   the split institutionally too: RDF/SPARQL had a W3C standard while
   property graph systems had "disparate storage models and querying
   facilities" until GQL (§1, p.2).
+
   </details>
 
 - [ ] You can name, for each language, one thing its semantics lets the planner do that another's forbids.
@@ -495,6 +498,7 @@ Answer each before unfolding it.
 
   SQL/PGQ inherits SQL's full composability but the graph view is
   read-only (§1, p.2), which is the gap GQL's full-CRUD charter fills.
+
   </details>
 
 - [ ] You wrote answers to all questions in notes.md, including this topic's 2-hop query written in more than one language.
@@ -522,6 +526,7 @@ Answer each before unfolding it.
   and the evaluator must apply the restrictor during matching and the
   selector afterwards, in that order, or the "adding a selector never
   empties the result" property breaks.
+
   </details>
 
 ## References

@@ -234,39 +234,49 @@ Answer each before unfolding it.
 
 - [ ] You can derive the 4096 crossover from bytes per value.
   <details><summary>the arithmetic</summary>
+
   Bitmap is flat 65536/8 = 8192 bytes. Array is 2 bytes/value.
   8192/2 = 4096 values is where they cost the same; below it array
   is smaller, above it bitmap is. A container therefore never
   exceeds 8 KiB nor 2 bytes/value.
+
   </details>
 - [ ] You can explain why the representation is chosen per 64K range rather than per set.
   <details><summary>local vs global density</summary>
+
   One set can be sparse in some 64K ranges and dense in others.
   Choosing per chunk (high 16 bits) lets each range pick the smaller
   representation, so the structure adapts to *local* density instead
   of paying one global choice.
+
   </details>
 - [ ] You can name the kernel matrix idea: one algorithm per container pair.
   <details><summary>dispatch by type pair</summary>
+
   Each set op dispatches on (typeA, typeB): array∩array → two-pointer
   (gallop on skew), array∩bitmap → probe the array into the bitmap,
   bitmap∩bitmap → 1024 word ANDs + popcount to choose the output
   type. Each is optimal for that shape.
+
   </details>
 - [ ] You can say what a 99.9%-dense list like `t0` (df 99,888 of 100,000) should become, and its cost against the sorted-vec baseline.
   <details><summary>bitmap containers</summary>
+
   ~1.5 dense chunks → bitmap containers (8 KiB each, ~16 KiB total vs
-  400 KB as a Vec<u32>). Intersection with a sparse side probes the
+  400 KB as a `Vec<u32>`). Intersection with a sparse side probes the
   small side (~1 µs); dense∩dense is ~1024 word ANDs per chunk —
   against the sorted-vec baseline measured here (0.1178 ms for
   dense∧dense, notes.md).
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, including the M20 bitmap-container tie-in.
   <details><summary>check</summary>
+
   Five answers in notes.md; question 4 explicitly maps a bitmap
   container to a dense GraphBLAS vector chunk and an array container
   to a sparse one, comparing the 4096/65536 thresholds to GraphBLAS's
   format lattice.
+
   </details>
 
 ## References

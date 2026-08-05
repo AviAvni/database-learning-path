@@ -486,6 +486,7 @@ Answer each before unfolding it.
   client is acked after the `write()`, so **this is the one that acks before
   durability**. `no` — unbounded; redis issues no durability call and the
   kernel's writeback timer decides (Linux default 30 s).
+
   </details>
 
 - [ ] `appendfsync always` costs the same on Linux and macOS. True or false?
@@ -500,6 +501,7 @@ Answer each before unfolding it.
   not measured here). Only the macOS call actually flushes the drive's write
   cache, so the macOS build is strictly more durable and strictly slower for the
   identical config line.
+
   </details>
 
 - [ ] Explain the AOF rewrite as compaction, and name the ordering constraint
@@ -515,6 +517,7 @@ Answer each before unfolding it.
   opening the INCR and forking is captured by both the new INCR and the child's
   BASE (harmlessly, since replay is BASE-then-INCR); a command in the gap the
   other way round would be in neither.
+
   </details>
 
 - [ ] A truncated AOF and a truncated RDB behave differently at load time. Say
@@ -528,6 +531,7 @@ Answer each before unfolding it.
   discarded. The difference is right because a snapshot has no useful prefix —
   half a keyspace dump is not half a keyspace — while a command log's prefix is
   exactly a valid earlier state.
+
   </details>
 
 - [ ] Why does redis change a hash-table tuning parameter while a BGSAVE is
@@ -543,6 +547,7 @@ Answer each before unfolding it.
   `dict_force_resize_ratio = 4` (`dict.c:45`) instead of a 1:1 load factor. It is
   not disabled, it is made four times less likely — a durability mechanism
   reaching down and retuning a data structure two topics away.
+
   </details>
 
 ## References

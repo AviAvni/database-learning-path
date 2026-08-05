@@ -429,6 +429,7 @@ Answer each before unfolding it.
   `small_vector.hpp:609`) + 12 (`PropertyStore`,
   `property_store.hpp:193`) + 4 (`RWSpinLock`'s `uint32_t`,
   `rw_spin_lock.hpp:113`) + 8 (`PointerPack`) = 80.
+
   </details>
 
 - [ ] You can explain why every edge is stored twice, which query shape breaks if it is not, and what an entry actually costs.
@@ -448,6 +449,7 @@ Answer each before unfolding it.
   `EdgeRef` (8) → 24 B after alignment, so 48 B of adjacency per
   logical edge, versus 4 B per directed edge in a CSR `targets`
   array.
+
   </details>
 
 - [ ] You can state the difference between per-object delta chains here and per-version rows in postgres, and what each makes cheap.
@@ -470,6 +472,7 @@ Answer each before unfolding it.
   that is Δt stale on an object updated at rate r pays r·Δt undo
   hops. Fresh readers pay nothing; a 10-second-stale analytics reader
   on a 1 000 update/s vertex pays 10 000.
+
   </details>
 
 - [ ] You can compare the cost of expanding one vertex here against kuzu's CSR slice, and say which workload each layout is built for.
@@ -491,6 +494,7 @@ Answer each before unfolding it.
 
   memgraph is built for concurrent single-object mutation; CSR is
   built for frontier-scale traversal. Neither is a bug.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the PageRank cost sketch.
@@ -509,6 +513,7 @@ Answer each before unfolding it.
   resource you can actually saturate. That is the same argument as
   [reading-graphblas-internals.md](reading-graphblas-internals.md)
   Step 1, arriving from the other direction.
+
   </details>
 
 ## References

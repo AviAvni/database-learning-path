@@ -444,6 +444,7 @@ Answer each before unfolding it.
   embedder writes its own driving loop and must get Step 4's ordering
   right. qdrant's is `Consensus::start` (qdrant `src/consensus.rs:481`)
   and it is roughly 500 lines.
+
   </details>
 
 - [ ] You can write out the `maybe_commit` sorted-matched-index computation from memory, and name the file each of its three stages lives in.
@@ -465,6 +466,7 @@ Answer each before unfolding it.
   `RaftLog::maybe_commit` (raft_log.rs:526): commit only if
   `max_index > self.committed` **and** `term(max_index) == term`. With
   a leader in term 4 and entry 5 from term 3, nothing commits.
+
   </details>
 
 - [ ] You can state the Ready contract's ordering rules, and say precisely who is allowed to send before persisting and on whose authority.
@@ -490,6 +492,7 @@ Answer each before unfolding it.
   the evidence the leader counts toward the majority. Same for a vote:
   send `MsgRequestVoteResponse` before `voted_for` is durable and a
   crash-restart lets the node vote twice in one term.
+
   </details>
 
 - [ ] You can say when an asynchronous HardState write is legal, and why the exception is safe.
@@ -505,6 +508,7 @@ Answer each before unfolding it.
   not. After a crash a node re-derives its commit index from the log
   and from the leader's next AppendEntries — losing it costs a little
   re-apply work. Losing `vote` costs Election Safety.
+
   </details>
 
 - [ ] You can explain how splitting the persistence acknowledgement (`advance_append`) enables pipelining without breaking the contract.
@@ -523,6 +527,7 @@ Answer each before unfolding it.
   may not release its `persisted_messages()` on the strength of a
   queued write. The gain is exactly topic 15's measured ladder: one
   fsync per entry is 341 entries/s, one per 64 is 12,187.
+
   </details>
 
 - [ ] You can say what the `next_idx` decrement-and-retry loop costs in round trips, what fixes it, and whether raft-rs bothered.
@@ -544,6 +549,7 @@ Answer each before unfolding it.
   with the walk itself at raft_log.rs:222-248; leader side
   raft.rs:1747-1750 reading the hint and :1799 calling
   `pr.maybe_decr_to`.
+
   </details>
 
 - [ ] You can convert raft-rs's tick constants into a wall-clock election timeout for a given tick period.
@@ -562,6 +568,7 @@ Answer each before unfolding it.
   2.0–4.0 s election timeout. A 10 ms tick gives 20 ms heartbeats and
   200–400 ms, which lands on the paper's §5.6 recommendation of
   150–300 ms.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the Ready-to-M15 mapping.
@@ -578,6 +585,7 @@ Answer each before unfolding it.
   durable `{term, vote, commit}` beside the log, written under the
   same rules as raw_node.rs:223-232 — synchronously when `vote` or
   `term` moves, lazily when only `commit` does.
+
   </details>
 
 ## References

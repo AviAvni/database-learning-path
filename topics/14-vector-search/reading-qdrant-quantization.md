@@ -475,6 +475,7 @@ Answer each before unfolding it.
   per dimension, `32×` for the `OneBit` default — but
   `encoded_vectors_binary.rs:33-39` also offers `TwoBits` (16×) and
   `OneAndHalfBits`, so "binary = 32×" needs the qualifier.
+
   </details>
 
 - [ ] You can derive the u8 affine dot-product expansion and say what must be stored per vector for it to work.
@@ -493,6 +494,7 @@ Answer each before unfolding it.
   the encoded vector. `postprocess_score` (:100-102) then costs one
   multiply and two adds. Also worth stating: the code is clamped to
   **127** (:96), so it is 7-bit — 128 levels per dimension, not 256.
+
   </details>
 
 - [ ] You can explain why PQ hurts HNSW traversal more than it hurts a flat IVF scan.
@@ -510,6 +512,7 @@ Answer each before unfolding it.
   qdrant treats scalar as the default rung for HNSW: at 128 levels
   per dimension the ranking of near neighbours is usually preserved,
   so the hops are the same hops.
+
   </details>
 
 - [ ] You can say what oversample-and-rescore claws back, and predict where it lands against this topic's brute-force point before implementing `quant.rs`.
@@ -530,6 +533,7 @@ Answer each before unfolding it.
   1.000 point, expect the quantized+rescore lane to sit far to the
   right on QPS with recall close to but below 1.000 — and record the
   measured pair rather than this prediction.
+
   </details>
 
 - [ ] You can say where `get_oversampled_top` is actually defined, and why the distinction matters.
@@ -543,6 +547,7 @@ Answer each before unfolding it.
   so oversampling is a property of quantized search in general rather
   than of the HNSW planner. Reading it inside `hnsw/search.rs` would
   suggest the planner owns it, which it does not.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the M14 rung decision.
@@ -556,6 +561,7 @@ Answer each before unfolding it.
   with `CompressionRatio::X4` (128 kB of table), which is the
   configuration where the highest nominal fidelity buys the worst
   locality.
+
   </details>
 
 ## References

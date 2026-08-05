@@ -231,40 +231,50 @@ Answer each before unfolding it.
 
 - [ ] You can say why the term dictionary is an FST rather than a hash map, and list what the FST gives you that a hash cannot.
   <details><summary>ordered automaton vs hash</summary>
+
   An FST shares prefixes AND suffixes (smaller than a hash dict) and
   keeps keys *ordered*, so prefix, range, and regex queries run by
   automaton intersection — a hash offers none of these. The cost:
   build-from-sorted-keys + immutability, hence per-segment build and
   merge.
+
   </details>
 - [ ] You can describe 128-delta posting blocks with one bit width, and what happens to a final partial block.
   <details><summary>fixed blocks + vint tail</summary>
+
   Each 128-doc block is delta-encoded (`compress_block_sorted`,
   compression/mod.rs:36-46) and bit-packed to the block's largest
   delta width — one width byte + packed deltas, SIMD-unpacked. The
   trailing <128 postings can't fill a BitPacker4x block, so they fall
   back to variable-length ints (question 3).
+
   </details>
 - [ ] You can explain what skip data answers without decoding.
   <details><summary>steer without decode</summary>
+
   A skip entry (skip.rs:93) gives `last_doc_in_block` (:186-187) and
   the block-WAND inputs to recompute `block_max_score` (:175-181), so
   a cursor answers "any doc ≥ d here?" and "can this block beat θ?"
   from metadata — decoding only blocks that survive both.
+
   </details>
 - [ ] You can explain why the write path is topic 4's LSM wearing a hat, and contrast LogMergePolicy with leveled compaction.
   <details><summary>tiered, no key range</summary>
+
   Writes buffer in RAM and flush to immutable segments; merges happen
   in log-size tiers (LogMergePolicy :20-26), like Lucene's tiered
   compaction. Unlike a leveled LSM there's no key range to prune —
   every query fans out over all segments — so overlapping tiers cost
   fan-out, not correctness.
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md, including which of WAND's needs `TermInfo.doc_freq` serves.
   <details><summary>check</summary>
+
   Five answers in notes.md; the doc_freq one names idf (and hence
   WAND's per-term ceiling `idf·(K1+1)`) as the input made free by
   df riding in the dictionary.
+
   </details>
 
 ## References

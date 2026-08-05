@@ -235,6 +235,7 @@ Answer each before unfolding it.
   read/write hook: it ingests the WAL stream and must answer
   `GetPage@(key, LSN)` — any page as of any LSN. Compute stays stateless;
   its local disk is only a cache.
+
   </details>
 
 - [ ] You can explain the safekeeper/pageserver split as durability
@@ -247,6 +248,7 @@ Answer each before unfolding it.
   can lag or be rebuilt because everything it holds derives from WAL + S3.
   Durability tier ≠ serving tier — the Socrates split, reached
   independently.
+
   </details>
 
 - [ ] You can explain why the pageserver is an LSM keyed by (key, LSN).
@@ -257,6 +259,7 @@ Answer each before unfolding it.
   image layers (materialized pages at one LSN); old layers go to S3.
   Delta = level files, image = compacted form — an LSM over a 2-D key
   space, queried by `LayerMap::search`.
+
   </details>
 
 - [ ] You can explain reconstruction: REDO on the read path, and what it
@@ -269,6 +272,7 @@ Answer each before unfolding it.
   written to that key since the last image — so compaction frequency caps
   read latency. A cold read that must also fetch layers from S3 pays the
   ~14 ms S3 GET on top.
+
   </details>
 
 - [ ] You can explain why a branch is two numbers, and what that makes
@@ -281,6 +285,7 @@ Answer each before unfolding it.
   LSN-indexed. Reads that miss the child's own layers fall through to the
   parent capped at the branch LSN. The costs are deeper ancestor walks and
   harder GC (each branch LSN is a retain point).
+
   </details>
 
 ## References

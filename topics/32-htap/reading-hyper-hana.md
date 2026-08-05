@@ -233,6 +233,7 @@ Answer each before unfolding it.
 
 - [ ] You can place both designs on the trilemma and name the resource each still shares.
   <details><summary>Answer</summary>
+
   HyPer buys strong isolation (separate processes, separate page mappings)
   at near-zero copy cost, paying in *freshness* — the child snapshot ages
   until the next `fork()` (Step 3). HANA keeps perfect freshness and no
@@ -240,10 +241,12 @@ Answer each before unfolding it.
   share one node's CPU, cache, and memory bus (Step 6). HyPer's still-shared
   resource is time (staleness between forks); HANA's is the node itself,
   where lane 1's fight resumes during a merge.
+
   </details>
 
 - [ ] You can state HyPer's snapshot mechanism and its true cost, per the ICDE 2011 paper.
   <details><summary>Answer</summary>
+
   `fork()` + hardware copy-on-write: the OLAP child shares every page and a
   page is duplicated only when written. Creation is "in subseconds" (§III),
   and a dirtied page costs "only 2 µs … instead of 10 ms" for a disk page
@@ -251,26 +254,31 @@ Answer each before unfolding it.
   size — so "microseconds regardless of size" is wrong (it was in an earlier
   draft of this guide). This is *not* MVCC; HyPer's version-chain MVCC is the
   later SIGMOD 2015 system.
+
   </details>
 
 - [ ] You can describe HANA's two formats with the right dictionary structures.
   <details><summary>Answer</summary>
+
   Main: columns compressed with a **sorted dictionary**, valueIDs bit-packed,
   rows re-sorted for best encoding (Färber 2012, §column store). Delta: also
   dictionary-compressed, but its dictionary lives in a **Cache-Sensitive
   B+-Tree (CSB+-Tree)** so a point write is a tree insert, not a re-sort of a
   packed column (§delta) — *not* an "unsorted dictionary," which an earlier
   draft claimed.
+
   </details>
 
 - [ ] You can state what the delta merge rebuilds and what coexists during it.
   <details><summary>Answer</summary>
+
   It rebuilds main with the delta folded in (re-encode dictionaries, re-sort),
   then atomically swaps. During the merge, writes go to a new delta and reads
   "access new and old delta storage as well as the old main storage" (Färber
   §delta); old and new main coexist, which is why the merge is "CPU and memory
   intensive" (§challenges) and why memory roughly doubles for the table's main
   for the duration.
+
   </details>
 
 ## References

@@ -264,6 +264,7 @@ Answer each before unfolding it.
   swapping private keys (Step 2). Heuristic 2: the one-time change address of Definition 4.3 — a
   *usage* pattern, not a protocol rule, so it "lack[s] robustness in the face of changing (or
   adversarial) patterns" (Step 4).
+
   </details>
 - [ ] You can recite Definition 4.3's four conditions and say what each one rules out.
   <details><summary>Answer</summary>
@@ -272,6 +273,7 @@ Answer each before unfolding it.
   — coinbase outputs are not change. (3) No output address is also an input — rules out self-change
   (23% of transactions). (4) No *other* output is also brand-new — forces the heuristic to decline
   when it cannot tell payment from change (Step 4). Condition 4 is the one people forget.
+
   </details>
 - [ ] You can explain why union-find makes a low label-error rate into a high partition-error rate.
   <details><summary>Answer</summary>
@@ -280,6 +282,7 @@ Answer each before unfolding it.
   a×b wrong same-user pairs. Two 1,000-address clusters wrongly merged make 1,000,000 false pairs
   and drop pair precision from 1.000 to ≈0.50 in a single mistake, while a missed merge only costs
   recall (Step 6). Errors compound multiplicatively; corrections only add.
+
   </details>
 - [ ] You can quote the false-positive ladder and name what buys each step.
   <details><summary>Answer</summary>
@@ -287,6 +290,7 @@ Answer each before unfolding it.
   Naive Definition 4.3: 555,348 false positives = 13%. Ignore the Satoshi Dice payout pattern → 1%.
   Wait a day before labelling → 0.28%. Wait a week → 0.17% (7,382 addresses) (Step 5). Precision is
   bought with latency — the same heuristic is ~76× more precise if you are willing to wait a week.
+
   </details>
 - [ ] Your `clustering.rs` reproduces lane 3: precision 1.000 for co-spend at every reuse rate,
       and the 1.000 → 0.089 → 0.009 collapse for the change heuristic.
@@ -296,6 +300,7 @@ Answer each before unfolding it.
   never lets two entities co-spend. The change heuristic collapses as reuse rises: precision 1.000
   at 0.00 (largest cluster 93), 0.661 at 0.01 (366), 0.089 at 0.05 (1894), 0.009 at 0.10 (7991 =
   71% of addresses) (Step 6, this topic's `notes.md`).
+
   </details>
 - [ ] You wrote answers to all five questions in notes.md.
   <details><summary>Answer</summary>
@@ -304,6 +309,7 @@ Answer each before unfolding it.
   and BlockSci's response, the effect of dropping condition 4, the pair-precision-vs-recall
   arithmetic for one false vs one missed merge, the operational cost of the week's delay for three
   actors, and which single heuristic you would ship at an exchange.
+
   </details>
 
 ## References

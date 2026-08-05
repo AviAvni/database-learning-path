@@ -456,6 +456,7 @@ Answer each before unfolding it.
   `AND` (20 >= 10), and finally `AND` is consumed and `e` parsed. Result:
   `(((a + (b * c)) > d) AND e)`. Every stop is line 1452-1453; every descent is
   line 4052.
+
   </details>
 
 - [ ] Why is `a - b - c` parsed left-associatively, and what one change would
@@ -472,6 +473,7 @@ Answer each before unfolding it.
   `precedence` (line 4052), so the equal-precedence operator is `>` the
   threshold and gets absorbed by the inner call. One character of arithmetic
   per associativity class.
+
   </details>
 
 - [ ] How many grammar productions does Pratt parsing save here, exactly?
@@ -485,6 +487,7 @@ Answer each before unfolding it.
   new operator. Pratt replaces them with `parse_subexpr` (`:1430-1465`, ~36
   lines including the compound-expression and COLLATE handling) and the table.
   Adding an operator is one match arm.
+
   </details>
 
 - [ ] What actually terminates DataFusion's optimizer loop? (It is not the
@@ -502,6 +505,7 @@ Answer each before unfolding it.
   `LogicalPlanSignature` is `(node_number, plan_hash)`
   (`plan_signature.rs:31-33`, `:62-69`), so the check is a hash lookup. The
   hard bound is `max_passes`, default **3** (`common/src/config.rs:1559`).
+
   </details>
 
 - [ ] Does DataFusion's rule trait really eliminate ordering concerns?
@@ -516,6 +520,7 @@ Answer each before unfolding it.
   opposite directions. What the fixpoint buys is *tolerance of a slightly wrong
   order*, since a rule enabled by a later rule gets another chance next pass.
   It does not buy order-independence.
+
   </details>
 
 - [ ] polars ships a full pushdown optimizer but no join reordering. Why is
@@ -533,6 +538,7 @@ Answer each before unfolding it.
   relationships, not a traversal order, so anchor selection and expansion order
   are genuine cost-based choices — which is why M10 needs Step 3 + Step 4 at
   minimum and probably Selinger's DP as well.
+
   </details>
 
 ## References

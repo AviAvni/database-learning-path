@@ -238,8 +238,8 @@ and its header comment is the primary source:
     35  //      coarse hash task
 ```
 
-Four kinds, "then subdivided into 3 variants, for C=A*B, C<M>=A*B,
-and C<!M>=A*B, giving a total of 12 different types of tasks"
+Four kinds, "then subdivided into 3 variants, for `C=A*B`, `C<M>=A*B`,
+and `C<!M>=A*B`, giving a total of 12 different types of tasks"
 (`:37-38`). And the preference order, stated by the source itself:
 
 ```c

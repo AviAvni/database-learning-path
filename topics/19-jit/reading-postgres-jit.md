@@ -544,6 +544,7 @@ Answer each before unfolding it.
   It does not replace any executor node. There are **121** step
   kinds and **121** `case EEOP_` in the JIT: a hand-maintained
   one-to-one mirror.
+
   </details>
 
 - [ ] You can explain tuple deforming and why it is the underrated half of the win.
@@ -563,6 +564,7 @@ Answer each before unfolding it.
   per-row *per-attribute* and it is pure branchy pointer math —
   the exact shape a compiler is good at — whereas expression JIT
   usually removes only a handful of dispatches per row.
+
   </details>
 
 - [ ] You can name all four ways the `jit_above_cost` gate misfires, propose a better gate, and state the current default of `jit` itself.
@@ -586,6 +588,7 @@ Answer each before unfolding it.
   `postgresql.conf.sample:492`, `config.sgml:6836`) — upstream took
   the advice in this chapter's title. Releases through PG 17 shipped
   it `on`.
+
   </details>
 
 - [ ] You can say why the JIT emits one function per `ExprState` with a block per step.
@@ -605,6 +608,7 @@ Answer each before unfolding it.
   one stencil per node only because it uses the GHC calling
   convention and tail calls, so the "calls" lower to jumps and
   parameters stay in registers.
+
   </details>
 
 - [ ] You can compute the row count at which compiling an expression pays for itself, and explain why Postgres structurally cannot use that number.
@@ -623,6 +627,7 @@ Answer each before unfolding it.
   calibrated for page reads. The fix is not a better threshold, it
   is deciding later; that is what adaptive execution means in
   `reading-umbra-tidy-tuples.md`.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md, including the per-query-no-cache versus GraphBLAS-cache-forever contrast.
@@ -643,6 +648,7 @@ Answer each before unfolding it.
   For Cypher, parameterize the constants and key on expression
   *shape* — then count the distinct shapes in a real workload
   before choosing.
+
   </details>
 
 ## References

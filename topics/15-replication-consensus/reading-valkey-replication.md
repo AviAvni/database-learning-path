@@ -476,6 +476,7 @@ Answer each before unfolding it.
   trip or a follower fsync. This topic's bench shows the size of what
   was avoided: forcing a durable follower ack per entry takes
   throughput to 341 entries/s with a 3889.5 µs p99.
+
   </details>
 
 - [ ] You can name where nondeterministic commands get rewritten, and why it is not one central place.
@@ -502,6 +503,7 @@ Answer each before unfolding it.
   The cost of this design is that determinism is an obligation on
   every command ever added, checked by review rather than by
   construction — which is exactly what a physical WAL avoids.
+
   </details>
 
 - [ ] You can describe PSYNC's `(replid, offset)` scheme, state the range inequality, and say what the check cannot detect.
@@ -526,6 +528,7 @@ Answer each before unfolding it.
   count and assumes the bytes below are identical. `replid2` plus
   `second_replid_offset` is the narrow patch for the one case where
   that assumption predictably breaks — a promoted replica's siblings.
+
   </details>
 
 - [ ] You can size the replication backlog from a write rate and a tolerable disconnect window.
@@ -546,6 +549,7 @@ Answer each before unfolding it.
   The cost of getting it wrong is not a slow resync, it is a fork
   plus a full RDB plus a full reload, during which (rdb.c:3169-3173)
   the replica has flushed its dataset and holds nothing.
+
   </details>
 
 - [ ] You can explain why full sync forks, which transport is the default at this pin, and connect it to copy-on-write.
@@ -568,6 +572,7 @@ Answer each before unfolding it.
   (config.c:3274), which changed since Redis 6. `repl-diskless-load`
   is still **disabled** (config.c:3352), so the replica writes the RDB
   to a file before loading it.
+
   </details>
 
 - [ ] You can say precisely what WAIT does and does not guarantee, and name the command that guarantees more.
@@ -594,6 +599,7 @@ Answer each before unfolding it.
   bytes fsynced to the replica's AOF. That is the axis this topic's
   table measures — 341 entries/s at one follower fsync per entry
   versus 20,174 with none.
+
   </details>
 
 - [ ] You can list FAILOVER's four steps in the order the code performs them, and say which has no unplanned equivalent.
@@ -617,6 +623,7 @@ Answer each before unfolding it.
   "catch-up before promotion" is enforced by every voter on every
   election rather than by a coordinating primary that may be dead.
   The price is one majority round trip on every write.
+
   </details>
 
 - [ ] You wrote answers to all five questions in notes.md.
@@ -635,6 +642,7 @@ Answer each before unfolding it.
   `replicationFeedReplicas` :572, which returns early on a node that
   has a primary of its own, so an intermediate replica cannot generate
   its own stream and desynchronise the numbering.
+
   </details>
 
 ## References

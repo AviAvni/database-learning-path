@@ -800,6 +800,7 @@ thread, which is what lets every hashtable/rax/listpack operation run without a
 single lock and makes commands atomic by construction. Offloading the poll is
 the one thing on this list redis does not do; the maintainers measured
 `epoll_wait` at "more than 20 percent of the time" on the main thread.
+
 </details>
 
 - [ ] You can name valkey's three queues, their disciplines, their directions,
@@ -824,6 +825,7 @@ From `io_threads.c:19-23`:
 
 The common summary "each thread gets its own SPSC queue" describes the *least*
 used of the three.
+
 </details>
 
 - [ ] You can do the cache arithmetic for tagged job pointers and find the line
@@ -843,6 +845,7 @@ bits are always zero (`io_threads.c:29-33`, `JOB_TAG_MASK 0x7`). Three bits is
 eight types, and `_Static_assert(JOB_REQ_COUNT <= 8, ...)` at `io_threads.h:15`
 is what stops a future contributor from silently adding a ninth and corrupting
 every pointer in the queue.
+
 </details>
 
 - [ ] You can explain how the write path shares `c->reply` between two threads
@@ -867,6 +870,7 @@ everything below the bound.
 
 Same shape as topic 5's durable LSN and topic 8's snapshot timestamp: publish a
 bound only one side advances, and you never need mutual exclusion.
+
 </details>
 
 - [ ] You can explain what `hashtablePrefetch` does differently from calling
@@ -891,6 +895,7 @@ The new API is `hashtableIncrementalFindInit` / `…Step` / `…GetResult`
 (`:118`, `:123`, `:138`). A lookup you can only call to completion cannot be
 interleaved; making the find a *resumable state machine* is the enabling change,
 and that is the transferable lesson.
+
 </details>
 
 - [ ] You can quote the two published stages of the speedup with their
@@ -915,6 +920,7 @@ redis — on an AWS EC2 c7g.16xlarge, 8 I/O threads, 3M keys, 512-byte values, 6
 clients, sequential SET, with average latency 1.792 ms → 0.542 ms. Part 2
 reproduces on a c7g.4xlarge with `--io-threads 9`. Every one of those conditions
 changes the number.
+
 </details>
 
 - [ ] You can say why an idle I/O thread costs nothing here and did not in redis
@@ -937,6 +943,7 @@ after that the pool moves ±1 thread based on average queue depth (`:206-218`),
 scaling down only after a cooldown. `io-threads` is therefore a ceiling (max 256,
 `config.h:361`), not a thread count — and its default is 1
 (`config.c:3375`, "Single threaded by default").
+
 </details>
 
 - [ ] You can state what happens when the offload cannot happen, and why that
@@ -959,6 +966,7 @@ So with `io-threads 1` — the default — every path degenerates to the redis
 behaviour, function for function, and no client is ever *dependent* on a worker
 existing. Threads are an accelerator. That is what makes a change of this
 blast radius shippable.
+
 </details>
 
 ## References

@@ -626,6 +626,7 @@ Answer each before unfolding it.
   pointers per node at p = 1/4 against 2.00 at p = 1/2. A size-capped
   memtable buys 33% more keys per flush; a long-lived graph store spends
   the pointers.
+
   </details>
 
 - [ ] RocksDB's insert loses a CAS at level 3. What exactly does it redo?
@@ -643,6 +644,7 @@ Answer each before unfolding it.
   at `:341-346` — so the *next* insert recomputes the whole path rather
   than trusting a cache that may now be inconsistent between levels.
   Levels 0, 1 and 2, already linked, are untouched.
+
   </details>
 
 - [ ] Estimate the expected number of CAS attempts per insert on this
@@ -663,6 +665,7 @@ Answer each before unfolding it.
   38.3 ns on this machine against a 2.28 ns uncontended atomic — a single
   bounced line is worth ~17 wasted CAS attempts. Count lines touched, not
   attempts avoided.
+
   </details>
 
 - [ ] Name the two invariants at the top of `inlineskiplist.h` and the
@@ -681,6 +684,7 @@ Answer each before unfolding it.
   the check memgraph's `insert` must perform at `skip_list.hpp:1370-1372`.
   Neither invariant is a property of skiplists; both are gifts from the
   write path.
+
   </details>
 
 - [ ] memgraph's `insert` finds preds and succs with no locks held. What
@@ -701,6 +705,7 @@ Answer each before unfolding it.
   comment at `:1369` says "Existence test is missing in the paper" — one of
   five errata this file records against Herlihy et al. (`:1358-1359`,
   `:1369`, `:1388-1389`, `:1648-1649`, `:1679-1680`).
+
   </details>
 
 - [ ] memgraph triggers GC from `insert`, not from a timer or a counter.
@@ -719,6 +724,7 @@ Answer each before unfolding it.
   amortisation with an explicit thread-local counter. Both are the same
   move: make maintenance a bounded, rare, opportunistic step on an existing
   hot path.
+
   </details>
 
 ## References
