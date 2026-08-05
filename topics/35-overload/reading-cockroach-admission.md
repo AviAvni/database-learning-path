@@ -5,11 +5,11 @@ this topic's papers: where DAGOR sheds across services and redis
 rejects on one thread, cockroach builds a user-space scheduler inside
 each node — work is intercepted before it becomes a runnable
 goroutine and queued where it can be reordered by tenant and
-priority. The repo is cloned at `~/repos/cockroach`; this is a
-code-read, ~1.5h, focused on two interfaces, one queue, and two
-overload signals. Before opening files, this chapter builds the ideas
-in order; the anchor table below maps each step to an exact
-file:line.
+priority. The repo is cloned at `~/repos/cockroach` (pinned at
+`cockroach@a7e11788`); this is a code-read, ~1.5 h, focused on two
+interfaces, one queue, and two overload signals. Before opening files,
+this chapter builds the ideas in order; the anchor table below maps
+each step to an exact file:line.
 
 ## The problem in one sentence
 
@@ -20,18 +20,38 @@ the queue into its own code.** Admission control doesn't eliminate
 the wait; it relocates it to a place that can reorder it while
 keeping the CPU and disks busy.
 
+Terms of art used below:
+
+- **Runnable goroutine** — a goroutine ready to run but not currently
+  on a CPU: work already waiting in the Go scheduler's queue. Cockroach
+  samples *runnable-per-CPU* as its CPU overload signal (Step 3).
+- **Slot** — a unit of concurrency, held while work runs and returned
+  when it finishes (Step 2).
+- **Token** — a unit of rate, consumed at admission and never returned,
+  used where the true cost lands later (Step 2).
+- **L0 files / sub-levels** — Pebble's LSM write-stall signals (topic
+  4): the depth of unpaid compaction debt, cockroach's IO overload
+  signal (Step 4).
+
 ## The concepts, step by step
 
 ### Step 1 — the reframe: overload control as a user-space scheduler
 
-The package doc comment (`admission.go:1-120`) states the two goals —
-limit node overload, and provide performance isolation between
-priorities and tenants — and the central move: "shift queueing from
-system-provided resource allocation abstractions that we do not
-control, like the goroutine scheduler, to queueing in admission
-control, where we can reorder." Scope is deliberately node-local, not
-cluster-level: in a system with strong work affinity, only the node
-itself can protect itself in time.
+> **In:** nothing yet — this step establishes the central design move
+> every later step implements.
+> **Out:** the reframe (move the queue out of the Go scheduler into
+> code you can reorder) and its deliberately node-local scope.
+
+The package doc comment states the two goals — limit node overload
+(`admission.go:11-13`) and provide performance isolation between
+priorities and tenants (`admission.go:14-19`) — and the central move
+(`admission.go:21-24`): "shift queueing from system-provided resource
+allocation abstractions that we do not control, like the goroutine
+scheduler, to queueing in admission control, where we can reorder."
+Scope is deliberately node-local, not cluster-level (`admission.go:26-33`):
+in a system with strong work affinity, only the node itself can protect
+itself in time — cluster-level admission "can complement node level
+admission control" but not replace it.
 
 ```
  without admission control:            with admission control:
@@ -48,6 +68,12 @@ lives in the queue you aren't looking at. Cockroach makes the queue
 visible, owned, and reorderable.
 
 ### Step 2 — slots vs tokens: concurrency vs rate
+
+> **In:** the reorderable queue from Step 1 needs a currency for "is a
+> resource free?"
+> **Out:** the two currencies — slots (returnable, for CPU) and tokens
+> (non-returnable, for IO) — and why the choice encodes closed- vs
+> open-loop control.
 
 The package doc (`admission.go:54`, "Tokens and slots are the two
 ways admission is granted") splits resources by whether work
@@ -72,7 +98,12 @@ Why it matters: the slot/token split is the type system of overload —
 it encodes whether backpressure can be closed-loop (slots: measure
 occupancy) or must be open-loop (tokens: refill on a capacity model).
 
-### Step 3 — the CPU signal: runnable goroutines per CPU, AIMD slots
+### Step 3 — the CPU signal: runnable goroutines per CPU, additive slots
+
+> **In:** the slot currency from Step 2, which needs a target count.
+> **Out:** the CPU overload signal (runnable-per-CPU, not utilization)
+> and the additive-increase/additive-decrease loop that hunts the slot
+> count the machine can sustain.
 
 The overload signal for CPU is not utilization — it is **runnable
 goroutines per CPU, sampled every 1 ms**
@@ -86,11 +117,28 @@ with a deep queue is overload.
 
 `kvSlotAdjuster.CPULoad(runnable, procs, samplePeriod)`
 (`kv_slot_adjuster.go:29` for the type, `:46` for the method) turns
-the signal into an adaptive concurrency limit: at
-`runnable >= threshold*procs` it decreases total slots (`:99`); at or
-below half that (`:103`) it increases them — additive up, additive
-down, every millisecond, an AIMD-style controller hunting the
-concurrency the machine can actually sustain.
+the signal into an adaptive concurrency limit. The adjustment is
+**additive both ways** — the code's own comments say so — one slot per
+1 ms tick:
+
+```go
+// kv_slot_adjuster.go — CPULoad: additive adjust (71–72, 84, 91), triggers (99, 103)
+71      if usedSlots > 0 && total > kvsa.minCPUSlots && usedSlots <= total {
+72          total--        // comment :65/:81: "additive decrease", 1 slot per 1 ms tick
+84      if usedSlots >= total && total < kvsa.maxCPUSlots {
+91          total++        // comment :81/:90: "additive increase", 1 slot per 1 ms tick
+99      if runnable >= threshold*procs {                              // overloaded → decrease
+103     } else if float64(runnable) <= float64((threshold*procs)/2) { // underloaded → increase
+```
+
+So at `runnable >= threshold*procs` it decreases total slots by one
+(`:72`); at or below half that (`:103`) it increases them by one
+(`:91`) — additive-increase/additive-decrease (AIAD), every
+millisecond, hunting the concurrency the machine can actually sustain.
+(This is *not* AIMD: the decrease is `total--`, not a multiplicative
+`total *= (1-α)`; the comment at `:65` calls it "additive decrease"
+explicitly. DAGOR's admission controller is the AIMD one — do not
+conflate them.)
 
 ```
  runnable/CPU
@@ -103,7 +151,16 @@ concurrency the machine can actually sustain.
    └────────────────────────────▶ sampled every 1 ms
 ```
 
+The dead band between `threshold/2` and `threshold` is what keeps the
+controller from oscillating on every tick: it only acts at the extremes.
+
 ### Step 4 — the IO signal: L0 debt, tokens as compaction budget
+
+> **In:** the token currency from Step 2, which is open-loop and needs a
+> feedback signal to size refills.
+> **Out:** the LSM-derived IO overload signal (L0 file and sub-level
+> counts) and how it turns token refill into a compaction budget spent
+> by priority.
 
 For stores, overload is read straight off the LSM: **L0 file count
 and L0 sub-level count** (`io_load_listener.go:69` and `:77`). You
@@ -131,10 +188,15 @@ accumulated consequence of past grants and throttles future ones.
 
 ### Step 5 — the priority ladder: below zero means "yield to users"
 
+> **In:** the WorkQueue that spends slots (Step 3) and tokens (Step 4).
+> **Out:** the concrete `int8` priority ladder that decides which work
+> waits under overload, and how priority and tenancy compose.
+
 `WorkPriority` is an `int8` (`admissionpb/admissionpb.go:23`) and the
-ladder is deliberate: `LowPri` = MinInt8, `BulkLowPri` = -100,
-`UserLowPri` = -50, `BulkNormalPri` = -30, `NormalPri` = 0,
-`LockingNormalPri` = 10, `UserHighPri` = 50. Everything below zero is
+ladder is deliberate: `LowPri` = MinInt8 (−128), `BulkLowPri` = −100,
+`UserLowPri` = −50, `BulkNormalPri` = −30, `NormalPri` = 0,
+`LockingNormalPri` = 10, `UserHighPri` = 50
+(`admissionpb/admissionpb.go:29-48`). Everything below zero is
 bulk/background — backups, rebalancing, changefeed catch-up — so under
 overload it is precisely the elastic work that waits while user
 foreground traffic keeps its latency. Within one priority, the
@@ -143,21 +205,34 @@ of work, tenancy divides capacity inside a class.
 
 ### Step 6 — the grant loop: requester and granter
 
+> **In:** the signals (Steps 3–4) and the priority policy (Step 5).
+> **Out:** the two interfaces that turn "who wants to run" and "what is
+> free" into grants, so adding a resource is writing a granter, not a
+> scheduler.
+
 Two small interfaces decouple "who wants to run" from "what resource
 is free": `requester` (`admission.go:178`) answers
 `hasWaitingRequests` and accepts `granted`, while `granter`
 (`admission.go:198`) offers `tryGet` (the uncontended fast path) and
 `returnGrant`. The concrete requester is `WorkQueue`
-(`work_queue.go:303`), which orders waiting work by (tenant,
-WorkPriority, FIFO arrival time). A request enters at
-`WorkQueue.Admit` (`work_queue.go:813`) — try the fast path, else
-queue and block — and CPU-bound KV work reports completion via
-`AdmittedWorkDone` (`work_queue.go:1196`), returning its slot and
-closing the loop of Step 2. Because signal (Steps 3-4), policy (Step
-5), and mechanism (this loop) are separate interfaces, adding a
-resource means writing a granter, not a scheduler.
+(`work_queue.go:303`), whose doc comment (`work_queue.go:277`) spells
+out the ordering: a group heap orders tenants by used slots/tokens
+(fairness), and within each tenant, work is ordered by priority and
+create time — i.e. (tenant fairness, WorkPriority, FIFO arrival). A
+request enters at `WorkQueue.Admit` (`work_queue.go:813`) — try the
+fast path, else queue and block — and CPU-bound KV work reports
+completion via `AdmittedWorkDone` (`work_queue.go:1196`, which panics
+if called for non-KV work), returning its slot and closing the loop of
+Step 2. Because signal (Steps 3-4), policy (Step 5), and mechanism
+(this loop) are separate interfaces, adding a resource means writing a
+granter, not a scheduler.
 
 ### Step 7 — contrast: redis rejects, DAGOR spans services, cockroach reorders
+
+> **In:** the full cockroach mechanism from Steps 1–6.
+> **Out:** where cockroach sits against this topic's other two
+> code-reads on the reject-vs-reorder and intra-node-vs-cross-service
+> axes.
 
 Hold this topic's three code-reads side by side. Redis
 (reading-redis-backpressure.md) is single-threaded: it cannot reorder
@@ -175,16 +250,17 @@ All paths relative to `~/repos/cockroach/pkg/util/admission`.
 
 | Step | Anchor | What to see |
 |---|---|---|
-| 1 | `admission.go:1-120` | Package doc: goals, "shift queueing... where we can reorder", node-level scope |
+| 1 | `admission.go:11-33` | Package doc: goals (11-19), "shift queueing... where we can reorder" (21-24), node-level scope (26-33) |
 | 2 | `admission.go:54` | Package-doc line naming tokens and slots as the two grant kinds |
-| 3 | `kv_slot_adjuster.go:16` | `KVSlotAdjusterOverloadThreshold` — runnable goroutines per CPU |
-| 3 | `kv_slot_adjuster.go:29`, `:46` | `kvSlotAdjuster` and `CPULoad`; decrease at `:99`, increase at `:103` |
+| 3 | `kv_slot_adjuster.go:16` | `KVSlotAdjusterOverloadThreshold` — runnable goroutines per CPU, default 32 |
+| 3 | `kv_slot_adjuster.go:29`, `:46` | `kvSlotAdjuster` and `CPULoad`; `total--` at `:72`, `total++` at `:91` (additive both ways) |
+| 3 | `kv_slot_adjuster.go:99`, `:103` | decrease at `runnable ≥ threshold·procs`, increase at `≤ half` |
 | 4 | `io_load_listener.go:69`, `:77` | `L0FileCountOverloadThreshold`, `L0SubLevelCountOverloadThreshold` |
-| 5 | `admissionpb/admissionpb.go:23` | `WorkPriority int8` and the full ladder of constants |
+| 5 | `admissionpb/admissionpb.go:23`, `:29-48` | `WorkPriority int8` and the full ladder of constants |
 | 6 | `admission.go:178`, `:198` | `requester` / `granter` — the two halves of the grant loop |
-| 6 | `work_queue.go:303` | `WorkQueue` — ordering by (tenant, priority, arrival) |
+| 6 | `work_queue.go:277`, `:303` | `WorkQueue` doc + type — ordering by (tenant fairness, priority, create time) |
 | 6 | `work_queue.go:813` | `WorkQueue.Admit` — fast path, else wait |
-| 6 | `work_queue.go:1196` | `AdmittedWorkDone` — slot return for KV work |
+| 6 | `work_queue.go:1196` | `AdmittedWorkDone` — slot return for KV work (panics if not KV) |
 
 Read order: the package doc top to bottom (it is the design document)
 → `requester`/`granter` → `WorkQueue.Admit` → `kvSlotAdjuster.CPULoad`
@@ -200,7 +276,7 @@ Resist reading the rest of work_queue.go; these anchors are the skeleton.
 2. Why can a slot be returned but a token cannot? Trace one KV read
    and one write: at what moment is each resource's true cost fully
    known, and what does that imply for closed- vs open-loop control?
-3. The AIMD slot adjuster decreases at `threshold*procs` but only
+3. The AIAD slot adjuster decreases at `threshold*procs` but only
    increases at or below half that. What failure mode does the dead
    band prevent, and what would equal thresholds do?
 4. Topic 4's Pebble stalls writes when L0 gets deep — every writer,
@@ -215,21 +291,90 @@ Resist reading the rest of work_queue.go; these anchors are the skeleton.
 
 ## Done when
 
+Answer each before unfolding it.
+
 - [ ] You can narrate one KV request end to end — `Admit` fast path
       vs queue, grant by (tenant, priority, arrival), run,
       `AdmittedWorkDone` slot return — naming each hop's interface.
+
+  <details><summary>Answer</summary>
+
+  A KV request calls `WorkQueue.Admit` (`work_queue.go:813`). Admit asks
+  the `granter` (`admission.go:198`) for `tryGet` — the uncontended fast
+  path; if a slot is free it runs immediately. Otherwise it enqueues in
+  the `WorkQueue` (the concrete `requester`, `work_queue.go:303`), which
+  orders waiting work by tenant fairness (group heap on used
+  slots/tokens), then `WorkPriority`, then create time
+  (`work_queue.go:277`). When a slot frees, the granter calls `granted`
+  on the requester, which dequeues the next winner. The work runs, then
+  reports completion via `AdmittedWorkDone` (`work_queue.go:1196`),
+  returning its slot — closing the concurrency loop of Step 2.
+  `AdmittedWorkDone` panics if called for non-KV work, because only
+  slots (not tokens) are returnable.
+
+  </details>
+
 - [ ] You can state both overload signals (runnable per CPU; L0
       files/sub-levels) and say why neither is utilization.
+
+  <details><summary>Answer</summary>
+
+  CPU overload is **runnable goroutines per CPU**, sampled every 1 ms
+  against `KVSlotAdjusterOverloadThreshold` (default 32,
+  `kv_slot_adjuster.go:16`). IO overload is **L0 file count and L0
+  sub-level count** (`io_load_listener.go:69`, `:77`) — Pebble's
+  write-stall signals from topic 4, the depth of unpaid compaction debt.
+  Neither is utilization because utilization cannot tell a healthy busy
+  server from an overloaded one: 100% CPU with an empty runnable queue
+  is fine, 100% CPU with a deep runnable queue is overload. Both signals
+  measure *waiting* — runnable-but-not-running work, and accumulated
+  write debt — which is exactly DAGOR's queuing-time instinct in a
+  different vocabulary.
+
+  </details>
+
 - [ ] You can explain, in two sentences, why writes get tokens and
       CPU work gets slots — and why the two are not interchangeable.
+
+  <details><summary>Answer</summary>
+
+  CPU-bound KV work has an observable completion — the goroutine
+  finishes — so a **slot** (held while running, returned on completion,
+  `AdmittedWorkDone`) models it as concurrency and closes the loop.
+  A write's true cost lands *later*, when compactions rewrite its bytes
+  out of L0, so there is nothing to return at admission time; a
+  **token** (consumed once, never returned, refilled on a capacity model
+  driven by the L0 signal) models it as a rate. They are not
+  interchangeable because a returnable slot assumes you know when the
+  cost is paid, and for IO you do not until compaction happens.
+
+  </details>
+
 - [ ] You can place cockroach, redis, and DAGOR on the axes
       reject-vs-reorder and intra-node-vs-cross-service unaided.
+
+  <details><summary>Answer</summary>
+
+  **Reject vs reorder:** redis *rejects* (fast `-OOM`/`-BUSY`/disconnect
+  at the door — one thread, nothing to reorder); cockroach *reorders*
+  (work waits in a WorkQueue and is granted by priority/tenant, it does
+  not fail); DAGOR *sheds by priority* (drops low-priority whole tasks).
+  **Intra-node vs cross-service:** redis and cockroach are both
+  intra-node (one process/one node), while DAGOR is cross-service
+  (priorities ride RPC headers, upstreams throttle for downstreams).
+  Cockroach is the multi-core, priority-aware midpoint: intra-node like
+  redis, priority-aware like DAGOR, and it explicitly leaves
+  cluster-level admission as a complement, not a replacement
+  (`admission.go:26-33`).
+
+  </details>
 
 ## References
 
 **Code**
 - [CockroachDB](https://github.com/cockroachdb/cockroach) —
-  `pkg/util/admission`, cloned at `~/repos/cockroach`
+  `pkg/util/admission`, cloned at `~/repos/cockroach`, pinned at
+  `cockroach@a7e11788`
 
 **Related guides**
 - [README.md](README.md) — topic 35 overview and the capstone gate

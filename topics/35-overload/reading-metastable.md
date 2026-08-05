@@ -4,12 +4,13 @@ Bronson, Aghayev, Charapko, and Zhu (HotOS 2021) name a failure class
 you have seen in an incident channel: something bad happens for ten
 seconds, the bad thing goes away, and the system stays down anyway —
 until a human sheds load or restarts everything. The paper's claim is
-that these *metastable failures* account for many of the largest
-outages at major web companies, and that they are systematically
-misdiagnosed because everyone hunts the trigger while the real culprit
-is a feedback loop. Read this 7-page position paper as the theory
-chapter for this topic's simulator: every number in its Figure 2 is
-reproduced exactly in `experiments/` (lane 1).
+that these *metastable failures* have caused widespread outages at
+large internet companies (§1: "lasting from minutes to hours") and have
+"a disproportionate impact on hyperscale distributed systems," and that
+they are systematically misdiagnosed because everyone hunts the trigger
+while the real culprit is a feedback loop. Read this 7-page position
+paper as the theory chapter for this topic's simulator: every number in
+its Figure 2 is reproduced exactly in `experiments/` (lane 1).
 
 ## The problem in one sentence
 
@@ -22,12 +23,34 @@ blip. The paper contributes a vocabulary (stable / vulnerable /
 metastable), a minimal worked example, and a catalog of sustaining
 loops and mitigations.
 
+A few terms of art, used with the paper's definitions (§1) throughout:
+
+- **Trigger** — a temporary disturbance (a load spike, a brief outage,
+  a deploy) that pushes a *vulnerable* system over the edge. It need
+  not still be present for the failure to continue.
+- **Sustaining effect** — the feedback loop, "often involving work
+  amplification or decreased overall efficiency" (§1), that keeps the
+  system in the bad state after the trigger is gone. This is the root
+  cause.
+- **Goodput** — throughput of *useful* work, i.e. requests that
+  complete before their deadline. Distinct from throughput: a system
+  can be busy at 100% CPU with goodput near zero.
+- **Hidden capacity** (defined §4) — the load a system can actually
+  sustain *once the sustaining loop is active*, as opposed to its
+  **advertised capacity** measured in the healthy state.
+
 ## The concepts, step by step
 
 ### Step 1 — three states, one arrow that does not reverse itself
 
-A system moves between three states. The trigger arrow is temporary;
-the trap is that removing the trigger does not walk you back:
+> **In:** nothing yet — this step establishes the paper's Figure 1
+> state machine and the vocabulary every later step leans on.
+> **Out:** the reason "remove the trigger" is not a recovery plan —
+> the arrow into *metastable* has no passive way back.
+
+A system moves between three states (paper Figure 1, §1). The trigger
+arrow is temporary; the trap is that removing the trigger does not walk
+you back:
 
 ```mermaid
 graph LR
@@ -39,28 +62,46 @@ graph LR
 ```
 
 The self-loop on *metastable* is the whole paper. Recovery never
-happens passively; it requires a deliberate push — shed load below the
-hidden capacity, or break the retry loop directly.
+happens passively; §1 says leaving the state "requires a strong
+corrective push, such as rebooting the system or dramatically reducing
+the load" — shed load below the hidden capacity, or break the retry
+loop directly. Contrast this with failures that *do* self-heal when the
+trigger leaves: the paper explicitly excludes a denial-of-service
+attack, limplock, and livelock, "are not metastable" (§1). The
+distinguishing test is the self-loop, not the severity.
 
 ### Step 2 — vulnerable is not a defect
 
-The vulnerable state is where efficient systems live on purpose:
-higher utilization means fewer machines, so staying out of the
-vulnerable region wastes most of your capacity most of the time.
-Organizational incentives push the same direction: the paper's example
-is a better cache eviction algorithm that raises the hit rate, which
-lets you serve more load from the same database — and thereby raises
-the hidden work amplification if the cache is ever lost. A false
+> **In:** the three states from Step 1.
+> **Out:** why healthy production systems sit in *vulnerable* on
+> purpose, so "just run in the stable region" is not a real answer.
+
+The vulnerable state is where efficient systems live on purpose. §1 is
+blunt about it: "many production systems choose to run in the
+vulnerable state all the time because it has much higher efficiency
+than the stable state." Higher utilization means fewer machines, so
+staying out of the vulnerable region wastes most of your capacity most
+of the time. Organizational incentives push the same direction: §3's
+example is a better cache eviction algorithm that raises the hit rate,
+which lets you serve more load from the same database — and thereby
+raises the hidden work amplification if the cache is ever lost. A false
 economy, invisible until the trigger arrives. So do not read
 "vulnerable" as "buggy"; read it as "operating with a hidden debt that
-a trigger can call in."
+a trigger can call in." The paper is careful here: "The vulnerable
+state is not an overloaded state; a system can run for months or years
+in the vulnerable state" (§1).
 
 ### Step 3 — Figure 2, the minimal metastable system
 
-The paper's worked example needs only two components: a database that
-handles at most 300 QPS (requests complete in under 100 ms below
-that), and a web app that sends 1 query per request with 1 retry
-after a 1 s timeout.
+> **In:** the vulnerable/metastable distinction from Steps 1–2.
+> **Out:** a fully worked numerical example — 280 QPS offered → 560 QPS
+> sustained against 300 QPS capacity — that this topic's lane 1
+> reproduces exactly, plus the two recovery thresholds (150 and 20 QPS).
+
+The paper's worked example (§2.1, plotted in **Figure 2**) needs only
+two components: a database that handles at most 300 QPS (requests
+complete in under 100 ms below that), and a web app that sends 1 query
+per request with 1 retry after a 1 s timeout.
 
 ```
  offered load: 280 QPS (vulnerable: inside 150-300)
@@ -76,29 +117,53 @@ after a 1 s timeout.
                                 goodput: 0, forever
 ```
 
-At 280 QPS offered, a 10 s outage queues enough requests that every
-one of them times out and is retried: the server now faces a sustained
+At 280 QPS offered, a 10 s outage queues enough requests that every one
+of them times out and is retried: the server now faces a sustained
 560 QPS against a 300 QPS capacity, and goodput drops to 0
-*permanently*. The stable region is load below 150 QPS; between 150
-and 300 QPS the system is vulnerable. Recovery requires dropping
-offered load below 150 QPS or the retry rate below 20 QPS. Note the
-gap: *advertised* capacity is 300 QPS, but the *hidden* capacity —
-what survives the retry amplification — is 150.
+*permanently*. Work the arithmetic the way §2.1 does, because it is the
+same arithmetic lane 1 runs:
+
+- **Sustained load under the loop.** Each request that overloads is
+  retried once, so a stuck server sees offered + retries. At 280 QPS
+  offered every request is retried: `280 + 280 = 560 QPS`, well past
+  the 300 QPS ceiling, so the queue never drains.
+- **Load recovery threshold (150 QPS).** With a 1-retry policy the
+  sustained load is `2 × offered`. Stability needs `2 × offered ≤ 300`,
+  i.e. `offered ≤ 150`. So the *hidden* capacity is `300 / (1 + retries)
+  = 300 / 2 = 150 QPS`, half the advertised 300. Below 150 QPS offered
+  the loop cannot sustain itself; between 150 and 300 the system is
+  vulnerable; above 300 it is over capacity even when healthy.
+- **Retry recovery threshold (20 QPS), at the 280 QPS operating point.**
+  Hold offered load at 280 and instead cap the retry rate. Total load is
+  `280 + retries`; stability needs `280 + retries ≤ 300`, i.e.
+  `retries ≤ 20 QPS`. That is where §2.1's "limit retries to below
+  20 QPS" comes from: it is the 300 − 280 = 20 QPS of headroom left at
+  that load.
+
+Note the gap the paper keeps returning to: *advertised* capacity is
+300 QPS, but the *hidden* capacity — what survives the retry
+amplification — is 150. That gap is the whole danger.
 
 ### Step 4 — work amplification is the fuel
 
-Every sustaining loop runs on work amplification: the failure mode
+> **In:** the retry loop (2×) from Step 3.
+> **Out:** the general form — a sustaining loop is any mechanism that
+> makes each unit of user demand cost more once you are overloaded —
+> with the cache case's 10× as the scarier instance.
+
+Every sustaining loop runs on **work amplification**: the failure mode
 makes each unit of user demand cost more than in the healthy state.
-Retries are the simplest amplifier (2× in Fig 2); the paper mentions a
-100× anecdote in the wild. The look-aside cache is the scarier common
-case: a 90% hit rate lets a 3,000 QPS application run on a 300 QPS
-database, so losing the cache is a 10× work amplification — and the
-cold cache cannot refill, because refilling requires database reads
-and the database is saturated. Hidden capacity 300 QPS, advertised
-capacity 3,000 QPS. A third amplifier hides in error handling itself:
-if the error path costs more than the success path (e.g., logging that
-takes locks), the system does its most expensive work exactly when
-capacity is gone.
+Retries are the simplest amplifier (2× in Figure 2, §2.1); §3 mentions
+a 100× amplification anecdote in the wild. The look-aside cache (§2.2)
+is the scarier common case: a 90% hit rate lets a 3,000 QPS application
+run on a 300 QPS database (only 1 in 10 requests reaches the DB), so
+losing the cache is a 10× work amplification — and the cold cache
+cannot refill, because refilling requires database reads and the
+database is saturated. Hidden capacity 300 QPS, advertised capacity
+3,000 QPS: a 10× gap versus the retry loop's 2×. A third amplifier
+hides in error handling itself (§2.3): if the error path costs more
+than the success path (e.g., logging that takes locks), the system does
+its most expensive work exactly when capacity is gone.
 
 ```mermaid
 graph TD
@@ -110,38 +175,57 @@ graph TD
 
 ### Step 5 — the loop spans systems that are individually fine
 
-The paper's flagship case study is Facebook's link-imbalance outage:
-an MRU connection pool interacted with hash-assigned aggregated
-network links to form a sustaining loop — congestion on one link
-slowed its connections, and the MRU policy then concentrated traffic
-onto exactly those connections, keeping the link congested. It went
-undiagnosed for over 2 years; the eventual fix was a one-line change
-to the connection-pool policy. The lesson: no single component was
-broken — the feedback loop only exists in the composition, which is
-why the paper calls metastable failures "emergent behavior rather than
-a logic bug — one cannot write a unit or integration test to trigger
-them."
+> **In:** the idea (Step 4) that amplification lives in a mechanism.
+> **Out:** the production lesson — the loop can live in the
+> *composition* of two correct components, which is why you cannot
+> unit-test for it.
+
+The paper's flagship case study is Facebook's link-imbalance outage
+(§2.4): an MRU (most-recently-used) connection pool interacted with
+hash-assigned aggregated network links to form a sustaining loop —
+congestion on one link slowed its connections, and the MRU policy then
+concentrated traffic onto exactly those connections, keeping the link
+congested. It went undiagnosed for over two years; the eventual fix was
+a one-line change to the connection-pool policy. The lesson: no single
+component was broken — the feedback loop only exists in the
+composition. The paper's conclusion (§5) generalizes it: metastable
+failures "are an emergent behavior rather than a logic bug — one cannot
+write a unit or integration test to trigger them."
 
 ### Step 6 — breaking the loop: change policy under overload
 
-The mitigations share one shape: detect persistent overload, then
+> **In:** the sustaining loops catalogued in Steps 4–5.
+> **Out:** the shared shape of the mitigations (§3) — detect persistent
+> overload, then switch policy — and the CoDel-style detection signal
+> that tells a burst apart from real overload.
+
+The mitigations (§3) share one shape: detect persistent overload, then
 *switch policies* rather than trying harder at the normal one — LIFO
 queues, retry budgets, circuit breakers, smaller queues, disabling
 failover. Detection matters because bursts are normal: the paper
-endorses a CoDel-style signal — the *minimum* queueing latency over a
-sliding window; a burst leaves the minimum low, persistent overload
-raises it. Other levers: give retries lower priority; make error paths
-fast (a bounded lock-free queue feeding a logging thread, sampled
-stack traces); and define a "characteristic metric" per known feedback
-loop — retry rate, cache hit rate — since goodput alone tells you that
-you are dying, not which loop is killing you.
+endorses a **CoDel**-style signal — the *minimum* queueing latency over
+a sliding window; a burst leaves the minimum low, persistent overload
+raises it. Other levers from §3: give retries lower priority; make
+error paths fast (a bounded lock-free queue feeding a logging thread,
+sampled stack traces); run live-traffic stress tests (Facebook's
+Kraken); and define a **characteristic metric** per known feedback loop
+— retry rate, cache hit rate — since goodput alone tells you that you
+are dying, not which loop is killing you. §3 also names the
+organizational-incentives trap directly: the cache-eviction improvement
+that widens the hidden-capacity gap is a false economy.
 
 ### Step 7 — trigger intensity, distance from the cliff
 
+> **In:** the hidden-capacity gap quantified in Step 3.
+> **Out:** why "vulnerable" is a spectrum — how large a trigger you
+> survive is the margin between offered load and hidden capacity — and
+> why that makes small-scale stress tests weak.
+
 How big a trigger you survive depends on how deep in the vulnerable
-region you sit. A system at 151 QPS recovers from a much bigger spike
-than one at 299 QPS — both are "vulnerable," but the margin between
-offered load and hidden capacity is the real safety budget:
+region you sit. §4 makes this a number: a system at 151 QPS recovers
+from a much bigger spike than one at 299 QPS — both are "vulnerable,"
+but the margin between offered load and hidden capacity is the real
+safety budget (the paper calls this **trigger intensity**):
 
 ```
  QPS
@@ -159,38 +243,46 @@ offered load and hidden capacity is the real safety budget:
 This is also why testing is hard: stress tests at small scale are weak
 at finding metastable failures, because the loop's gain depends on
 scale and traffic shape — Facebook's Kraken does live-traffic testing
-instead. And reproducing one requires a load generator free of
-coordinated omission — the paper cites Gil Tene here, exactly topic
-34's lane 1: a generator that backs off when the server slows down
-silently erases the sustained arrivals that make Fig 2 lock up.
+instead (§3). And reproducing one requires a load generator free of
+**coordinated omission** — §4 cites Gil Tene here, exactly topic 34's
+lane 1: a closed-loop generator that backs off when the server slows
+down silently erases the sustained arrivals that make Figure 2 lock up.
 
 ## How to read the paper (with the concepts in hand)
 
-7 pages, HotOS position-paper style; budget ~1h.
+7 pages, HotOS position-paper style; budget ~1 h. The paper has five
+sections — do not expect a §6 or §7.
 
-- **§1** (10 min) — the definition and the trigger-vs-root-cause
-  claim (Step 1). Read carefully; every later section leans on the
-  "root cause = sustaining loop" framing.
-- **§2** (15 min) — the state machine and **Figure 2**. This is the
-  figure to stare at: reproduce the 280→560 QPS arithmetic (Step 3) on
-  paper, then verify it against this topic's simulator output.
-- **§3** (10 min) — the vulnerability discussion (Steps 2 and 7):
-  why systems run vulnerable deliberately, and why trigger intensity
-  interacts with distance from the cliff.
-- **§4** (10 min) — the catalog of sustaining loops (Step 4): retries,
-  look-aside cache, slow error handling. Skim the list but slow down
-  on the cache arithmetic — it is the 10× version of Fig 2's 2×.
-- **§5** (10 min) — the Facebook link-imbalance case study (Step 5).
-  Read fully; it is the only production narrative in the paper.
-- **§6** (10 min) — approaches to handling (Step 6): policy switches,
-  CoDel-style detection, retry priority, fast error paths, Kraken,
-  characteristic metrics, the organizational-incentives point.
-- **§7** (5 min) — skim the research agenda; note which items your
-  simulator already touches.
+- **§1 Introduction** (15 min) — the definition, **Figure 1**'s state
+  machine, and the trigger-vs-root-cause claim (Steps 1–2). Read
+  carefully; every later section leans on "the true root cause is the
+  sustaining effect." This is also where *vulnerable-on-purpose* lives.
+- **§2 Case Studies** (20 min) — the four sustaining loops.
+  - **§2.1 Request Retries** holds **Figure 2**; this is the figure to
+    stare at. Reproduce the 280 → 560 QPS arithmetic and the 150/20 QPS
+    thresholds (Step 3) on paper, then verify against this topic's lane
+    1.
+  - **§2.2 Look-aside Cache** — the 90% hit / 3,000 QPS / 10× cold-cache
+    case (Step 4).
+  - **§2.3 Slow Error Handling** — the amplifier hiding in the error
+    path (Step 4).
+  - **§2.4 Link Imbalance** — the Facebook MRU-pool case study (Step 5);
+    the only production narrative in the paper. Read it fully.
+- **§3 Approaches to Handling Metastability** (15 min) — the mitigations
+  (Step 6): policy switches, CoDel-style detection, retry priority,
+  fast error paths, Kraken, characteristic metrics, and the
+  organizational-incentives point.
+- **§4 Discussion and Research Directions** (10 min) — work
+  amplification, hidden vs advertised capacity, and **trigger intensity
+  (151 vs 299 QPS)** (Steps 4 and 7), plus the coordinated-omission note
+  that ties back to topic 34.
+- **§5 Conclusion** (5 min) — short; note the "emergent behavior … one
+  cannot write a unit or integration test" line (Step 5) and which
+  research items your simulator already touches.
 
 ## Questions to answer in notes.md
 
-1. In Fig 2's system, why is recovery possible at load below 150 QPS
+1. In Figure 2's system, why is recovery possible at load below 150 QPS
    or retry rate below 20 QPS, but not at 200 QPS offered? Derive both
    thresholds from the 300 QPS capacity and the 1-retry policy.
 2. The look-aside cache gives 10× amplification vs the retry loop's
@@ -206,35 +298,103 @@ silently erases the sustained arrivals that make Fig 2 lock up.
    sliding window distinguish persistent overload from a burst, where
    average or p99 queueing latency does not?
 5. Explain, using topic 34's coordinated-omission argument, why a
-   closed-loop load generator cannot reproduce Fig 2 — what does it do
-   during the 10 s outage that an open-loop generator does not?
+   closed-loop load generator cannot reproduce Figure 2 — what does it
+   do during the 10 s outage that an open-loop generator does not?
 
 ## Done when
+
+Answer each before unfolding it.
 
 - [ ] You can draw the stable → vulnerable → metastable state machine
       from memory and state why the bad state persists after the
       trigger is removed.
-- [ ] You can reproduce Fig 2's arithmetic (280 offered → 560
+
+  <details><summary>Answer</summary>
+
+  The three states are Figure 1 (§1): **stable** (below the hidden load
+  threshold), **vulnerable** (healthy but one trigger away from the
+  trap), **metastable** (the bad state). Rising load moves stable →
+  vulnerable; a temporary **trigger** moves vulnerable → metastable; and
+  the arrow that matters has no passive reverse — the **sustaining
+  effect** (a work-amplifying feedback loop) holds the system in the bad
+  state after the trigger is gone. §1: leaving it "requires a strong
+  corrective push, such as rebooting the system or dramatically reducing
+  the load." That self-loop is the difference from a DoS, limplock, or
+  livelock, which §1 explicitly says "are not metastable" because they
+  clear when the trigger clears.
+
+  </details>
+
+- [ ] You can reproduce Figure 2's arithmetic (280 offered → 560
       sustained vs 300 capacity; recovery below 150 QPS load or 20 QPS
-      retries) and match lane 1 of `experiments/`: 280 QPS never
-      recovers (offered locks at 560 QPS, goodput 0 at t=199 s though
-      the outage ended at t=40 s), 140 QPS heals at t=161 s.
+      retries) and match lane 1 of `experiments/`.
+
+  <details><summary>Answer</summary>
+
+  With a 1-retry-after-1s policy, a stuck server sees offered + retries.
+  At 280 QPS offered every request is retried: `280 + 280 = 560 QPS`
+  against a 300 QPS ceiling, so the queue never drains and goodput sits
+  at 0. The load threshold is `300 / (1 + retries) = 150 QPS` (need
+  `2 × offered ≤ 300`); the retry threshold at 280 QPS offered is the
+  leftover headroom `300 − 280 = 20 QPS`. Lane 1 reproduces this
+  exactly: at 280 QPS it never recovers — offered locks at 560 QPS and
+  goodput is still 0 at t=161 s+ though the 10 s outage ended at t=40 s
+  — while at 140 QPS (below 150) goodput returns, healing at t=161 s.
+
+  </details>
+
 - [ ] You can name three sustaining loops (retries, cold look-aside
       cache, slow error paths) with their amplification factors and
       one policy switch that breaks each.
+
+  <details><summary>Answer</summary>
+
+  **Retries** (§2.1): 2× amplification (one retry per request); break it
+  with a retry budget, circuit breaker, or lower-priority retries.
+  **Cold look-aside cache** (§2.2): up to 10× (a 90% hit rate means the
+  cold DB sees 10× its healthy load, and it cannot refill because
+  refilling needs the saturated DB); break it by shedding load so the
+  cache can rebuild, or serving stale. **Slow error handling** (§2.3):
+  amplification equal to the error-path/success-path cost ratio; break
+  it by making the error path *cheaper* than success (bounded lock-free
+  logging queue, sampled stack traces). All three share §3's shape:
+  detect persistent overload with a CoDel-style minimum-queueing-latency
+  signal, then switch policy.
+
+  </details>
+
 - [ ] You can explain hidden vs advertised capacity and why a better
       cache eviction algorithm can *widen* that gap.
+
+  <details><summary>Answer</summary>
+
+  **Advertised capacity** is what a system sustains in the healthy state
+  (300 QPS DB, or 3,000 QPS app behind a warm 90% cache). **Hidden
+  capacity** (§4) is what it sustains once the sustaining loop is active
+  — 150 QPS for the retry loop, 300 QPS for the cache app with a cold
+  cache. The gap is the danger, and §3's cache-eviction example shows
+  the perverse incentive: a better eviction algorithm *raises the hit
+  rate*, which lets you serve more load from the same DB (advertised
+  capacity goes up) while the DB's real ceiling is unchanged — so the
+  cold-cache amplification, and thus the advertised-minus-hidden gap,
+  gets *wider*. The efficiency win is a hidden debt a trigger calls in.
+
+  </details>
 
 ## References
 
 **Papers**
 - Bronson, Aghayev, Charapko, Zhu — "Metastable Failures in
   Distributed Systems" (HotOS 2021) —
-  [PDF](https://sigops.org/s/conferences/hotos/2021/papers/hotos21-s11-bronson.pdf)
+  [PDF](https://sigops.org/s/conferences/hotos/2021/papers/hotos21-s11-bronson.pdf).
+  Figure 1 (state machine) and the definitions are in §1; Figure 2 and
+  the 280/560/150/20 QPS arithmetic are in §2.1; hidden capacity and the
+  151-vs-299 trigger intensity are in §4; the "emergent behavior" quote
+  is in §5.
 
 **Cross-links**
 - [Topic 34 — debugging & production diagnosis](../34-debugging/README.md)
-  — Gil Tene's coordinated omission; the paper cites Tene for why
-  reproducing a metastable failure needs an open-loop load generator.
+  — Gil Tene's coordinated omission; §4 cites Tene for why reproducing a
+  metastable failure needs an open-loop load generator.
 - This topic's [README](README.md) and [`experiments/`](experiments/)
-  — the deterministic simulator whose lane 1 reproduces Fig 2 exactly.
+  — the deterministic simulator whose lane 1 reproduces Figure 2 exactly.
