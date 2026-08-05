@@ -88,8 +88,10 @@ The two non-obvious moves:
   client (`handleClientsWithPendingWrites`). Batching by loop iteration.
 - **Pipelining falls out for free** — the input buffer may hold 100 commands;
   `processInputBuffer` loops until the buffer is drained, and all 100 replies
-  coalesce into one write. This is why `redis-benchmark -P 64` is ~10× -P 1:
-  same work, 1/64th the syscalls.
+  coalesce into one write. This is why `redis-benchmark -P 64` is **66.2×**
+  `-P 1` in this topic's own lane (44,088 → 2,919,728 ops/s): same work,
+  1/64th the syscalls. Note it is not 64× — it overshoots, because the win is
+  not only the syscall count but everything the batch amortises around it.
 
 ## 3. Three threading models, one question: what's serialized?
 
