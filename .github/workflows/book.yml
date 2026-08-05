@@ -27,10 +27,10 @@ jobs:
   # mechanical part — each step declaring its input and output, a collapsed
   # answer under every checklist item, a line-number gutter on every quoted
   # snippet. Across 230 guides those survive only if a script enforces them.
-  # The check is a ratchet: a guide that has started following the rules must
-  # follow all of them, and the ones the rollout has not reached are reported
-  # without failing the build. Nothing here needs a toolchain, so it runs first
-  # and fast.
+  # `--all` drops the ratchet the rollout ran behind: every guide is converted,
+  # so a file that does not follow the rules is a new one that skipped them
+  # rather than one the rollout has not reached. Nothing here needs a
+  # toolchain, so it runs first and fast.
   depth:
     runs-on: ubuntu-latest
     steps:
