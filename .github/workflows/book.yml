@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Reading guides follow the depth rules
-        run: python3 tools/check-reading-depth.py --check
+        run: python3 tools/check-reading-depth.py --check --all
 
   build:
     runs-on: ubuntu-latest
