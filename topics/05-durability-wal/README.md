@@ -95,8 +95,12 @@ invariant:
 | macOS `F_FULLFSYNC` | drive cache flushed | ms-scale — measure it! |
 | `O_DIRECT` + own buffering | bypass page cache | topic 6 |
 
-Group commit exists because of this ladder: if fsync costs 1ms, one fsync per
-commit caps you at 1K commits/s — but one fsync can cover N commits.
+Group commit exists because of this ladder, and the rung decides the size of the
+problem. On this machine one `F_FULLFSYNC` per commit caps you at **337
+commits/s** and one macOS `fsync` per commit at **44,109** — the same code, two
+orders of magnitude apart, depending only on which call you made. One flush can
+cover N commits either way, so the arithmetic to do is N = λ·T: at an offered
+100,000 commits/s, a 2.97 ms flush gathers 297 of them.
 
 ```mermaid
 flowchart LR
