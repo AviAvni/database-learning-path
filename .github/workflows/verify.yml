@@ -39,7 +39,7 @@ jobs:
       # takes precedence over .cargo/config.toml's ../.dlp-target. Necessary
       # because actions/cache rejects any path containing ".." — it logs
       # "Invalid pattern" and then silently caches nothing, so every run
-      # recompiles all 45 crates from scratch. The reason the checked-in config
+      # recompiles all 46 crates from scratch. The reason the checked-in config
       # points outside the clone is mdbook, which never runs in this workflow.
       - name: Cache cargo
         uses: actions/cache@v6

@@ -125,7 +125,7 @@ python3 tools/check-reading-depth.py --stats                      # rollout prog
 ```
 
 A second workflow ([verify.yml](.github/workflows/verify.yml)) runs
-`./verify.sh --summary` and a `-D warnings` build of all 45 crates on every push and
+`./verify.sh --summary` and a `-D warnings` build of all 46 crates on every push and
 pull request. It is the gate that keeps the repo's central claim true, so a lane that
 stops running is a red build. Note that `cargo test` is deliberately **not** a gate:
 the stub tests are the specification and are supposed to fail on a fresh clone.

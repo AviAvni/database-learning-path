@@ -141,6 +141,8 @@
   - [SQLancer: 450+ bugs from three tiny oracles](topics/16-testing-correctness/reading-sqlancer.md)
   - [turso's simulator: every failure is a u64 seed](topics/16-testing-correctness/reading-turso-simulator.md)
   - [Z3 & Cosette: testing every input at once](topics/16-testing-correctness/reading-z3.md)
+  - [Hypothesis: shrinking a choice sequence, not a value](topics/16-testing-correctness/reading-hypothesis.md)
+  - [Antithesis: assertions as a search signal, and a simulation that branches](topics/16-testing-correctness/reading-antithesis.md)
   - [Topic 16 notes — testing & correctness engineering](topics/16-testing-correctness/notes.md)
 - [Topic 17 — SIMD & Hardware-Conscious Data Processing](topics/17-simd/README.md)
   - [FastLanes: bit-unpacking at memory bandwidth](topics/17-simd/reading-fastlanes.md)
@@ -327,6 +329,12 @@
   - [Pivot Tracing: a join operator over causality](topics/43-ops-dependency-graphs/reading-pivot-tracing.md)
   - [Gray failure: when the system and its users disagree](topics/43-ops-dependency-graphs/reading-gray-failure.md)
   - [Topic 43 notes — Network & IT-ops dependency graphs](topics/43-ops-dependency-graphs/notes.md)
+- [Topic 44 — E-graphs as a Database: Relational E-matching & egglog](topics/44-egraphs-egglog/README.md)
+  - [Relational e-matching: the pattern is a query, the e-graph is the database](topics/44-egraphs-egglog/reading-relational-ematching.md)
+  - [egglog: a Datalog engine that happens to be an e-graph](topics/44-egraphs-egglog/reading-egglog-pldi23.md)
+  - [Reading egglog: the e-graph that is a database engine](topics/44-egraphs-egglog/reading-egglog-source.md)
+  - [Free Join: the plan space that contains both hash join and generic join](topics/44-egraphs-egglog/reading-free-join.md)
+  - [Topic 44 notes — e-graphs as a database](topics/44-egraphs-egglog/notes.md)
 
 ---
 
