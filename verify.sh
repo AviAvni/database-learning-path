@@ -94,6 +94,7 @@ BENCHES=(
   "41-onchain-analytics:chain_bench:haircut tainting smears one theft over everyone"
   "42-recommendations-social:social_bench:the popularity trap"
   "43-ops-dependency-graphs:ops_bench:one gray failure, thirty-four alerts"
+  "44-egraphs-egglog:ematch_bench:N matches, N^2 candidates — e-matching as a join"
 )
 
 # topic dir : criterion bench : what it measures   (--criterion only: minutes each)

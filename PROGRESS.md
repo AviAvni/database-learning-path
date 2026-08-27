@@ -4,7 +4,7 @@ Two different things get tracked here, and conflating them is misleading:
 
 - **Package** — does `topics/NN-name/` exist and hold up? That means a study
   guide, four to seven reading guides, `notes.md`, and an experiments crate
-  whose provided lane runs and whose numbers are recorded. All 44 are built;
+  whose provided lane runs and whose numbers are recorded. All 45 are built;
   `./verify.sh` re-derives every one of their measured lanes.
 - **Studied** — have *I* actually worked through the material and the two
   exercise lanes? That is a much smaller number, and it is the honest one.
@@ -60,6 +60,7 @@ is done.
 | 41 | On-Chain & Crypto Analytics (graph use case 4/6) | done | todo |  |
 | 42 | Recommendations & Social Graphs (graph use case 5/6) | done | todo |  |
 | 43 | Network & IT-Ops Dependency Graphs (graph use case 6/6) | done | todo |  |
+| 44 | E-graphs as a Database: Relational E-matching & egglog | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -109,6 +110,7 @@ is done.
 | M41 provenance & identity (incremental FIFO taint queues in the property layer, maintained union-find cluster index, BlockSci-shaped columnar transaction store for scan queries) | 41 | todo |
 | M42 real-time recommendations (GraphJet-style temporal index segments + doubling edge pools, Pixie random-walk procedure with sub-linear step allocation and early stopping, TAO-shaped association-list API) | 42 | todo |
 | M43 observability path (trace ingest as an incrementally-maintained dependency graph with sketched edge weights, walk + Ferret localization procedures over the CSR, happened-before join operator with Pivot Tracing pushdown) | 43 | todo |
+| M44 relational rewrite stage (e-graph planner pass whose patterns compile to conjunctive queries and run through generic join, a timestamped e-node table driving a semi-naive saturation loop, and one cyclic rewrite pattern measured against a binary-join plan) | 44 | todo |
 
 ## Session log
 

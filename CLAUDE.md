@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A self-paced database-internals learning path, rendered as an mdBook (`book.toml`, content in `topics/`, exercises in `capstone/`). `PLAN.md` is the curriculum plan — 44 topics, the source of truth. `PROGRESS.md` tracks status and capstone milestones; `SESSION-LOG.md` is the detailed build log, one entry per topic, newest first. `CONTRIBUTING.md` documents the topic package format and the conventions below.
+A self-paced database-internals learning path, rendered as an mdBook (`book.toml`, content in `topics/`, exercises in `capstone/`). `PLAN.md` is the curriculum plan — 45 topics, the source of truth. `PROGRESS.md` tracks status and capstone milestones; `SESSION-LOG.md` is the detailed build log, one entry per topic, newest first. `CONTRIBUTING.md` documents the topic package format and the conventions below.
 
 ## Working rules
 

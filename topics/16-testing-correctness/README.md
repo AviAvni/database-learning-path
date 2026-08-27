@@ -161,6 +161,8 @@ query plans for proofs).
 | [reading-pqs-tlp-papers.md](reading-pqs-tlp-papers.md) | PQS & TLP: solving the test-oracle problem twice |
 | [reading-jepsen.md](reading-jepsen.md) | Jepsen & elle: isolation anomalies are cycles |
 | [reading-z3.md](reading-z3.md) | Z3 & Cosette: testing every input at once |
+| [reading-hypothesis.md](reading-hypothesis.md) | Hypothesis: shrinking a choice sequence, not a value |
+| [reading-antithesis.md](reading-antithesis.md) | Antithesis: assertions as a search signal, and a simulation that branches |
 
 ## Capstone M16
 
