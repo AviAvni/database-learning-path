@@ -433,9 +433,22 @@ exponentially:
 
 The line to focus on is **7119**, and the comment above it on 7116 states the
 intent: the hot key *IDs* are deliberately scattered across the key space by
-multiplying by a large prime. So this flag gives you hotness **without**
-key-space locality — the hot keys are hot, but they live in different SST
-blocks. Hold that; it is the exact defect the FAST'20 paper measures.
+multiplying them by a constant and taking the result modulo `FLAGS_num`. So
+this flag gives you hotness **without** key-space locality — the hot keys are
+hot, but they live in different SST blocks. Hold that; it is the exact defect
+the FAST'20 paper measures.
+
+Take the variable's *name* on 7117 as a claim to check rather than a fact.
+`kbigprime_demo.py` in this directory reimplements 7103-7121 and swaps the
+constant, and three things come out of it. 0x5bd1e995 is not prime — it is
+13 × 199 × 457 × 1303, the mixing constant `m` of 32-bit MurmurHash2, which
+the same tree carries at `util/murmurhash.cc:97` and `:153`. The multiply is
+worth about 14× the block-cache working set at `--num=1000000`
+(277 blocks → 3,855, for identical traffic), which is FAST'20 §7.1's
+complaint as a number. And what makes a multiplier work is not its size but
+`M mod FLAGS_num`: the larger, genuinely prime 1,000,000,007 is congruent to
+7 there and barely scatters at all. Run the script before Step 7's caveats —
+the number a benchmark reports can turn on a constant nobody re-derived.
 
 **`mixgraph`** (dispatch at **4133**) is the industrial-strength answer. It
 models Facebook's *measured* production workloads, from Cao et al.,
