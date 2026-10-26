@@ -346,7 +346,7 @@
 ---
 
 - [Capstone — falkordb-rs-next-gen, from scratch](capstone/README.md)
-  - [Reference baselines — falkordb-rs-next-gen](capstone/BASELINES.md)
+  - [Reference baselines — C FalkorDB 4.x and Rust FalkorDB 6.x](capstone/BASELINES.md)
 - [Papers, Articles, Books, Courses](resources/papers.md)
 - [Reference Codebases](resources/codebases.md)
 - [Tools](resources/tools.md)

@@ -67,7 +67,7 @@ is done.
 
 | Milestone | Depends on topic | Status |
 |-----------|------------------|--------|
-| M0 workspace + bench harness + reference baselines | 0 | done — workspace + workload gen + smoke bench + BASELINES.md (reference @ e8a44d25) |
+| M0 workspace + bench harness + reference baselines | 0 | done — workspace + workload gen + smoke bench + BASELINES.md (C FalkorDB v4.22.2 @ 7b61f511d + Rust FalkorDB v6.0.3 @ c937aa4fa, median+p99+memory, 2026-10-26) |
 | M1 storage-backend abstraction | 1 | todo |
 | M2 attribute store + string pool + datablocks | 2 | todo |
 | M3 B+tree backend (properties + range indexes) | 3 | todo |

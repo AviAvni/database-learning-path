@@ -1,0 +1,157 @@
+[
+ {
+  "engine": "c-v4.22.2",
+  "shape": "empty",
+  "n": 0,
+  "idle": {
+   "used_memory": 2898632,
+   "used_memory_rss": 20332544,
+   "used_memory_peak": 2898888
+  },
+  "peak_rss_bytes": 20791296
+ },
+ {
+  "engine": "c-v4.22.2",
+  "shape": "nodes",
+  "n": 100000,
+  "idle": {
+   "used_memory": 2898632,
+   "used_memory_rss": 20316160,
+   "used_memory_peak": 2898888
+  },
+  "after_load": {
+   "used_memory": 9937224,
+   "used_memory_rss": 57737216,
+   "used_memory_peak": 48772504
+  },
+  "graph_memory_usage_mb": {
+   "total_graph_sz_mb": 4,
+   "label_matrices_sz_mb": 1,
+   "relation_matrices_sz_mb": 0,
+   "amortized_node_block_sz_mb": 0,
+   "amortized_node_attributes_by_label_sz_mb": {
+    "N": 1
+   },
+   "amortized_unlabeled_nodes_attributes_sz_mb": 0,
+   "amortized_edge_block_sz_mb": 0,
+   "amortized_edge_attributes_by_type_sz_mb": {},
+   "indices_sz_mb": 0
+  },
+  "match_rows": 100000,
+  "after_match": {
+   "used_memory": 9867112,
+   "used_memory_rss": 61652992,
+   "used_memory_peak": 48772504
+  },
+  "peak_rss_bytes": 66125824
+ },
+ {
+  "engine": "c-v4.22.2",
+  "shape": "nodes",
+  "n": 1000000,
+  "idle": {
+   "used_memory": 2898632,
+   "used_memory_rss": 20316160,
+   "used_memory_peak": 2898888
+  },
+  "after_load": {
+   "used_memory": 62971152,
+   "used_memory_rss": 145326080,
+   "used_memory_peak": 397100384
+  },
+  "graph_memory_usage_mb": {
+   "total_graph_sz_mb": 39,
+   "label_matrices_sz_mb": 15,
+   "relation_matrices_sz_mb": 0,
+   "amortized_node_block_sz_mb": 8,
+   "amortized_node_attributes_by_label_sz_mb": {
+    "N": 15
+   },
+   "amortized_unlabeled_nodes_attributes_sz_mb": 0,
+   "amortized_edge_block_sz_mb": 0,
+   "amortized_edge_attributes_by_type_sz_mb": {},
+   "indices_sz_mb": 0
+  },
+  "match_rows": 1000000,
+  "after_match": {
+   "used_memory": 63030064,
+   "used_memory_rss": 178569216,
+   "used_memory_peak": 397100384
+  },
+  "peak_rss_bytes": 406929408
+ },
+ {
+  "engine": "c-v4.22.2",
+  "shape": "rels",
+  "n": 100000,
+  "idle": {
+   "used_memory": 2898632,
+   "used_memory_rss": 20348928,
+   "used_memory_peak": 2898888
+  },
+  "after_load": {
+   "used_memory": 20846480,
+   "used_memory_rss": 81690624,
+   "used_memory_peak": 108975064
+  },
+  "graph_memory_usage_mb": {
+   "total_graph_sz_mb": 14,
+   "label_matrices_sz_mb": 3,
+   "relation_matrices_sz_mb": 5,
+   "amortized_node_block_sz_mb": 1,
+   "amortized_node_attributes_by_label_sz_mb": {
+    "N": 3
+   },
+   "amortized_unlabeled_nodes_attributes_sz_mb": 0,
+   "amortized_edge_block_sz_mb": 0,
+   "amortized_edge_attributes_by_type_sz_mb": {
+    "R": 0
+   },
+   "indices_sz_mb": 0
+  },
+  "match_rows": 100000,
+  "after_match": {
+   "used_memory": 21566216,
+   "used_memory_rss": 94879744,
+   "used_memory_peak": 108975064
+  },
+  "peak_rss_bytes": 116359168
+ },
+ {
+  "engine": "c-v4.22.2",
+  "shape": "rels",
+  "n": 1000000,
+  "idle": {
+   "used_memory": 2898632,
+   "used_memory_rss": 20348928,
+   "used_memory_peak": 2898888
+  },
+  "after_load": {
+   "used_memory": 157688688,
+   "used_memory_rss": 286162944,
+   "used_memory_peak": 929162032
+  },
+  "graph_memory_usage_mb": {
+   "total_graph_sz_mb": 140,
+   "label_matrices_sz_mb": 30,
+   "relation_matrices_sz_mb": 53,
+   "amortized_node_block_sz_mb": 17,
+   "amortized_node_attributes_by_label_sz_mb": {
+    "N": 30
+   },
+   "amortized_unlabeled_nodes_attributes_sz_mb": 0,
+   "amortized_edge_block_sz_mb": 8,
+   "amortized_edge_attributes_by_type_sz_mb": {
+    "R": 0
+   },
+   "indices_sz_mb": 0
+  },
+  "match_rows": 1000000,
+  "after_match": {
+   "used_memory": 174523408,
+   "used_memory_rss": 353943552,
+   "used_memory_peak": 929162032
+  },
+  "peak_rss_bytes": 921190400
+ }
+]
