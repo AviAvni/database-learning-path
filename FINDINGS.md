@@ -6,7 +6,9 @@ collection cannot be wrong in a way you can detect, and every row below can.
 
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
 Pro (5P + 6E, 36 GB)** on 2026-07-28, except topic 44's row, measured on
-the same machine on 2026-08-26. Generators are seeded, so counts,
+the same machine on 2026-08-26, and rows 32 and 42, re-measured on 2026-10-26
+after fixes to their benches (a lock whose unfairness was being measured, and
+a hash-order dependence in a seeded generator). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.
@@ -48,7 +50,7 @@ instead.
 | 29 | [Distributed Transactions](topics/29-distributed-txn/README.md) | The workload's own conflict rate goes **0.3% → 99.6%** as Zipf θ moves 0.5 → 1.3. Contention is a property of the data, before any protocol. | `./verify.sh 29` |
 | 30 | [Time-Series](topics/30-timeseries/README.md) | delta+varint gives **11.00 B/sample for all four shapes** — a constant series compresses exactly as well as random noise, because only the timestamp is being compressed. | `./verify.sh 30` |
 | 31 | [CRDTs](topics/31-crdts/README.md) | Last-write-wins on 10 keys with per-write sync loses **94.98%** of writes — 37,991 of 40,000 acknowledged writes that no replica remembers. | `./verify.sh 31` |
-| 32 | [HTAP](topics/32-htap/README.md) | One copy, one coarse lock: adding full scans takes writes from **11.4 M per 2 s to 69**, and p99 from 333 ns to **7.49 s**. Every scan is a write outage. | `./verify.sh 32` |
+| 32 | [HTAP](topics/32-htap/README.md) | One copy, one fair coarse lock: adding full scans takes writes from **14.1 M per 2 s to 21.5 K** (652×), and p99 from 209 ns to **2.25 ms** — exactly one full scan. Every scan is a write outage as long as the scan. | `./verify.sh 32` |
 | 33 | [Temporal Graphs](topics/33-temporal-graphs/README.md) | Static reachability reports 25,031 reachable pairs where time-respecting paths number **137** — **99.5% false positives** on the sparse contact graph. | `./verify.sh 33` |
 | 34 | [Debugging & Diagnosis](topics/34-debugging/README.md) | A closed-loop benchmark reports **p99 = 1.0 µs** where an open-loop one reports **90 ms** on identical work — coordinated omission, a 90,000× lie. | `./verify.sh 34` |
 | 35 | [Overload Control](topics/35-overload/README.md) | A 10-second outage ends at t=40 s. At 140 QPS (of 300 capacity) goodput stays at **zero until t=161 s**; at 280 QPS it **never recovers** — the outage outlives its own trigger. | `./verify.sh 35` |

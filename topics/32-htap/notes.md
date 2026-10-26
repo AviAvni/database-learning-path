@@ -8,8 +8,8 @@ mode:
 ```
 === lane 1: OLTP/OLAP interference on one copy ===
                   mode     p50 ns     p99 ns     p99.9 ns  writes/2s   scans
-          writes alone         84        250          333   14166064       0
-   writes + full scans        125 5318627959   5318627959         97    2346
+          writes alone         84        209          292   14052932       0
+   writes + full scans        167    2247875      2369166      21543     889
 (coarse lock on purpose: every full scan is a write outage — the HTAP problem)
 
 === lane 2: columnar replica — scan speedup + freshness ===
@@ -19,21 +19,22 @@ mode:
 [stub — implement the todo!()s in src/ to unlock this lane]
 ```
 
-Every figure in this lane is a timing or a count of work done in a fixed
-time window, so none of it is seeded, and several drift by more than 20%
-between runs. Recorded 2026-07-11: writes alone 11,438,647 per 2 s; with
-scans 69 writes and 3261 scans (~0.6 ms/scan), write p99 333 ns → 7.49 s.
-This run: 14,166,064; 97 writes and 2346 scans (~0.85 ms/scan); write p99
-250 ns → 5.32 s. The shape — writes collapse from millions to under a
-hundred, and p99 goes from nanoseconds to seconds — is what reproduces;
-the numbers are this machine's on that day.
+Every figure is a timing or a count of work done in a fixed window, so none
+is seeded; three consecutive runs gave p99 2.24–2.25 ms and 21,349–21,946
+writes with scans, i.e. one outage per scan of ~2.25 ms (2 s / 889 scans).
 
-The lane-1 surprise: I expected degradation, got **writer starvation**.
-std::sync::Mutex is unfair; the scanner finishes a ~0.6 ms scan and wins
-the lock again before the parked writer wakes. p50 stayed 125 ns because
-the handful of writes that got through ran uncontended. Interference at
-its worst isn't slower writes — it's *no* writes. (Exercise 2: RwLock
-changes fairness, not the fight.)
+**The lane used to measure the scheduler, not the scan.** Until 2026-10-26
+the store sat behind `std::sync::Mutex`, which on macOS is `os_unfair_lock`:
+the scanner finished a scan and re-acquired the lock before the parked
+writer woke, so a single write starved for as long as luck allowed, and
+the 2 s window (checked only between writes) stretched with it. Recorded
+2026-07-11: p99 333 ns → 7.49 s, 11,438,647 → 69 writes; on 2026-10-26 the
+same code gave 5.32 s, then 20.3 s, 37.5 s, 3.2 s and 22.2 s on consecutive
+runs, with the lane taking 5–40 s of wall clock. A p99 longer than the
+measurement window is the repo's "implausible number" rule firing. The
+store is now a `parking_lot::FairMutex` (FIFO hand-off), which makes each
+scan exactly one write outage — the HTAP problem itself — and reproduces;
+starvation under an unfair lock is now exercise 2.
 
 Methodology note: lane 1 originally did a fixed 200K writes; with the
 scanner holding ~0.6 ms locks that serializes into minutes. Switched to a
@@ -44,9 +45,9 @@ headline number instead of the runtime.
 
 | question | predicted | measured |
 |---|---|---|
-| lane 1: write p99, scans on vs off | | **250 ns → 5.32 s** (2026-07-11: 333 ns → 7.49 s) |
-| lane 1: write throughput hit | | 14,166,064 → **97** writes in 2 s (2026-07-11: 11,438,647 → 69) |
-| lane 1: scans completed in 2 s | | 2346 (2026-07-11: 3261) |
+| lane 1: write p99, scans on vs off | | **209 ns → 2.25 ms** |
+| lane 1: write throughput hit | | 14,052,932 → **21,543** writes in 2 s (652×) |
+| lane 1: scans completed in 2 s | | 889 |
 | lane 2: merged vs delta-heavy scan | | |
 | lane 2: max lsn gap vs batch | | |
 | lane 3: wait p50 at interval 100 | | |
@@ -64,7 +65,9 @@ headline number instead of the runtime.
 | lane 3: wait p50 at interval 100 | ~50 ticks |
 
 The lane-1 predictions were wrong in kind, not degree: the author expected
-degradation and got writer starvation (see the paragraph under the baseline).
+degradation and, under the old unfair lock, got writer starvation (see the
+paragraph under the baseline). With a fair lock, throughput still falls
+~650× — far beyond the predicted 2–5×.
 
 </details>
 

@@ -18,10 +18,10 @@ Database* (VLDB 2020); section numbers cite that PDF.
 
 ## The problem in one sentence
 
-Bench lane 1 showed scans and writes on one copy starving each other —
-adding a free-running scanner took writes from **11,438,647 in 2 s to 69**
-and p99 write latency from **333 ns to 7.49 s** (the topic README's
-provided-lane output, echoed in `notes.md`). TiDB's answer is a physically
+Bench lane 1 showed scans and writes on one copy fighting over one lock —
+adding a free-running scanner took writes from **14,052,932 in 2 s to
+21,543** and p99 write latency from **209 ns to 2.25 ms**, one full scan's
+worth (the topic README's provided-lane output, echoed in `notes.md`). TiDB's answer is a physically
 separate columnar copy for the scans, and the question that decides
 everything is: how does that copy stay fresh without slowing the writes?
 
@@ -218,7 +218,7 @@ Answer each before unfolding it.
   responding to the client" (paper §2). Commit waits only on the voting
   quorum (Step 3), so a learner that is minutes behind or busy building
   column files never sits on the write path. This is the mechanism that keeps
-  the bench lane 1 outage (11,438,647 writes/2 s → 69) from happening once the
+  the bench lane 1 outage (14,052,932 writes/2 s → 21,543) from happening once the
   scans move to a separate voting-exempt copy.
 
   </details>

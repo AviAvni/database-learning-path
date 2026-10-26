@@ -22,9 +22,9 @@ version chains, and this chapter is careful to keep them apart.
 Run analytical full scans and transactional point writes against the
 *same copy* of the data without one starving the other — bench lane 1
 measured the naive version: adding a free-running scanner collapsed
-write throughput from **11,438,647 writes per 2 s to 69**, with p99
-write latency going from 333 ns to 7.49 s (this topic's README provided
-lane, echoed in `notes.md`).
+write throughput from **14,052,932 writes per 2 s to 21,543**, with p99
+write latency going from 209 ns to 2.25 ms — one full scan (this topic's
+README provided lane, echoed in `notes.md`).
 
 ## The concepts, step by step
 

@@ -16,9 +16,9 @@ use htap_experiments::row::{percentile, skewed_key, RowStore};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
+use parking_lot::FairMutex;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const KEYS: u64 = 1_000_000;
@@ -50,9 +50,14 @@ fn stub_lane(name: &str, f: fn()) {
 fn lane1_interference() {
     println!("=== lane 1: OLTP/OLAP interference on one copy ===");
     let run = |with_scans: bool| -> (Vec<u64>, usize) {
-        let store = Mutex::new(HashMap::<u64, (i64, i64)>::new());
+        // A *fair* lock, handing off FIFO. With std's Mutex (os_unfair_lock on
+        // macOS) the scanner re-acquired the lock before a woken writer could
+        // run, so one write starved for 3-37 s, the "2 s" window ran 5-40 s, and
+        // p99 measured scheduler luck. Fair hand-off makes each full scan
+        // exactly one write outage — which is the thing being measured.
+        let store = FairMutex::new(HashMap::<u64, (i64, i64)>::new());
         {
-            let mut s = store.lock().unwrap();
+            let mut s = store.lock();
             let mut rng = ChaCha8Rng::seed_from_u64(1);
             for k in 0..KEYS {
                 s.insert(k, (rng.gen_range(-100..100), rng.gen_range(0..1000)));
@@ -67,7 +72,7 @@ fn lane1_interference() {
                 let mut sink = 0i64;
                 while !done.load(Ordering::Relaxed) {
                     if with_scans {
-                        let s = store.lock().unwrap();
+                        let s = store.lock();
                         sink += s
                             .values()
                             .filter(|(_, b)| (100..=200).contains(b))
@@ -87,7 +92,7 @@ fn lane1_interference() {
                 let k = skewed_key(&mut rng, KEYS);
                 let (a, b) = (rng.gen_range(-100..100), rng.gen_range(0..1000));
                 let t = Instant::now();
-                store.lock().unwrap().insert(k, (a, b));
+                store.lock().insert(k, (a, b));
                 lat.push(t.elapsed().as_nanos() as u64);
             }
             done.store(true, Ordering::Relaxed);
