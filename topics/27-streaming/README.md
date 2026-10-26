@@ -13,19 +13,19 @@ batches of +90/−10 edges, recomputing each view from scratch per batch:
 
 ```
 view                        full recompute per batch
-triangles                              141.6 ms
-wedge join                            1111.0 ms
-reachability (re-BFS)                   31.2 ms
+triangles                              100.5 ms
+wedge join                             923.5 ms
+reachability (re-BFS)                   25.9 ms
 ```
 
-**One hundred changes to half a million edges, and the wedge join spends 1.1
+**One hundred changes to half a million edges, and the wedge join spends 0.9
 seconds re-deriving an answer that barely moved.** The batch is 0.02% of the
 graph. The recompute is 100% of the work, every time.
 
 That ratio — change size against work size — is the only motivation incremental
 view maintenance needs, and stating it in milliseconds first is what keeps the
 rest of the topic honest. The three views are deliberately different shapes:
-reachability is cheap to redo (31 ms) so incrementalization has little room and
+reachability is cheap to redo (26 ms) so incrementalization has little room and
 mostly has to avoid regressions; the wedge join is expensive and *local*, so
 delta rules should win enormously; triangles sit between them and are where the
 bookkeeping cost of maintaining state starts to show against the recompute it
@@ -39,9 +39,9 @@ one is the interesting result, not the 100× one.
 
 | standing query | full recompute / batch | incremental target |
 |---|---|---|
-| triangle count | 141.6 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
-| 2-hop wedge join | 1111.0 ms | ~µs-ms (stub) — bilinear delta rule |
-| reachability from src | 31.2 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
+| triangle count | 100.5 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
+| 2-hop wedge join | 923.5 ms | ~µs-ms (stub) — bilinear delta rule |
+| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
 
 The gap is 3-5 orders of magnitude, and none of it requires cleverness —
 just refusing to touch data that didn't change.

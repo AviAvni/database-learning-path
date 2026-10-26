@@ -33,8 +33,7 @@ triangle count would wander by a few, the wedge weight by a few hundred).
 | reachability (re-BFS) | 25.9 ms | Σ over batches ≈ 1.3 s for what should cost O(m) total |
 
 Timings vary from run to run; the counts do not. The README and FINDINGS row
-27 quote the 2026-07-28 run (141.6 / 1111.0 / 31.2 ms). Cite one run by date
-and never average them.
+27 quote this run.
 
 ## Predictions (fill BEFORE implementing the stubs)
 

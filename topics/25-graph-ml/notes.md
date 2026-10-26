@@ -3,9 +3,7 @@
 ## Baseline (provided code, Apple M3 Pro, measured 2026-07-10)
 
 The generator is seeded, so the graph and walk counts reproduce exactly;
-the timings are this run's, and the SpMM-to-dense ratio moves by ten
-points or so between runs on the same machine — cite one run and say
-which (`./verify.sh 25` gives your machine's).
+the timings are this run's (`./verify.sh 25` gives your machine's).
 
 SBM: 64 blocks x 256 = 16,384 vertices, m=566,564 directed
 (avg_deg 34.6), p_in=0.12, p_out=0.00025, build 34.4 ms.
@@ -16,7 +14,8 @@ SBM: 64 blocks x 256 = 16,384 vertices, m=566,564 directed
 | SpMM (D^-1 A) x X[16384x64] | 3.42 ms/iter, 21.2 GFLOP/s |
 | dense matmul [16384x64]x[64x64] | 5.12 ms/iter, 26.2 GFLOP/s |
 
-- SpMM at **81% of dense matmul throughput** — the 64-float rows the
+- SpMM at **81% of dense matmul throughput** in this baseline (≈70–80%
+  run to run) — the 64-float rows the
   gather drags along amortize the irregular access. Fat RHS forgives
   sparsity; topic 20's SpMV (RHS width 1) never gets this mercy.
 - Walk generation is rng-bound, not memory-bound: 42.8 Msteps/s ≈ 23 ns

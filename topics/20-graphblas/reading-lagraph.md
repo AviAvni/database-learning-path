@@ -362,15 +362,9 @@ That 2.6× is the thing to remember. A PageRank iteration is not
 random walk through the vector, and on a scale-free graph the
 second term dominates.
 
-One honesty note before you quote a headline number. This topic
-reports the SpMV decay two ways: `FINDINGS.md` row 20 says
-**20.7 → 12.3 GB/s**, and `notes.md:11-14`'s table says
-**19.1 → 15.8 GB/s** over the same scale 14 → 20 span. They are not
-the same measurement and this guide does not blend them: the
-per-scale arithmetic above uses `notes.md`, and any headline
-citation should say `FINDINGS.md:38`. Reconciling the two is real
-work someone should do; see the note in the report at the end of
-this topic.
+The SpMV decay over the scale 14 → 20 span is **19.1 → 15.8 GB/s**
+(`notes.md:11-14`), the same figure FINDINGS.md row 20 quotes; the
+per-scale arithmetic above uses that table.
 
 Finally, what the GAP variant deliberately gets wrong — read the
 header before you trust the output:
@@ -609,10 +603,6 @@ Answer each before unfolding it.
   topic 0/13's ~30 GB/s streaming baseline to the random x-gathers,
   because RMAT column indices spray across the vector.
 
-  Note the topic reports the decay two ways — `FINDINGS.md:38` says
-  20.7 → 12.3 GB/s, `notes.md:11-14` says 19.1 → 15.8 — and they
-  should not be blended. Cite whichever you used.
-
   </details>
 
 - [ ] You can say what LAGraph makes the caller decide, and what changes when the storage layer has already decided it.
@@ -691,6 +681,5 @@ Answer each before unfolding it.
   arithmetic on, and the gather explanation for the shortfall.
 - `topics/20-graphblas/notes.md:35` — the BFS scalar oracle,
   rmat18 3308 µs.
-- `FINDINGS.md:38` — the topic headline. Note it and `notes.md`
-  report the SpMV decay differently (20.7 → 12.3 versus
-  19.1 → 15.8); cite one, do not average them.
+- `FINDINGS.md:40` — the topic headline: SpMV decay 19.1 → 15.8 GB/s,
+  the same run as `notes.md`.

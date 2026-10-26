@@ -178,7 +178,7 @@ numbers reproduce exactly:
    the 0.01 MB gap is k slightly below 100,000: a few hundred of
    the 100,000 edges share a source row.
 
- ratio 80.4 / 1.59 = 50.6×        ← FINDINGS.md row 20 says "50x"
+ ratio 80.4 / 1.59 = 50.6×        ← the headline "50×" (FINDINGS.md row 20)
 
  and the term that vanished is exactly the O(n) rowptr: 80.0 of the
  80.4 MB, i.e. 99.5% of the CSR index, is pointers for rows that
@@ -548,9 +548,7 @@ Numbers to retain while you read:
   class, not a constant.
 - this topic's measured SpMV bandwidth: **19.1 GB/s at scale 14
   falling to 15.8 GB/s at scale 20** (`notes.md:9-14`), against a
-  ~30 GB/s streaming baseline from topic 0/13. The timings move
-  between runs of the lane — `FINDINGS.md` row 20 quotes a run that
-  read 20.7 → 12.3 GB/s — so cite one run and say which.
+  ~30 GB/s streaming baseline from topic 0/13.
 
 ## Questions for notes.md
 

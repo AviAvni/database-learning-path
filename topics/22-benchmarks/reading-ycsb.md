@@ -592,7 +592,7 @@ number; the mechanism is topic 34's to explain.
 The practical rule: a YCSB percentile is comparable to another YCSB
 percentile on the same driver, and to nothing else. This topic's
 headline (FINDINGS.md row 22) is stated as a *ratio* for exactly that
-reason — "YCSB-E's p999 is 12.9 µs against read-only's 4.0 µs".
+reason — "YCSB-E's p999 is 2.0 µs against read-only's 0.96 µs".
 
 ### Step 8 — read the property files, not the property names
 
@@ -846,7 +846,7 @@ Answer each before unfolding it.
   The cost is measured in **topic 34**, not here: FINDINGS.md row 34 reports
   closed-loop p99 = 1.0 µs against open-loop 90 ms on identical work — a
   **90,000×** lie. That is why this topic's headline is a ratio: FINDINGS.md
-  row 22, "YCSB-E's p999 is 12.9 µs against read-only's 4.0 µs".
+  row 22, "YCSB-E's p999 is 2.0 µs against read-only's 0.96 µs".
 
   </details>
 
@@ -880,10 +880,9 @@ Answer each before unfolding it.
   Anchor them to the measured baseline rather than to intuition. The
   `notes.md` baseline (M3 Pro, 2026-07-10) has uniform keys at A 2.88,
   B 4.15, C 3.72, D 4.40, E 1.11, F 2.85 Mops/s and p999 of 2,041 ns (E)
-  against 958 ns (C) — a ratio of 2.1×. FINDINGS.md row 22 records another
-  run of the same lane: **YCSB-E's p999 at 12.9 µs against read-only's
-  4.0 µs**, a ratio of 3.2×. The absolute numbers are machine- and
-  run-dependent and the tail moves most; what survives every run is the
+  against 958 ns (C) — a ratio of 2.1×, the figure FINDINGS.md row 22
+  quotes. The absolute numbers are machine-dependent and the tail moves
+  most; what survives is the
   ordering — E's tail is the worst — so predict ratios and orderings, not
   nanoseconds.
 
@@ -950,11 +949,11 @@ with `python3 tools/pin-table.py`).
 
 **Measurements**
 - FINDINGS.md row 22 — the headline: "YCSB-E's p999 is
-  **12.9 µs** against read-only's **4.0 µs**". Reproduce with
+  **2.0 µs** against read-only's **0.96 µs**". Reproduce with
   `./verify.sh 22`.
 - `notes.md` — the baseline run (M3 Pro, 2026-07-10): uniform-key
   throughputs A 2.88, B 4.15, C 3.72, D 4.40, E 1.11, F 2.85 Mops/s.
-  Use ratios, not absolutes, when comparing across runs or machines.
+  Use ratios, not absolutes, when comparing across machines.
 
 **Cross-topic**
 - topic 34 — coordinated omission, measured: closed-loop p99 = 1.0 µs

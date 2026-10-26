@@ -5,9 +5,9 @@ whole argument for this format over a reading list in one table: a link
 collection cannot be wrong in a way you can detect, and every row below can.
 
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
-Pro (5P + 6E, 36 GB)** on 2026-07-28, except row 17 (2026-07-10, the run
-topic 17's notes and guides compute against), row 44 (2026-08-26), and rows
-32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
+Pro (5P + 6E, 36 GB)** on 2026-07-28, except rows 17, 18, 20, 22 and 25
+(2026-07-10, the runs those topics' notes and guides compute against), row 44 (2026-08-26), and rows
+27, 32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.
@@ -35,16 +35,16 @@ instead.
 | 15 | [Replication & Consensus](topics/15-replication-consensus/README.md) | Follower fsync policy alone spans **59×** (341 → 20,174 entries/s). Batching fixes the median and leaves the p99 at 2980 µs. | `./verify.sh 15` |
 | 16 | [Testing & Correctness](topics/16-testing-correctness/README.md) | Seeded crash testing catches planted bugs at **48.8% to 99.6%** per seed — same harness, four wildly different odds of ever finding out. | `./verify.sh 16` |
 | 17 | [SIMD](topics/17-simd/README.md) | Eight accumulators and no intrinsics: **10.89 → 42.12 GB/s** (3.9×). Branchy filtering collapses to **1.19 GB/s** at 50% selectivity while branchless stays flat at ~12–13. | `./verify.sh 17` |
-| 18 | [GPU Acceleration](topics/18-gpu/README.md) | **No crossover up to 2^24 elements.** At 16 M, upload alone costs 7197 µs against a 2723 µs CPU total — the transfer tax, measured. | `./verify.sh 18` |
+| 18 | [GPU Acceleration](topics/18-gpu/README.md) | **No crossover up to 2^24 elements.** At 16 M, upload alone costs 7385 µs against a 2258 µs CPU total — the transfer tax, measured. | `./verify.sh 18` |
 | 19 | [JIT & Compilation](topics/19-jit/README.md) | Interpretation cost compounds with expression size: 7 → 511 nodes costs the interpreter **94×** but the vectorized evaluator only **47×**, so the gap widens from 6× to 12×. | `./verify.sh 19` |
-| 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **20.7 → 12.3 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **175× faster**. | `./verify.sh 20` |
+| 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **19.1 → 15.8 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **171× faster**. | `./verify.sh 20` |
 | 21 | [Formal Methods](topics/21-formal/README.md) | The hand-ordered rewriter answers `(a*2)/2` with `(a << 1) / 2` and stops. One locally-excellent rewrite destroys the cancellation — the phase-ordering trap, in four lines. | `./verify.sh 21` |
-| 22 | [Standard Benchmarks](topics/22-benchmarks/README.md) | TPC-H Q1 and Q6 measured at **5.2–5.7** and **9.0–14.4 GB/s** effective; YCSB-E's p999 is **12.9 µs** against read-only's 4.0 µs. | `./verify.sh 22` |
+| 22 | [Standard Benchmarks](topics/22-benchmarks/README.md) | TPC-H Q1 and Q6 measured at **4.7–5.6** and **11.9–15.7 GB/s** effective (SF 0.05–0.25); YCSB-E's p999 is **2.0 µs** against read-only's 0.96 µs. | `./verify.sh 22` |
 | 23 | [Full-Text Search](topics/23-fulltext/README.md) | Exhaustive BM25 spans **0.009 ms to 10.378 ms** across four queries — 272,310 postings against 159. Term rarity, not query complexity. | `./verify.sh 23` |
 | 24 | [Graph Algorithms](topics/24-graph-algorithms/README.md) | Same node and edge count, RMAT vs uniform: **15.6 M triangles vs 5428**, and 447 ms vs 195 ms. Degree skew is the workload. | `./verify.sh 24` |
-| 25 | [Graph ML](topics/25-graph-ml/README.md) | The message-passing kernel *is* an SpMM: **4.31 ms at 16.82 GFLOP/s**, against 5.65 ms for the dense transform beside it. | `./verify.sh 25` |
+| 25 | [Graph ML](topics/25-graph-ml/README.md) | The message-passing kernel *is* an SpMM: **3.42 ms at 21.2 GFLOP/s**, against 5.12 ms for the dense transform beside it. | `./verify.sh 25` |
 | 26 | [Probabilistic Structures](topics/26-probabilistic/README.md) | A point miss costs **246 ns** (binary search) or **299 ns** (BTreeMap); a 224 MB HashSet does it in **28 ns**. That gap is what a filter is bidding for. | `./verify.sh 26` |
-| 27 | [Streaming & IVM](topics/27-streaming/README.md) | 100 edge changes to a 500k-edge graph costs **1111 ms** to re-derive a wedge join — the batch is 0.02% of the graph, the work is 100% of it. | `./verify.sh 27` |
+| 27 | [Streaming & IVM](topics/27-streaming/README.md) | 100 edge changes to a 500k-edge graph costs **924 ms** to re-derive a wedge join — the batch is 0.02% of the graph, the work is 100% of it. | `./verify.sh 27` |
 | 28 | [Cloud-Native Storage](topics/28-cloud-native/README.md) | Local NVMe p50 **0.10 ms**; raw S3 p50 **14.17 ms**, p99 **112.99 ms**. A 140× median gap and a far worse tail. | `./verify.sh 28` |
 | 29 | [Distributed Transactions](topics/29-distributed-txn/README.md) | The workload's own conflict rate goes **0.3% → 99.6%** as Zipf θ moves 0.5 → 1.3. Contention is a property of the data, before any protocol. | `./verify.sh 29` |
 | 30 | [Time-Series](topics/30-timeseries/README.md) | delta+varint gives **11.00 B/sample for all four shapes** — a constant series compresses exactly as well as random noise, because only the timestamp is being compressed. | `./verify.sh 30` |

@@ -14,7 +14,7 @@ iterate) that our topic-27 stubs are simplified excerpts of.
 Delete one edge from a 500K-edge graph and a maintained reachability
 view must retract every fact derived *through* that edge — across
 however many BFS rounds derived them, while other facts re-derive via
-surviving paths — without falling back to the 31.2 ms full re-BFS our
+surviving paths — without falling back to the 25.9 ms full re-BFS our
 insert-only stub would need (this topic's measured reachability lane —
 `../../FINDINGS.md` row 27 / `README.md` "The problem, measured").
 

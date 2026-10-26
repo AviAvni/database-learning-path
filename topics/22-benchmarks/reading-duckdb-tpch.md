@@ -494,17 +494,16 @@ milliseconds, so `bytes / ms / 1e6` is GB/s:
       42,000,000 /  2.7 / 1e6 = 15.6 GB/s      (notes.md prints 15.7)
 ```
 
-The timings behind those figures move between runs on the same
-machine, so quote a range or name the run: FINDINGS.md row 22 records
-**Q1 at 5.2–5.7 GB/s and Q6 at 9.0–14.4 GB/s effective** across runs
-of this lane. Both are "effective" bandwidth — bytes the query
+FINDINGS.md row 22 records the same run as
+**Q1 at 4.7–5.6 GB/s and Q6 at 11.9–15.7 GB/s effective** across
+SF 0.05–0.25. Both are "effective" bandwidth — bytes the query
 logically consumed divided by wall time — not DRAM traffic; at these
 working-set sizes much of it is served from cache.
 
 For calibration on the same machine, FINDINGS.md row 17 measures a
-tuned eight-accumulator sum at **26.32 GB/s** and a branchless filter
-flat at **~10 GB/s** while the branchy version collapses to
-**0.95 GB/s** at 50% selectivity. Q6's 1.9% selectivity (see
+tuned eight-accumulator sum at **42.12 GB/s** and a branchless filter
+flat at **~12–13 GB/s** while the branchy version collapses to
+**1.19 GB/s** at 50% selectivity. Q6's 1.9% selectivity (see
 [reading-boncz-tpch.md](reading-boncz-tpch.md) Step 4) sits on the
 safe side of that crater, which is why the branchy oracle is already
 fast.
@@ -586,15 +585,15 @@ fused aggregation over 98.6% of LINEITEM; Q9 should be the one that
 moves by a large factor when the join-order optimizer is disabled.
 Compute effective GB/s the way Step 5 does — Q1 reads 38 B/row and Q6
 28 B/row of the *spec's* column widths, so SF 1 is 228 MB and 168 MB
-respectively — and compare against FINDINGS.md row 22's 5.2–5.7 and
-9.0–14.4 GB/s.
+respectively — and compare against FINDINGS.md row 22's 4.7–5.6 and
+11.9–15.7 GB/s.
 
 ## Questions (answer in notes.md)
 
 1. Measure DuckDB Q1 and Q6 at SF 1 on this machine, with
    `SET threads = 1` and without. Compute effective GB/s using Step 5's
    38 and 28 bytes per row, and compare against our oracle lanes and
-   topic 17's 26.32 GB/s eight-accumulator ceiling. Where does the gap
+   topic 17's 42.12 GB/s eight-accumulator ceiling. Where does the gap
    come from — vectorization, fewer passes, or parallelism?
 2. Why does shipping `answers/` matter more than shipping `queries/`?
    Relate to topic 16's oracle taxonomy — and say what the SF ≤ 1
@@ -702,15 +701,14 @@ Answer each before unfolding it.
 
   At SF 0.25 (1,500,000 rows) with notes.md's 2026-07-10 baseline:
   1,500,000 × 38 = 57,000,000 B over 10.2 ms = 5.59 GB/s for Q1, and
-  1,500,000 × 28 = 42,000,000 B over 2.7 ms = 15.6 GB/s for Q6. Timings move
-  between runs; FINDINGS.md row 22 records 5.2–5.7 and 9.0–14.4 GB/s across
-  runs of the same lane.
+  1,500,000 × 28 = 42,000,000 B over 2.7 ms = 15.6 GB/s for Q6. FINDINGS.md row 22
+  records the same run: 4.7–5.6 and 11.9–15.7 GB/s across SF 0.05–0.25.
 
   "Effective" means bytes the query logically consumed ÷ wall time. It is
   **not** DRAM traffic: at these working-set sizes much of the data is served
   from cache, and it excludes the write side, the allocator, and everything
   the HashMap does. Comparing it to a DRAM bandwidth figure is a category
-  error; comparing it to topic 17's 26.32 GB/s accumulate lane, measured the
+  error; comparing it to topic 17's 42.12 GB/s accumulate lane, measured the
   same way on the same machine, is not.
 
   </details>
@@ -776,6 +774,6 @@ with `python3 tools/pin-table.py`).
 **Cross-topic**
 - topic 11 — operator-vs-materialization; Step 3's chunk loop.
 - topic 16 — oracle taxonomy; Step 4's shipped answers.
-- topic 17 — 26.32 GB/s accumulate and the branchless filter floor,
+- topic 17 — 42.12 GB/s accumulate and the branchless filter floor,
   the calibration for Step 5's effective bandwidth.
 - topic 0 `reading-fair-benchmarking.md` — "incorrect code wins".

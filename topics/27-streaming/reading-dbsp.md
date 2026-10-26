@@ -11,7 +11,7 @@ Rust implementation, where each operator of the calculus is a file.
 ## The problem in one sentence
 
 The topic bench recomputes a 2-hop wedge join from scratch in
-**1111.0 ms per 100-change batch** (this topic's measured headline —
+**923.5 ms per 100-change batch** (this topic's measured headline —
 `../../FINDINGS.md` row 27, reproduced in `README.md`'s "The problem,
 measured" lane); DBSP's claim is that for *any* query built from its
 operators, the version that costs per-change instead of per-database is
@@ -319,7 +319,7 @@ Answer each before unfolding it.
 - [ ] You wrote answers to all questions in notes.md, including the wedge count.
   <details><summary>answer</summary>
 
-  This topic measures the full-recompute wedge join at 1111.0 ms per
+  This topic measures the full-recompute wedge join at 923.5 ms per
   100-change batch (`../../FINDINGS.md` row 27 / README measured lane).
   Your notes should carry the DBSP circuit for the wedge count and mark
   which arrows carry deltas vs integrals.

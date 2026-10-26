@@ -480,9 +480,10 @@ convolution, so our Q6 selectivity is
 close enough that the branch-prediction story transfers, and
 different enough that our absolute row counts are ours alone.
 
-The topic's headline (FINDINGS.md row 22) is **Q1 at 5.2–5.7 GB/s and
-Q6 at 9.0–14.4 GB/s effective**; notes.md's baseline table records the
-SF-0.25 end of those ranges at 5.6 and 15.7 GB/s on an M3 Pro. Q6's
+The topic's headline (FINDINGS.md row 22) is **Q1 at 4.7–5.6 GB/s and
+Q6 at 11.9–15.7 GB/s effective** across SF 0.05–0.25; notes.md's baseline
+table records the SF-0.25 end of those ranges at 5.6 and 15.7 GB/s on an
+M3 Pro. Q6's
 branchy oracle is already a large fraction of memory bandwidth *at
 this selectivity* — so predict what branchless adds before
 implementing it (topic 17's answer: at 2%, possibly nothing).

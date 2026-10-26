@@ -96,8 +96,8 @@ lane at 16 M elements, `notes.md:16`:
 
 Resident, you pay 0.88 s once. Non-resident, you pay it per batch — 1562× the
 traffic of the thing you actually needed to send. This topic's own headline is
-the same lesson without the index: at 16 M elements upload alone costs 7197 µs
-against a 2723 µs CPU total (`FINDINGS.md:36`).
+the same lesson without the index: at 16 M elements upload alone costs 7384.7 µs
+against a 2257.7 µs CPU total (`notes.md:16`).
 
 ### Step 3 — why a heap is the wrong data structure on a warp
 
@@ -607,7 +607,7 @@ Answer each before unfolding it.
 - `topics/18-gpu/notes.md:9-16` — the 9.09 GB/s upload and 29.7 GB/s CPU rates
   Step 2's residency arithmetic uses. A sum kernel on Apple unified memory, not
   a search, and not PCIe.
-- `FINDINGS.md:36` — no crossover to 2²⁴; 7197 µs upload against a 2723 µs CPU
+- `FINDINGS.md:36` — no crossover to 2²⁴; 7384.7 µs upload against a 2257.7 µs CPU
   total at 16 M.
 
 **Related guides**

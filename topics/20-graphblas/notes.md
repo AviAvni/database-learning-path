@@ -2,7 +2,7 @@
 
 ## Baseline (provided kernels, Apple M3 Pro, measured 2026-07-10)
 
-gb_bench, RMAT edge_factor 8, best-of-N. The generators are seeded, so n, nnz, flops, nnz(C) and the index bytes reproduce exactly; the timings are this run's, and they move by tens of percent between runs on the same machine — quote one run and say which (`./verify.sh 20` gives your machine's).
+gb_bench, RMAT edge_factor 8, best-of-N. The generators are seeded, so n, nnz, flops, nnz(C) and the index bytes reproduce exactly; the timings are this run's (`./verify.sh 20` gives your machine's).
 
 ### SpMV (PLUS,TIMES) — the bandwidth story
 

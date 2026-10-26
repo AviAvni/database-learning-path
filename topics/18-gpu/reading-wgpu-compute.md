@@ -130,10 +130,6 @@ pull from the same pool, so there is no bandwidth ratio to win — which is
 exactly the premise Crystal's 16× speedups rest on and this machine does not
 have (`reading-crystal-sigmod20.md`, Step 4).
 
-`FINDINGS.md:36` records a different run of the same lane — 7197 µs upload
-against a 2723 µs CPU total at 16 M. Quote whichever file you took the number
-from; they are separate runs, not a contradiction.
-
 ### Step 3 — amortize what you can: setup once, dispatch many
 
 > **In:** the ladder of Step 1 and the floor of Step 2.
@@ -438,8 +434,7 @@ Answer each before unfolding it.
 
   The upload number is itself the honest one to quote for transfer cost:
   67,108,864 B / 7384.7 µs = 9.1 GB/s on a machine whose CPU reads the same
-  bytes at 29.7 GB/s. `FINDINGS.md:36` records 7197 µs for the same phase on a
-  different run; cite whichever file you read.
+  bytes at 29.7 GB/s.
 
   </details>
 

@@ -70,11 +70,11 @@ with a cost model could *choose*.
 | SpMM (D^-1 A) x X[16384x64] | 3.42 ms/iter, **21.2 GFLOP/s** |
 | dense matmul [16384x64]x[64x64] | 5.12 ms/iter, 26.2 GFLOP/s |
 
-The headline: naive scalar SpMM reaches **~81% of dense matmul's
-throughput** on this graph in this run (2·566,564·64 flops in 3.42 ms
-against 2·16384·64·64 in 5.12 ms). The ratio moves between runs —
-FINDINGS row 25 records one at 71% (4.31 ms against 5.65 ms) — so the
-claim to carry is "most of dense throughput", not a precise percentage.
+The headline: naive scalar SpMM reaches **most of dense matmul's
+throughput** on this graph — 81% in the baseline (2·566,564·64 flops in
+3.42 ms against 2·16384·64·64 in 5.12 ms), and anywhere from about 70% to
+80% from run to run, because both kernels are timed in milliseconds on a
+shared machine. Carry the shape, not the percentage.
 Sparse's irregular gather is amortized by the
 64-float dense rows it drags along — a GNN's SpMM is memory-friendly in
 exactly the way topic 20's SpMV (1-wide) is not. Fat right-hand sides

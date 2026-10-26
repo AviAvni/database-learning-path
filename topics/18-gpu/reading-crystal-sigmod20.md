@@ -10,8 +10,8 @@ might offload.
 It is also the paper this topic's own measurement most directly contradicts —
 or rather, agrees with, once you read the caveat. Every headline number in
 sections 4 and 5 is measured with the data **already resident in the device's
-memory**. This topic measures what happens when it is not: 7197 µs of upload
-against a 2723 µs CPU total (`FINDINGS.md:36`). Both are true. Keeping them
+memory**. This topic measures what happens when it is not: 7384.7 µs of upload
+against a 2257.7 µs CPU total (`notes.md:16`). Both are true. Keeping them
 straight is the entire skill this guide is teaching.
 
 Citations below are to
@@ -380,8 +380,8 @@ Answer each before unfolding it.
   Regime B (primary store): data resident, ratio 880/53 = 16.2 (§4), and 25× on
   the full benchmark (§5.2).
 
-  This topic measured regime A on hardware with no PCIe at all: 7197 µs of
-  upload against a 2723 µs CPU total (`FINDINGS.md:36`), no crossover to 2²⁴.
+  This topic measured regime A on hardware with no PCIe at all: 7384.7 µs of
+  upload against a 2257.7 µs CPU total (`notes.md:16`), no crossover to 2²⁴.
   The boundary crossing survives the removal of the bus.
 
   </details>
@@ -493,8 +493,8 @@ Answer each before unfolding it.
 
 **Measurements in this repo**
 
-- `FINDINGS.md:36` — this topic's headline: no crossover to 2²⁴; 7197 µs upload
-  against a 2723 µs CPU total at 16 M.
+- `FINDINGS.md:36` — this topic's headline: no crossover to 2²⁴; 7384.7 µs upload
+  against a 2257.7 µs CPU total at 16 M.
 - `topics/18-gpu/notes.md:9-16` — the phase-split table Step 3's local
   arithmetic uses.
 

@@ -145,10 +145,10 @@ fn gcn_layer(a_hat: &Csr, h: &Mat, w: &Dense) -> Mat {
 
 Per layer: one SpMM (`2·nnz·h` FLOPs) + one small dense matmul
 (`2·n·d·h`). On this topic's SBM bench the message-passing SpMM runs at
-**16.82 GFLOP/s in 4.31 ms, against 5.65 ms for the dense transform beside
-it** (FINDINGS.md row 25) — roughly 71% of the dense kernel's throughput
-(16.82 / 23.75 GFLOP/s, the dense figure being `2·n·d·h = 2·16384·64·64 =
-134 MFLOP` over 5.65 ms). The 64-float dense rows amortize the sparse
+**21.2 GFLOP/s in 3.42 ms, against 5.12 ms for the dense transform beside
+it** (`notes.md` baseline; FINDINGS.md row 25) — roughly 81% of the dense kernel's throughput
+(21.2 / 26.2 GFLOP/s, the dense figure being `2·n·d·h = 2·16384·64·64 =
+134 MFLOP` over 5.12 ms). The 64-float dense rows amortize the sparse
 gather: fat right-hand sides forgive sparsity. One honesty note (rule 6):
 the *measured* lane normalizes with the row-stochastic `D^-1 A`
 (`spmm.rs:38 row_norm_adj`, driven from `bin/gnn_bench.rs`), not the
@@ -171,7 +171,7 @@ its dense operand)`: aggregate-first drags d-wide rows through the
 sparse multiply, transform-first drags h-wide rows. On Cora (n=2708,
 nnz=13K, d=1433, h=16) transform-first makes the sparse side 90x
 cheaper, and the DENSE transform dominates; on our SBM (nnz=566K,
-d=64) they're comparable — measured **4.31 ms SpMM against 5.65 ms dense**
+d=64) they're comparable — measured **3.42 ms SpMM against 5.12 ms dense**
 at 64-wide (FINDINGS.md row 25). Transform-first wins whenever h < d.
 Frameworks hardcode this; a database would COST it (topic 10).
 
@@ -269,7 +269,7 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can explain why associativity is a query plan, and count FLOPs both ways on this topic's SBM — the measured SpMM is 4.31 ms against 5.65 ms for the dense transform.
+- [ ] You can explain why associativity is a query plan, and count FLOPs both ways on this topic's SBM — the measured SpMM is 3.42 ms against 5.12 ms for the dense transform.
 
   <details><summary>Answer</summary>
 
@@ -278,8 +278,8 @@ Answer each before unfolding it.
   aggregate-first drags the `d`-wide feature rows through the sparse
   multiply and transform-first drags the `h`-wide rows. Transform-first
   wins whenever `h < d`. On the SBM (nnz≈566K, d=h=64) the two widths match,
-  so the measured kernels are comparable: 4.31 ms for the SpMM at 16.82
-  GFLOP/s against 5.65 ms for the dense transform (FINDINGS.md row 25).
+  so the measured kernels are comparable: 3.42 ms for the SpMM at 21.2
+  GFLOP/s against 5.12 ms for the dense transform (FINDINGS.md row 25).
   Picking the order is exactly join-ordering (topic 10).
 
   </details>

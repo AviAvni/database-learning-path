@@ -689,10 +689,8 @@ Answer each before unfolding it.
   the work is walking pointer slots for empty columns.
 
   Measured: **80.4 MB of CSR index versus 1.59 MB hypersparse
-  (50×)**, and a full sweep of **11,312 µs versus 66 µs (171×)**.
-  (`FINDINGS.md` row 20 quotes 175× for the sweep; `notes.md:42`
-  quotes 171×. Cite one, and say which — this answer uses
-  `notes.md`, the measured baseline for this topic.)
+  (50×)**, and a full sweep of **11,312 µs versus 66 µs (171×)**
+  (`notes.md:42`).
 
   Buluç & Gilbert §3.1 predict it: Gustavson's algorithm is
   "asymptotically too wasteful" for hypersparse blocks, and their

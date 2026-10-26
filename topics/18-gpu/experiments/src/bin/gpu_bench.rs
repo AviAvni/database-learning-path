@@ -32,8 +32,8 @@ fn main() {
              itself instructive — a software adapter makes the transfer tax look\n\
              free and the kernel look terrible).\n\n\
              The recorded reference numbers for an Apple M3 Pro are in notes.md:\n\
-             no crossover up to 2^24 elements, with upload alone costing 7197 µs\n\
-             at 16 M against a 2723 µs CPU total."
+             no crossover up to 2^24 elements, with upload alone costing 7385 µs\n\
+             at 16 M against a 2258 µs CPU total."
         );
         return;
     };
