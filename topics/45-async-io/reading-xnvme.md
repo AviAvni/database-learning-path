@@ -304,7 +304,7 @@ paper; this guide could not check it more precisely than that.
 
 ### Step 6 — the same finding, measured in this topic
 
-> **In:** Step 5's page-cache explanation; this topic's lane 1a/1c numbers from [notes.md](notes.md) (Apple M3 Pro, measured 2026-10-26); PostgreSQL's AIO README at the pinned commit.
+> **In:** Step 5's page-cache explanation; this topic's lane 1a/1c numbers from [notes.md](notes.md) (Apple M3 Pro, measured 2026-10-26); PostgreSQL's AIO README at `701f021`.
 > **Out:** the ratio that explains §5.1, and the rule for when a cache-bypassing path is worth it.
 
 This topic's `io_bench` measures both sides of §5.1's sentence on one

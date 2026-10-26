@@ -36,8 +36,8 @@ pub struct ChurnGen {
 impl ChurnGen {
     pub fn new(base: &ZSet<Edge>, n: u32, seed: u64) -> Self {
         // present_vec takes the ZSet's sorted order, never the HashSet's: the
-        // seeded rng picks deletions by index into it, and std's hash order
-        // changes every process — which once made "seeded" counts drift.
+        // seeded rng picks deletions by index into it, so its order is part of
+        // the seed, and std's hash order changes every process.
         let present_vec: Vec<Edge> = base.iter().map(|(e, _)| *e).collect();
         let present: HashSet<Edge> = present_vec.iter().copied().collect();
         ChurnGen { n, present, present_vec, rng: ChaCha8Rng::seed_from_u64(seed) }

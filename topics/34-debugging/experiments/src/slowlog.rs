@@ -2,7 +2,7 @@
 //!
 //! The contract, straight from redis: a command whose duration is >= the
 //! threshold gets an entry in a fixed-capacity ring (oldest evicted);
-//! `threshold < 0` disables logging entirely (slowlog.c:104); entry ids
+//! `threshold < 0` disables logging entirely (slowlog.c:106); entry ids
 //! are monotonically increasing and are NOT reused after a reset, so a
 //! monitoring system polling `get()` can dedupe by id across resets.
 

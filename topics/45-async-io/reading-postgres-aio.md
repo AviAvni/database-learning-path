@@ -546,9 +546,9 @@ parallelise, and io_uring never runs direct I/O synchronously at submission.
 Here the paper and the code disagree, and this chapter cannot settle it. The
 paper's §5.2 says registering the buffer pool as fixed buffers meant
 "eliminating PostgreSQL's heuristic of enabling IO_ASYNC after four outstanding
-I/Os", and its experiment is a 32 GiB cold scan "via direct I/O". At this pin
-the heuristic is never reached for direct I/O — line 722 returns first. Either
-the paper describes an earlier version of this function, or its scan was not
+I/Os", and its experiment is a 32 GiB cold scan "via direct I/O". In the code
+read here the heuristic is never reached for direct I/O — line 722 returns first.
+Either the paper describes a different version of this function, or its scan was not
 purely direct, or "eliminating" means something other than what it reads as.
 The paper does not state the PostgreSQL commit it patched. Recorded as an open
 question in [notes.md](notes.md), not resolved here.

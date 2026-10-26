@@ -48,6 +48,24 @@ DP-on-subpaths, so the four "shortest path" variants split apart:
 earliest arrival, latest departure, fastest (min duration), shortest
 (min hops) — one algorithm each, not one Dijkstra.
 
+Patterns, not just paths, take time as a variable. In **Worst-Case Optimal
+BGPs on Temporal Graphs** (Diego Arroyuelo, Aidan Hogan, Gonzalo Navarro,
+Juan Reutter; PVLDB 19(11), VLDB 2026;
+[arXiv](https://arxiv.org/abs/2607.20356), extended version) edges carry
+validity intervals, and a basic graph pattern asks for all variable bindings
+*including the time* at which the match holds. Join-first evaluation (match,
+then check time) and time-first evaluation (sweep time, rematch) each fix
+where the time variable is bound; this paper's index treats time as one more
+Leapfrog Triejoin variable, uses O(N) space for N edges, and evaluates in
+worst-case optimal time O(Q*·m·log N) with the time bound at any position in
+the variable order (abstract, §4–§6). On Wikidata with real query logs,
+binding the variable with the fewest children next ("LC", time included)
+averages 1.06 ms per query against 2.18 ms for join-first and 8,010 ms for
+time-first (§8.1, Fig. 8). It joins topic 13's
+[reading-wcoj.md](../13-graph-engines/reading-wcoj.md) to this topic's
+time-respecting queries: for the capstone's M33, the time predicate belongs
+inside the intersection loop, not as a filter after it.
+
 ## The storage menu
 
 | design | idea | AT TIME t cost | example |
@@ -74,6 +92,23 @@ wearing graph clothes, and MVCC-as-history is the observation that topic
 stores a transaction-time temporal graph; AeonG literally builds on
 memgraph's delta chains (topic 13).
 
+The anchor + delta row has a measured competitor. **TVA: A Version-aware
+Temporal Graph Storage System for Real-time Analytics** (Wenhao Li, Zhanhao
+Zhao, Jinhao Dong, Jiamin Hou, Wei Lu, Yunhai Wang, Xiaoyong Du; PVLDB 19(10),
+VLDB 2026; [arXiv](https://arxiv.org/abs/2607.00406)) separates version
+metadata (which version of a vertex or edge is valid when) from the property
+values themselves, packs the version metadata of a vertex's neighbors into a
+temporal table and a hopscotch-hashing variant so a neighborhood scan reads it
+contiguously, and avoids repeating metadata lookups across the scans of
+several vertices by reusing temporal information earlier scans obtained
+(abstract, §4–§5). On the T-mgBench workload its storage is up to 2.2×
+smaller than AeonG's (and up to 3.6× and 4.7× smaller than Clock-G's and
+T-GQL's) (§7.2.1, Fig. 6(a)); on T-LDBC its average graph-operation latency
+is 2.9× lower than AeonG's (§7.2.2, Fig. 6(d)). Read it after
+[reading-aeong.md](reading-aeong.md): AeonG walks per-object version chains,
+and TVA's argument is that the version metadata, not the property data, is
+what a temporal neighborhood scan pays for.
+
 ## Code reading (cloned under ~/repos)
 
 | repo | anchor | what to see |
@@ -91,68 +126,6 @@ memgraph's delta chains (topic 13).
 2. [reading-temporal-motifs.md](reading-temporal-motifs.md) — Paranjape/Benson/Leskovec (WSDM 2017): δ-temporal motifs, counting ordered patterns.
 3. [reading-aeong.md](reading-aeong.md) — AeonG (VLDB 2024): built-in temporal support via anchor+delta on an MVCC engine.
 4. [reading-raphtory.md](reading-raphtory.md) — Raphtory: an event-log-first temporal graph engine in Rust.
-
-## Newer work (2025–2026)
-
-**TVA: A Version-aware Temporal Graph Storage System for Real-time
-Analytics** — Wenhao Li, Zhanhao Zhao, Jinhao Dong, Jiamin Hou, Wei
-Lu, Yunhai Wang, Xiaoyong Du. PVLDB 19(10), VLDB 2026.
-[arXiv](https://arxiv.org/abs/2607.00406)
-
-A competitor to the storage menu's anchor + delta row, measured
-directly against AeonG. TVA separates version metadata (which version
-of a vertex or edge is valid when) from the property values
-themselves, packs the version metadata of a vertex's neighbors into a
-temporal table and a hopscotch-hashing variant so a neighborhood scan
-reads it contiguously, and avoids repeating metadata lookups across
-the scans of several vertices by reusing temporal information earlier
-scans obtained (abstract, §4–§5).
-On the T-mgBench workload its storage is up to 2.2× smaller than
-AeonG's (and up to 3.6× and 4.7× smaller than Clock-G's and T-GQL's)
-(§7.2.1, Fig. 6(a)); on T-LDBC its average graph-operation latency is
-2.9× lower than AeonG's (§7.2.2, Fig. 6(d)). Read
-it after [reading-aeong.md](reading-aeong.md): AeonG walks per-object
-version chains, and TVA's argument is that the version metadata, not
-the property data, is what a temporal neighborhood scan pays for.
-
-**Worst-Case Optimal BGPs on Temporal Graphs** — Diego Arroyuelo,
-Aidan Hogan, Gonzalo Navarro, Juan Reutter. PVLDB 19(11), VLDB 2026.
-[arXiv](https://arxiv.org/abs/2607.20356) (extended version)
-
-Edges carry validity intervals, and a basic graph pattern asks for all
-variable bindings *including the time* at which the match holds.
-Join-first evaluation (match, then check time) and time-first
-evaluation (sweep time, rematch) each fix where the time variable is
-bound; this paper's index treats time as one more Leapfrog Triejoin
-variable, uses O(N) space for N edges, and evaluates in worst-case
-optimal time O(Q*·m·log N) with the time bound at any position in the
-variable order (abstract, §4–§6). On Wikidata with real query logs,
-binding the variable with the fewest children next ("LC", time
-included) averages 1.06 ms per query against 2.18 ms for join-first and
-8,010 ms for time-first (§8.1, Fig. 8). It joins topic 13's
-[reading-wcoj.md](../13-graph-engines/reading-wcoj.md) to this topic's
-time-respecting queries: for the capstone's M33, the time predicate
-belongs inside the intersection loop, not as a filter after it.
-
-**RadixGraph: A Fast, Space-Optimized Data Structure for Dynamic Graph
-Storage** — Haoxuan Xie, Junfeng Liu, Siqiang Luo, Kai Wang. SIGMOD
-2026. [arXiv](https://arxiv.org/abs/2601.01444) (extended version)
-
-A dynamic (not temporal) graph store whose edge layout is a per-vertex
-anchor + delta: each vertex's edges live in a snapshot segment plus an
-append-only log segment that is periodically compacted, giving
-amortized O(1) updates, and vertices are found through a radix tree
-whose fan-outs are chosen by an integer program to minimize space
-(§3.1–§3.3). Timestamps on segments and log blocks give readers a
-consistent snapshot at time t by picking the newest versioned array
-before t and filtering its log (§3.3). It reports up to 16.27× higher
-edge-insertion throughput than the best of Teseo, Sortledton, Spruce
-and GTX (§4.2, Fig. 8(a)) and an average of 40.1% less memory than
-the second-lowest (§4.3, Fig. 8(c)), with the caveat the authors note
-that these baselines offer different transactional guarantees — GTX,
-for one, provides snapshot isolation (§4.1). It is this topic's
-anchor + delta row applied per vertex instead of per graph, and the
-same trade topic 13 §2 describes for FalkorDB's delta matrices.
 
 ## Experiments
 

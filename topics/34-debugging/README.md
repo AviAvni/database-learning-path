@@ -85,11 +85,11 @@ avoiding 4 context switches each) — see the reading guide.
 
 | surface | trigger | cost when idle | anchor |
 |---|---|---|---|
-| SLOWLOG | duration ≥ threshold after every command | one compare | `slowlog.c:103` |
+| SLOWLOG | duration ≥ threshold after every command | one compare | `slowlog.c:105` |
 | LATENCY tracker | event > threshold → 160-entry ring per event | macro is no-op when threshold unset | `latency.h:50`, `latency.c:63` |
 | LATENCY DOCTOR | on demand: rings → human advice | zero | `latency.c:182` |
-| MEMORY DOCTOR | on demand: fragmentation/policy advice | zero | `object.c:1421` |
-| watchdog | SIGALRM while stuck → stack trace in the log | disabled by default | `debug.c:2643` |
+| MEMORY DOCTOR | on demand: fragmentation/policy advice | zero | `object.c:1625` |
+| watchdog | SIGALRM while stuck → stack trace in the log | disabled by default | `debug.c:2960` |
 
 Redis's design theorem: the *always-on* tier must cost ~one branch per
 command (slowlog's threshold check), the *armed* tier a few samples
@@ -127,7 +127,7 @@ graph LR
 ```
 
 RocksDB's answer to "why was THIS query slow" is a thread-local struct
-of ~100 counters (`perf_context.h:305`) written through macros that a
+of ~100 counters (`perf_context.h:325`) written through macros that a
 runtime `PerfLevel` gates (`perf_level.h:27`) and a compile flag can
 remove entirely. The timer is an RAII guard (`perf_step_timer.h:13`) —
 start on construction, add-elapsed on destruction. The lesson for M34:
@@ -138,12 +138,12 @@ actually zero.
 
 | repo | anchor | what to see |
 |---|---|---|
-| redis | `src/slowlog.c:103` | `slowlogPushEntryIfNeeded` — the whole always-on tier is 4 lines |
+| redis | `src/slowlog.c:105` | `slowlogPushEntryIfNeeded` — the whole always-on tier is one compare on line 107 |
 | redis | `src/latency.h:50` | `latencyStartMonitor` — zero-cost-when-off as a macro discipline |
 | redis | `src/latency.c:182` | `createLatencyReport` — an advice engine over 160-sample rings |
-| redis | `src/debug.c:2643` | `sigalrmSignalHandler` — the watchdog that stack-traces a stuck server |
-| rocksdb | `include/rocksdb/perf_context.h:305` | `PerfContext` — per-query counters, thread-local |
-| rocksdb | `monitoring/perf_context_imp.h:45` (live), `:27` (`NPERF_CONTEXT` no-op) | `PERF_TIMER_GUARD` — compile-out-able; the level check is in `PerfStepTimer`'s ctor (`perf_step_timer.h:19`), not the macro |
+| redis | `src/debug.c:2960` | `sigalrmSignalHandler` — the watchdog that stack-traces a stuck server |
+| rocksdb | `include/rocksdb/perf_context.h:325` | `PerfContext` — per-query counters, thread-local |
+| rocksdb | `monitoring/perf_context_imp.h:57` (live), `:39` (`NPERF_CONTEXT` no-op) | `PERF_TIMER_GUARD` — compile-out-able; the level check is in `PerfStepTimer`'s ctor (`perf_step_timer.h:19`), not the macro |
 | rocksdb | `monitoring/histogram.h:21` | `HistogramBucketMapper` — all of u64 in 109 buckets |
 | FalkorDB | `src/slow_log/slow_log.c` | `SlowLog_Add` — the C surface M34 ports to the Rust engine |
 

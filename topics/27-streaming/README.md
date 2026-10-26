@@ -78,6 +78,27 @@ through Q's structure until only nonlinear operators keep integrals —
 those integrals are Materialize's **arrangements** (shared, indexed,
 compacted update logs).
 
+How far the recursion half carries is measured by **FlowLog: Efficient and
+Extensible Datalog via Incrementality** (Hangdong Zhao, Zhenghong Yu, Srinag
+Rao, Simon Frisk, Zhiwei Fan, Paraschos Koutris; PVLDB 19(3), VLDB 2026;
+[arXiv](https://arxiv.org/abs/2511.00865)), a Datalog engine built on
+Differential Dataflow. Each rule is lowered to an explicit relational IR that
+separates recursive control (semi-naive iteration) from the rule's join plan,
+so the IR can take SQL-style rewrites (logic fusion, subplan reuse), a
+structural join planner that avoids worst-case orders, and sideways
+information passing, before being lowered to DD operators that support both
+batch and incremental evaluation (§1, §3–§7). On 4 threads it is fastest in 21
+of 41 program–dataset pairs against Soufflé, RecStep, DDlog, DuckDB and Umbra
+— losing, for example, CSPA (httpd) to Soufflé by 1.6× and the
+single-expensive-join Reach (twitter) to DuckDB's and Umbra's hash joins — and
+on 64 threads it is fastest in 36 of 41 (§10.1). Robustness is the more
+transferable result: across 91 rewritten rule orders, FlowLog with its planner
+and sideways information passing never times out or runs out of memory, while
+FlowLog without them and Soufflé fail on 25 and 23 of them (§10.4, Fig. 9). It
+is the arrangement machinery of this topic carrying recursive Datalog — read it
+after [reading-differential-dataflow.md](reading-differential-dataflow.md) —
+and the `SemiNaiveReach` stub is its smallest instance.
+
 ## Timestamps, watermarks, and why "when" is half the problem
 
 Timely's insight (Naiad): every message carries a logical timestamp; the
@@ -102,32 +123,6 @@ weight wearing protocol clothing.
 | recursion | full (Naiad loops) | nested circuits | WITH RECURSIVE (limited) | no |
 | state | arrangements in RAM | batch/trace spine, spillable | arrangements + persist (S3 log) | Hummock LSM on S3 |
 | consistency | multi-versioned by design | per-tick | strict serializable reads | barrier-aligned snapshots |
-
-## Newer work (2025–2026)
-
-**FlowLog: Efficient and Extensible Datalog via Incrementality** —
-Hangdong Zhao, Zhenghong Yu, Srinag Rao, Simon Frisk, Zhiwei Fan,
-Paraschos Koutris. PVLDB 19(3), VLDB 2026.
-[arXiv](https://arxiv.org/abs/2511.00865)
-
-A Datalog engine built on Differential Dataflow: each rule is lowered
-to an explicit relational IR that separates recursive control
-(semi-naive iteration) from the rule's join plan, so the IR can take
-SQL-style rewrites (logic fusion, subplan reuse), a structural join
-planner that avoids worst-case orders, and sideways information
-passing, before being lowered to DD operators that support both batch
-and incremental evaluation (§1, §3–§7). On 4 threads it is fastest in 21
-of 41 program–dataset pairs against Soufflé, RecStep, DDlog, DuckDB
-and Umbra — losing, for example, CSPA (httpd) to Soufflé by 1.6× and
-the single-expensive-join Reach (twitter) to DuckDB's and Umbra's hash
-joins — and on 64 threads it is fastest in 36 of 41 (§10.1). Robustness is the more transferable
-result: across 91 rewritten rule orders, FlowLog with its planner and
-sideways information passing never times out or runs out of memory,
-while FlowLog without them and Soufflé fail on 25 and 23 of them
-(§10.4, Fig. 9). Read it after
-[reading-differential-dataflow.md](reading-differential-dataflow.md):
-it is the arrangement machinery of this topic carrying recursive
-Datalog, and the `SemiNaiveReach` stub is its smallest instance.
 
 ## The stubs (experiments/)
 

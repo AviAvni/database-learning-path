@@ -47,11 +47,11 @@ Everything below is either linked from a topic README or listed here:
 - Graph query languages: "Graph Pattern Matching in GQL and SQL/PGQ" SIGMOD'22 · "G-CORE" SIGMOD'18 (→ topic 13)
 - Storage I/O & SSDs: Haas & Leis "What Modern NVMe Storage Can Do, And How To Exploit It" VLDB'23 · Jasny et al. "High-Performance DBMSs with io_uring: When and How to Use It" VLDB'26 · Lee, Ziegler & Leis "How to Write to SSDs" VLDB'26 · Houlborg, Tietgen et al. "Flexible I/O for Database Management Systems with xNVMe" CIDR'26 (→ topic 45)
 
-## 2025–2026 additions (read in full, 2026-10-26)
+## 2025–2026 papers (each read in full)
 
 Each was downloaded and read before anything was written about it; the topic
-README's "Newer work (2025–2026)" section carries the figures with their
-section or table. Venue labels follow the PVLDB volume where the paper is
+README cites its figures with their section or table, in the section whose
+argument the paper belongs to. Venue labels follow the PVLDB volume where the paper is
 already published there.
 
 - Storage engines (→ 1, 3, 4): "Dynamic read & write optimization with TurtleKV" VLDB'26 — RUM made a runtime knob · "How to Write to SSDs" VLDB'26 — end-to-end write amplification is DB WAF × SSD WAF (→ also 45) · "How Much Can RocksDB Chew? Achieving Near-Zero Write Stalls with Sustainable RocksDB" VLDB'26 — learned admission control instead of stalls · "A Multi-tenant Relational OLTP Database at Salesforce" CIDR'26 — production LSM read paths

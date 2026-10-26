@@ -197,8 +197,8 @@ function was stubbed. These are what lane 3 should print once you implement it:
 - How many of lane 1b's sixteen `lio_listio` reads are really concurrent on
   macOS, and what bounds it? (Read XNU's `bsd/kern/kern_aio.c`.)
 - Does the PostgreSQL heuristic the io_uring paper describes ("enabling
-  IO_ASYNC after four outstanding I/Os", §5.2) still apply to direct I/O? At
-  the pinned commit `pgaio_uring_should_use_async` returns false for
+  IO_ASYNC after four outstanding I/Os", §5.2) still apply to direct I/O? In
+  PostgreSQL `701f021` `pgaio_uring_should_use_async` returns false for
   non-buffered I/O before it looks at the in-flight count
   (`method_io_uring.c:722-723`) — see reading-postgres-aio.md.
 - Lane 3 has no TRIM. With TRIM on DB GC, how much of the misaligned

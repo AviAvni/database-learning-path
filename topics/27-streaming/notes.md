@@ -2,7 +2,7 @@
 
 Machine: Apple M3 Pro, macOS. `cargo run --release --bin ivm_bench`
 (50K nodes / 500K edges; 10 churn batches of +90/−10 edges; reach lane:
-50 insert-only chunks of 10K edges). Date: 2026-07-10.
+50 insert-only chunks of 10K edges).
 
 ## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
@@ -18,12 +18,13 @@ reach, re-BFS per batch:         25.9 ms/batch   (|reached| 50000)
 reach, semi-naive:         [stub — implement reach::SemiNaiveReach]
 ```
 
-The counts are seeded and identical across runs — since 2026-10-26. Before
-that, `ChurnGen::new` built its deletion pool from a std `HashSet`'s iteration
-order, which changes every process, so the seeded rng deleted different edges
-each run: the triangle count came out 1363–1366 and the wedge weight
-21,063,034–21,063,216 (this file recorded 1366 / 21,063,114). The pool now
-takes the base ZSet's sorted order.
+The counts are seeded and identical on every run. That depends on one design
+choice in `ChurnGen::new`: the deletion pool `present_vec` is built from the
+base ZSet's sorted order, not from a std `HashSet`'s iteration order. The
+seeded rng picks each deletion *by index into that pool*, so the pool's order
+is part of the seed — and std's `HashSet` draws a fresh hash key every
+process, which would make the same seed delete different edges each run (the
+triangle count would wander by a few, the wedge weight by a few hundred).
 
 | standing query | full recompute / batch | notes |
 |---|---|---|
@@ -31,9 +32,9 @@ takes the base ZSet's sorted order.
 | 2-hop wedge join | 923.5 ms | full self-join, 21,063,140 wedge weight — rebuilt per batch |
 | reachability (re-BFS) | 25.9 ms | Σ over batches ≈ 1.3 s for what should cost O(m) total |
 
-Timings drift by run (2026-07-10: 97.2 / 894.3 / 24.7 ms; FINDINGS row 27
-quotes the 2026-07-28 run's 1111.0 ms wedge join). Cite one run by date and
-never average them.
+Timings vary from run to run; the counts do not. The README and FINDINGS row
+27 quote the 2026-07-28 run (141.6 / 1111.0 / 31.2 ms). Cite one run by date
+and never average them.
 
 ## Predictions (fill BEFORE implementing the stubs)
 

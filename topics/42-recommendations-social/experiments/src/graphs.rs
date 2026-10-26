@@ -314,7 +314,7 @@ pub fn popularity_overlap(recs: &HashMap<u32, Vec<u32>>, pop: &[u32]) -> f64 {
 /// everybody gets the same list; 1.0 means no two users share an item.
 pub fn personalization(recs: &HashMap<u32, Vec<u32>>, sample: usize) -> f64 {
     // The lowest `sample` user ids, not the first `sample` the HashMap yields:
-    // its order changes every process, so the sample (and the figure) did too.
+    // its order changes every process, and the sample (so the figure) with it.
     let mut users: Vec<u32> = recs.keys().copied().collect();
     users.sort_unstable();
     let lists: Vec<&Vec<u32>> = users.iter().take(sample).map(|u| &recs[u]).collect();
@@ -425,8 +425,8 @@ fn grow(
         let u = rng.gen_range(0..n) as u32;
         let v = if rng.gen::<f64>() < cfg.triadic_closure && !adj[u as usize].is_empty() {
             // Triadic closure: pick a neighbour of a neighbour. Sorted, because
-            // the seeded rng picks by index and HashSet order changes every
-            // process — unsorted, the "seeded" graph differed run to run.
+            // the seeded rng picks by index, so the order is part of the seed,
+            // and HashSet order changes every process.
             let mut ns: Vec<u32> = adj[u as usize].iter().copied().collect();
             ns.sort_unstable();
             let w = ns[rng.gen_range(0..ns.len())];

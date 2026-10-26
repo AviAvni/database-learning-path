@@ -25,9 +25,8 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is seeded and exact; every figure first recorded on 2026-07-26
-(80.0% at 4→5, 94.1% at 16→17, hottest shard 14.7% at s = 1.0 and 23.8% at
-s = 1.2) is reproduced exactly.
+Lane 1 is seeded, so every figure — 80.0% at 4→5, 94.1% at 16→17, hottest
+shard 14.7% at s = 1.0 and 23.8% at s = 1.2 — is identical on every run.
 
 The lane-1 mechanics, worth memorizing: `k mod N == k mod N+1` iff
 `k mod N(N+1)` is below N (CRT), so mod-N growth moves N/(N+1) of keys
@@ -100,12 +99,12 @@ are the specification.
 ## Infra notes
 
 - No new clones: redis and cockroach already under ~/repos.
-- Redis anchors verified by grep this session: cluster.h:23
-  (CLUSTER_SLOTS = 1<<14), :59 (keyHashSlot, hash-tag carve-out);
-  cluster.c:35 (patternHashSlot), :1191 (getNodeByQuery), :1397
-  (CLUSTER_REDIR_ASK), :1432 (CLUSTER_REDIR_MOVED), :1443
-  (clusterRedirectClient), :1680 (askingCommand); cluster_legacy.h:343/:344
-  (migrating_slots_to / importing_slots_from); cluster_legacy.c:6072-6075
+- Redis anchors (`e87dda2a4`): cluster.h:23
+  (CLUSTER_SLOTS = 1<<14), :60 (keyHashSlot, hash-tag carve-out);
+  cluster.c:36 (patternHashSlot), :1257 (getNodeByQuery), :1464
+  (CLUSTER_REDIR_ASK), :1508 (CLUSTER_REDIR_MOVED), :1519
+  (clusterRedirectClient), :1759 (askingCommand); cluster_legacy.h:343/:344
+  (migrating_slots_to / importing_slots_from); cluster_legacy.c:6217-6220
   (SETSLOT MIGRATING/IMPORTING/STABLE/NODE).
 - Cockroach anchors verified: zonepb/zone.go:257 (RangeMaxBytes 512<<20);
   replica_split_load.go:34 (SplitByLoadQPSThreshold 2500), :52

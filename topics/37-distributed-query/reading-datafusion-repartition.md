@@ -6,6 +6,8 @@ routing.
 It is the direct descendant of Volcano's exchange — the operator that made parallelism invisible to every other
 operator — squeezed into one process with tokio tasks instead of OS processes. This guide walks the routing core,
 the deterministic hash contract that joins depend on, and a flow-control design that is deliberately not a bounded queue.
+Code is read at `datafusion@350ca7650` (`main`, 2026-10-26); every `file:line` below is checked at that SHA, with
+paths under `~/repos/datafusion/datafusion/`.
 
 ## The problem in one sentence
 
@@ -23,9 +25,10 @@ came from eight different producers. RepartitionExec is where that pretense is m
 > **Out:** M output partitions, each a stream a downstream operator drains as if it
 > were the only consumer of a single-threaded child.
 
-`RepartitionExec` (mod.rs:1150) maps N input partitions to M output partitions. `execute` (:1329) is called once
-per *output* partition; on first call it spawns one `pull_from_input` task (:1742) per *input* partition. Each task
-drains its input stream, routes every batch, and pushes into per-output channels. Consumers just poll their channel.
+`RepartitionExec` (`physical-plan/src/repartition/mod.rs:1526`) maps N input partitions to M output partitions.
+`execute` (:1740) is called once per *output* partition; on first call `consume_input_streams` (:446) wires the
+channels and spawns one `pull_from_input` task (:2280) per *input* partition. Each task drains its input stream,
+routes every batch, and pushes into the channel of the output it was routed to. Consumers just poll their channel.
 
 ```text
  input part 0 ──┐                       ┌── output part 0
@@ -34,13 +37,15 @@ drains its input stream, routes every batch, and pushes into per-output channels
      ...        │   (route each batch)  │
  input part N-1─┘                       └── output part M-1
 
- N producer tasks          N x M channel matrix          M consumer streams
+ N producer tasks        M channels, N senders each        M consumer streams
 ```
 
-The key structural fact: there are N×M logical channels, not one shared queue. That matrix is what makes both
-flow control (Step 5) and order-preserving merge (Step 6) possible. It also localizes contention: a producer
-and a consumer only ever synchronize on their own channel plus one shared gate, never on a global lock over all
-in-flight batches. `consume_input_streams` (:393) is the entry point on the producing side that wires this up.
+The key structural fact: there is no single shared queue. In the default mode `consume_input_streams` builds one
+channel per *output* (`channels(num_output_partitions)`, :495) and clones its sender once per input
+(:497–:500), so each output has its own buffer fed by N producers; with `preserve_order` it builds one channel per
+(input, output) pair instead (`partition_aware_channels`, :484–:492) — the N×M matrix Step 6 needs. Either way a
+producer and a consumer only ever synchronize on their own channel plus one shared gate (Step 5), never on a global
+lock over all in-flight batches.
 
 ### Step 2 — Routing policy is a plan-time property
 
@@ -48,22 +53,24 @@ in-flight batches. `consume_input_streams` (:393) is the entry point on the prod
 > **Out:** a `Partitioning` enum value — `RoundRobinBatch(M)`, `Hash(exprs, M)` or
 > `Range(...)` — that fixes routing before a single batch moves.
 
-The `Partitioning` enum (partitioning.rs:117) declares the contract: `RoundRobinBatch(usize)` (:119) says
-"any batch anywhere, just balance the load"; `Hash(Vec&lt;Arc&lt;dyn PhysicalExpr&gt;&gt;, usize)` (:122) says
-"rows with equal key expressions must land in the same output partition." Round-robin is what you use to widen
+The `Partitioning` enum (`physical-expr/src/partitioning.rs:126`) declares the contract: `RoundRobinBatch(usize)`
+(:128) says "any batch anywhere, just balance the load"; `Hash(Vec&lt;Arc&lt;dyn PhysicalExpr&gt;&gt;, usize)` (:131)
+says "rows with equal key expressions must land in the same output partition." Round-robin is what you use to widen
 a single-partition scan to all cores; hash is what a partitioned hash join or hash aggregate demands, because
 correctness — not just balance — depends on co-locating keys.
 
-The enum has two more variants, and the guide's focus on the first two is a choice, not the whole contract.
-`Range(RangePartitioning)` (:124, "Partition rows by source-declared ranges") routes each row to the partition
-whose key range contains it, given an ordering and a list of split points; like hash it co-locates equal keys,
-and it also keeps partitions ordered relative to each other. `RepartitionExec` already executes it at the pin:
-`BatchPartitioner::try_new` builds a range partitioner for it (repartition/mod.rs:783-784) next to the hash
-(:772) and round-robin (:775) ones. `UnknownPartitioning(usize)` (:126) only describes an existing plan's
-output — "a known number of partitions", no routing rule — so `try_new` rejects it with "Unsupported
-repartitioning scheme" (:786-787); it is never a target. At the pin, the rule that *inserts* exchanges
-(Step 7) only ever asks for round-robin or hash; Range reaches `RepartitionExec` from sources and planners
-that declare it.
+`Range(RangePartitioning)` (:133, "Partition rows by source-declared ranges") is the third routing policy. A
+**`RangePartitioning`** (:216) is an ordering — the key expressions and their sort directions — plus a list of
+**split points**: key values that mark partition boundaries, so k split points make k + 1 partitions. Its doc
+comment (:158–:215) works the single-key case: ordering `date ASC`, split points `2022-01-01` and `2023-01-01`,
+gives partition 0 for dates before 2022, partition 1 for 2022, partition 2 for 2023 onward. Like hash it
+co-locates equal keys; unlike hash it also keeps partitions ordered relative to each other. It also retains the
+caller's full **sample** of boundaries, which is what lets a planner later re-cut the same key space into a
+different number of partitions (`scale`, :347 — Step 7). DataFusion does not check that a source which declares
+Range actually placed its rows that way (the doc comment says so); the declaration is a promise, like a declared
+sort order. `UnknownPartitioning(usize)` (:135) only describes an existing plan's output — "a known number of
+partitions", no routing rule — so `BatchPartitioner::try_new` rejects it with "Unsupported repartitioning
+scheme" (`repartition/mod.rs:1195`–`:1196`); it is never a target.
 
 ```mermaid
 graph LR
@@ -83,17 +90,23 @@ graph LR
 > **Out:** a deterministic per-row partition index — identical across runs,
 > operators, and (in a distributed setting) nodes.
 
-`BatchPartitioner` (mod.rs:560) is built for hash mode by `new_hash_partitioner` (:679), whose `Hash`
-state carries a strength-reduced reducer, `StrengthReducedU64::new(num_partitions)` (:691), and hashes
-with `REPARTITION_RANDOM_STATE` (:592) — not a per-instance `RandomState` but a
-`SeededRandomState::with_seed(0)`, i.e. FIXED seeds of 0. This is not laziness; it is a
-correctness contract. A hash join repartitions *both* inputs by the join keys: if the build side and the probe
-side hashed with different per-instance random seeds, key `42` could go to partition 1 on one side and partition 5
-on the other, and the join would silently drop matches. Fixed seeds make routing deterministic across runs, across
-operators, and (in a distributed setting) across nodes. The partition index is not a visible `hash % M`: the
-routing loop calls `partition_reducer.partition_indices(hash_buffer, indices)` (:862), and the reducer built at
-:691 turns each hash into `hash % M` without a division in the hot loop (the reason is documented at :594 — M is a
-runtime value, not a power of two you can mask with).
+`BatchPartitioner` (mod.rs:649) holds one of three routing states (`BatchPartitionerState`, :654: `Hash`,
+`RoundRobin`, `Range`). It is built for hash mode by `new_hash_partitioner` (:1024), whose `Hash` state carries a
+strength-reduced reducer, `StrengthReducedU64::new(num_partitions as u64)` (:1036), and hashes with
+`REPARTITION_RANDOM_STATE` (:677) — not a per-instance `RandomState` but a `SeededRandomState::with_seed(0)`,
+i.e. FIXED seeds of 0. This is not laziness; it is a correctness contract. A hash join repartitions *both* inputs
+by the join keys: if the build side and the probe side hashed with different per-instance random seeds, key `42`
+could go to partition 1 on one side and partition 5 on the other, and the join would silently drop matches. Fixed
+seeds make routing deterministic across runs, across operators, and (in a distributed setting) across nodes.
+
+The partition index is `hash % M`, but not computed with a division. **Strength reduction** is replacing an
+expensive operation with cheaper ones that give the same answer when one operand is fixed; here M is fixed for the
+partitioner's lifetime, so the doc comment at :939–:946 precomputes the divisor's reduced form once: a power-of-two
+M becomes a bit mask (`hash & (M − 1)`), and any other M becomes a 128-bit reciprocal whose multiply recovers the
+quotient, and from it the remainder (`hash − quotient × M`, :981) — "the same invariant-divisor optimization
+compilers use for `%` by a constant". Worked once: with M = 8 the mask is 7, so hash 45 = `0b101101` lands in
+`45 & 7 = 5`, the same as `45 % 8 = 5`. The routing loop calls `partition_reducer.partition_indices(hash_buffer,
+indices)` (:1273), which applies whichever form was chosen to every row's hash (:968).
 
 The flip side of determinism: adversarial or pathological key sets that collide will collide *every* run — skew is
 reproducible, which is good for debugging and bad if your workload hits it.
@@ -102,39 +115,58 @@ reproducible, which is good for debugging and bad if your workload hits it.
 
 > **In:** one input `RecordBatch` and the routing policy from Step 2.
 > **Out:** for round-robin, that whole batch handed to the next output in rotation;
-> for hash, M smaller batches, one per output partition.
+> for hash and range, at most M smaller batches, one per output partition that received rows.
 
-`partition_iter` (mod.rs:825) is the routing loop, and it treats round-robin and hash asymmetrically
-(range, the third arm at :872-907, follows hash's per-row path — see the last bullet):
+`partition_iter` (mod.rs:1234) is the routing loop, and it treats round-robin and the two key-based policies
+asymmetrically:
 
-- **Round-robin** forwards the *entire* RecordBatch to the next output in rotation
-  (`*next_idx = (*next_idx + 1) % *num_partitions`, :836; the whole batch is yielded at :837). Zero per-row work,
-  zero copies — the batch is just a bundle of Arc'd arrays changing queues.
-- **Hash** must look at every row: `create_hashes` (:854), seeded by `REPARTITION_RANDOM_STATE.random_state()`
-  (:856), computes one hash per row over the key columns; the reducer buckets rows into a per-partition index list
-  (`partition_reducer.partition_indices`, :862); then `Self::partition_grouped_take` (:868) runs arrow's `take` per
-  bucket to gather one new batch per partition.
-- **Range** (:872-907) has hash's shape with a different bucketing step: it evaluates the ordering expressions
-  (:885-888), `partition_range_indices` (:916) assigns each row by binary search over the split points — one
-  row at a time, copying the row's key into a `ScalarValue` buffer first (:924-926) — and the same
-  `partition_grouped_take` (:904) gathers the per-partition batches. With no split points the whole batch goes
-  to partition 0 (:881-883).
+- **Round-robin** (:1240–:1247) forwards the *entire* RecordBatch to the next output in rotation
+  (`*next_idx = (*next_idx + 1) % *num_partitions`, :1245; the whole batch is yielded at :1246). Zero per-row work,
+  zero copies — the batch is just a bundle of Arc'd arrays changing queues. Each input starts its rotation at a
+  different output (`(input_partition * num_partitions) / num_input_partitions`, :1064) so N inputs do not all
+  hit output 0 first.
+- **Hash** (:1248–:1282) must look at every row: `create_hashes` (:1263), seeded by
+  `REPARTITION_RANDOM_STATE.random_state()` (:1265), computes one hash per row over the key columns; the reducer
+  buckets rows into a per-partition index list (`partition_reducer.partition_indices`, :1273); then
+  `Self::partition_grouped_take` (:1279) gathers the per-partition batches.
+- **Range** (:1283–:1313) has hash's shape with a different bucketing step. With no split points the whole batch
+  goes to partition 0 (:1290–:1292). Otherwise it evaluates the ordering expressions (:1294–:1297) and
+  `router.route_indices` (:1303) assigns each row by binary search over the split points; the same
+  `partition_grouped_take` (:1309) gathers the batches. The router (`RangeRouter`,
+  `repartition/range.rs:36`) picks one of two implementations when it is built (:120–:136): for a single
+  primitive key column it binary-searches the column's raw Arrow value buffer directly
+  (`split_points.partition_point(|&sp| sp <= val)`, :418 — the index of the first split point greater than
+  `val`, which is the row's partition), and for anything else it converts the key columns and the split points to
+  Arrow's **row format** (each multi-column key encoded as one byte string that compares in the key's sort order,
+  via `RowConverter`) and binary-searches those (`partition_point_rows`, :585). Neither path builds a per-row
+  `ScalarValue`.
+
+`partition_grouped_take` (:1344) is one gather, not M: its doc comment (:1328–:1343) walks the example. It
+concatenates the per-partition index lists — partition 0 `[2, 5]`, partition 2 `[0, 3, 4]` become `[2, 5, 0, 3, 4]` —
+runs one `take_arrays` over the batch with that order (:1375), and returns each partition as a zero-copy slice of the
+reordered batch (partition 0 = rows 0–1, partition 2 = rows 2–4). When every row went to one partition it skips the
+take and forwards the batch itself (:1367–:1369).
 
 This is Volcano's packet-economics lesson restated. Graefe measured 171 s at 1 record per exchange packet versus
 13.7 s at 83 records per packet — a 12x swing purely from amortizing per-transfer cost. DataFusion's RecordBatch
-*is* the packet; round-robin keeps the packet intact, while hash pays a per-row scatter but immediately
-re-materializes results as full columnar batches so every downstream operator still sees good packets.
+*is* the packet; round-robin keeps the packet intact, while hash pays a per-row scatter and hands on M smaller
+batches. Those slices can be tiny (an 8192-row batch split 64 ways averages 128 rows), so before a batch enters an
+output's channel the producer passes it through a per-output **coalescer** — a buffer that concatenates small
+batches until they reach the session batch size (`SharedCoalescer`, set up at mod.rs:547–:558; applied in
+`pull_from_input` at :2334). The comment at :547–:551 gives the two cases where it is off: `preserve_order` mode,
+whose merge does its own batching, and unbounded inputs, where a half-filled buffer could be withheld forever.
+Downstream operators see good packets again.
 
 ```text
  round-robin:  [batch 8192 rows] ──────────────► output (i mod M)   no row work
 
- hash:         [batch 8192 rows]
-                   │ create_hashes per row
+ hash/range:   [batch 8192 rows]
+                   │ hash per row (or binary-search the split points)
                    ▼
                indices: p0:[0,5,9...] p1:[2,3...] ... pM-1:[1,4...]
-                   │ arrow take per partition
+                   │ one grouped take, then slice per partition
                    ▼
-               M smaller batches, one per output   per-row cost, then columnar again
+               up to M smaller batches ──► per-output coalescer ──► channel
 ```
 
 ### Step 5 — Flow control: unbounded channels behind one global gate
@@ -143,23 +175,27 @@ re-materializes results as full columnar batches so every downstream operator st
 > **Out:** M per-output channels plus one shared `Gate` that applies backpressure
 > only when *every* output buffer is non-empty.
 
-The channels are built by `channels()` (distributor_channels.rs:55) — M linked per-output buffers sharing one
-`Gate` whose `empty_channels` counter starts at M (`AtomicUsize::new(n)`, :62). `DistributionSender::send`
-(:121, :131) implements the unusual semantics: each per-output buffer is individually *unbounded*, and a sender
-parks only when *all* M output buffers are non-empty. If any single channel is empty, every send proceeds. The
-rule is one branch in `SendFuture::poll` — when the counter of empty channels is zero, the sender registers a
-waker and yields:
+The channels are built by `channels()` (`repartition/distributor_channels.rs:54`) — M linked per-output buffers
+sharing one `Gate` whose `empty_channels` counter starts at M (`AtomicUsize::new(n)`, :61). `DistributionSender`
+(:120) and its `send` (:130) implement the unusual semantics: each per-output buffer is individually *unbounded*,
+and a sender parks only when *all* M output buffers are non-empty. If any single channel is empty, every send
+proceeds. The rule is one branch in `SendFuture::poll` — when the counter of empty channels is zero, the sender
+registers a waker and yields:
 
 ```rust
 // datafusion/physical-plan/src/repartition/distributor_channels.rs — SendFuture::poll
-226              if this.gate.empty_channels.load(Ordering::SeqCst) == 0 {
-227                  let mut guard = this.gate.send_wakers.lock();
-228                  if let Some(send_wakers) = guard.deref_mut() {
-229                      send_wakers.push((cx.waker().clone(), this.channel.id));
-230                      return Poll::Pending;
-231                  }
-232              }
+218              // does ANY receiver need data?
+219              // if so, allow sender to create another
+220              if this.gate.empty_channels.load(Ordering::SeqCst) == 0 {
+221                  let mut guard = this.gate.send_wakers.lock();
+222                  if let Some(send_wakers) = &mut *guard {
+223                      send_wakers.push((cx.waker().clone(), this.channel.id));
+224                      return Poll::Pending;
+225                  }
+226              }
 ```
+
+The line to focus on is 220: the only condition under which a send waits.
 
 Why not M bounded queues? Deadlock and starvation in join plans. With per-channel bounds, one slow consumer
 (say, a join output partition blocked on its other input) would block the producer, which would then stop feeding
@@ -170,7 +206,10 @@ least one consumer keeps draining.
 
 The trade-off is honest: in the worst case (all consumers stalled except one that never fills), buffering can
 grow past what a bounded design would allow. DataFusion accepts that memory risk in exchange for liveness — the
-same call Volcano made when it favored keeping producers running over strict per-flow limits.
+same call Volcano made when it favored keeping producers running over strict per-flow limits — and caps the damage
+differently: each output's buffered batches are charged to a memory reservation, and a batch whose reservation
+cannot grow is spilled to disk instead (`OutputChannel::send`, mod.rs:232–:240; `consume_input_streams` creates a spill channel per output, or per (input, output) pair
+under `preserve_order`, at :524–:545).
 
 ```mermaid
 graph TD
@@ -188,11 +227,12 @@ graph TD
 > **Out:** M output streams, each a k-way merge over its N per-input channels —
 > Volcano's merging exchange, one process at a time.
 
-When each input partition is already sorted and the plan needs that order, the `preserve_order` flag (mod.rs:1160)
+When each input partition is already sorted and the plan needs that order, the `preserve_order` flag (mod.rs:1536)
 switches RepartitionExec into merge mode — Volcano's MERGING exchange. Records from different producers must be
-kept *distinct* per producer and merged by sort key, never dumped into one bag. The machinery at :398-538 keeps a
-dedicated channel per (input, output) pair — including spill-to-disk channel variants for memory pressure — and
-`consume_input_streams` (:393) drives the input side. Each output partition then runs a streaming k-way merge over
+kept *distinct* per producer and merged by sort key, never dumped into one bag. `consume_input_streams` (:446)
+therefore builds a dedicated channel per (input, output) pair (:484–:492) and, for memory pressure, a dedicated
+single-producer spill channel per input (:524–:538), so the order the merge relies on survives a round trip through
+disk; it also turns the output coalescer off (:480). Each output partition then runs a streaming k-way merge over
 its N per-input channels instead of interleaving arrival order. Cost model: you buy a global sort order for the
 price of a per-output merge heap and stricter buffering (a merge cannot emit until every input channel has shown
 its next head), which is exactly why the flag is opt-in rather than default.
@@ -204,85 +244,78 @@ its next head), which is exactly why the flag is opt-in rather than default.
                in2 ─► ch(2,j) ─┘    per-input identity preserved
 ```
 
-### Step 7 — Who inserts RepartitionExec: EnforceDistribution is retired
+### Step 7 — Who inserts RepartitionExec: EnsureRequirements
 
-> **In:** a plan whose nodes declare required input distributions (hash on join
-> keys, or a single partition).
+> **In:** a plan whose nodes declare required input distributions (key partitioning
+> on join or group keys, or a single partition).
 > **Out:** the same plan with a `RepartitionExec` inserted wherever a child's
-> distribution does not already satisfy the requirement.
+> distribution does not already satisfy the requirement — hash for a fresh key
+> requirement, a re-cut Range where a child is already range-partitioned on those keys.
 
-You will read blog posts saying "the EnforceDistribution rule inserts RepartitionExec." That rule was RETIRED and
-folded into `EnsureRequirements`, a struct at `physical-optimizer/src/ensure_requirements/mod.rs:166` (the doc
-comment at :157 says it "combines the functionality of `EnforceDistribution` and `EnforceSorting`"). The old
-standalone file did not merely lose its rule — it *moved*: the helpers now live at
-`physical-optimizer/src/ensure_requirements/enforce_distribution.rs`, whose retirement note is spelled out in a
-doc comment (:18) and again at :76. `EnsureRequirements::optimize` (mod.rs:176) calls `ensure_distribution`
-(enforce_distribution.rs:1053) bottom-up; when a plan node declares a required input distribution that a child does
-not meet, that pass inserts the RepartitionExec — round-robin via `add_roundrobin_on_top` (:674, building
-`RepartitionExec::try_new` at :688) or hash via the `should_add_hash_repartition` branch (:1281) building
-`RepartitionExec::try_new` at :1291. Do not be confused when you grep for the rule the old guides mention and find
-only helpers behind a moved path.
+You will read blog posts saying "the EnforceDistribution rule inserts RepartitionExec." That rule is retired:
+DataFusion's single rule for this is `EnsureRequirements`, a struct at
+`physical-optimizer/src/ensure_requirements/mod.rs:175`. Its module doc says why (:31–:35): run as two rules,
+`EnforceSorting`'s sort pushdown "can break distribution invariants established by `EnforceDistribution`", so the
+two are now resolved together in one bottom-up pass ("Phase 2", the diagram at :46–:60). The old file did not
+disappear — it *moved* and became a library of helpers: `physical-optimizer/src/ensure_requirements/enforce_distribution.rs`,
+whose module doc (:18–:24) and a comment at :80 record the retirement. `EnsureRequirements::optimize` (mod.rs:185)
+runs Phase 2 by calling `ensure_distribution_with_stats` (enforce_distribution.rs:1532) on every node bottom-up
+(mod.rs:229–:235). When a node declares a required input distribution that a child does not meet, that pass
+inserts the RepartitionExec:
 
-> **Upstream since the pin.** The exchange the rule inserts is no longer
-> only round-robin or hash. A third routing policy, `Partitioning::Range`
-> ("Partition rows by source-declared ranges", partitioning.rs:124 at the
-> pin), was already in the enum and in `RepartitionExec`'s router
-> (repartition/mod.rs:783), but at the pin `EnsureRequirements` only ever
-> built hash for a key requirement (the `create_partitioning` call at
-> :1289). On DataFusion `main` since then:
-> [#24600](https://github.com/apache/datafusion/pull/24600) (commit
-> `d109f1b13`) lets a co-partitioned join adapt one input's existing
-> partitioning — a Range included — for the input that does not satisfy
-> it; [#24766](https://github.com/apache/datafusion/pull/24766) (commit
-> `b73054a07`) renamed `should_add_hash_repartition` to
-> `should_add_repartition` and, when the child is already Range-partitioned
-> on compatible keys, inserts a `RepartitionExec` that *rescales* that
-> Range to `target_partitions` instead of hashing, falling back to hash
-> when the range's boundary sample is too small; and
-> [#25589](https://github.com/apache/datafusion/pull/25589) (commit
-> `91cd7ffb9`) reorders a multi-key equi-join's key pairs to match an
-> input's range ordering, so `ON b = b1 AND a = a1` over inputs ranged on
-> `(a, b)` no longer hash-repartitions both sides. Separately,
-> [#24598](https://github.com/apache/datafusion/pull/24598) (commit
-> `864215432`) replaced range routing's per-row `ScalarValue` comparisons
-> with a shared `RangeRouter` that binary-searches Arrow buffers directly
-> for a single primitive key and compares `RowConverter` rows otherwise. None of the four is in a tagged
-> release as of 55.2.0 (2026-10-04); they are on `main`. The steps above
-> describe the pinned code, which is what the line numbers point at; the
-> argument that the rule inserts an exchange wherever a child's
-> distribution misses a requirement still holds, but "round-robin or
-> hash" is now an incomplete list of what it can insert.
+- **Round-robin**, to raise parallelism under an unspecified distribution: `add_roundrobin_on_top` (:862), building
+  `RepartitionExec::try_new` at :876.
+- **A key requirement** (`should_add_repartition`, :1776): if the child is already Range-partitioned on keys that
+  satisfy the requirement, the pass *re-cuts* that Range to `target_partitions` — `range.scale(...)`, which
+  down-samples the retained split points — and keeps the rows' range layout (:1781–:1810); if the child is not, or
+  the Range's retained sample is too small to cut that many partitions (`scale` returns `None`, :1803–:1808), it
+  falls back to `create_partitioning`, which builds a hash partitioning (:1812). The exchange itself is
+  `RepartitionExec::try_new` at :1822.
+- **Co-partitioned children** (both inputs of a partitioned join): `enforce_distribution_relationships` (:1287)
+  takes the input that already satisfies its requirement as the reference and *adapts* that input's partitioning
+  for the other one (`adapt`, :1420) — so a Range on one side becomes a matching Range on the other instead of
+  both sides hashing — skipping inputs whose Range layout already matches (`has_same_layout`, :1448–:1450).
+
+Before any of that, the pass reorders a multi-key equi-join's key pairs to match an input's existing Range ordering
+(doc comment :1518–:1522): for `ON b = b1 AND a = a1` over inputs ranged on `(a, b)`, swapping the pairs to
+`(a = a1, b = b1)` changes nothing about the join and lets the Range inputs satisfy the requirement as they are.
 
 ## Where each step lives in the code
 
+Paths are relative to `~/repos/datafusion/datafusion/` at `datafusion@350ca7650`.
+
 | Step | What | Anchor |
 |------|------|--------|
-| 1 | Operator struct, N→M | datafusion/physical-plan/src/repartition/mod.rs:1150 |
-| 1 | Per-output execute | datafusion/physical-plan/src/repartition/mod.rs:1329 |
-| 1 | Per-input pull task | datafusion/physical-plan/src/repartition/mod.rs:1742 |
-| 2 | Partitioning enum | datafusion/physical-expr/src/partitioning.rs:117 |
-| 2 | RoundRobinBatch / Hash / Range / UnknownPartitioning variants; Range routed by `BatchPartitioner::try_new` | datafusion/physical-expr/src/partitioning.rs:119, :122, :124, :126; physical-plan/src/repartition/mod.rs:783 |
-| 3 | Fixed-seed SeededRandomState::with_seed(0) | datafusion/physical-plan/src/repartition/mod.rs:592 |
-| 3 | Hash constructor (`new_hash_partitioner`) | datafusion/physical-plan/src/repartition/mod.rs:679 |
-| 3 | Strength-reduced reducer built (`StrengthReducedU64::new`) | datafusion/physical-plan/src/repartition/mod.rs:691 |
-| 3 | `hash % M` applied (`partition_reducer.partition_indices`) | datafusion/physical-plan/src/repartition/mod.rs:862 |
-| 4 | Routing core struct (`BatchPartitioner`) | datafusion/physical-plan/src/repartition/mod.rs:560 |
-| 4 | Round-robin constructor (`new_round_robin_partitioner`) | datafusion/physical-plan/src/repartition/mod.rs:710 |
-| 4 | partition_iter routing loop; round-robin next_idx at :836 | datafusion/physical-plan/src/repartition/mod.rs:825 |
-| 4 | Per-row create_hashes (with `.random_state()` :856) | datafusion/physical-plan/src/repartition/mod.rs:854 |
-| 4 | Per-partition gather (`partition_grouped_take`, arrow `take`) | datafusion/physical-plan/src/repartition/mod.rs:868 |
-| 5 | channels constructor | datafusion/physical-plan/src/repartition/distributor_channels.rs:55 |
-| 5 | Gate with empty_channels | datafusion/physical-plan/src/repartition/distributor_channels.rs:62 |
-| 5 | DistributionSender::send | datafusion/physical-plan/src/repartition/distributor_channels.rs:121, :131 |
-| 5 | Gate park branch (`SendFuture::poll`) | datafusion/physical-plan/src/repartition/distributor_channels.rs:226 |
-| 6 | preserve_order flag | datafusion/physical-plan/src/repartition/mod.rs:1160 |
-| 6 | Merge-mode channel machinery | datafusion/physical-plan/src/repartition/mod.rs:398-538 |
-| 6 | consume_input_streams | datafusion/physical-plan/src/repartition/mod.rs:393 |
-| 7 | EnsureRequirements struct (doc :157) | datafusion/physical-optimizer/src/ensure_requirements/mod.rs:166 |
-| 7 | optimize → ensure_distribution | datafusion/physical-optimizer/src/ensure_requirements/mod.rs:176 |
-| 7 | Retirement notes (moved path) | datafusion/physical-optimizer/src/ensure_requirements/enforce_distribution.rs:18, :76 |
-| 7 | Hash RepartitionExec inserted | datafusion/physical-optimizer/src/ensure_requirements/enforce_distribution.rs:1291 |
-| 7 | Round-robin RepartitionExec inserted | datafusion/physical-optimizer/src/ensure_requirements/enforce_distribution.rs:688 |
+| 1 | Operator struct, N→M | physical-plan/src/repartition/mod.rs:1526 |
+| 1 | Per-output execute | physical-plan/src/repartition/mod.rs:1740 |
+| 1 | Channel wiring; plain vs preserve-order channels | physical-plan/src/repartition/mod.rs:446, :484–:503 |
+| 1 | Per-input pull task | physical-plan/src/repartition/mod.rs:2280 |
+| 2 | Partitioning enum | physical-expr/src/partitioning.rs:126 |
+| 2 | RoundRobinBatch / Hash / Range / UnknownPartitioning variants | physical-expr/src/partitioning.rs:128, :131, :133, :135 |
+| 2 | RangePartitioning (ordering, samples, split points; doc example) | physical-expr/src/partitioning.rs:216 (doc :158–:215) |
+| 2 | Unsupported scheme rejected | physical-plan/src/repartition/mod.rs:1195 |
+| 3 | Routing state (`BatchPartitioner`, `BatchPartitionerState`) | physical-plan/src/repartition/mod.rs:649, :654 |
+| 3 | Fixed-seed SeededRandomState::with_seed(0) | physical-plan/src/repartition/mod.rs:677 |
+| 3 | Strength reduction: doc, enum, `partition_indices` | physical-plan/src/repartition/mod.rs:939, :948, :968 |
+| 3 | Hash constructor (`new_hash_partitioner`, reducer at :1036) | physical-plan/src/repartition/mod.rs:1024 |
+| 4 | Round-robin constructor (staggered start :1064) | physical-plan/src/repartition/mod.rs:1055 |
+| 4 | partition_iter: round-robin :1245, hash :1263–:1279, range :1283–:1313 | physical-plan/src/repartition/mod.rs:1234 |
+| 4 | Grouped take (one `take_arrays`, then slices) | physical-plan/src/repartition/mod.rs:1344 |
+| 4 | RangeRouter: primitive vs row-format paths | physical-plan/src/repartition/range.rs:36, :120–:136, :418, :585 |
+| 4 | Per-output coalescer | physical-plan/src/repartition/mod.rs:547–:558, :2334 |
+| 5 | channels constructor | physical-plan/src/repartition/distributor_channels.rs:54 |
+| 5 | Gate with empty_channels | physical-plan/src/repartition/distributor_channels.rs:61 |
+| 5 | DistributionSender / send | physical-plan/src/repartition/distributor_channels.rs:120, :130 |
+| 5 | Gate park branch (`SendFuture::poll`) | physical-plan/src/repartition/distributor_channels.rs:220 |
+| 5, 6 | Spill channels (shared vs per-input) | physical-plan/src/repartition/mod.rs:524–:545 |
+| 6 | preserve_order flag | physical-plan/src/repartition/mod.rs:1536 |
+| 7 | EnsureRequirements struct; why one rule (doc :31–:35) | physical-optimizer/src/ensure_requirements/mod.rs:175 |
+| 7 | optimize → ensure_distribution_with_stats | physical-optimizer/src/ensure_requirements/mod.rs:185, :229–:235 |
+| 7 | Retirement notes (moved path) | physical-optimizer/src/ensure_requirements/enforce_distribution.rs:18, :80 |
+| 7 | Round-robin RepartitionExec inserted | physical-optimizer/src/ensure_requirements/enforce_distribution.rs:876 |
+| 7 | Key requirement: re-cut Range or hash, RepartitionExec inserted | physical-optimizer/src/ensure_requirements/enforce_distribution.rs:1776–:1822 |
+| 7 | Co-partitioned children adapt the reference partitioning | physical-optimizer/src/ensure_requirements/enforce_distribution.rs:1287, :1420 |
+| 7 | Join keys reordered to an input's Range ordering | physical-optimizer/src/ensure_requirements/enforce_distribution.rs:1518 |
 
 ## Questions to answer in notes.md
 
@@ -296,8 +329,9 @@ only helpers behind a moved path.
    the gate design permits?
 4. In preserve_order mode, why does correctness require a channel per (input, output) pair rather than one channel
    per output? What extra latency does the k-way merge introduce before the first row can be emitted?
-5. After the EnforceDistribution → EnsureRequirements consolidation, trace how a hash join's required input
-   distribution causes a `Hash` RepartitionExec to appear — which rule sees the requirement, and what does it insert?
+5. Trace how a hash join's required input distribution causes a `Hash` RepartitionExec to appear — which rule
+   sees the requirement, and what does it insert? Then change one premise: the build side is already
+   Range-partitioned on the join key. What does the same pass insert now, and when does it fall back to hash?
 
 ## Done when
 
@@ -307,14 +341,17 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `execute` (mod.rs:1329) is called once per *output* partition; its first call spawns
-  one `pull_from_input` task (:1742) per *input* partition. So there are N producer
-  tasks and M consumer streams, wired by N×M logical channels (`channels()`,
-  distributor_channels.rs:55). It is not one shared MPMC queue for two reasons:
+  `execute` (mod.rs:1740) is called once per *output* partition; its first call
+  spawns one `pull_from_input` task (:2280) per *input* partition. So there are N
+  producer tasks and M consumer streams. In the default mode they are wired by M
+  channels (`channels()`, distributor_channels.rs:54), one per output, each with N
+  cloned senders (mod.rs:495–:500); in `preserve_order` mode by N×M channels, one per
+  (input, output) pair (:484–:492). It is not one shared MPMC queue for two reasons:
   order preservation (Step 6) needs each (input, output) pair kept distinct so the
   k-way merge can tell producers apart; and a single global lock over all in-flight
   batches would re-serialize every producer and consumer, throwing away the
-  parallelism — the matrix confines contention to one channel plus the shared gate.
+  parallelism — per-output channels confine contention to one channel plus the
+  shared gate.
 
   </details>
 
@@ -322,9 +359,9 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `REPARTITION_RANDOM_STATE` is a `SeededRandomState::with_seed(0)` (mod.rs:592) —
-  fixed zero seeds — so `create_hashes` (:854) followed by the strength-reduced
-  `partition_reducer.partition_indices` (:862) maps a given key to the *same*
+  `REPARTITION_RANDOM_STATE` is a `SeededRandomState::with_seed(0)` (mod.rs:677) —
+  fixed zero seeds — so `create_hashes` (:1263) followed by the strength-reduced
+  `partition_reducer.partition_indices` (:1273) maps a given key to the *same*
   partition on every instance, run, and node. A **hash join** depends on it (build
   and probe sides must send equal join keys to the same partition, or matches are
   silently dropped) and so does a **hash aggregate** (equal group keys must co-locate,
@@ -339,7 +376,7 @@ Answer each before unfolding it.
 
   Each per-output buffer is individually unbounded; `SendFuture::poll` parks the
   sender only when `gate.empty_channels == 0` — every output already has data waiting
-  (distributor_channels.rs:226). If any channel is empty the send proceeds, so a fast
+  (distributor_channels.rs:220). If any channel is empty the send proceeds, so a fast
   consumer is never starved by backpressure aimed at a slow one. Per-channel bounds
   would let one blocked consumer (say a join output waiting on its other input) stall
   the producer, which then stops feeding the fast consumers too — a distribution
@@ -354,9 +391,9 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   When each input partition is already sorted and the plan requires that order, the
-  `preserve_order` flag (mod.rs:1160) switches `consume_input_streams` (:393; the
-  preserve-order branch spans :398–538) to a dedicated channel per (input, output)
-  pair, and each output runs a streaming k-way merge over its N per-input channels
+  `preserve_order` flag (mod.rs:1536) switches `consume_input_streams` (:446; the
+  preserve-order branch is :484–:492, its per-input spill channels :524–:538) to a
+  dedicated channel per (input, output) pair, and each output runs a streaming k-way merge over its N per-input channels
   instead of interleaving in arrival order. The cost: a per-output merge heap plus
   stricter buffering — the merge cannot emit until *every* input channel has shown its
   next head — so first-row latency rises. That is why the flag is opt-in, not default.
@@ -372,7 +409,7 @@ Answer each before unfolding it.
   (543.0 M rows/s) *beats* round-robin (229.6 M rows/s): hashing is cheap and
   round-robin's per-row bookkeeping dominates when there is no batch to amortize.
   DataFusion inverts this because it works on whole batches — round-robin forwards a
-  `RecordBatch` with zero per-row work (Step 4, :836–837), while hash pays
+  `RecordBatch` with zero per-row work (Step 4, mod.rs:1245–:1246), while hash pays
   `create_hashes` + `partition_grouped_take` per row before re-materializing batches.
   Same operation, opposite verdict: what looks cheap depends on whether you measure
   per row or per batch — the packet-economics lesson from Volcano's §5.
@@ -381,7 +418,8 @@ Answer each before unfolding it.
 
 ## References
 
-- Repo: `~/repos/datafusion` — `datafusion/physical-plan/src/repartition/` (operator + channels),
+- Repo: `~/repos/datafusion` at `350ca7650` — `datafusion/physical-plan/src/repartition/` (operator, channels,
+  range router),
   `datafusion/physical-expr/src/partitioning.rs` (policy enum),
   `datafusion/physical-optimizer/src/ensure_requirements/` (insertion rule).
 - Goetz Graefe, *Encapsulation of Parallelism in the Volcano Query Processing System*, TR CS/E 89-007 — the

@@ -43,10 +43,10 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is seeded; every figure first recorded on 2026-07-27 (34 of 55
+Lane 1 is seeded, so every figure — 34 of 55
 services alerting, the cause not among them at error rate 0.0040; rank 35 by
-failure count, 41 by error rate; infra leaves 0.0040–0.0041) is reproduced
-exactly.
+failure count, 41 by error rate; infra leaves 0.0040–0.0041 — is identical on
+every run.
 
 Three mechanics worth memorizing.
 
@@ -120,7 +120,7 @@ aggregate, rare-event, or tail — they do not have the same answer.
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-27, Apple M3 Pro):
 
 | lane | reference |
 |---|---|

@@ -36,6 +36,40 @@ graph TD
     TPC -->|"decompose +<br/>batch"| FDB
 ```
 
+Two points on that diagram sit between its boxes. **Tiga: Accelerating
+Geo-Distributed Transactions with Synchronized Clocks** (Jinkun Geng, Shuai
+Mu, Anirudh Sivaraman, Balaji Prabhakar; SOSP 2025;
+[technical report](https://arxiv.org/abs/2509.05759) ·
+[code](https://github.com/New-Consensus-Concurrency-Control/Tiga)) starts from
+the cost of layering 2PC-style concurrency control over Paxos replication:
+several wide-area round trips per commit. Tiga merges the two: each
+transaction is assigned a *future* timestamp from a synchronized clock at
+submission, servers hold it until their clocks pass that time and then execute
+in timestamp order, so in the common case execution and replication finish in
+one wide-area round trip, with a 1.5–2 round-trip slow path when a transaction
+arrives late (Abstract). In the microbenchmark at low contention it reports
+1.3–7.2× higher throughput and 1.4–4.6× lower median latency than eight
+baselines including Calvin+, Janus and Detock (§1). It is Spanner's clocks
+([`reading-spanner-hlc.md`](reading-spanner-hlc.md)) used to *pre-agree the
+order*, which is Calvin's move ([`reading-calvin.md`](reading-calvin.md)).
+
+**SunStorm: Geographically distributed transactions over Aurora-style
+systems** (Cuong D. T. Nguyen, Pooja Nilangekar, Heikki Linnakangas, Daniel
+J. Abadi; PVLDB 18(13), 2025;
+[paper](https://www.vldb.org/pvldb/vol18/p5555-nilangekar.pdf) ·
+[code](https://github.com/umd-dslam/sunstorm)) starts from the other end.
+Aurora-style systems (one writer over shared storage) avoid distributed commit
+entirely — in the paper's two-region test Aurora processed 1.5× more
+transactions than CockroachDB and YugabyteDB with 1/6 of their write-compute
+resources — but every write from a far region pays a cross-region trip to the
+primary (§1, Fig. 1). SunStorm, built on PostgreSQL with an author from Neon,
+geo-partitions the shared storage and gives each region its own writer;
+single-region transactions stay local, and multi-region ones talk across
+regions only at commit, using a decentralized 2PC that needs one round trip
+between the initiator and the validators (§4.4, §7.2.2). It is the topic-28
+architecture meeting this topic's 2PC, and a design point for M29's
+partitioned graph.
+
 ## 2. The one-table summary
 
 | system | concurrency control | clock | cross-shard atomicity | blocking window |
@@ -59,45 +93,6 @@ reader hits stale lock:        look at primary — lock held? roll back.
 
 TiKV: prewrite = `txn/actions/prewrite.rs:37`, commit = `commit.rs:64`,
 resolution = `check_txn_status.rs`/`cleanup.rs` (see reading-percolator-tikv.md).
-
-## Newer work (2025–2026)
-
-- **Tiga: Accelerating Geo-Distributed Transactions with Synchronized
-  Clocks** — Jinkun Geng, Shuai Mu, Anirudh Sivaraman, Balaji Prabhakar. SOSP
-  2025. [technical report](https://arxiv.org/abs/2509.05759) ·
-  [code](https://github.com/New-Consensus-Concurrency-Control/Tiga)
-
-  Layering 2PC-style concurrency control over Paxos replication costs several
-  wide-area round trips per commit. Tiga merges the two: each transaction is
-  assigned a *future* timestamp from a synchronized clock at submission, servers
-  hold it until their clocks pass that time and then execute in timestamp
-  order, so in the common case execution and replication finish in one
-  wide-area round trip, with a 1.5–2 round-trip slow path when a transaction
-  arrives late (Abstract). In the microbenchmark at low contention it reports
-  1.3–7.2× higher throughput and 1.4–4.6× lower median latency than eight
-  baselines including Calvin+, Janus and Detock (§1). It sits between two
-  boxes of §1's diagram — Spanner's clocks
-  ([`reading-spanner-hlc.md`](reading-spanner-hlc.md)) used to *pre-agree the
-  order*, which is Calvin's move
-  ([`reading-calvin.md`](reading-calvin.md)).
-- **SunStorm: Geographically distributed transactions over Aurora-style
-  systems** — Cuong D. T. Nguyen, Pooja Nilangekar, Heikki Linnakangas, Daniel
-  J. Abadi. PVLDB 18(13), 2025.
-  [paper](https://www.vldb.org/pvldb/vol18/p5555-nilangekar.pdf) ·
-  [code](https://github.com/umd-dslam/sunstorm)
-
-  Aurora-style systems (one writer over shared storage) avoid distributed
-  commit entirely — in the paper's two-region test Aurora processed 1.5× more
-  transactions than CockroachDB and YugabyteDB with 1/6 of their
-  write-compute resources — but every write from a far region pays a
-  cross-region trip to the primary (§1, Fig. 1). SunStorm, built on
-  PostgreSQL with an author from Neon, geo-partitions the
-  shared storage and gives each region its own writer; single-region
-  transactions stay local, and multi-region ones talk across regions only at
-  commit, using a decentralized 2PC that needs one round trip between the
-  initiator and the validators (§4.4, §7.2.2). It is the topic-28 architecture
-  meeting this topic's 2PC (§1–2), and a design point for M29's partitioned
-  graph.
 
 ## 4. Experiments (`experiments/`)
 

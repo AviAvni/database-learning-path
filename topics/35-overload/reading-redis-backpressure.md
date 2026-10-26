@@ -7,7 +7,7 @@ priority admission is structurally unavailable. Instead, redis's
 overload control lives at the *edges* of the event loop, converting
 each unbounded queue (memory, reply buffers, time behind a script)
 into a bounded, fast error. The repo is cloned at `~/repos/redis`
-(pinned at `redis@a176d1225`); this is a code-read, ~1.5 h, across
+(pinned at `redis@e87dda2a4`, `unstable`); this is a code-read, ~1.5 h, across
 `evict.c`, `server.c`, and `networking.c` (all anchors under `src/`).
 
 ## The problem in one sentence
@@ -69,12 +69,12 @@ shaped by the scheduling freedom the architecture leaves you.
 > precondition for the reject-before-work gate in Step 4.
 
 `maxmemory` turns RAM into an explicit budget. `getMaxmemoryState`
-(`evict.c:384`) computes usage, bytes over budget (`mem_tofree`), and
+(`evict.c:395`) computes usage, bytes over budget (`mem_tofree`), and
 a `level` ratio that may exceed 1.0; it returns `C_ERR` when over the
 limit and eviction can't help. Note the fast path: with no `maxmemory`
 set it returns `C_OK` almost immediately — the *check* must stay cheap
 because Step 4 runs it before every command. `overMaxmemoryAfterAlloc`
-(`evict.c:425`) asks the same question prospectively. Why it matters:
+(`evict.c:436`) asks the same question prospectively. Why it matters:
 a budget you can compute cheaply and often is the precondition for
 reject-before-work; one you discover only by malloc failing is a crash,
 not a policy.
@@ -88,8 +88,8 @@ not a policy.
 
 Redis keeps no global LRU list — linking every key into one would tax
 *every* command to fund the rare eviction. Instead
-`evictionPoolPopulate` (`evict.c:134`) grabs `maxmemory-samples`
-random keys (default 5, `config.c:3223`) and inserts better candidates
+`evictionPoolPopulate` (`evict.c:139`) grabs `maxmemory-samples`
+random keys (default 5, `config.c:3629`) and inserts better candidates
 into a shared pool of `EVPOOL_SIZE` 16 entries (`evict.c:36`), kept
 sorted so the best victim sits at the right end:
 
@@ -102,9 +102,20 @@ sorted so the best victim sits at the right end:
 ```
 
 Statistically this converges on nearly the same victims as true LRU,
-at O(samples) cost paid only when actually over budget. Why it
-matters: the governance mechanism must not itself become load — a
-defense with heavy steady-state cost is work amplification.
+at O(samples) cost paid only when actually over budget.
+
+Some keys are exempt. `BLESS SET` marks a key **NO-EVICT** (a "blessed"
+key: a per-key flag bit, `src/bless.c`), and a blessed key is never a
+victim: `evictionPoolPopulate` skips it while sampling (`evict.c:157`)
+and reports through its `int *candidates` out-parameter how many
+sampled keys *were* evictable, so `performEvictions` keeps sampling
+until it has `maxmemory-samples` real candidates rather than stopping
+on a sample of blessed keys. If eight consecutive rounds sample only
+blessed keys (`EVICTION_MAX_BLESSED_ONLY_ROUNDS`, `evict.c:38`), it
+gives up on finding a victim — and Step 4 shows what the gate does
+then. Why it matters: the governance mechanism must not itself become
+load — a defense with heavy steady-state cost is work amplification —
+and an exemption from it must not be allowed to stall it either.
 
 ### Step 4 — the OOM gate: reject-before-work with `-OOM`
 
@@ -114,26 +125,45 @@ defense with heavy steady-state cost is work amplification.
 > — the anti-metastability property.
 
 Before each command, `processCommand` runs the eviction loop:
-`performEvictions` (`evict.c:532`) frees keys until under budget —
+`performEvictions` (`evict.c:543`) frees keys until under budget —
 returning `EVICT_OK`, `EVICT_RUNNING`, or `EVICT_FAIL` — then the gate:
 
 ```c
-// src/server.c:4484–4499 — the OOM gate in processCommand (4487–4494 comments elided)
-4484    if (server.maxmemory && !isInsideYieldingLongCommand()) {
-4485        int out_of_memory = (performEvictions() == EVICT_FAIL);
-4495        if (server.current_client == NULL) return C_ERR;
-4497        if (out_of_memory && is_denyoom_command) {
-4498            rejectCommand(c, shared.oomerr);
-4499            return C_OK;
+// src/server.c:4879 — the OOM gate in processCommand
+4879      if (server.maxmemory && !isInsideYieldingLongCommand()) {
+4880          int out_of_memory = (performEvictions() == EVICT_FAIL);
+     // ... 4881–4889: flush pending tracking invalidations; comment ...
+4890          if (server.current_client == NULL) return C_ERR;
+4891  
+4892          if (out_of_memory && is_denyoom_command) {
+4893              rejectCommand(c, shared.oomerr);
+4894              return C_OK;
+4895          }
 ```
 
-`is_denyoom_command` (`server.c:4391`) is any command flagged
+The line to focus on is 4892: reject only when eviction failed *and*
+the command can grow memory.
+`is_denyoom_command` (`server.c:4785`) is any command flagged
 `CMD_DENYOOM` — writes, mostly; reads still pass, because they don't
-grow the queue. The guard on line 4484 is important: eviction is
+grow the queue. The guard on line 4879 is important: eviction is
 skipped when a yielding long command is running (Step 6), so its
 replication stream is not interleaved with eviction DELs. `-OOM` is a
 shared preallocated string (`shared.oomerr`): zero allocation, zero
-keyspace work, the cheapest possible shed. Why it matters: the error
+keyspace work, the cheapest possible shed.
+
+"Eviction failed" has one deliberate exception. When eviction gave up
+because every sampled key was blessed (Step 3), `performEvictions`
+does not return `EVICT_FAIL` straight away: it lets the command run as
+long as used memory is within a quarter of `maxmemory` over the limit
+(`mem_tofree <= server.maxmemory / EVICTION_OVERUSE_DIVISOR`, with the
+divisor `4` at `evict.c:42`; the check is at `evict.c:813`–`:817`). With
+`maxmemory` 1 GiB = 1,073,741,824 bytes, the tolerated overshoot is
+1,073,741,824 / 4 = 268,435,456 bytes (256 MiB), so writes keep running
+up to 1.25 GiB of used memory and get `-OOM` past it. The comment at
+`evict.c:808`–`:812` gives the reason — failing the write "would punish
+the user for a limit they deliberately raised" — and the bound is what
+keeps it a policy: the overshoot is a second, fixed ceiling, not an
+open door. Why it matters: the error
 path costs strictly less than the work path, so the more overloaded
 redis gets, the less each request costs it — a stabilizing loop, not a
 sustaining one: anti-metastability.
@@ -158,25 +188,31 @@ graph LR
     E --> B
 ```
 
-`checkClientOutputBufferLimits` (`networking.c:5151`) enforces a
-**hard** limit (`used_mem >= hard_limit_bytes`: gone now, line 5175)
+`checkClientOutputBufferLimits` (`networking.c:5487`) enforces a
+**hard** limit (`used_mem >= hard_limit_bytes`: gone now, line 5511)
 and a **soft** limit (over `soft_limit_bytes` continuously for
-`soft_limit_seconds`: gone, lines 5178–5197), per client class. The
+`soft_limit_seconds`: gone, lines 5514–5533), per client class. The
 defaults are literal in the source, and normal clients are *unlimited*
 by default — only replicas and pubsub subscribers are capped:
 
 ```c
-// src/config.c:171–175 — clientBufferLimitsDefaults {hard, soft, soft_seconds}
-171 clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT] = {
-172     {0, 0, 0}, /* normal  — no limit */
-173     {1024*1024*256, 1024*1024*64, 60}, /* slave  — 256MB hard, 64MB soft/60s */
-174     {1024*1024*32, 1024*1024*8, 60}  /* pubsub — 32MB hard, 8MB soft/60s */
-175 };
+// src/config.c:184 — clientBufferLimitsDefaults, each row {hard, soft, soft_seconds}
+183  /* Output buffer limits presets. */
+184  clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT] = {
+185      {0, 0, 0}, /* normal */
+186      {1024*1024*256, 1024*1024*64, 60}, /* slave */
+187      {1024*1024*32, 1024*1024*8, 60}  /* pubsub */
+188  };
 ```
 
+Line 185 is the one to focus on: `{0, 0, 0}` means *no limit* for
+normal clients. A replica (line 186) is cut at 256 MB hard, or 64 MB
+held for 60 s; a pubsub subscriber (line 187) at 32 MB hard, or 8 MB
+for 60 s.
+
 Even unauthenticated clients are capped at 1 KB
-(`networking.c:5157`: `used_mem > 1024 && authRequired(c)`).
-`closeClientOnOutputBufferLimitReached` (`networking.c:5215`)
+(`networking.c:5493`: `used_mem > 1024 && authRequired(c)`).
+`closeClientOnOutputBufferLimitReached` (`networking.c:5551`)
 disconnects *asynchronously* (`freeClientAsync`): it is called deep
 inside reply-writing code, where freeing the client under your own
 feet would be unsafe. Why it matters: redis is the *producer* here, so
@@ -192,11 +228,11 @@ evict the consumer.
 Memory and reply bytes are two queues; *time behind a long command* is
 the third. While a Lua script or module command runs past
 `server.busy_reply_threshold` (checked in `script.c:150`; default
-5000 ms, set at `config.c:3264` under the name `busy-reply-threshold`,
+5000 ms, set at `config.c:3680` under the name `busy-reply-threshold`,
 alias `lua-time-limit`), redis re-enters the event loop just enough to
 answer new commands with `-BUSY` — the shared errors at
-`server.c:2130` — instead of banking a storm it must later drain.
-`isInsideYieldingLongCommand` (`server.c:825`) marks this mode; Step
+`server.c:2278` — instead of banking a storm it must later drain.
+`isInsideYieldingLongCommand` (`server.c:882`) marks this mode; Step
 4's gate consults it to skip eviction while yielded (eviction DELs must
 not interleave with the script's replication stream). Why it matters:
 without `-BUSY`, a 30 s script under 280 QPS banks 30 × 280 = 8,400
@@ -211,10 +247,10 @@ that sustains a metastable stall once the script returns.
 > (shutdown, failover) where accepting a write would lose it.
 
 The bluntest instrument: stop accepting (some) work entirely.
-`pauseActions(PAUSE_DURING_SHUTDOWN, ...)` (`server.c:4850`) reuses
+`pauseActions(PAUSE_DURING_SHUTDOWN, ...)` (`server.c:5245`) reuses
 the CLIENT PAUSE machinery during shutdown — writes are suspended so
 replicas can catch up before the primary exits; failover does the same
-dance. `unpauseActions(PAUSE_BY_CLIENT_COMMAND)` (`networking.c:4482`)
+dance. `unpauseActions(PAUSE_BY_CLIENT_COMMAND)` (`networking.c:4794`)
 lifts a client-commanded pause; pauses stack by *purpose*, each with a
 deadline and an action set (writes only, or all). Why it matters: this
 is shedding at fraction 1.0 — useless as steady-state policy, exactly
@@ -247,21 +283,22 @@ response to overload must cost less than the work declined.
 
 | Step | Anchor | What to see |
 |---|---|---|
-| 2 | `evict.c:384` | `getMaxmemoryState` — budget math; early `C_OK` when no maxmemory |
-| 2 | `evict.c:425` | `overMaxmemoryAfterAlloc` — the prospective form |
-| 3 | `evict.c:36`, `evict.c:134` | `EVPOOL_SIZE 16` + its comment; `evictionPoolPopulate` — sample, insert sorted |
-| 3 | `config.c:3223` | `maxmemory-samples` default 5 |
-| 4 | `evict.c:532` | `performEvictions` — the three-value return contract in the comment |
-| 4 | `server.c:4391` | `is_denyoom_command` — CMD_DENYOOM plus the MULTI/EXEC case |
-| 4 | `server.c:4484`–`4499` | the gate: `EVICT_FAIL` → `rejectCommand(c, shared.oomerr)` |
-| 5 | `networking.c:5151` | `checkClientOutputBufferLimits` — soft (limit + time) vs hard; 1KB unauthenticated cap |
-| 5 | `config.c:171` | `clientBufferLimitsDefaults` — normal `{0,0,0}`, replica 256/64MB/60s, pubsub 32/8MB/60s |
-| 5 | `networking.c:5215` | `closeClientOnOutputBufferLimitReached` — why async |
-| 6 | `server.c:2130` | the `-BUSY` shared error strings |
-| 6 | `script.c:150`, `config.c:3264` | the threshold check in a running script; `busy-reply-threshold` default 5000 ms |
-| 6 | `server.c:825` | `isInsideYieldingLongCommand` |
-| 7 | `server.c:4850` | `pauseActions(PAUSE_DURING_SHUTDOWN, ...)` in the shutdown path |
-| 7 | `networking.c:4482` | `unpauseActions(PAUSE_BY_CLIENT_COMMAND)` |
+| 2 | `evict.c:395` | `getMaxmemoryState` — budget math; early `C_OK` when no maxmemory |
+| 2 | `evict.c:436` | `overMaxmemoryAfterAlloc` — the prospective form |
+| 3 | `evict.c:36`, `evict.c:139` | `EVPOOL_SIZE 16` + its comment; `evictionPoolPopulate` — sample, skip blessed keys (`:157`), insert sorted |
+| 3 | `config.c:3629` | `maxmemory-samples` default 5 |
+| 4 | `evict.c:543` | `performEvictions` — the three-value return contract in the comment |
+| 4 | `evict.c:42`, `:813` | `EVICTION_OVERUSE_DIVISOR` — the bounded 1.25× overshoot when only blessed keys remain |
+| 4 | `server.c:4785` | `is_denyoom_command` — CMD_DENYOOM plus the MULTI/EXEC case |
+| 4 | `server.c:4879`–`4895` | the gate: `EVICT_FAIL` → `rejectCommand(c, shared.oomerr)` |
+| 5 | `networking.c:5487` | `checkClientOutputBufferLimits` — soft (limit + time) vs hard; 1KB unauthenticated cap |
+| 5 | `config.c:184` | `clientBufferLimitsDefaults` — normal `{0,0,0}`, replica 256/64MB/60s, pubsub 32/8MB/60s |
+| 5 | `networking.c:5551` | `closeClientOnOutputBufferLimitReached` — why async |
+| 6 | `server.c:2278` | the `-BUSY` shared error strings |
+| 6 | `script.c:150`, `config.c:3680` | the threshold check in a running script; `busy-reply-threshold` default 5000 ms |
+| 6 | `server.c:882` | `isInsideYieldingLongCommand` |
+| 7 | `server.c:5245` | `pauseActions(PAUSE_DURING_SHUTDOWN, ...)` in the shutdown path |
+| 7 | `networking.c:4794` | `unpauseActions(PAUSE_BY_CLIENT_COMMAND)` |
 
 Read order: `getMaxmemoryState` → `evictionPoolPopulate` →
 `performEvictions` → the gate → output-buffer pair → `-BUSY` → pause.
@@ -291,18 +328,20 @@ Read order: `getMaxmemoryState` → `evictionPoolPopulate` →
 
 Answer each before unfolding it.
 
-- [ ] You can narrate the pre-command sequence at `server.c:4485` —
+- [ ] You can narrate the pre-command sequence at `server.c:4880` —
       evict, gate, reject — and say why eviction runs *before* the
       check rather than lazily on allocation failure.
 
   <details><summary>Answer</summary>
 
   In `processCommand`, guarded by `if (server.maxmemory &&
-  !isInsideYieldingLongCommand())` (`server.c:4484`), redis first runs
+  !isInsideYieldingLongCommand())` (`server.c:4879`), redis first runs
   `performEvictions()` and records `out_of_memory = (… == EVICT_FAIL)`
-  (`:4485`). Only if eviction failed *and* the command is
+  (`:4880`). Only if eviction failed *and* the command is
   `is_denyoom_command` does it `rejectCommand(c, shared.oomerr)` and
-  `return C_OK` (`:4497–4499`). Eviction runs *first*, and *before* the
+  `return C_OK` (`:4892–4894`). (Eviction "fails" only past a bounded
+  1.25× overshoot when blessed NO-EVICT keys are what holds the memory —
+  `evict.c:813`.) Eviction runs *first*, and *before* the
   command executes, because reject-before-work is the whole point: a
   budget discovered by malloc failing mid-command is a crash, not a
   policy, and `shared.oomerr` is a preallocated string so the shed costs
@@ -318,8 +357,8 @@ Answer each before unfolding it.
 
   A true global LRU list would tax *every* command to maintain, funding
   a rare eviction from the common path. Instead `evictionPoolPopulate`
-  (`evict.c:134`) samples `maxmemory-samples` random keys (default 5,
-  `config.c:3223`) and merges the better candidates into a persistent
+  (`evict.c:139`) samples `maxmemory-samples` random keys (default 5,
+  `config.c:3629`) and merges the better candidates into a persistent
   sorted pool of `EVPOOL_SIZE` = 16 entries (`evict.c:36`), best victim
   at the right end. Over many passes this converges on nearly the same
   victims as exact LRU at O(samples) cost — and that cost is paid only
@@ -337,11 +376,11 @@ Answer each before unfolding it.
   **Memory** — keyspace bytes, bounded by `maxmemory`, cheap error
   `-OOM` (`shared.oomerr`, Step 4). **Replies** — per-client output
   buffer, bounded by hard/soft `client-output-buffer-limit`
-  (`networking.c:5151`; defaults `{0,0,0}` normal, 256/64 MB·60 s
-  replica, 32/8 MB·60 s pubsub at `config.c:171`), cheap error an async
+  (`networking.c:5487`; defaults `{0,0,0}` normal, 256/64 MB·60 s
+  replica, 32/8 MB·60 s pubsub at `config.c:184`), cheap error an async
   disconnect (Step 5). **Time** — commands banked behind a long
   script/module, bounded by `busy-reply-threshold` (default 5000 ms,
-  `config.c:3264`), cheap error `-BUSY` (`server.c:2130`, Step 6). A
+  `config.c:3680`), cheap error `-BUSY` (`server.c:2278`, Step 6). A
   fourth, blunt lever — `CLIENT PAUSE` — suspends intake entirely for
   short windows (Step 7). Every queue has a bound and a far-side error
   cheaper than the work it replaces.
@@ -369,7 +408,7 @@ Answer each before unfolding it.
 ## References
 
 - [redis](https://github.com/redis/redis) — cloned at `~/repos/redis`,
-  pinned at `redis@a176d1225`; all anchors under `src/`
+  pinned at `redis@e87dda2a4`; all anchors under `src/`
 - [README.md](README.md) — topic 35: metastability, hidden capacity,
   the code-anchor table this guide expands
 - [reading-cockroach-admission.md](reading-cockroach-admission.md) —

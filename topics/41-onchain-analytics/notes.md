@@ -32,9 +32,10 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is seeded; every figure first recorded on 2026-07-27 (30,342
+Lane 1 is seeded, so every figure — 30,342
 addresses for 400 entities; haircut taints 3657 of 3734 UTXOs and 3553 of
-3627 addresses; 658 / 2997 / 2 by taint band) is reproduced exactly.
+3627 addresses; 658 / 2997 / 2 by taint band — is identical on
+every run.
 
 Two mechanics worth memorizing.
 
@@ -102,7 +103,7 @@ precision 1.000 can be worth more than recall 0.397 at precision 0.089.
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-27, Apple M3 Pro):
 
 | lane | reference |
 |---|---|

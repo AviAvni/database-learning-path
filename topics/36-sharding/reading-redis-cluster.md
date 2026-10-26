@@ -8,11 +8,11 @@ can tell a client where a key really lives. The entire live-migration story is b
 two error replies (`-MOVED` and `-ASK`), one client command (`ASKING`), and four admin verbs
 (`CLUSTER SETSLOT ... MIGRATING/IMPORTING/STABLE/NODE`).
 
-This guide walks the C source in `~/repos/redis/src`, pinned at the SHA in the topic's pin
-table. The interesting split: `cluster.h` / `cluster.c` hold the generic slot math and redirect
+This guide walks the C source in `~/repos/redis/src`, pinned at `redis@e87dda2a4` (`unstable`,
+the SHA in `resources/codebases.md`'s pin table). The interesting split: `cluster.h` / `cluster.c` hold the generic slot math and redirect
 logic, while `cluster_legacy.h` / `cluster_legacy.c` hold the concrete node state (per-slot
-migrating/importing pointers) and the `SETSLOT` admin machinery. Every `file:line` below was
-checked against the pinned tree this session.
+migrating/importing pointers) and the `SETSLOT` admin machinery. Every `file:line` below is
+checked against that pinned tree.
 
 ## The problem in one sentence
 
@@ -57,7 +57,7 @@ close to the theoretical minimum — instead of 80%.
 > precondition for the multi-key commands that Step 3's `-CROSSSLOT` check otherwise forbids.
 
 A **hash tag** is a substring of the key, delimited by `{` … `}`, that is hashed *instead of* the
-whole key. `keyHashSlot()` (`cluster.h:59`) implements it: if the key contains a `{` followed by
+whole key. `keyHashSlot()` (`cluster.h:60`) implements it: if the key contains a `{` followed by
 a non-empty section closed by `}`, ONLY the substring between the first `{` and the next `}` is
 hashed. An empty `{}` (nothing between the braces) falls back to hashing the whole key, and so
 does a `{` with no following `}`.
@@ -72,7 +72,7 @@ does a `{` with no following `}`.
 This is the user-facing co-location tool: keys sharing a tag land in one slot, so multi-key
 commands, MULTI/EXEC transactions, and Lua scripts over them are legal (Step 3 rejects
 cross-slot multi-key commands with `-CROSSSLOT`). There's also a pattern-matching sibling,
-`patternHashSlot` (`cluster.c:35`), used when the "key" is a glob pattern (e.g. pubsub patterns):
+`patternHashSlot` (`cluster.c:36`), used when the "key" is a glob pattern (e.g. pubsub patterns):
 it decides whether a pattern pins to a single slot at all by finding a `{`…`}` tag inside the
 pattern.
 
@@ -82,7 +82,7 @@ pattern.
 > **Out:** exactly one of {serve locally, `-CROSSSLOT`, `-MOVED`, `-ASK`, `-TRYAGAIN`} — the
 > decision that Steps 4–6 each pick up one branch of.
 
-`getNodeByQuery()` (`cluster.c:1191`) is the router.
+`getNodeByQuery()` (`cluster.c:1257`) is the router.
 For each arriving command it extracts the keys, computes their slot, and checks three things: do
 all keys share one slot (else `-CROSSSLOT` error), does this node own the slot, and is the slot
 currently migrating or importing. The outcome is either "serve locally" or an error code that
@@ -105,9 +105,12 @@ flowchart TD
 ```
 
 Note the multi-key subtlety mid-migration: if a command touches several keys in a MIGRATING
-slot and only *some* have already moved (`multiple_keys && missing_keys` at `cluster.c:1409`),
+slot and only *some* have already moved (`multiple_keys && missing_keys` at `cluster.c:1476`),
 neither node can serve it — the client gets `-TRYAGAIN` (`CLUSTER_REDIR_UNSTABLE`) and must back
-off and retry.
+off and retry. The owner can also refuse its own slot for a while: a *write* to a slot this node
+owns but is still trimming (deleting its keys in the background after `SFLUSH`) gets
+`CLUSTER_REDIR_TRIMMING` (`cluster.c:1501`–`:1504`), which `clusterRedirectClient()` formats as
+`-TRYAGAIN Slot is being trimmed` (`cluster.c:1543`) — the same back-off-and-retry contract.
 
 ### Step 4 — MOVED: the durable redirect
 
@@ -115,8 +118,8 @@ off and retry.
 > **Out:** the `-MOVED` reply and the *permanent* client-map update it demands — the mechanism
 > by which a cold or stale client converges to direct routing.
 
-When the slot simply belongs to another node, the base case at `cluster.c:1432` sets
-`CLUSTER_REDIR_MOVED`, and `clusterRedirectClient()` (`cluster.c:1443`) formats
+When the slot simply belongs to another node, the base case at `cluster.c:1508` sets
+`CLUSTER_REDIR_MOVED`, and `clusterRedirectClient()` (`cluster.c:1519`) formats
 `-MOVED slot host:port`. **MOVED** means: *the slot's home has permanently changed — update your
 slot map.* A well-behaved client rewrites its cached slot→node entry (or refreshes the whole map
 with `CLUSTER SHARDS` / `CLUSTER SLOTS`) and never asks the wrong node for that slot again. MOVED
@@ -130,15 +133,15 @@ then steady-state direct routing.
 > every instant exactly one node authoritatively owns a slot, MOVED's permanence notwithstanding.
 
 **ASK** is the temporary cousin of MOVED: *just this once, ask over there — do NOT update your
-map.* The ASK branch is at `cluster.c:1397` (`CLUSTER_REDIR_ASK`, returning
+map.* The ASK branch is at `cluster.c:1464` (`CLUSTER_REDIR_ASK`, returning
 `getMigratingSlotDest(slot)`), formatted by the same `clusterRedirectClient()` at
-`cluster.c:1443`. The source node emits it while a slot is MIGRATING and the requested key has
+`cluster.c:1519`. The source node emits it while a slot is MIGRATING and the requested key has
 already been transferred. The client must then send two commands to the target: `ASKING`, then
-the retried command. `askingCommand()` (`cluster.c:1680`) sets `CLIENT_ASKING` (`cluster.c:1685`),
+the retried command. `askingCommand()` (`cluster.c:1759`) sets `CLIENT_ASKING` (`cluster.c:1764`),
 a flag permitting exactly ONE subsequent command against an IMPORTING slot; the flag is cleared
-right after that command runs, in `commandProcessed()` at `networking.c:2891-2896`. Without the
+right after that command runs, in `commandProcessed()` at `networking.c:3152-3157`. Without the
 ASKING flag the target replies `-MOVED` *back to the source* — correct, because ownership hasn't
-flipped yet (the importing-slot serve path at `cluster.c:1406-1414` requires the flag). The
+flipped yet (the importing-slot serve path at `cluster.c:1473-1481` requires the flag). The
 one-shot design keeps the invariant: at any instant exactly one node is the authoritative owner
 of a slot, and only explicitly-flagged requests may jump the gun.
 
@@ -156,12 +159,15 @@ Per-node state lives in the `clusterState` struct at `cluster_legacy.h:343-344`:
 
 ```c
 // src/cluster_legacy.h:343-344 — per-slot migration pointers inside clusterState
-343  clusterNode *migrating_slots_to[CLUSTER_SLOTS];    /* source side: slot leaving, to whom */
-344  clusterNode *importing_slots_from[CLUSTER_SLOTS];  /* target side: slot arriving, from whom */
+343      clusterNode *migrating_slots_to[CLUSTER_SLOTS];
+344      clusterNode *importing_slots_from[CLUSTER_SLOTS];
 ```
 
-The four `CLUSTER SETSLOT` verbs (documented at `cluster_legacy.c:6072-6075`, dispatched from
-`cluster_legacy.c:6071`) drive the protocol — MIGRATING, IMPORTING, STABLE (clear migration
+Line 343 is the source side — for each slot, the node it is leaving *to* (NULL when not
+migrating); line 344 is the target side — the node a slot is arriving *from*.
+
+The four `CLUSTER SETSLOT` verbs (documented at `cluster_legacy.c:6217-6220`, dispatched from
+`cluster_legacy.c:6216`) drive the protocol — MIGRATING, IMPORTING, STABLE (clear migration
 state), NODE (the final ownership flip):
 
 ```mermaid
@@ -219,31 +225,31 @@ numbers.
 | Step | What | Where |
 |---|---|---|
 | 1 | `CLUSTER_SLOTS` = 2^14 via `CLUSTER_SLOT_MASK_BITS` | `cluster.h:22-23` |
-| 1, 2 | `keyHashSlot()`: `crc16 & 0x3FFF`, hash-tag extraction, empty-`{}` fallback | `cluster.h:59` |
-| 2 | `patternHashSlot()` for glob patterns | `cluster.c:35` |
-| 3 | `getNodeByQuery()`: slot check, ownership, CROSSSLOT/TRYAGAIN | `cluster.c:1191` |
-| 4 | MOVED base-case branch; error formatting in `clusterRedirectClient()` | `cluster.c:1432`, `cluster.c:1443` |
-| 5 | ASK decision branch; `askingCommand()` one-shot flag set / cleared | `cluster.c:1397`, `cluster.c:1685`, `networking.c:2891-2896` |
+| 1, 2 | `keyHashSlot()`: `crc16 & 0x3FFF`, hash-tag extraction, empty-`{}` fallback | `cluster.h:60` |
+| 2 | `patternHashSlot()` for glob patterns | `cluster.c:36` |
+| 3 | `getNodeByQuery()`: slot check, ownership, CROSSSLOT/TRYAGAIN | `cluster.c:1257` |
+| 4 | MOVED base-case branch; error formatting in `clusterRedirectClient()` | `cluster.c:1508`, `cluster.c:1519` |
+| 5 | ASK decision branch; `askingCommand()` one-shot flag set / cleared | `cluster.c:1464`, `cluster.c:1764`, `networking.c:3152-3157` |
 | 6 | `migrating_slots_to[]` / `importing_slots_from[]` per-slot state | `cluster_legacy.h:343-344` |
-| 6 | `CLUSTER SETSLOT` MIGRATING / IMPORTING / STABLE / NODE verbs | `cluster_legacy.c:6072-6075` |
+| 6 | `CLUSTER SETSLOT` MIGRATING / IMPORTING / STABLE / NODE verbs | `cluster_legacy.c:6217-6220` |
 
 ## Questions to answer in notes.md
 
-1. In `keyHashSlot()` (`cluster.h:59`), trace the exact behavior for the keys `"{}"`,
+1. In `keyHashSlot()` (`cluster.h:60`), trace the exact behavior for the keys `"{}"`,
    `"{user}"`, and `"a{b}c{d}e"` — which bytes get hashed in each case, and why does the
    empty-tag fallback exist?
-2. In `getNodeByQuery()` (`cluster.c:1191`), under precisely what combination of
+2. In `getNodeByQuery()` (`cluster.c:1257`), under precisely what combination of
    conditions does a client get `-TRYAGAIN` instead of `-ASK`? Why can't the source just forward
-   or serve? (Look at `multiple_keys && missing_keys`, `cluster.c:1409`.)
-3. Follow `askingCommand()` (`cluster.c:1680`): where is the client's ASKING flag consumed and
-   cleared so that it permits exactly one command (`networking.c:2891-2896`)? What happens if the
+   or serve? (Look at `multiple_keys && missing_keys`, `cluster.c:1476`.)
+3. Follow `askingCommand()` (`cluster.c:1759`): where is the client's ASKING flag consumed and
+   cleared so that it permits exactly one command (`networking.c:3152-3157`)? What happens if the
    client sends ASKING to a node whose slot is not importing?
-4. Walk the SETSLOT verbs (`cluster_legacy.c:6072-6075`): what does `SETSLOT ... NODE` check
+4. Walk the SETSLOT verbs (`cluster_legacy.c:6217-6220`): what does `SETSLOT ... NODE` check
    before flipping ownership, and how does the new owner make sure the rest of the cluster learns
    about the flip rather than trusting stale gossip?
 5. During a slot migration, list every reply a client can receive for a single-key GET on that
    slot (from source and from target, with and without ASKING) and confirm each against the
-   decision paths in `cluster.c:1397-1443`.
+   decision paths in `cluster.c:1464-1519`.
 
 ## Done when
 
@@ -255,7 +261,7 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   Slot = `crc16(H) & 0x3FFF`, where `H` is the *hash input* chosen by `keyHashSlot()`
-  (`cluster.h:59`): for a key with a `{`…`}` tag whose contents are non-empty, `H` is the bytes
+  (`cluster.h:60`): for a key with a `{`…`}` tag whose contents are non-empty, `H` is the bytes
   between the first `{` and the next `}`; otherwise `H` is the whole key. Worked on the three
   probe keys:
 
@@ -276,9 +282,9 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  **MOVED** (`cluster.c:1432`, formatted at `:1443`): the slot's home has *permanently* changed —
+  **MOVED** (`cluster.c:1508`, formatted at `:1519`): the slot's home has *permanently* changed —
   the client updates its slot→node map (or refreshes it wholesale) and routes all future requests
-  for that slot to the new owner. **ASK** (`cluster.c:1397`): a migration is in flight and *this
+  for that slot to the new owner. **ASK** (`cluster.c:1464`): a migration is in flight and *this
   one key* has already moved — the client sends `ASKING` + the command to the named target for
   *this request only* and leaves its slot map untouched, because ownership has not flipped yet.
   The map change is the whole difference: MOVED mutates it, ASK must not.
@@ -293,7 +299,7 @@ Answer each before unfolding it.
   States: Stable (A owns) → Moving (operator runs `SETSLOT IMPORTING` on B, then
   `SETSLOT MIGRATING` on A, setting `importing_slots_from[]` / `migrating_slots_to[]`,
   `cluster_legacy.h:343-344`) → Flipped (`SETSLOT ... NODE B` once the slot is empty), with an
-  abort edge `SETSLOT STABLE` back to Stable. The four verbs live at `cluster_legacy.c:6072-6075`.
+  abort edge `SETSLOT STABLE` back to Stable. The four verbs live at `cluster_legacy.c:6217-6220`.
 
   No request is unanswerable because during Moving the source serves every key it still holds and
   `-ASK`-redirects only keys already transferred; the target serves an ASK-flagged request and
@@ -308,13 +314,13 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  A cold client GETs a key whose slot B now owns. `getNodeByQuery()` (`cluster.c:1191`)
+  A cold client GETs a key whose slot B now owns. `getNodeByQuery()` (`cluster.c:1257`)
   computes the slot, finds this node (A) is not the owner and no ASKING applies, and hits the base
-  case at `cluster.c:1432`, setting `CLUSTER_REDIR_MOVED` and returning node B.
-  `clusterRedirectClient()` (`cluster.c:1443`) formats `-MOVED <slot> <B host:port>`. The client's
+  case at `cluster.c:1508`, setting `CLUSTER_REDIR_MOVED` and returning node B.
+  `clusterRedirectClient()` (`cluster.c:1519`) formats `-MOVED <slot> <B host:port>`. The client's
   obligation (Step 7 rule 2) is to update its slot→node map to point that slot at B and retry
   there — after which it routes directly, one extra hop amortized away. The ASK path is the same
-  chain but via `cluster.c:1397` and leaves the map untouched.
+  chain but via `cluster.c:1464` and leaves the map untouched.
 
   </details>
 
@@ -331,8 +337,8 @@ Answer each before unfolding it.
 ## References
 
 - Source: `~/repos/redis/src/cluster.h`, `~/repos/redis/src/cluster.c`,
-  `~/repos/redis/src/cluster_legacy.h`, `~/repos/redis/src/cluster_legacy.c` (pinned SHA in the
-  topic's `resources/codebases.md` pin table).
+  `~/repos/redis/src/cluster_legacy.h`, `~/repos/redis/src/cluster_legacy.c`, pinned at
+  `redis@e87dda2a4` (the `resources/codebases.md` pin table).
 - The Redis Cluster specification (the official protocol document; the source above is its
   reference implementation).
 - [Topic README](README.md) — lane 1 (mod-N vs fixed slots numbers) and lane context.

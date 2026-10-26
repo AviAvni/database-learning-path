@@ -20,8 +20,8 @@ percolator lane: [stub — implement percolator.rs]
 2PC lane: [stub — implement tpc.rs]
 ```
 
-The lane is a seeded count, not a timing; all four rates are identical to the
-first run (2026-07-10).
+The lane is a seeded count, not a timing, so all four rates are identical on
+every run.
 
 | zipf θ | batches containing a key collision |
 |---|---|

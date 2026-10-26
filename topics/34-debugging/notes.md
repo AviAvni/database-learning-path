@@ -18,9 +18,8 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 runs on a virtual clock, so every figure is exact and identical to the
-first recorded run (2026-07-26): closed-loop p99 1.0 µs, open-loop p99
-90.0 ms, a 90,000× gap.
+Lane 1 runs on a virtual clock, so every figure is exact and identical on
+every run: closed-loop p99 1.0 µs, open-loop p99 90.0 ms, a 90,000× gap.
 
 The lane-1 shape is exact and worth memorizing: each 100 ms stall
 queues ~10K arrivals (100 ms / 10 µs); 9 stalls in 1M ops → ~9% of all
@@ -98,13 +97,13 @@ are the specification.
 ## Infra notes
 
 - No new clones: redis, rocksdb, FalkorDB already under ~/repos.
-- Anchors verified by grep this session: redis slowlog.c:103/:28,
-  latency.c:63/:182, latency.h:17/:50/:63, config.c:3271,
-  object.c:1421, debug.c:2643/:2673/:2115; rocksdb
-  perf_context.h:305/:73/:342, perf_level.h:27,
-  perf_context_imp.h:27/:45/:81/:88, perf_step_timer.h:13/:29,
-  histogram.h:21/:46/:84/:110, statistics_impl.h:42,
-  statistics.cc:549; FalkorDB src/slow_log/slow_log.{c,h}.
+- Anchors (redis `e87dda2a4`, rocksdb `ea3136053`): redis slowlog.c:105/:28,
+  latency.c:63/:182, latency.h:17/:50/:63, config.c:3687,
+  object.c:1625, debug.c:2960/:2990/:2423; rocksdb
+  perf_context.h:325/:74/:364, perf_level.h:27,
+  perf_context_imp.h:39/:57/:94/:101, perf_step_timer.h:13/:35,
+  histogram.h:21/:46/:86/:112, statistics_impl.h:42,
+  monitoring/statistics.cc:566; FalkorDB src/slow_log/slow_log.{c,h}.
 - rr facts verified from the extended technical report (arXiv:1705.05937 — the
   ~21-page edition, not the shorter ATC'17 conference paper), pp. 1–8:
   RCB counter, seccomp-bpf in-process interception, RR page, < 2×

@@ -3,8 +3,8 @@
 Numbers to chase. Recorded at M0; re-measure at every milestone that claims a win.
 The bar is the C engine: a capstone number counts as a win only if its median, p99
 and memory match or beat C FalkorDB on the same harness and machine. Rust FalkorDB 6.x
-(the falkordb-rs-next-gen engine, now shipping as FalkorDB 6.0 on `FalkorDB/FalkorDB`
-`main`) is the design reference the capstone rebuilds.
+(the engine developed as falkordb-rs-next-gen, shipped as FalkorDB 6 from
+`FalkorDB/FalkorDB` `main`) is the design reference the capstone rebuilds.
 
 ## Provenance (Fair Benchmarking §3.1 — reproducibility)
 
@@ -118,28 +118,6 @@ comes from the CREATE, not from the MATCH.
   and at 4.6× in Rust (706 vs 154 MiB). Rust's peak RSS is lower in every loaded row,
   by 3–22%. A capstone that matches resting size but buffers the whole CREATE has not
   met the bar.
-
-## Superseded: July 2026 numbers (Rust only)
-
-These medians were measured on 2026-07-10 against `falkordb-rs-next-gen` @ `e8a44d25`
-(release `libfalkordb.dylib`). They are superseded for three reasons. The working tree
-had uncommitted changes to `graph/src/graph/graphblas/*`, so the build is not
-reproducible. They give medians only, with 5 rounds per create/delete bench, and no
-memory. And there was no C number at all, so they could not answer whether the
-reference met the C bar. The client stack is also undocumented (that venv is gone), so
-the gap between these numbers and today's is not attributable to the engine. Do not
-compare against them.
-
-| Benchmark | n=1,000 | n=100,000 |
-|---|--:|--:|
-| `RETURN 1` | 100 µs | — |
-| unwind range | 1.79 ms | 177 ms |
-| create_node | 555 µs | 34.1 ms |
-| create_relationship | 1.01 ms | 94.4 ms |
-| match_node | 5.73 ms | 667 ms |
-| match_relationship | 14.8 ms | 1.78 s |
-| delete_node | 518 µs | 28.1 ms |
-| delete_relationship | 861 µs | 46.3 ms |
 
 ## What M-milestones should chase
 

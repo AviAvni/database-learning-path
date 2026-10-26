@@ -30,9 +30,9 @@
 ```
 
 The table is closed-form and the simulation is seeded (simulated latencies,
-not wall time), so every figure first recorded on 2026-07-26 (63.4% at
-p = 1/100, n = 100; 18.1% at p = 1/10000, n = 2000; one-leaf p50 5.6 ms;
-all-100 p50 1000.0 ms; 95%-of-leaves p99 9.9 ms) is reproduced exactly.
+not wall time), so every figure — 63.4% at p = 1/100, n = 100; 18.1% at
+p = 1/10000, n = 2000; one-leaf p50 5.6 ms; all-100 p50 1000.0 ms;
+95%-of-leaves p99 9.9 ms — is identical on every run.
 
 The lane-1 mechanics, worth memorizing: waiting for all of n leaves
 takes the max of n draws, so P(slow) = 1−(1−p)ⁿ — fan-out *exponentiates*
@@ -69,7 +69,7 @@ exposure (canary requests, micro-partitions).
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-26, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-26, Apple M3 Pro):
 
 - **Lane 2 — exchange**: round-robin **229.6 M rows/s**; hash
   **543.0 M rows/s** (balance 1.002); 8×500k merging exchange
@@ -109,25 +109,30 @@ Read these after filling the worksheet. What the reference solution printed
 ## Infra notes
 
 - No new clones: datafusion and cockroach already under ~/repos.
-- DataFusion anchors verified by grep this session:
-  physical-plan/src/repartition/mod.rs:1150 (RepartitionExec), :1160
-  (preserve_order), :398-538 (merge mode, per-(input,output) spill
-  channels), :560 (BatchPartitioner), :592 (REPARTITION_RANDOM_STATE,
-  seed 0), :679 (new_hash_partitioner; :667 is its doc comment,
-  :689 the Hash state literal, :691 StrengthReducedU64::new), :710
-  (new_round_robin_partitioner; :699 is its doc comment), :825
-  (partition_iter), :854 (create_hashes), :862
-  (partition_reducer.partition_indices — the strength-reduced
-  modulo; :675 is only a doc comment), :1329 (execute), :1742
-  (pull_from_input);
-  distributor_channels.rs:55 (channels()), :62 (Gate empty_channels),
-  :121 (DistributionSender), :131 (send — parks when ALL buffers
-  non-empty); physical-expr/src/partitioning.rs:117 (Partitioning),
-  :119/:122 (RoundRobinBatch/Hash). Real finding: EnforceDistribution
-  was retired into EnsureRequirements
-  (physical-optimizer/src/ensure_requirements/mod.rs:166, doc comment
-  :157-164; ensure_requirements/enforce_distribution.rs:18/:76 are
-  helpers + the retirement note).
+- DataFusion anchors (`350ca7650`; paths under `datafusion/`):
+  physical-plan/src/repartition/mod.rs:1526 (RepartitionExec), :1536
+  (preserve_order), :446 (consume_input_streams; :484-492 per-(input,
+  output) channels, :495-500 per-output channels, :524-545 spill
+  channels, :547-558 output coalescer), :649 (BatchPartitioner), :677
+  (REPARTITION_RANDOM_STATE, seed 0), :939-951 (StrengthReducedU64:
+  mask for powers of two, reciprocal otherwise), :1024
+  (new_hash_partitioner; :1036 StrengthReducedU64::new), :1055
+  (new_round_robin_partitioner), :1172 (try_new), :1234
+  (partition_iter), :1263 (create_hashes), :1273
+  (partition_reducer.partition_indices), :1303 (range route_indices),
+  :1344 (partition_grouped_take), :1740 (execute), :2280
+  (pull_from_input); repartition/range.rs:36 (RangeRouter), :418
+  (primitive binary search), :585 (row-format binary search);
+  distributor_channels.rs:54 (channels()), :61 (Gate empty_channels),
+  :120 (DistributionSender), :130 (send), :220 (parks when ALL buffers
+  non-empty); physical-expr/src/partitioning.rs:126 (Partitioning),
+  :128/:131/:133 (RoundRobinBatch/Hash/Range), :216
+  (RangePartitioning), :347 (scale). EnsureRequirements
+  (physical-optimizer/src/ensure_requirements/mod.rs:175, motivation
+  :31-35) is the one rule; ensure_requirements/enforce_distribution.rs
+  holds its helpers (:18/:80 retirement notes; :1532
+  ensure_distribution_with_stats; :1776-1822 Range re-cut or hash;
+  :1287 co-partitioned adaptation).
 - Cockroach anchors verified: distsql_check.go:214
   (checkSupportForPlanNode); distsql_physical_planner.go:312
   (mustWrapNode — "no DistSQL-processor equivalent"), :971

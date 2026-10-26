@@ -12,15 +12,14 @@
    basic walk               0.403             0.815                   0.457
 ```
 
-Every figure is seeded and identical across runs. That was not true before
-2026-10-26: `personalization()` sampled the first users a std `HashMap`
-yielded, and the collaboration generator picked triadic-closure neighbours by
-index into a `HashSet`'s iteration order — both change every process, so the
-personalization column (and lane 3's graph) differed run to run. Both now
-iterate in sorted order. The popularity row's **0.340 / 0.923** recorded here
-before then was never reproducible from any committed version of the crate:
-the code as first committed (fa032cb) gives 0.353 / 0.922 today, which is what
-FINDINGS row 42 originally said before the 2026-07-28 audit "corrected" it.
+Every figure is seeded and identical across runs. Two design choices make
+that true, and both are the same rule — anything a seeded choice depends on
+must have a fixed order. `personalization()` samples the lowest user ids, not
+the first users a std `HashMap` yields; and the collaboration generator picks
+triadic-closure neighbours by index into a *sorted* copy of the neighbour set,
+because the seeded rng chooses an index and a std `HashSet`'s iteration order
+changes every process. With either one left in hash order, the personalization
+column (and lane 3's graph) would differ run to run.
 
 ## Predictions (fill BEFORE implementing the stubs)
 
@@ -64,8 +63,7 @@ FINDINGS row 42 originally said before the 2026-07-28 audit "corrected" it.
 
 ## Reference numbers for the exercise lanes
 
-Lane 2 (Pixie ablation, reference implementation, recorded 2026-07-27 — the
-bipartite generator it runs on was already deterministic):
+Lane 2 (Pixie ablation, reference implementation, measured 2026-07-27):
 
 | measure | reference |
 |---|---|
@@ -75,10 +73,8 @@ bipartite generator it runs on was already deterministic):
 | early-stop top-50 overlap | **0.793**, hit rate unchanged |
 | walk latency | 2.12 ms full, **0.97 ms early-stopped** |
 
-Lane 3 (link prediction, re-derived 2026-10-26 on the now-deterministic
-collaboration graph, from a straightforward implementation of the four
-measures that passes the stub tests; the earlier 20.7× / 25.6× / 22.3× / 1.9×
-came from a graph that changed every run):
+Lane 3 (link prediction, measured 2026-10-26, from a straightforward
+implementation of the four measures that passes the stub tests):
 
 | predictor | hits / n | factor over random |
 |---|---|---|

@@ -17,7 +17,7 @@ CoW branching: [stub — implement branch.rs]
 ```
 
 Because the latencies are simulated from seeds, every figure here is exact and
-identical to the first run (2026-07-10):
+identical on every run:
 
 | lane | p50 | p95 | p99 | mean |
 |---|---|---|---|---|

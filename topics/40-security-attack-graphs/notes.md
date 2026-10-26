@@ -43,10 +43,10 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is seeded; every figure first recorded on 2026-07-27 (closure 8;
+Lane 1 is seeded, so every figure — closure 8;
 attack-path reachable 39 → 1969 → 2000 as sessions grow 0 → 100 → 500;
-one DA token 8 → 2000; shortest path mean 6.03, worst 8 hops) is reproduced
-exactly.
+one DA token 8 → 2000; shortest path mean 6.03, worst 8 hops — is identical on
+every run.
 
 Two mechanics worth memorizing.
 
@@ -111,7 +111,7 @@ analysis.
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-27, Apple M3 Pro):
 
 | lane | reference |
 |---|---|

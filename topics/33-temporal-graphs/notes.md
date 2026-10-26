@@ -22,9 +22,9 @@
 [stub — implement the todo!()s in src/ to unlock this lane]
 ```
 
-Lane 1 is a seeded count; every figure first recorded on 2026-07-22 (static
-reach 25,031 vs temporal 137 = 99.5% false positives; 56.9% at 16K contacts;
-0.0% at 64K, saturating at 39,980 pairs) is reproduced exactly.
+Lane 1 is a seeded count, so every figure — static reach 25,031 vs temporal
+137 = 99.5% false positives; 56.9% at 16K contacts; 0.0% at 64K, saturating
+at 39,980 pairs — is identical on every run.
 
 The lane-1 surprise: I expected the static condensation to be a loose
 upper bound; at realistic sparsity it is *pure noise* — 99.5% of its

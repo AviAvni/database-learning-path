@@ -370,7 +370,7 @@ The case studies (§6):
 
 ## Where each step lives in the code
 
-Anchors are `egraphs-good/egglog` at the pinned commit; the next chapter
+Anchors are `egraphs-good/egglog` at `e264c37a` (the pin table's commit); the next chapter
 reads them properly.
 
 | step | where |

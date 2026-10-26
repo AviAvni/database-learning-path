@@ -28,10 +28,9 @@
 [stub — implement the todo!()s in src/ to unlock this lane]
 ```
 
-Lane 1 is a seeded count; the lost% figures first recorded on 2026-07-11
-(94.98%, 88.34%, 12.45%) are reproduced exactly.
+Lane 1 is a seeded count, so every lost% figure is identical on every run.
 
-Lane 1 measured notes (2026-07-11, M-series MBP, release):
+Reading lane 1:
 
 - Hot keyspace + constant sync ≈ every write races → LWW keeps one of
   each pair: ~95% loss is the *floor of the birthday collision*, not a bug.
@@ -39,9 +38,11 @@ Lane 1 measured notes (2026-07-11, M-series MBP, release):
   tiny keyspace (10 keys / sync_every=10000 → 0.05%) most shadowed
   writes were overwritten *locally* before ever syncing, so they don't
   show up as "lost to concurrency" — the divergence loss is a lower bound.
-- Full 100K-writes × sync_every=1 config was quadratic (state-based sync
-  ships the whole map): shrunk to 20K writes and wrote the cost into the
-  bench comment. Delta-CRDTs exist for exactly this (README exercise 3).
+- Why 20K writes per replica: state-based sync ships the whole map every
+  interval, so sync_every=1 costs O(writes × map size) — quadratic in the
+  write count, which is what keeps the lane small (the bench comment says
+  so).
+  Delta-CRDTs exist for exactly this (README exercise 3).
 
 ## Predict before you measure
 

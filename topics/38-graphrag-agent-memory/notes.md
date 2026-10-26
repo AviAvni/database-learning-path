@@ -26,8 +26,7 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Every figure in lane 1 is seeded and matches the first recorded run
-(2026-07-26) exactly: mention-count 1.00 / 9.21 / 8.71, BFS-distance
+Every figure in lane 1 is seeded and identical on every run: mention-count 1.00 / 9.21 / 8.71, BFS-distance
 9.51 / 8.95 / 9.15.
 
 The lane-1 mechanic, worth memorizing: vector RAG scores each passage
@@ -67,7 +66,7 @@ sources. At damping 0.5 the meet node gets ~2× a dead-end's mass.
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-26, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-26, Apple M3 Pro):
 
 - **Lane 2 — PPR rank** at h = 1/2/3: **1.00 / 1.00 / 1.00**.
 - **Lane 2 — PPR cost**: one query on 100k nodes / ~400k directed edges,

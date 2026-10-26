@@ -164,11 +164,11 @@ detection in scheduler clothing.
 
 | surface | mechanism | anchor |
 |---|---|---|
-| maxmemory | evict via 16-entry pool of sampled-LRU candidates before each command | `evict.c:36,:384,:532` |
-| OOM gate | reject DENYOOM commands with `-OOM` when eviction can't free enough | `server.c:4391,:4498` |
-| output buffers | async-disconnect clients whose reply backlog exceeds limits | `networking.c:5151` |
-| busy scripts | after `busy_reply_threshold`, answer `-BUSY` instead of queueing | `server.c:2130` |
-| CLIENT PAUSE | suspend intake wholesale (failover choreography) | `server.c:4850` |
+| maxmemory | evict via 16-entry pool of sampled-LRU candidates before each command | `evict.c:36,:395,:543` |
+| OOM gate | reject DENYOOM commands with `-OOM` when eviction can't free enough | `server.c:4785,:4893` |
+| output buffers | async-disconnect clients whose reply backlog exceeds limits | `networking.c:5487` |
+| busy scripts | after `busy_reply_threshold`, answer `-BUSY` instead of queueing | `server.c:2278` |
+| CLIENT PAUSE | suspend intake wholesale (failover choreography) | `server.c:5245` |
 
 Single-threaded redis can't shed by priority — every accepted command
 runs. So its governance is at the *edges*: memory (don't accept writes
@@ -182,9 +182,9 @@ one node instead of 3,000 services.
 
 | repo | anchor | what to see |
 |---|---|---|
-| redis | `src/evict.c:384` | `getMaxmemoryState` — how far over budget, and can we evict our way out |
-| redis | `src/server.c:4391` | the OOM gate in `processCommand` — reject-before-work |
-| redis | `src/networking.c:5151` | `checkClientOutputBufferLimits` — backpressure on slow readers |
+| redis | `src/evict.c:395` | `getMaxmemoryState` — how far over budget, and can we evict our way out |
+| redis | `src/server.c:4785` | the OOM gate in `processCommand` — reject-before-work |
+| redis | `src/networking.c:5487` | `checkClientOutputBufferLimits` — backpressure on slow readers |
 | cockroach | `pkg/util/admission/admission.go:1` | the package doc — the whole design in one comment |
 | cockroach | `pkg/util/admission/work_queue.go:813` | `Admit` — where requests wait, ordered by (tenant, priority, ts) |
 | cockroach | `pkg/util/admission/kv_slot_adjuster.go:46` | `CPULoad` — AIAD (additive-both-ways) slots from runnable-goroutine counts |

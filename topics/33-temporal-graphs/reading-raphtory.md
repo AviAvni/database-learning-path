@@ -10,9 +10,8 @@ that carry the whole design.
 
 The repo is cloned at `~/repos/raphtory` and **pinned at commit
 `5d0d286`** (recorded in `resources/codebases.md`); every `file:line`
-anchor and every gutter number below was re-checked at that SHA with
-`tools/pinned-source.py show raphtory …`, so a later `main` may have
-moved them. Before opening files, this chapter builds the ideas in
+anchor and every gutter number below is checked at that SHA with
+`tools/pinned-source.py show raphtory …`. Before opening files, this chapter builds the ideas in
 order; the anchor table maps each step to an exact line.
 
 ## The problem in one sentence

@@ -640,7 +640,7 @@ Answer each before unfolding it.
   second is half right: the abstract says 14%, but §5.2 and §7 say 11–15%, and
   Figure 18 runs from 11.46% at 8 workers to 14.36% at 2 — 14% is the top of a
   range. Separately, the paper's description of PostgreSQL's IO_ASYNC heuristic
-  does not match `method_io_uring.c:722-723` at the pinned commit for direct
+  does not match `method_io_uring.c:722-723` (PostgreSQL `701f021`) for direct
   I/O, and the paper does not name its PostgreSQL version.
 
   </details>

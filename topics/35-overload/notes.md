@@ -31,9 +31,9 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is a seeded virtual-clock simulation; every figure first recorded on
-2026-07-26 (280 QPS never recovers; 140 QPS heals at t=161 s with a partial
-window of 251 at t=160) is reproduced exactly.
+Lane 1 is a seeded virtual-clock simulation, so every figure — 280 QPS never
+recovers; 140 QPS heals at t=161 s with a partial window of 251 at t=160 — is
+identical on every run.
 
 The lane-1 mechanics, worth memorizing: the 10 s outage queues
 10 s × 280 = 2,800 requests ≈ 9.3 s of work. Every request arriving
@@ -111,15 +111,16 @@ are the specification.
 ## Infra notes
 
 - No new clones: redis and cockroach already under ~/repos.
-- Redis anchors verified by grep this session: evict.c:36
-  (EVPOOL_SIZE 16), :134 (evictionPoolPopulate), :384
-  (getMaxmemoryState), :425 (overMaxmemoryAfterAlloc), :532
-  (performEvictions); server.c:4391 (is_denyoom_command), :4485
-  (out_of_memory = performEvictions() == EVICT_FAIL), :4498
-  (rejectCommand oomerr), :2130 (-BUSY), :825
-  (isInsideYieldingLongCommand), :4850 (pauseActions during shutdown);
-  networking.c:5151/:5215 (output buffer limits), :4482
-  (unpauseActions); config.c:3223 (maxmemory-samples default 5);
+- Redis anchors (`e87dda2a4`): evict.c:36 (EVPOOL_SIZE 16), :42
+  (EVICTION_OVERUSE_DIVISOR), :139 (evictionPoolPopulate), :395
+  (getMaxmemoryState), :436 (overMaxmemoryAfterAlloc), :543
+  (performEvictions), :813 (bounded overshoot when only blessed keys
+  remain); server.c:4785 (is_denyoom_command), :4880
+  (out_of_memory = performEvictions() == EVICT_FAIL), :4893
+  (rejectCommand oomerr), :2278 (-BUSY), :882
+  (isInsideYieldingLongCommand), :5245 (pauseActions during shutdown);
+  networking.c:5487/:5551 (output buffer limits), :4794
+  (unpauseActions); config.c:3629 (maxmemory-samples default 5);
   script.c:150 (busy_reply_threshold).
 - Cockroach anchors verified: admission.go:1 (package doc), :54
   (grantKind comment), :178 (requester), :198 (granter);

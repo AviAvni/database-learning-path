@@ -23,10 +23,9 @@ ooo lane: [stub — implement head.rs]
 index lane: [stub — implement index.rs]
 ```
 
-The B/sample column is seeded and exact — 11.00 on all four shapes, as first
-recorded (2026-07-10). Decode throughput is a timing: recorded 2026-07-10:
-292 / 268 / 303 / 333 Msamples/s; this run: 312 / 272 / 351 / 351 — within
-~20%.
+The B/sample column is seeded and exact — 11.00 on all four shapes, on every
+run. Decode throughput is a timing and moves by up to ~20% between runs; cite
+one run by date.
 
 | shape | delta+varint B/sample | decode Msamples/s |
 |---|---|---|

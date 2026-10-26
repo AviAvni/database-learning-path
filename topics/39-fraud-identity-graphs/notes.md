@@ -30,9 +30,9 @@
 [stub — implement the todo!()s to unlock lane 3]
 ```
 
-Lane 1 is seeded; every precision first recorded on 2026-07-26 (degree-rank
-0.00 / 0.28 / 0.60 / 0.76, obscurity-rank 0.52 / 0.00 / 0.00 / 0.00) is
-reproduced exactly.
+Lane 1 is seeded, so every precision — degree-rank
+0.00 / 0.28 / 0.60 / 0.76, obscurity-rank 0.52 / 0.00 / 0.00 / 0.00 — is identical on
+every run.
 
 The lane-1 mechanic, worth memorizing: degree-rank and obscurity-rank
 are both functions of the fraudster's own *row*, and he controls his
@@ -76,7 +76,7 @@ camo 2 — Theorem 3, verified by exercise 2's hand-derivation.
 ## Reference numbers for the exercise lanes
 
 Read these after filling the worksheet. What the reference solution printed
-(2026-07-26, Apple M3 Pro) before it was reverted to stubs:
+(measured 2026-07-26, Apple M3 Pro):
 
 | lane | reference |
 |---|---|
