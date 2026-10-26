@@ -91,24 +91,23 @@ are worth fetching first.
 
 | clone | read at | dated | mentions | origin |
 |---|---|---|---|---|
-| `delta` | `a7d0822` | 2026-10-25 | 578 | [https://github.com/delta-io/delta](https://github.com/delta-io/delta) |
-| `redis` | `e87dda2a4` | 2026-10-26 | 528 | [https://github.com/redis/redis](https://github.com/redis/redis) |
+| `redis` | `e87dda2a4` | 2026-10-26 | 537 | [https://github.com/redis/redis](https://github.com/redis/redis) |
 | `postgres` | `701f021` | 2026-07-10 | 524 | [https://github.com/postgres/postgres](https://github.com/postgres/postgres) |
-| `FalkorDB` | `ccb449a9a` | 2026-07-15 | 396 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
-| `duckdb` | `d54cbbe3df` | 2026-10-20 | 378 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
-| `rocksdb` | `ea3136053` | 2026-10-23 | 317 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
+| `FalkorDB` | `ccb449a9a` | 2026-07-15 | 397 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
+| `duckdb` | `d54cbbe3df` | 2026-10-20 | 379 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
+| `rocksdb` | `ea3136053` | 2026-10-23 | 321 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
 | `neon` | `8f60b04` | 2026-05-25 | 218 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |
 | `sqlite` | `951de30` | 2026-07-09 | 203 | [https://github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) |
 | `GraphBLAS` | `7701390417` | 2026-10-25 | 188 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
 | `qdrant` | `222b2e44a` | 2026-10-21 | 188 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
 | `valkey` | `668d875ca` | 2026-10-24 | 182 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
 | `turso` | `a820079e8` | 2026-10-15 | 176 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
-| `fjall` | `cfcdce3` | 2026-10-25 | 143 | [https://github.com/fjall-rs/fjall](https://github.com/fjall-rs/fjall) |
+| `fjall` | `cfcdce3` | 2026-10-25 | 144 | [https://github.com/fjall-rs/fjall](https://github.com/fjall-rs/fjall) |
 | `egg` | `73975c9` | 2026-09-28 | 138 | [https://github.com/egraphs-good/egg](https://github.com/egraphs-good/egg) |
 | `hashbrown` | `00c1756` | 2026-10-25 | 128 | [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) |
 | `datafusion` | `350ca7650` | 2026-10-26 | 125 | [https://github.com/apache/datafusion](https://github.com/apache/datafusion) |
 | `leanstore` | `90fcf18` | 2025-09-11 | 112 | [https://github.com/leanstore/leanstore](https://github.com/leanstore/leanstore) |
-| `polars` | `7f902bd3ff` | 2026-10-25 | 104 | [https://github.com/pola-rs/polars](https://github.com/pola-rs/polars) |
+| `polars` | `7f902bd3ff` | 2026-10-25 | 103 | [https://github.com/pola-rs/polars](https://github.com/pola-rs/polars) |
 | `clickhouse` | `c6428eb` | 2026-10-24 | 98 | [https://github.com/ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse) |
 | `z3` | `1d425e5` | 2026-07-09 | 96 | [https://github.com/Z3Prover/z3](https://github.com/Z3Prover/z3) |
 | `memgraph` | `8f87f6a` | 2026-07-09 | 95 | [https://github.com/memgraph/memgraph](https://github.com/memgraph/memgraph) |
@@ -157,9 +156,9 @@ are worth fetching first.
 | `cr-sqlite` | `891fe9e` | 2024-10-25 | 21 | [https://github.com/vlcn-io/cr-sqlite](https://github.com/vlcn-io/cr-sqlite) |
 | `loro` | `b81abfc` | 2026-07-07 | 20 | [https://github.com/loro-dev/loro](https://github.com/loro-dev/loro) |
 | `diamond-types` | `ad48b9c` | 2026-05-29 | 19 | [https://github.com/josephg/diamond-types](https://github.com/josephg/diamond-types) |
-| `roaring-rs` | `83caaca` | 2026-04-24 | 19 | [https://github.com/RoaringBitmap/roaring-rs](https://github.com/RoaringBitmap/roaring-rs) |
 | `sqlparser-rs` | `aeb616f` | 2026-07-03 | 19 | [https://github.com/apache/datafusion-sqlparser-rs](https://github.com/apache/datafusion-sqlparser-rs) |
 | `influxdb` | `d783411` | 2026-06-17 | 18 | [https://github.com/influxdata/influxdb](https://github.com/influxdata/influxdb) |
+| `roaring-rs` | `83caaca` | 2026-04-24 | 18 | [https://github.com/RoaringBitmap/roaring-rs](https://github.com/RoaringBitmap/roaring-rs) |
 | `spicedb` | `8422483` | 2026-07-24 | 16 | [https://github.com/authzed/spicedb](https://github.com/authzed/spicedb) |
 | `cranelift-jit-demo` | `3e5e9b6` | 2025-11-07 | 15 | [https://github.com/bytecodealliance/cranelift-jit-demo](https://github.com/bytecodealliance/cranelift-jit-demo) |
 | `VictoriaMetrics` | `c1e39b2` | 2026-07-10 | 15 | [https://github.com/VictoriaMetrics/VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) |
@@ -168,9 +167,8 @@ are worth fetching first.
 | `arrow-rs` | `fed7862` | 2026-07-10 | 13 | [https://github.com/apache/arrow-rs](https://github.com/apache/arrow-rs) |
 | `bloodhound` | `1968388` | 2026-07-24 | 13 | [https://github.com/SpecterOps/BloodHound](https://github.com/SpecterOps/BloodHound) |
 | `feldera` | `bb49055` | 2026-07-10 | 13 | [https://github.com/feldera/feldera](https://github.com/feldera/feldera) |
-| `falkordb-rs-next-gen` | `9d28bdc6` | 2026-07-29 | 12 | [https://github.com/FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) |
 | `RedisBloom` | `ab734fa` | 2026-07-05 | 9 | [https://github.com/RedisBloom/RedisBloom](https://github.com/RedisBloom/RedisBloom) |
-| `f3` | `bd92506` | 2025-11-03 | 8 | [https://github.com/future-file-format/f3](https://github.com/future-file-format/f3) |
+| `falkordb-rs-next-gen` | `9d28bdc6` | 2026-07-29 | 8 | [https://github.com/FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) |
 | `cuvs` | `8b97b61` | 2026-07-10 | 7 | [https://github.com/rapidsai/cuvs](https://github.com/rapidsai/cuvs) |
 | `differential-dataflow` | `3f279da` | 2026-05-29 | 5 | [https://github.com/TimelyDataflow/differential-dataflow](https://github.com/TimelyDataflow/differential-dataflow) |
 | `falkordb-py` | `122df79` | 2026-07-19 | 5 | [https://github.com/FalkorDB/falkordb-py](https://github.com/FalkorDB/falkordb-py) |
@@ -180,7 +178,6 @@ are worth fetching first.
 | `io-uring` | `a517178` | 2026-09-07 | 4 | [https://github.com/tokio-rs/io-uring](https://github.com/tokio-rs/io-uring) |
 | `y-crdt` | `03e14a0` | 2026-06-12 | 3 | [https://github.com/y-crdt/y-crdt](https://github.com/y-crdt/y-crdt) |
 | `antithesis-sdk-rust` | `78c9db5` | 2026-06-12 | 2 | [https://github.com/antithesishq/antithesis-sdk-rust](https://github.com/antithesishq/antithesis-sdk-rust) |
-| `ducklake` | `947c849` | 2026-10-24 | 2 | [https://github.com/duckdb/ducklake](https://github.com/duckdb/ducklake) |
 | `helix-db` | `47191c6` | 2026-07-05 | 2 | [https://github.com/HelixDB/helix-db](https://github.com/HelixDB/helix-db) |
 | `timely-dataflow` | `15fc7c9` | 2026-06-12 | 2 | [https://github.com/TimelyDataflow/timely-dataflow](https://github.com/TimelyDataflow/timely-dataflow) |
 
