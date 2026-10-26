@@ -38,11 +38,46 @@ TornWriteAccepted          2442        48.8%              3
 StaleRead                  4706        94.1%              0
 ```
 
-**Every planted bug is caught, three of them by the very first seed — and the
-spread from 48.8% to 99.6% is the useful part.** A bug caught by 99.6% of seeds
-is one you cannot ship; a bug caught by 48.8% is one that survives a test suite
-run twice and fails in production on the third. Same harness, same effort, four
-different probabilities of ever finding out.
+**Every planted bug is caught, three of them by the very first seed.** The
+per-seed rates (48.8% to 99.6%) are properties of *these planted bugs under
+this generator*, not of the technique: a bug is caught by a seed only if the
+40 random ops happen to arrange the exact sequence that exposes it. The
+decision-useful figure is what a CI run must budget, and the same lane prints
+it. With independent seeds, a bug with per-seed rate *p* is missed by *N* seeds
+with probability (1 − *p*)^*N*, so reaching confidence *c* takes
+*N* = ⌈ln(1 − *c*) / ln(1 − *p*)⌉ seeds. Worked on the slowest bug,
+TornWriteAccepted, *p* = 0.4884: ln(0.05) / ln(0.5116) = −2.996 / −0.6704 =
+4.47, so **5 seeds** for 95%. The lane checks the formula by cutting the 5000
+seeds into disjoint blocks of *N* and counting blocks with at least one hit:
+
+```
+bug                         p     N @95%   N @99.9%     blocks hit (N@95%)
+LostDelete             0.7476          3          6           1650/1666
+NoSyncOnCommit         0.9960          1          2           4980/5000
+TornWriteAccepted      0.4884          5         11            977/1000
+StaleRead              0.9412          2          3           2493/2500
+```
+
+(97.7% of blocks for the 5-seed case, 99.0% for 3 seeds, 99.7% for 2 and 99.6%
+for 1: all at or above the 95% target.) Read it as the honest version of the headline: the
+spread that looked like "four wildly different odds" is **one to five seeds**
+of difference. Nobody ships a harness that runs five seeds, so the real
+exposure is the bug whose *p* is 0.001, not 0.49. The lever that moves *p* is
+workload length, and the second table in the lane sweeps it (first 2000 seeds):
+
+```
+bug                    5 ops  10 ops  20 ops  40 ops  80 ops
+LostDelete              5.6%   14.3%   38.5%   74.8%   98.1%
+NoSyncOnCommit         82.0%   90.2%   96.4%   99.8%  100.0%
+TornWriteAccepted       5.0%   13.3%   27.5%   50.6%   75.5%
+StaleRead              22.4%   46.4%   73.5%   94.5%   99.8%
+```
+
+Doubling the workload from 40 to 80 ops takes TornWriteAccepted from 50.6% to
+75.5% and LostDelete from 74.8% to 98.1%: the bugs need a specific *pattern*
+(put, commit, delete, crash in order), and a longer workload contains more
+chances for it. When a bug is rare, lengthen the workload before multiplying
+the seed count, and rerun this table to see which dial buys more.
 
 The `None` row is the load-bearing one. 0.0% is not a formality: any nonzero
 number there means the harness reports divergence on a correct implementation,

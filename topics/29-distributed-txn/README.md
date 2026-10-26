@@ -19,6 +19,38 @@ Contention isn't an edge case — at real-workload skew (θ≈0.9-1.1) *most*
 concurrent batches conflict. Every protocol below is a different answer to
 "who aborts, who waits, and who blocks when the coordinator dies."
 
+That table counts collisions, a property of the key generator. The cost the
+topic is about is what each collision does to a commit, so the same lane
+(`txn_bench`, section "contention priced in round trips") replays those
+transfers through a Percolator-shaped model. A batch of 8 prewrites in order;
+the first locker of a key wins; a transaction that finds either key already
+locked aborts and retries at the head of the next batch. Round trips are
+*counted*, with the protocol's fixed costs: a committed attempt pays 4 (start
+timestamp from the TSO, prewrite, commit timestamp from the TSO, commit
+primary) and an aborted attempt pays 3 (start timestamp, prewrite, rollback).
+Worked at θ = 1.1: 100,000 commits and 102,700 aborts would give
+(4 × 100,000 + 3 × 102,700) / 100,000 ≈ 7.08 round trips per commit.
+
+```
+zipf theta    abort % attempts/txn RTT per commit max attempts vs theta 0.5
+0.5            0.03%        1.000          4.001            2      1.00x
+0.9            7.74%        1.084          4.252            6      1.06x
+1.1           50.67%        2.027          7.082            8      1.77x
+1.3           72.90%        3.690         12.070            8      3.02x
+```
+
+The jump is at θ = 0.9 → 1.1, as before, but now it has a price: a commit costs
+**1.06×** the uncontended 4 round trips at θ = 0.9 and **1.77×** at θ = 1.1,
+**3.02×** at θ = 1.3. Multiply by the network round trip to get commit latency
+(at a 1 ms cross-zone RTT that is 4.0 ms against 12.1 ms of pure protocol time
+at θ = 1.3, before any queueing). Two honest limits. The abort rates (7.74%,
+50.67%, 72.90%) are those of this model's first-locker-wins batch with no
+backoff, not a measurement of TiKV; the collision percentages above overstate
+aborts at low skew because a collision in a batch costs one abort, not eight.
+And the round-trip counts are the protocol's, so they say nothing about lock
+wait queues or the coordinator-crash blocking window: that is what the 2PC
+crash-storm lane (stub) is for.
+
 ## 1. The design space
 
 ```mermaid

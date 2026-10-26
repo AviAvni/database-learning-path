@@ -71,6 +71,17 @@ them. Only the graph can.**
                  correlates better
 ```
 
+```mermaid
+flowchart TD
+    SYM["symptom: slow or failing frontend"] --> G["service dependency graph<br/>(edges weighted by correlation<br/>of the callee's signal with the symptom)"]
+    G --> RW["random walk:<br/>backward edge to a callee,<br/>forward edge out of a dead end,<br/>self edge if nothing correlates better"]
+    G --> INF["inference: score assignment<br/>vectors with at most k abnormal nodes"]
+    RW --> RK["visit mass per node"]
+    INF --> SC["explanatory score per candidate"]
+    RK --> OUT["ranked suspects:<br/>the cause and its blast radius<br/>are the callers above it"]
+    SC --> OUT
+```
+
 Measured lane 2, five topologies:
 
 | method | mean rank of cause | top-1 | top-3 |

@@ -23,6 +23,25 @@ inline oracle harness:
 | TornWriteAccepted | 2442 | 48.8% | 3 |
 | StaleRead | 4706 | 94.1% | 0 |
 
+Seeds needed for 95% detection, N = ceil(ln(0.05)/ln(1−p)), checked on
+disjoint blocks of N seeds out of the 5000 (same lane, second table):
+
+| bug | p | N @95% | N @99.9% | blocks hit at N@95% |
+|---|---|---|---|---|
+| LostDelete | 0.7476 | 3 | 6 | 1650/1666 |
+| NoSyncOnCommit | 0.9960 | 1 | 2 | 4980/5000 |
+| TornWriteAccepted | 0.4884 | 5 | 11 | 977/1000 |
+| StaleRead | 0.9412 | 2 | 3 | 2493/2500 |
+
+Per-seed rate vs workload length (first 2000 seeds, third table):
+
+| bug | 5 ops | 10 | 20 | 40 | 80 |
+|---|---|---|---|---|---|
+| LostDelete | 5.6% | 14.3% | 38.5% | 74.8% | 98.1% |
+| NoSyncOnCommit | 82.0% | 90.2% | 96.4% | 99.8% | 100.0% |
+| TornWriteAccepted | 5.0% | 13.3% | 27.5% | 50.6% | 75.5% |
+| StaleRead | 22.4% | 46.4% | 73.5% | 94.5% | 99.8% |
+
 Each sweep ≈ 0.02 s for 5000 seeds — 200K simulated crash-recoveries
 per second. This is why DST beats kill -9 loops (topic 5's harness
 took seconds per crash).

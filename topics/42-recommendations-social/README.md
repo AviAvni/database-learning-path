@@ -56,6 +56,16 @@ of the user. Pixie's Equation 1 grows sub-linearly:
    N_q = w_q · s_q / Σ_r s_r
 ```
 
+```mermaid
+flowchart LR
+    Q["weighted query pins<br/>(q, w_q)"] --> A["step allocation<br/>N_q = w_q * s_q / sum s_r<br/>s_q = |E(q)| (C - log|E(q)|)"]
+    A --> W["one random walk per q:<br/>pin -> board -> pin,<br/>edge pick biased by user features"]
+    W --> V["visit counts V_q[p]"]
+    V --> X["multi-hit boost<br/>V[p] = (sum_q sqrt V_q[p])^2"]
+    X --> K["early stop when n_p pins<br/>reach n_v visits"]
+    K --> OUT["ranked candidate pins"]
+```
+
 Measured lane 2, 300 users, 8 query pins each, 30,000 steps:
 
 | recommender | hit-rate@50 | personalization | overlap w/ bestsellers |

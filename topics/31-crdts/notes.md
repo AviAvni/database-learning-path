@@ -6,17 +6,29 @@
 
 ```
 === lane 1: LWW's lie (lost concurrent writes) ===
-    keys   sync_every     writes       lost    lost%
-      10            1      40000      37991   94.98%
-      10          100      40000       2000    5.00%
-      10        10000      40000         20    0.05%
-    1000            1      40000      38983   97.46%
-    1000          100      40000      35337   88.34%
-    1000        10000      40000       2000    5.00%
-  100000            1      40000       7001   17.50%
-  100000          100      40000       6948   17.37%
-  100000        10000      40000       4978   12.45%
-(every 'lost' row entry is a user write no replica remembers)
+    keys   sync_every     writes overwritten% lost (concurrent)%   model%
+      10            1      40000      94.98%              5.00%    5.00%
+      10          100      40000       5.00%              5.00%    5.00%
+      10        10000      40000       0.05%              0.05%    0.05%
+    1000            1      40000      97.46%              0.04%    0.05%
+    1000          100      40000      88.34%              4.50%    4.53%
+    1000        10000      40000       5.00%              5.00%    5.00%
+  100000            1      40000      17.50%              0.00%    0.00%
+  100000          100      40000      17.37%              0.04%    0.05%
+  100000        10000      40000      12.45%              4.64%    4.53%
+
+--- lane 1b: lost% as a function of key-space size and sync interval (5,000 writes/replica) ---
+    keys     sync_every=1    sync_every=10   sync_every=100  sync_every=1000
+      10     5.21% (5.00%)    21.09% (21.21%)     5.00% (5.00%)     0.50% (0.50%)
+     100     0.45% (0.50%)     4.54% (4.57%)    20.18% (20.10%)     4.99% (5.00%)
+    1000     0.03% (0.05%)     0.43% (0.50%)     4.27% (4.53%)    20.27% (19.99%)
+   10000     0.01% (0.00%)     0.04% (0.05%)     0.39% (0.50%)     4.58% (4.53%)
+```
+
+"Overwritten" counts every local value a merge replaced (the first row is
+37,991 of 40,000); "lost" counts only values replaced by a write that had not
+received them. The two differ by 19x in the first row, and the lost column
+tracks the closed-form model within a few tenths of a point.
 
 === lane 2: OR-Set convergence storm ===
 [stub — implement the todo!()s in src/ to unlock this lane]
@@ -50,9 +62,9 @@ Fill the predictions BEFORE implementing the stubs / running lanes 2-4.
 
 | lane | metric | prediction | measured |
 |---|---|---|---|
-| 1 | lost% — 10 keys, sync_every=1 |  | **94.98%** |
-| 1 | lost% — 1000 keys, sync_every=100 |  | **88.34%** |
-| 1 | lost% — 100K keys, sync_every=10000 |  | **12.45%** |
+| 1 | lost% — 10 keys, sync_every=1 |  | **5.00%** (overwritten 94.98%) |
+| 1 | lost% — 1000 keys, sync_every=100 |  | **4.50%** (overwritten 88.34%) |
+| 1 | lost% — 100K keys, sync_every=10000 |  | **4.64%** (overwritten 12.45%) |
 | 2 | tombstones per live dot after storm | | |
 | 2 | rounds of random gossip to converge (8 replicas) | | |
 | 3 | sequential inserts/s (Vec-backed RGA, 50K chars) | | |

@@ -155,9 +155,10 @@ RR-7506 catalog and, for LWW, SSS'11 §6's related work):
 - **LWW register** (last-writer-wins): value + timestamp; merge keeps
   the larger `(timestamp, replica_id)`. It converges by *discarding* one
   of every pair of concurrent writes — this topic's bench lane 1
-  (FINDINGS row 31) measured that discard rate at **94.98%**: of 40,000
-  acknowledged writes to 10 hot keys under per-write sync, 37,991 are
-  remembered by no replica. LWW converges, but "converges" here means
+  (FINDINGS row 31) measured that discard rate at **5.00%**: of 40,000
+  acknowledged writes to 10 hot keys under per-write sync, 2,000 are
+  replaced by a write that had never received them (the 37,991 "overwritten"
+  figure counts ordinary sequential updates too, and is not a loss). LWW converges, but "converges" here means
   "agrees on the survivor and drops the rest."
 - **MV-register** (multi-value): the honest register — on concurrent
   writes it keeps *both* values (tagged with their dots) and hands the
@@ -383,8 +384,9 @@ Answer each before unfolding it.
   pair of concurrent writes and *discarding* the other. Convergence is
   guaranteed, but every discarded write is an acknowledged write no replica
   remembers. Bench lane 1 (FINDINGS row 31) measured the discard rate at
-  **94.98%** — 37,991 of 40,000 acknowledged writes to 10 hot keys under
-  per-write sync are lost. The MV-register is the alternative that keeps
+  **5.00%** — 2,000 of 40,000 acknowledged writes to 10 hot keys under
+  per-write sync are replaced by a write that never saw them, rising to about
+  20% when the sync window equals the key space. The MV-register is the alternative that keeps
   both concurrent values and pushes the resolution to the application
   (Step 5).
 
