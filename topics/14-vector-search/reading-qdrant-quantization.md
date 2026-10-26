@@ -43,12 +43,17 @@ compaction, is the lever.
 
 ### Step 1 — the ladder: three compression rungs, one recall knob
 
-> **In:** f32 vectors. **Out:** the three encodings qdrant ships,
-> their real compression ratios, and the one property all three must
-> have to be worth anything.
+> **In:** f32 vectors. **Out:** the three encodings this guide climbs
+> (of the four qdrant ships), their real compression ratios, and the
+> one property all of them must have to be worth anything.
 
-Lossy vector compression trades bytes for distance accuracy. qdrant
-ships three families:
+Lossy vector compression trades bytes for distance accuracy. At the pin
+qdrant ships **four** families — `QuantizationConfig` has four variants,
+`Scalar`, `Product`, `Binary` and `Turbo` (`lib/segment/src/types.rs:894-899`).
+The fourth, TurboQuant, takes a bit width of 1, 1.5, 2 or 4 bits
+(`TurboQuantBitSize`, `types.rs:866-872`, default `Bits4`); this guide
+does not read its encoder and leaves it out of the ladder. The three
+rungs it climbs:
 
 | scheme | stored per vector (d=128) | ratio | distance on encoded | recall cost |
 |---|---|---|---|---|
@@ -106,7 +111,7 @@ Step 5's pipeline, which is why the riskier rungs are usable at all.
 > The steps above describe the pinned code, which is what the line
 > numbers point at; the ladder's argument — score on the codes, move
 > fewer bytes, rescore to recover recall — applies to TurboQuant
-> unchanged, but the table is not the complete menu at either version.
+> unchanged.
 
 ### Step 2 — scalar u8: the affine trick, and scoring without decode
 
@@ -485,6 +490,11 @@ Answer each before unfolding it.
 
 - [ ] You can name the three rungs of the ladder and the compression ratio each achieves.
   <details><summary>Answer</summary>
+
+  (These are the three families this guide reads; qdrant's
+  `QuantizationConfig` at the pin also has a fourth, `Turbo`
+  — TurboQuant at 1, 1.5, 2 or 4 bits, `types.rs:866-899` — which the
+  guide does not cover.)
 
   Scalar u8: one byte per dimension plus a 4-byte per-vector
   constant, so `512/132 = 3.88×` at d=128, not the round 4× — the

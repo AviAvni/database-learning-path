@@ -234,7 +234,8 @@ the one kernel loop covers both the filtered and the unfiltered path.
 
 The economics, with `sel_t` being `uint32_t`
 (`src/include/duckdb/common/typedefs.hpp:30`), 8 columns of 8-byte values,
-and half the chunk surviving:
+and half of a 2048-row chunk surviving — so the 1024 below is the
+survivor count at 50% selectivity, not a vector size:
 
 ```
  copy out 1024 survivors  = 1024 rows × 8 cols × 8 B = 65,536 B written

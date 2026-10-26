@@ -113,7 +113,11 @@ slot), not an `Arc<Mutex<_>>`.
 > **Out:** the runtime `perf_level` dial whose rungs Step 4's macros and
 > Step 5's timer branch on to decide whether to touch a clock at all.
 
-Instrumentation cost is not uniform — a counter bump is ~1 ns, a
+Instrumentation cost is not uniform — a counter bump, in RocksDB's own
+microbenchmark of `PERF_COUNTER_ADD` in a loop on the pinned code, costs
+2.10 ns with counting enabled and 0.42 ns with it disabled (figures from
+the description of RocksDB #15428, not measured in this repo; most of the
+2.10 ns was the TLS-init call described in Step 2's callout), a
 timestamp is a `clock_gettime`/`rdtsc` pair per scope, CPU-time clocks
 are syscalls — so the enable knob is a *ladder*
 (`include/rocksdb/perf_level.h:27`), each rung admitting a more
@@ -308,8 +312,11 @@ file) → skim PerfContextBase's counters → histogram.h. Then grep
    count, flops, mask applications), index seeks, property fetches
    (count + bytes), per-operator intermediate-record counts, result
    serialization bytes — marking level-2 counts vs level-4 timers.
-2. `PERF_COUNTER_ADD` branches on `perf_level >= kEnableCount` for a
-   ~1 ns add — is the branch cheaper than the unconditional add? Use
+2. `PERF_COUNTER_ADD` branches on `perf_level >= kEnableCount` before
+   the add. RocksDB #15428 measured the pinned macro at 2.10 ns per
+   update with counting enabled and 0.42 ns disabled (0.84 ns enabled
+   after its fix) — RocksDB's numbers, not this repo's. Is the branch
+   cheaper than the unconditional add? Use
    bench lane 3's numbers to argue when the level check itself is the
    tax, and what a Rust `const LEVEL: u8` generic would change.
 3. `PerfStepTimer::Stop()` can feed both tiers (the `uint64_t*` metric

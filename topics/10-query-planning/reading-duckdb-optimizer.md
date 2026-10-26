@@ -567,10 +567,21 @@ about this file. DuckDB does have a `DEFAULT_SELECTIVITY`, but it is
 **0.2** — `src/include/duckdb/optimizer/join_order/relation_statistics_helper.hpp:55`,
 `static constexpr double DEFAULT_SELECTIVITY = 0.2;` — **not** postgres's 0.005.
 It is 40× larger, and it is not a general "unknown predicate" fallback either.
-It is applied in exactly two places: `relation_statistics_helper.cpp:259-262`,
-where a base table has non-equality filters and no equality filter to estimate
-from, and `cardinality_estimator.cpp:915-918`, where a relation set is covered
-by an OR filter. Everything else goes through the numerator/denominator above.
+It is applied in seven places, in three situations. (1)
+`relation_statistics_helper.cpp:259-262`, where a base table has non-equality
+filters and no equality filter to estimate from. (2)
+`cardinality_estimator.cpp:915-918`, where a relation set is covered by an OR
+filter. (3) Five sites in `relation_manager.cpp` — :259-262, :319-322,
+:337-340, :354-357 and :435-438 — one per kind of relation (a generic
+relation with children, a non-reorderable operator, an aggregate, a window,
+a table scan), each multiplying the relation's cardinality by 0.2 once when
+`datasource_filters` is non-empty. That list is filled at :276-279: a
+`LOGICAL_FILTER` found above the relation whose child is non-reorderable, i.e.
+a filter the join-order pass cannot turn into hypergraph edges; the comment at
+:432-433 says it plainly — "if there is another logical filter that could not
+be pushed down into the table scan, apply another selectivity." The factor is
+applied once per relation, whatever the filter says and however many there
+are. Everything else goes through the numerator/denominator above.
 
 > **Upstream since the pin.** The constant moved with its file.
 > `relation_statistics_helper.hpp/.cpp` left `optimizer/join_order/` in
@@ -827,13 +838,17 @@ Answer each before unfolding it.
   postgres's famous 0.005" is repeating a claim the source does not support.
 
   It is also not a general fallback for predicates the estimator cannot reason
-  about. It appears in exactly two places. At
+  about. It is applied in three situations. At
   `relation_statistics_helper.cpp:259-262`, a base relation that has
   non-optional filters but no equality filter to estimate from has its
   cardinality set to `max(base_cardinality × 0.2, 1)`. At
   `cardinality_estimator.cpp:915-918`, `ApplyOrFilterSelectivities` multiplies a
-  relation set's estimate by 0.2 once per OR filter covering it. Everything
-  else in the join-order path goes through `numerator / denominator` at :908.
+  relation set's estimate by 0.2 once per OR filter covering it. And at five
+  sites in `relation_manager.cpp` (:259-262, :319-322, :337-340, :354-357,
+  :435-438), a relation with a filter above it that the join-order pass could
+  not decompose — collected into `datasource_filters` at :276-279 — has its
+  cardinality multiplied by 0.2 once. Everything else in the join-order path
+  goes through `numerator / denominator` at :908.
 
   </details>
 

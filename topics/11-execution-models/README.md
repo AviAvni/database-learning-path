@@ -180,8 +180,16 @@ came from, if you want the pre-history of §4.
 
 ## Capstone M11
 
-Vectorized runtime for the graph engine (reference mirror:
-`runtime/batch.rs`, `vectorized.rs`, `eval.rs`):
+Vectorized runtime for the graph engine. Reference mirror: FalkorDB's Rust
+engine on the `main` branch of
+[FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) —
+`graph/src/runtime/batch.rs`, `graph/src/runtime/vectorized.rs`,
+`graph/src/runtime/eval.rs`, read at the v6.0.0 tag (commit `2b26fd767e`,
+2026-09-25). These files are **not** covered by the pin table: its
+`FalkorDB` row (`ccb449a9a`, 2026-07-15) is a C-engine commit from before
+`main` switched to the Rust engine (FalkorDB #2279, commit `1665fbd98`,
+2026-08-02), and none of these files exists there. Cite these paths with
+the v6.0.0 tag, not the pin.
 
 - [ ] batch type: fixed-capacity columnar chunk (node ids, properties) +
       selection vector — pick the batch size by measuring, not by copying

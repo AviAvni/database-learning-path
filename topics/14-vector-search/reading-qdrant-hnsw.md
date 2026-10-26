@@ -417,12 +417,24 @@ everything passes produces an empty `to_explore`, the 2-hop loop
 never runs, and ACORN costs exactly what plain HNSW costs. The
 expansion is bought only where the filter actually removed something.
 
-Two limits keep the bill bounded: `hop1_limit` and `hop2_limit` are
-both set to `get_m(level)` (:181-182), and the 2-hop pass stops at
-`total_limit = to_score.len() + hop2_limit` (:219), so at most about
-`2M` points are scored per expansion rather than the `M²` the naive
-formulation suggests. Two pooled visited lists (:167, :173) keep the
-hop-1 and hop-2 frontiers from re-scoring each other.
+The limits are **per neighbour, not per expansion** — the comment at
+:178-180 says so in as many words: "Limits are per every explored 1-hop
+or 2-hop neighbors, not total." `hop1_limit` and `hop2_limit` are both
+`get_m(level)` (:181-182). The 1-hop pass stops once `hop1_limit`
+matches are queued (:206-207), but its `else` (:209-211) has no limit:
+every failing neighbour seen before that point goes into `to_explore`.
+The 2-hop pass then recomputes `total_limit = to_score.len() +
+hop2_limit` (:219) *inside* the `for &hop1 in &to_explore` loop (:216),
+so each bridge may add up to `hop2_limit` more points. With M =
+`get_m(level)`, h matches and f bridges, one expansion queues at most
+h + f·M points for scoring. On a level-0 list without payload links
+(at most m0 = 32 entries) the worst case is a candidate whose 32
+neighbours all fail the filter: h = 0, f = 32, ≤ 0 + 32 × 32 = 1 024
+points — M², not 2M. What the per-bridge cap prevents is one bridge with a long
+adjacency list flooding the batch; it does not bound the batch by a
+constant multiple of M. The two pooled visited lists (:167, :173) can
+only lower the count — a point already queued from either frontier is
+skipped — but they do not change the bound.
 
 > **Upstream since the pin.** At the pin the `else` at :209-211 has no
 > limit: every non-matching neighbour of the candidate goes into
@@ -626,11 +638,15 @@ Answer each before unfolding it.
   Buys: the reachable neighbourhood grows from ~K·p to ~K²·p, moving
   the percolation cliff from 1/K = 3.1% to roughly 1/K² = 0.098% at
   m0 = 32 — about a 32× wider usable selectivity band. Costs: extra
-  link traversals and extra scoring, but bounded. `graph_layers.rs`
-  sets `hop1_limit = hop2_limit = get_m(level)` (:181-182) and caps
-  the 2-hop pass at `total_limit = to_score.len() + hop2_limit`
-  (:219), so an expansion scores at most about 2M points, not M².
-  Crucially :209-211 puts only *failing* neighbours into
+  link traversals and extra scoring, capped per neighbour rather than
+  per expansion. `graph_layers.rs` sets `hop1_limit = hop2_limit =
+  get_m(level)` (:181-182) and recomputes `total_limit =
+  to_score.len() + hop2_limit` (:219) for each bridge, so each failing
+  neighbour can add up to M scored points; with h matches and f
+  bridges an expansion queues at most h + f·M, which on a full m0 = 32
+  list is up to M² (all 32 neighbours failing: 32 × 32 = 1 024), not
+  2M. The visited lists (:167, :173) can only lower that. Crucially
+  :209-211 puts only *failing* neighbours into
   `to_explore`, so a fully-passing neighbourhood triggers no 2-hop
   work at all — the cost is proportional to how much the filter
   actually removed. Versus `payload_m`: extra links are RAM spent at

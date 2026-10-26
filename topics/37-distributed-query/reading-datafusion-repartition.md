@@ -1,7 +1,8 @@
 # DataFusion's RepartitionExec: Volcano's Exchange Operator, One Process at a Time
 
 RepartitionExec is DataFusion's in-process exchange operator: it takes N input partitions and redistributes their
-batches across M output partitions, using either round-robin (for balance) or hash (for key affinity) routing.
+batches across M output partitions, using round-robin (for balance), hash (for key affinity) or — when a source declares sorted key ranges — range
+routing.
 It is the direct descendant of Volcano's exchange — the operator that made parallelism invisible to every other
 operator — squeezed into one process with tokio tasks instead of OS processes. This guide walks the routing core,
 the deterministic hash contract that joins depend on, and a flow-control design that is deliberately not a bounded queue.
@@ -44,14 +45,25 @@ in-flight batches. `consume_input_streams` (:393) is the entry point on the prod
 ### Step 2 — Routing policy is a plan-time property
 
 > **In:** a plan node's required input distribution (what Step 7's rule computes).
-> **Out:** a `Partitioning` enum value — `RoundRobinBatch(M)` or `Hash(exprs, M)` —
-> that fixes routing before a single batch moves.
+> **Out:** a `Partitioning` enum value — `RoundRobinBatch(M)`, `Hash(exprs, M)` or
+> `Range(...)` — that fixes routing before a single batch moves.
 
 The `Partitioning` enum (partitioning.rs:117) declares the contract: `RoundRobinBatch(usize)` (:119) says
 "any batch anywhere, just balance the load"; `Hash(Vec&lt;Arc&lt;dyn PhysicalExpr&gt;&gt;, usize)` (:122) says
 "rows with equal key expressions must land in the same output partition." Round-robin is what you use to widen
 a single-partition scan to all cores; hash is what a partitioned hash join or hash aggregate demands, because
 correctness — not just balance — depends on co-locating keys.
+
+The enum has two more variants, and the guide's focus on the first two is a choice, not the whole contract.
+`Range(RangePartitioning)` (:124, "Partition rows by source-declared ranges") routes each row to the partition
+whose key range contains it, given an ordering and a list of split points; like hash it co-locates equal keys,
+and it also keeps partitions ordered relative to each other. `RepartitionExec` already executes it at the pin:
+`BatchPartitioner::try_new` builds a range partitioner for it (repartition/mod.rs:783-784) next to the hash
+(:772) and round-robin (:775) ones. `UnknownPartitioning(usize)` (:126) only describes an existing plan's
+output — "a known number of partitions", no routing rule — so `try_new` rejects it with "Unsupported
+repartitioning scheme" (:786-787); it is never a target. At the pin, the rule that *inserts* exchanges
+(Step 7) only ever asks for round-robin or hash; Range reaches `RepartitionExec` from sources and planners
+that declare it.
 
 ```mermaid
 graph LR
@@ -61,6 +73,8 @@ graph LR
     C --> E["key affinity - equal keys same partition"]
     E --> F["hash join both sides agree"]
     E --> G["hash aggregate no cross-partition merge"]
+    A --> R["Range on ordered keys"]
+    R --> E
 ```
 
 ### Step 3 — Deterministic hashing: the seeds are zero on purpose
@@ -90,7 +104,8 @@ reproducible, which is good for debugging and bad if your workload hits it.
 > **Out:** for round-robin, that whole batch handed to the next output in rotation;
 > for hash, M smaller batches, one per output partition.
 
-`partition_iter` (mod.rs:825) is the routing loop, and it treats the two policies asymmetrically:
+`partition_iter` (mod.rs:825) is the routing loop, and it treats round-robin and hash asymmetrically
+(range, the third arm at :872-907, follows hash's per-row path — see the last bullet):
 
 - **Round-robin** forwards the *entire* RecordBatch to the next output in rotation
   (`*next_idx = (*next_idx + 1) % *num_partitions`, :836; the whole batch is yielded at :837). Zero per-row work,
@@ -99,6 +114,11 @@ reproducible, which is good for debugging and bad if your workload hits it.
   (:856), computes one hash per row over the key columns; the reducer buckets rows into a per-partition index list
   (`partition_reducer.partition_indices`, :862); then `Self::partition_grouped_take` (:868) runs arrow's `take` per
   bucket to gather one new batch per partition.
+- **Range** (:872-907) has hash's shape with a different bucketing step: it evaluates the ordering expressions
+  (:885-888), `partition_range_indices` (:916) assigns each row by binary search over the split points — one
+  row at a time, copying the row's key into a `ScalarValue` buffer first (:924-926) — and the same
+  `partition_grouped_take` (:904) gathers the per-partition batches. With no split points the whole batch goes
+  to partition 0 (:881-883).
 
 This is Volcano's packet-economics lesson restated. Graefe measured 171 s at 1 record per exchange packet versus
 13.7 s at 83 records per packet — a 12x swing purely from amortizing per-transfer cost. DataFusion's RecordBatch
@@ -241,7 +261,7 @@ only helpers behind a moved path.
 | 1 | Per-output execute | datafusion/physical-plan/src/repartition/mod.rs:1329 |
 | 1 | Per-input pull task | datafusion/physical-plan/src/repartition/mod.rs:1742 |
 | 2 | Partitioning enum | datafusion/physical-expr/src/partitioning.rs:117 |
-| 2 | RoundRobinBatch / Hash variants | datafusion/physical-expr/src/partitioning.rs:119, :122 |
+| 2 | RoundRobinBatch / Hash / Range / UnknownPartitioning variants; Range routed by `BatchPartitioner::try_new` | datafusion/physical-expr/src/partitioning.rs:119, :122, :124, :126; physical-plan/src/repartition/mod.rs:783 |
 | 3 | Fixed-seed SeededRandomState::with_seed(0) | datafusion/physical-plan/src/repartition/mod.rs:592 |
 | 3 | Hash constructor (`new_hash_partitioner`) | datafusion/physical-plan/src/repartition/mod.rs:679 |
 | 3 | Strength-reduced reducer built (`StrengthReducedU64::new`) | datafusion/physical-plan/src/repartition/mod.rs:691 |
