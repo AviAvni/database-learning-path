@@ -1,24 +1,40 @@
 # Topic 41 notes — On-chain & crypto analytics
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: addresses vs entities | 10–50× | **30,342 addresses for 400 entities (76×)** |
-| lane 1: haircut-tainted UTXOs from one theft | most of them | **3657 of 3734 (97.9%)** |
-| lane 1: haircut-tainted addresses | ~same | **3553 of 3627 (98.0%)** |
-| lane 1: how much taint is meaningful | thin | 658 UTXOs <0.1%, 2997 at 0.1–5%, **only 2 above 5%** |
-| lane 2: poison total vs stolen | 10–50× | (stub — reference: **394.67×**) |
-| lane 2: haircut total vs stolen | 1.00× (conserved) | (stub — reference: **1.00×**, over 97.9% of UTXOs) |
-| lane 2: FIFO total vs stolen | 1.00× | (stub — reference: **1.00×**, over **0.9%** of UTXOs — 32 of 3734) |
-| lane 2: FIFO concentration | most in a few | (stub — reference: top UTXO holds **22.5%** of flagged value) |
-| lane 2: FIFO throughput | ~1M tx/s | (stub — reference: 20,400 tx in **6.6 ms = 3.1M tx/s**) |
-| lane 3: co-spend precision | 1.000 (protocol property) | (stub — reference: **1.000 at every reuse rate**) |
-| lane 3: co-spend recall | low | (stub — reference: **0.041**; 12,186 addrs → 5,638 clusters ≈ 2.2 addrs/cluster) |
-| lane 3: change heuristic recall gain | +0.2? | (stub — reference: 0.041 → **0.397**) |
-| lane 3: precision at 1% change reuse | small dent | (stub — reference: **1.000 → 0.661**) |
-| lane 3: precision at 5% / 10% | collapse | (stub — reference: **0.089 / 0.009**) |
-| lane 3: largest cluster at 5% / 10% | big | (stub — reference: **1894 (16%) / 7991 (71%)** of all addresses) |
+`cargo run --release --bin chain_bench`:
+
+```
+== lane 1: haircut tainting — how far does a single theft reach? ==
+   20400 transactions, 40400 outputs, 30342 addresses, 400 entities; one stolen coinbase
+
+   haircut, at the end of the chain:
+     tainted UTXOs        3657 of   3734  ( 97.9%)
+     tainted addresses    3553 of   3627  ( 98.0%)
+     tainted value           1000000 of    400000000  (the theft was 1000000)
+     of those UTXOs: 658 are <0.1% tainted, 2997 are 0.1–5%, 2 are >5%
+
+   the total is conserved — haircut does not invent money — but it
+   is spread so thin that "is this coin tainted?" stops meaning
+   anything. Anderson et al. measured the real version: the 2012
+   Linode theft of 46,653 BTC taints 16,855,619 addresses (93% of
+   all of them) under haircut, and 245,120 (1.35%) under FIFO;
+   the 2014 Flexcoin hack taints 10,421,112 vs 15,265. A rule that
+   taints 93% of everyone is a tax, not a forensic tool.
+
+== lane 2: three taint policies on the same theft ==
+   the theft was 1000000; 28293 outputs descend from it in the graph
+   policy    tainted UTXOs   tainted addrs   value flagged   vs stolen
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: address clustering — and how it collapses ==
+   change reuse   H1 clusters  H1 prec  H1 rec | H1+2 clusters  prec   rec   largest
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is seeded; every figure first recorded on 2026-07-27 (30,342
+addresses for 400 entities; haircut taints 3657 of 3734 UTXOs and 3553 of
+3627 addresses; 658 / 2997 / 2 by taint band) is reproduced exactly.
 
 Two mechanics worth memorizing.
 
@@ -39,6 +55,68 @@ keeps it at every parameter setting. The change heuristic keys on a
 habit, so it can be wrong, and because union-find is transitive one
 error fuses two whole components. That asymmetry is why recall 0.041 at
 precision 1.000 can be worth more than recall 0.397 at precision 0.089.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: addresses vs entities | | **30,342 addresses for 400 entities (76×)** |
+| lane 1: haircut-tainted UTXOs from one theft | | **3657 of 3734 (97.9%)** |
+| lane 1: haircut-tainted addresses | | **3553 of 3627 (98.0%)** |
+| lane 1: how much taint is meaningful | | 658 UTXOs <0.1%, 2997 at 0.1–5%, **only 2 above 5%** |
+| lane 2: poison total vs stolen | | |
+| lane 2: haircut total vs stolen | | |
+| lane 2: FIFO total vs stolen | | |
+| lane 2: FIFO concentration | | |
+| lane 2: FIFO throughput | | |
+| lane 3: co-spend precision | | |
+| lane 3: co-spend recall | | |
+| lane 3: change heuristic recall gain | | |
+| lane 3: precision at 1% change reuse | | |
+| lane 3: precision at 5% / 10% | | |
+| lane 3: largest cluster at 5% / 10% | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: addresses vs entities | 10–50× |
+| lane 1: haircut-tainted UTXOs from one theft | most of them |
+| lane 1: haircut-tainted addresses | ~same |
+| lane 1: how much taint is meaningful | thin |
+| lane 2: poison total vs stolen | 10–50× |
+| lane 2: haircut total vs stolen | 1.00× (conserved) |
+| lane 2: FIFO total vs stolen | 1.00× |
+| lane 2: FIFO concentration | most in a few |
+| lane 2: FIFO throughput | ~1M tx/s |
+| lane 3: co-spend precision | 1.000 (protocol property) |
+| lane 3: co-spend recall | low |
+| lane 3: change heuristic recall gain | +0.2? |
+| lane 3: precision at 1% change reuse | small dent |
+| lane 3: precision at 5% / 10% | collapse |
+| lane 3: largest cluster at 5% / 10% | big |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+
+| lane | reference |
+|---|---|
+| lane 2: poison total vs stolen | **394.67×** |
+| lane 2: haircut total vs stolen | **1.00×**, over 97.9% of UTXOs |
+| lane 2: FIFO total vs stolen | **1.00×**, over **0.9%** of UTXOs — 32 of 3734 |
+| lane 2: FIFO concentration | top UTXO holds **22.5%** of flagged value |
+| lane 2: FIFO throughput | 20,400 tx in **6.6 ms = 3.1M tx/s** |
+| lane 3: co-spend precision | **1.000 at every reuse rate** |
+| lane 3: co-spend recall | **0.041**; 12,186 addrs → 5,638 clusters ≈ 2.2 addrs/cluster |
+| lane 3: change heuristic recall gain | 0.041 → **0.397** |
+| lane 3: precision at 1% change reuse | **1.000 → 0.661** |
+| lane 3: precision at 5% / 10% | **0.089 / 0.009** |
+| lane 3: largest cluster at 5% / 10% | **1894 (16%) / 7991 (71%)** of all addresses |
 
 ## Guide-question checklist
 

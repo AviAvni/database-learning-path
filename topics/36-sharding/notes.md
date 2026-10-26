@@ -1,15 +1,33 @@
 # Topic 36 notes — sharding, partitioning & rebalancing
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| mod-N movement 4→5 | 80% (closed form N/(N+1)) | **80.0% exactly** (identity keys, 100k, multiple of 20) |
-| mod-N movement 16→17 | 94.1% | **94.1%** (hashed keys, 1M) |
-| Zipf(1.0) hottest of 16 hash shards | rank-0 key ≈ 1/H₁₀₀₀₀ ≈ 10.2% + shard's uniform share | **14.7%** (2.4× the 6.25% ideal) |
-| Zipf(1.2) hottest shard | worse | **23.8%** (3.8× ideal) |
-| lane 2: ring 4→5 movement, 128 vnodes | ≈ 20% | (stub — implement hashring.rs) |
-| lane 3: greedy vs random edge-cut, k=8 community | random 87.5%, greedy well under 52.5% | (stub — implement partitioner.rs) |
+`cargo run --release --bin shard_bench`:
+
+```
+== lane 1: the problem — mod-N movement and the hot shard ==
+   growing N shards to N+1: fraction of keys that move
+   N -> N+1     mod-N    ideal 1/(N+1)
+    4 ->  5      80.0%        20.0%
+    5 ->  6      83.4%        16.7%
+    8 ->  9      88.9%        11.1%
+   16 -> 17      94.1%         5.9%
+
+   Zipf(s) traffic, 10k keys on 16 hash shards; ideal share 6.25%
+   s = 0.8: hottest shard carries  9.5% of traffic (1.5x ideal)
+   s = 1.0: hottest shard carries 14.7% of traffic (2.4x ideal)
+   s = 1.2: hottest shard carries 23.8% of traffic (3.8x ideal)
+
+== lane 2: consistent-hash ring — movement and balance ==
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: graph partitioning at k=8 — edge-cut, random vs greedy ==
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is seeded and exact; every figure first recorded on 2026-07-26
+(80.0% at 4→5, 94.1% at 16→17, hottest shard 14.7% at s = 1.0 and 23.8% at
+s = 1.2) is reproduced exactly.
 
 The lane-1 mechanics, worth memorizing: `k mod N == k mod N+1` iff
 `k mod N(N+1)` is below N (CRT), so mod-N growth moves N/(N+1) of keys
@@ -19,6 +37,36 @@ node's points change owners. And the Zipf row is a proof, not an
 accident: a hash function maps one key to one shard, so no hash choice
 can spread the rank-0 key's ~10% of traffic. Splitting *between* keys
 (range partitioning) or replicating the hot key are the only outs.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| mod-N movement 4→5 | | **80.0% exactly** (identity keys, 100k, multiple of 20) |
+| mod-N movement 16→17 | | **94.1%** (hashed keys, 1M) |
+| Zipf(1.0) hottest of 16 hash shards | | **14.7%** (2.4× the 6.25% ideal) |
+| Zipf(1.2) hottest shard | | **23.8%** (3.8× ideal) |
+| lane 2: ring 4→5 movement, 128 vnodes | | |
+| lane 3: greedy vs random edge-cut, k=8 community | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| mod-N movement 4→5 | 80% (closed form N/(N+1)) |
+| mod-N movement 16→17 | 94.1% |
+| Zipf(1.0) hottest of 16 hash shards | rank-0 key ≈ 1/H₁₀₀₀₀ ≈ 10.2% + shard's uniform share |
+| Zipf(1.2) hottest shard | worse |
+| lane 2: ring 4→5 movement, 128 vnodes | ≈ 20% |
+| lane 3: greedy vs random edge-cut, k=8 community | random 87.5%, greedy well under 52.5% |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 

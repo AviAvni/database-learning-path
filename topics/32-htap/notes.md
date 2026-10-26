@@ -1,15 +1,32 @@
 # Topic 32 notes — HTAP architectures
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: write p99, scans on vs off | 10–100x worse | **333 ns → 7.49 s** (2.2e7x); not slowdown — *starvation* |
-| lane 1: write throughput hit | ~2–5x fewer writes | 11,438,647 → **69** writes in 2 s |
-| lane 1: scans completed in 2 s | ~100 | 3261 (~0.6 ms/scan; scanner re-grabs the unfair lock back-to-back) |
-| lane 2: merged vs delta-heavy scan | 5–10x | (stub — measure after implementing replica.rs) |
-| lane 2: max lsn gap vs batch | ≈ batch size | (stub) |
-| lane 3: wait p50 at interval 100 | ~50 ticks | (stub) |
+`cargo run --release --bin htap_bench` — lane 1 runs a fixed 2 s window per
+mode:
+
+```
+=== lane 1: OLTP/OLAP interference on one copy ===
+                  mode     p50 ns     p99 ns     p99.9 ns  writes/2s   scans
+          writes alone         84        250          333   14166064       0
+   writes + full scans        125 5318627959   5318627959         97    2346
+(coarse lock on purpose: every full scan is a write outage — the HTAP problem)
+
+=== lane 2: columnar replica — scan speedup + freshness ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+
+=== lane 3: learner reads — the price of freshness ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+```
+
+Every figure in this lane is a timing or a count of work done in a fixed
+time window, so none of it is seeded, and several drift by more than 20%
+between runs. Recorded 2026-07-11: writes alone 11,438,647 per 2 s; with
+scans 69 writes and 3261 scans (~0.6 ms/scan), write p99 333 ns → 7.49 s.
+This run: 14,166,064; 97 writes and 2346 scans (~0.85 ms/scan); write p99
+250 ns → 5.32 s. The shape — writes collapse from millions to under a
+hundred, and p99 goes from nanoseconds to seconds — is what reproduces;
+the numbers are this machine's on that day.
 
 The lane-1 surprise: I expected degradation, got **writer starvation**.
 std::sync::Mutex is unfair; the scanner finishes a ~0.6 ms scan and wins
@@ -22,6 +39,39 @@ Methodology note: lane 1 originally did a fixed 200K writes; with the
 scanner holding ~0.6 ms locks that serializes into minutes. Switched to a
 fixed 2 s window per mode — the writes-completed collapse became the
 headline number instead of the runtime.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: write p99, scans on vs off | | **250 ns → 5.32 s** (2026-07-11: 333 ns → 7.49 s) |
+| lane 1: write throughput hit | | 14,166,064 → **97** writes in 2 s (2026-07-11: 11,438,647 → 69) |
+| lane 1: scans completed in 2 s | | 2346 (2026-07-11: 3261) |
+| lane 2: merged vs delta-heavy scan | | |
+| lane 2: max lsn gap vs batch | | |
+| lane 3: wait p50 at interval 100 | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: write p99, scans on vs off | 10–100x worse |
+| lane 1: write throughput hit | ~2–5x fewer writes |
+| lane 1: scans completed in 2 s | ~100 |
+| lane 2: merged vs delta-heavy scan | 5–10x |
+| lane 2: max lsn gap vs batch | ≈ batch size |
+| lane 3: wait p50 at interval 100 | ~50 ticks |
+
+The lane-1 predictions were wrong in kind, not degree: the author expected
+degradation and got writer starvation (see the paragraph under the baseline).
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 

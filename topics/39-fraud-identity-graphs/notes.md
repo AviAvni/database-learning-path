@@ -1,18 +1,38 @@
 # Topic 39 notes — Fraud rings & identity graphs
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: degree-rank at camo 0 | ~0 (power users out-review a 100-edge bot) | **0.00** (rises with camo: 0.28/0.60/0.76 at 0.5/1/2) |
-| lane 1: obscurity-rank at camo 0 / 2 | good, then dead (row score) | **0.52 → 0.00** (dead already at camo 0.5) |
-| lane 2: log-weighted F under camo | 1.0 everywhere (Theorem 3) | (stub — reference: **1.00/1.00/1.00/1.00** at camo 0/0.5/1/2) |
-| lane 2: unweighted F at camo 2 | collapses into popular core | (stub — reference: **0.65**; degrades 1.00/0.95/0.69/0.65) |
-| lane 2: peel 100k×50k, ~1M edges | sub-second (O(E log V)) | (stub — reference: **1,019,984 edges in ~0.2 s**, F = 1.00) |
-| lane 3: u from random pairs | ≈ 1/pool = [.005 .002 .0003 .005 .0005] | (stub — reference: **[0.0052 0.0021 0.0003 0.0051 0.0006]**) |
-| lane 3: EM m vs analytic (1−t)² | [0.81 0.87 0.94 0.77 0.90] | (stub — reference: **[0.80 0.86 0.94 0.78 0.90]**, p = 0.184) |
-| lane 3: blocking savings, 15k records | ~100× | (stub — reference: 112,492,500 → 271,012 = **415×**) |
-| lane 3: link at 12 bits | precision ≥ 0.95, recall ≥ 0.9 | (stub — reference: **0.989 / 0.992**, 48 ms end-to-end) |
+`cargo run --release --bin fraud_bench`:
+
+```
+== lane 1: camouflage vs naive rankers — precision@|fraud users| ==
+   (5000x5000 Zipf background, 50k edges; 25x100 block at 1.0 density)
+   camo/fraud edge   degree-rank   obscurity-rank
+    0.0               0.00           0.52
+    0.5               0.28           0.00
+    1.0               0.60           0.00
+    2.0               0.76           0.00
+
+   the two row heuristics fail in opposite regimes: degree ranking
+   misses economical fraud (honest power users out-review it) but
+   lights up once camouflage inflates the fraudster's row; obscurity
+   ranking ("active account, only unpopular products") is the
+   mirror image — it works until the fraudster buys camouflage
+   edges to popular products. Both are row scores, the fraudster
+   controls his row, and he tunes camo to slip between them.
+   fraudar.rs scores columns instead — which he cannot touch.
+
+== lane 2: FRAUDAR greedy peeling — F-measure on the planted block ==
+   camo/fraud edge   unweighted g   log-weighted g
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: entity resolution — Fellegi-Sunter with blocking + EM ==
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is seeded; every precision first recorded on 2026-07-26 (degree-rank
+0.00 / 0.28 / 0.60 / 0.76, obscurity-rank 0.52 / 0.00 / 0.00 / 0.00) is
+reproduced exactly.
 
 The lane-1 mechanic, worth memorizing: degree-rank and obscurity-rank
 are both functions of the fraudster's own *row*, and he controls his
@@ -21,6 +41,52 @@ FRAUDAR scores *columns*: camouflage lands on honest popular columns
 (weight ~1/log of a big degree ≈ 0) and the fraud block's own columns
 never receive camouflage, so g(block) is byte-identical at camo 0 and
 camo 2 — Theorem 3, verified by exercise 2's hand-derivation.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: degree-rank at camo 0 | | **0.00** (rises with camo: 0.28/0.60/0.76 at 0.5/1/2) |
+| lane 1: obscurity-rank at camo 0 / 2 | | **0.52 → 0.00** (dead already at camo 0.5) |
+| lane 2: log-weighted F under camo | | |
+| lane 2: unweighted F at camo 2 | | |
+| lane 2: peel 100k×50k, ~1M edges | | |
+| lane 3: u from random pairs | | |
+| lane 3: EM m vs analytic (1−t)² | | |
+| lane 3: blocking savings, 15k records | | |
+| lane 3: link at 12 bits | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: degree-rank at camo 0 | ~0 (power users out-review a 100-edge bot) |
+| lane 1: obscurity-rank at camo 0 / 2 | good, then dead (row score) |
+| lane 2: log-weighted F under camo | 1.0 everywhere (Theorem 3) |
+| lane 2: unweighted F at camo 2 | collapses into popular core |
+| lane 2: peel 100k×50k, ~1M edges | sub-second (O(E log V)) |
+| lane 3: u from random pairs | ≈ 1/pool = [.005 .002 .0003 .005 .0005] |
+| lane 3: EM m vs analytic (1−t)² | [0.81 0.87 0.94 0.77 0.90] |
+| lane 3: blocking savings, 15k records | ~100× |
+| lane 3: link at 12 bits | precision ≥ 0.95, recall ≥ 0.9 |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(2026-07-26, Apple M3 Pro) before it was reverted to stubs:
+
+| lane | reference |
+|---|---|
+| lane 2: log-weighted F under camo | **1.00/1.00/1.00/1.00** at camo 0/0.5/1/2 |
+| lane 2: unweighted F at camo 2 | **0.65**; degrades 1.00/0.95/0.69/0.65 |
+| lane 2: peel 100k×50k, ~1M edges | **1,019,984 edges in ~0.2 s**, F = 1.00 |
+| lane 3: u from random pairs | **[0.0052 0.0021 0.0003 0.0051 0.0006]** |
+| lane 3: EM m vs analytic (1−t)² | **[0.80 0.86 0.94 0.78 0.90]**, p = 0.184 |
+| lane 3: blocking savings, 15k records | 112,492,500 → 271,012 = **415×** |
+| lane 3: link at 12 bits | **0.989 / 0.992** (precision / recall), 48 ms end-to-end |
 
 ## Guide-question checklist
 

@@ -1,26 +1,59 @@
 # Topic 26 — Notes & measurements
 
-Machine: Apple M3 Pro, macOS. `cargo run --release --bin filter_bench`
-(10M sorted random u64 keys, 1M queries per lane). Date: 2026-07-10.
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-## Measured baselines (provided lanes)
+`cargo run --release --bin filter_bench` — 10M sorted random u64 keys, 1M
+queries per lane:
 
-> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 26 (**246 /
-> 299 / 28 ns** for the three lanes below). FINDINGS is canonical where
-> they disagree; cite one run by name and never average them.
+```
+10000000 sorted u64 keys, 1000000 queries each lane
+binary search (miss): 186 ns/lookup  (0 hits)
+BTreeMap (miss):      240 ns/lookup  (0 hits)
+HashSet (miss):       20 ns/lookup  (0 hits)  [224 MB]
+binary search (hit):  177 ns/lookup  (1000000 found)
+blocked bloom: [stub — implement bloom::BlockedBloom]
+cuckoo: [stub — implement cuckoo::CuckooFilter]
+hll: [stub — implement hll::Hll]
+learned index: [stub — implement pgm::LearnedIndex]
+```
+
+The counts are seeded and exact (every miss lane finds 0, the hit lane finds
+all 1000000; the HashSet is 224 MB, as first recorded); the timings are this
+run's. Recorded 2026-07-10: 167 / 218 / 24 / 169 ns; this run: 186 / 240 /
+20 / 177 ns — within ~20% on every lane.
+
+> [FINDINGS.md](../../FINDINGS.md) row 26 quotes a third run (**246 / 299 /
+> 28 ns** for the first three lanes). FINDINGS is canonical where they
+> disagree; cite one run by name and never average them.
 
 | lane | ns/lookup | note |
 |---|---|---|
-| binary search (miss) | 167 | ~23 dependent cache misses over 76 MB |
-| BTreeMap (miss) | 218 | pointer-chasing tax over binary search |
-| HashSet (miss) | 24 | the speed target — at 224 MB, the memory anti-target |
-| binary search (hit) | 169 | hit ≈ miss: the cost is the walk, not the compare |
+| binary search (miss) | 186 | ~23 dependent cache misses over 76 MB |
+| BTreeMap (miss) | 240 | pointer-chasing tax over binary search |
+| HashSet (miss) | 20 | the speed target — at 224 MB, the memory anti-target |
+| binary search (hit) | 177 | hit ≈ miss: the cost is the walk, not the compare |
 
 The whole topic in these four numbers: a filter should say "definitely
 absent" at ~HashSet speed with ~5% of its memory (12 MB at 10 bpk), and a
 learned index should collapse most of binary search's 23-miss walk.
 
-## Predictions BEFORE implementing the stubs
+## Predictions (fill BEFORE implementing the stubs)
+
+| stub lane | predicted | measured |
+|---|---|---|
+| blocked bloom 10 bpk — ns/lookup and FPR | | |
+| blocked bloom 8→16 bpk — FPR ratio | | |
+| cuckoo 12-bit fp, 0.9 load — ns/lookup and FPR | | |
+| hll 10M adds — relative error | | |
+| learned ε=64 — ns/lookup | | |
+| learned ε=256 — faster or slower than ε=64? | | |
+| learned segments, 1M uniform | | |
+
+(Fill the predicted column before implementing and the measured column after;
+keep wrong predictions — they're the record.)
+
+<details>
+<summary>Author's prediction</summary>
 
 | stub lane | prediction | reasoning |
 |---|---|---|
@@ -32,17 +65,16 @@ learned index should collapse most of binary search's 23-miss walk.
 | learned ε=256 | faster or slower than ε=64? | fewer segments (better cached) vs wider window — my bet: within 10% |
 | learned segments, 1M uniform | ~500-1500 | cone ≥ optimal; optimal for uniform ≈ n/(ε²-ish scaling) is far under n/500 |
 
-(Fill the measured column after implementing; keep wrong predictions —
-they're the record.)
+</details>
 
-## Measured (stub lanes) — TODO after implementation
+## Reference numbers for the exercise lanes
 
-| lane | measured | prediction hit? |
-|---|---|---|
-| blocked bloom 8/10/16 | — | — |
-| cuckoo | — | — |
-| hll | — | — |
-| learned 16/64/256 | — | — |
+No reference run of the stub lanes is recorded for this topic. The stub tests
+are the specification: BlockedBloom FPR < 2.5% at 10 bpk, under 4× theory, and
+halving from 8 → 16 bpk; CuckooFilter FPR < 1% at 12-bit fingerprints and 90%
+load; Hll error < 3% at 1K / 100K / 5M with exact-merge registers;
+LearnedIndex window ≤ 2ε+2 and fewer than 2,000 segments (n/500) on 1M
+uniform keys at ε=64.
 
 ## Questions to answer while reading (from the guides)
 

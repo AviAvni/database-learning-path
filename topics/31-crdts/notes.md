@@ -1,20 +1,35 @@
 # Topic 31 — working notes
 
-## Predict before you measure
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-Fill the predictions BEFORE implementing the stubs / running lanes 2-4.
+`cargo run --release --bin crdt_bench`:
 
-| lane | metric | prediction | measured |
-|---|---|---|---|
-| 1 | lost% — 10 keys, sync_every=1 | — | **94.98%** |
-| 1 | lost% — 1000 keys, sync_every=100 | — | **88.34%** |
-| 1 | lost% — 100K keys, sync_every=10000 | — | **12.45%** |
-| 2 | tombstones per live dot after storm | | |
-| 2 | rounds of random gossip to converge (8 replicas) | | |
-| 3 | sequential inserts/s (Vec-backed RGA, 50K chars) | | |
-| 3 | tombstone bloat after deleting half | | |
-| 4 | dangling (hidden) edges after 100 node-removes ∥ 500 edge-adds | | |
-| 4 | edges resurrected after re-adding the 100 nodes | | |
+```
+=== lane 1: LWW's lie (lost concurrent writes) ===
+    keys   sync_every     writes       lost    lost%
+      10            1      40000      37991   94.98%
+      10          100      40000       2000    5.00%
+      10        10000      40000         20    0.05%
+    1000            1      40000      38983   97.46%
+    1000          100      40000      35337   88.34%
+    1000        10000      40000       2000    5.00%
+  100000            1      40000       7001   17.50%
+  100000          100      40000       6948   17.37%
+  100000        10000      40000       4978   12.45%
+(every 'lost' row entry is a user write no replica remembers)
+
+=== lane 2: OR-Set convergence storm ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+
+=== lane 3: RGA editing trace ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+
+=== lane 4: graph dangling storm ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+```
+
+Lane 1 is a seeded count; the lost% figures first recorded on 2026-07-11
+(94.98%, 88.34%, 12.45%) are reproduced exactly.
 
 Lane 1 measured notes (2026-07-11, M-series MBP, release):
 
@@ -27,6 +42,27 @@ Lane 1 measured notes (2026-07-11, M-series MBP, release):
 - Full 100K-writes × sync_every=1 config was quadratic (state-based sync
   ships the whole map): shrunk to 20K writes and wrote the cost into the
   bench comment. Delta-CRDTs exist for exactly this (README exercise 3).
+
+## Predict before you measure
+
+Fill the predictions BEFORE implementing the stubs / running lanes 2-4.
+
+| lane | metric | prediction | measured |
+|---|---|---|---|
+| 1 | lost% — 10 keys, sync_every=1 |  | **94.98%** |
+| 1 | lost% — 1000 keys, sync_every=100 |  | **88.34%** |
+| 1 | lost% — 100K keys, sync_every=10000 |  | **12.45%** |
+| 2 | tombstones per live dot after storm | | |
+| 2 | rounds of random gossip to converge (8 replicas) | | |
+| 3 | sequential inserts/s (Vec-backed RGA, 50K chars) | | |
+| 3 | tombstone bloat after deleting half | | |
+| 4 | dangling (hidden) edges after 100 node-removes ∥ 500 edge-adds | | |
+| 4 | edges resurrected after re-adding the 100 nodes | | |
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Stub order that worked on paper
 

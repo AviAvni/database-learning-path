@@ -1,26 +1,52 @@
 # Topic 43 notes — Network & IT-ops dependency graphs
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: services alerting from one fault | ~15 | **34 of 55** |
-| lane 1: is the broken service alerting? | yes | **NO** — a gray failure never trips its own alert |
-| lane 1: its own error rate | elevated | **0.0040** — exactly the baseline |
-| lane 1: rank of the cause by failure count | mid-table | **35 of 55** |
-| lane 1: rank of the cause by error rate | top-10 | **41 of 55** — worse than random |
-| lane 1: spread across the 5 infra leaves | visible | **0.0040–0.0041** — indistinguishable |
-| lane 2: failure-count baseline, mean rank | ~20 | (stub — reference: **36.4**, 0/5 top-3) |
-| lane 2: error-rate baseline, mean rank | ~10 | (stub — reference: **44.0**, 0/5 top-3) |
-| lane 2: random walk, mean rank | top-3 | (stub — reference: **1.0**, **5/5 top-1**) |
-| lane 2: Sherlock k=1, mean rank | top-3 | (stub — reference: **1.0**, **5/5 top-1**) |
-| lane 2: backward-only walk | slightly worse | (stub — reference: rank **3** vs full walk's 1) |
-| lane 2: cost | ~100 ms | (stub — reference: walk **22.8 ms**, Ferret k=1 **21.4 ms**) |
-| lane 3: edge recall at 1/1024 | ~0.5 | (stub — reference: **1.000**, from 39 traces) |
-| lane 3: rare-path recall at 1/16 | ~0.5 | (stub — reference: **0.062**) |
-| lane 3: rare-path recall at 1/1024 | ~0.01 | (stub — reference: **0.001**) |
-| lane 3: mean-latency error at 1/1024 | large | (stub — reference: **5.8%** — the mean is unbiased) |
-| lane 3: p99 error at 1/1024 | ~same as mean | (stub — reference: **25.6%** — the tail is not) |
+`cargo run --release --bin ops_bench`:
+
+```
+== lane 1: one broken service, thirty-four alerts ==
+   55 services (4 frontends, 5 infra), 40000 requests, 152 configured edges
+   the broken service is infra-0 — SLOW on 55% of calls, not failing
+
+   services alerting above a 5% error rate: 34 of 55
+   is the broken service among them? NO
+   its own error rate: 0.0040  (baseline is 0.0040)
+
+   ranking                top 3                                  rank of the cause
+   by failure count       svc2-9(21618) svc1-4(16654) svc3-8(16151) 35 of 55
+   by error rate          frontend-3(0.92) frontend-1(0.90) frontend-0(0.90) 41 of 55
+
+   and every infra leaf looks identical from per-node statistics:
+     infra-0   error rate 0.0040, 20 callers   <-- the broken one
+     infra-1   error rate 0.0040, 11 callers
+     infra-2   error rate 0.0041, 13 callers
+     infra-3   error rate 0.0041, 13 callers
+     infra-4   error rate 0.0041, 14 callers
+
+   This is a gray failure: the component's own health check is
+   green because it is slow rather than wrong, and the errors are
+   generated one hop ABOVE it by callers that time out. No sorting
+   of a per-service dashboard can find it — the five infra leaves
+   are statistically indistinguishable. Only the graph separates
+   them, which is what lane 2 is for.
+
+== lane 2: root-cause localization ==
+   seed   method                     rank of cause   top-1   top-3
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: Dapper sampling — the aggregate question vs the rare one ==
+   40000 traces, 113 reachable edges (152 configured), 37907 distinct paths of which 37738 are rare
+   full-trace mean latency 68564 us, p99 177420 us
+
+   rate      traces   edge recall   rare-path recall   mean-latency err   p99 err
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is seeded; every figure first recorded on 2026-07-27 (34 of 55
+services alerting, the cause not among them at error rate 0.0040; rank 35 by
+failure count, 41 by error rate; infra leaves 0.0040–0.0041) is reproduced
+exactly.
 
 Three mechanics worth memorizing.
 
@@ -43,6 +69,72 @@ symptom — which is the whole argument for this topic existing.
 are 99.9% gone, the mean latency is within 5.8%, and the p99 is 25.6%
 off. Before choosing a sampling rate, decide whether your question is
 aggregate, rare-event, or tail — they do not have the same answer.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: services alerting from one fault | | **34 of 55** |
+| lane 1: is the broken service alerting? | | **NO** — a gray failure never trips its own alert |
+| lane 1: its own error rate | | **0.0040** — exactly the baseline |
+| lane 1: rank of the cause by failure count | | **35 of 55** |
+| lane 1: rank of the cause by error rate | | **41 of 55** — worse than random |
+| lane 1: spread across the 5 infra leaves | | **0.0040–0.0041** — indistinguishable |
+| lane 2: failure-count baseline, mean rank | | |
+| lane 2: error-rate baseline, mean rank | | |
+| lane 2: random walk, mean rank | | |
+| lane 2: Sherlock k=1, mean rank | | |
+| lane 2: backward-only walk | | |
+| lane 2: cost | | |
+| lane 3: edge recall at 1/1024 | | |
+| lane 3: rare-path recall at 1/16 | | |
+| lane 3: rare-path recall at 1/1024 | | |
+| lane 3: mean-latency error at 1/1024 | | |
+| lane 3: p99 error at 1/1024 | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: services alerting from one fault | ~15 |
+| lane 1: is the broken service alerting? | yes |
+| lane 1: its own error rate | elevated |
+| lane 1: rank of the cause by failure count | mid-table |
+| lane 1: rank of the cause by error rate | top-10 |
+| lane 1: spread across the 5 infra leaves | visible |
+| lane 2: failure-count baseline, mean rank | ~20 |
+| lane 2: error-rate baseline, mean rank | ~10 |
+| lane 2: random walk, mean rank | top-3 |
+| lane 2: Sherlock k=1, mean rank | top-3 |
+| lane 2: backward-only walk | slightly worse |
+| lane 2: cost | ~100 ms |
+| lane 3: edge recall at 1/1024 | ~0.5 |
+| lane 3: rare-path recall at 1/16 | ~0.5 |
+| lane 3: rare-path recall at 1/1024 | ~0.01 |
+| lane 3: mean-latency error at 1/1024 | large |
+| lane 3: p99 error at 1/1024 | ~same as mean |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+
+| lane | reference |
+|---|---|
+| lane 2: failure-count baseline, mean rank | **36.4**, 0/5 top-3 |
+| lane 2: error-rate baseline, mean rank | **44.0**, 0/5 top-3 |
+| lane 2: random walk, mean rank | **1.0**, **5/5 top-1** |
+| lane 2: Sherlock k=1, mean rank | **1.0**, **5/5 top-1** |
+| lane 2: backward-only walk | rank **3** vs full walk's 1 |
+| lane 2: cost | walk **22.8 ms**, Ferret k=1 **21.4 ms** |
+| lane 3: edge recall at 1/1024 | **1.000**, from 39 traces |
+| lane 3: rare-path recall at 1/16 | **0.062** |
+| lane 3: rare-path recall at 1/1024 | **0.001** |
+| lane 3: mean-latency error at 1/1024 | **5.8%** — the mean is unbiased |
+| lane 3: p99 error at 1/1024 | **25.6%** — the tail is not |
 
 ## Guide-question checklist
 

@@ -1,8 +1,27 @@
 # Topic 29 — Notes
 
-## Measured: the workload's conflict probability (lane 1, provided)
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
 100K transfers over 100K accounts, batches of 8, `cargo run --release --bin txn_bench`:
+
+```
+=== txn_bench: 100000 transfers over 100000 accounts, batches of 8 ===
+
+-- conflict probability of the workload itself (provided) --
+theta 0.5: 0.3% of batches contain a key collision
+theta 0.9: 29.9% of batches contain a key collision
+theta 1.1: 86.2% of batches contain a key collision
+theta 1.3: 99.6% of batches contain a key collision
+
+-- percolator: abort rate vs contention (stub lane) --
+percolator lane: [stub — implement percolator.rs]
+
+-- 2PC under a crash storm (stub lane) --
+2PC lane: [stub — implement tpc.rs]
+```
+
+The lane is a seeded count, not a timing; all four rates are identical to the
+first run (2026-07-10).
 
 | zipf θ | batches containing a key collision |
 |---|---|
@@ -15,7 +34,21 @@ The jump from θ=0.9 to 1.1 is the whole story: real workloads sit exactly
 where contention goes from "occasionally" to "usually". Any protocol
 evaluated only at uniform keys is being evaluated on the easy case.
 
-## Predictions (before implementing the stubs)
+## Predictions (fill BEFORE implementing the stubs)
+
+| lane | predicted | measured |
+|---|---|---|
+| 2: Percolator abort rate θ=0.5 | | |
+| 2: abort rate θ=0.9 | | |
+| 2: abort rate θ=1.3 | | |
+| 2: throughput | | |
+| 3: 2PC storm — committed / crashed / invariant | | |
+| 3: blocked_aborts | | |
+
+Record actuals in the measured column after implementing `percolator.rs` / `tpc.rs`.
+
+<details>
+<summary>Author's prediction</summary>
 
 | lane | prediction | reasoning |
 |---|---|---|
@@ -26,7 +59,12 @@ evaluated only at uniform keys is being evaluated on the easy case.
 | 3: 2PC storm | committed ≈ 19.4K, crashed = 200, invariant holds | 1 crash per 100 txns × 20K; recovery every 4th crash leaves lock wreckage windows |
 | 3: blocked_aborts | few hundred | between a crash and its recovery, θ=0.9 traffic keeps landing on the 2 locked keys |
 
-Record actuals next to these after implementing `percolator.rs` / `tpc.rs`.
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Things that surprised me while designing the experiments
 

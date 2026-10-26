@@ -1,15 +1,38 @@
 # Topic 37 notes — distributed query execution
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| P(any slow), p=1/100, n=100 | 1−0.99¹⁰⁰ = 63.4% | **63.4% analytic; 63.4%±2% simulated** (20k trials) |
-| P(any slow), p=1/10000, n=2000 | 18.1% | **18.1%** (closed form, test-pinned to 1e-3) |
-| 100-leaf p50 waiting for all | the leaf's tail → a stall | **1000.0 ms** (one leaf p50: 5.6 ms) |
-| 95%-of-leaves p99 | tail gone | **9.9 ms** vs 1000 ms waiting for all |
-| lane 2: hash routing at k=8 | balanced, deterministic | (stub — implement exchange.rs) |
-| lane 3: hedge at 10 ms | p99.9 ~50× down, +≲1% requests | (stub — implement hedge.rs; reference run: 1000→18.3 ms, +0.5%) |
+`cargo run --release --bin distq_bench`:
+
+```
+== lane 1: the fan-out tail — P(any leaf slow) and Table 1's shape ==
+   P(at least one slow) = 1 - (1-p)^n
+   n        p=1/100   p=1/1000   p=1/10000
+      1        1.0%       0.1%        0.0%
+    100       63.4%       9.5%        1.0%
+    500       99.3%      39.4%        4.9%
+   1000      100.0%      63.2%        9.5%
+   2000      100.0%      86.5%       18.1%
+
+   simulated 100-leaf scatter-gather, 1-in-100 slow leaves, 20k queries
+   (the paper's Table 1: waiting for all vs 95% of leaves)
+   wait for            p50        p95        p99
+   one leaf            5.6 ms     9.6 ms    10.0 ms
+   95% of 100          9.6 ms     9.9 ms     9.9 ms
+   all 100          1000.0 ms  1000.0 ms  1000.0 ms
+
+== lane 2: exchange — routing throughput and the merging exchange ==
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: hedged requests — p99.9 vs extra load, by hedge delay ==
+   leaf: 1-10 ms fast, 1000 ms stall with p = 0.005 (paper: 1800 -> 74 ms at +2%)
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+The table is closed-form and the simulation is seeded (simulated latencies,
+not wall time), so every figure first recorded on 2026-07-26 (63.4% at
+p = 1/100, n = 100; 18.1% at p = 1/10000, n = 2000; one-leaf p50 5.6 ms;
+all-100 p50 1000.0 ms; 95%-of-leaves p99 9.9 ms) is reproduced exactly.
 
 The lane-1 mechanics, worth memorizing: waiting for all of n leaves
 takes the max of n draws, so P(slow) = 1−(1−p)ⁿ — fan-out *exponentiates*
@@ -17,6 +40,42 @@ rarity into certainty. The component's p99 becomes the service's median
 at n≈70 already (0.99⁷⁰ ≈ 0.50). The two outs are structural, not
 tuning: stop waiting for everyone (good-enough / hedges), or shrink n's
 exposure (canary requests, micro-partitions).
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| P(any slow), p=1/100, n=100 | | **63.4% analytic; 63.4%±2% simulated** (20k trials) |
+| P(any slow), p=1/10000, n=2000 | | **18.1%** (closed form, test-pinned to 1e-3) |
+| 100-leaf p50 waiting for all | | **1000.0 ms** (one leaf p50: 5.6 ms) |
+| 95%-of-leaves p99 | | **9.9 ms** vs 1000 ms waiting for all |
+| lane 2: hash routing at k=8 | | |
+| lane 3: hedge at 10 ms | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| P(any slow), p=1/100, n=100 | 1−0.99¹⁰⁰ = 63.4% |
+| P(any slow), p=1/10000, n=2000 | 18.1% |
+| 100-leaf p50 waiting for all | the leaf's tail → a stall |
+| 95%-of-leaves p99 | tail gone |
+| lane 2: hash routing at k=8 | balanced, deterministic |
+| lane 3: hedge at 10 ms | p99.9 ~50× down, +≲1% requests |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(2026-07-26, Apple M3 Pro) before it was reverted to stubs:
+
+- **Lane 2 — exchange**: round-robin **229.6 M rows/s**; hash
+  **543.0 M rows/s** (balance 1.002); 8×500k merging exchange
+  **80.6 M rows/s**.
+- **Lane 3 — hedging**: hedge at 10 ms takes p99.9 **1000 → 18.3 ms** at
+  **+0.5%** requests; hedge at 0 costs +100%.
 
 ## Guide-question checklist
 

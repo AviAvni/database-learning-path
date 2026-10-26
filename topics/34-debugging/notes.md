@@ -1,16 +1,26 @@
 # Topic 34 notes — debugging & production diagnosis
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: closed-loop p99 under 100 ms stalls | happy-path 1 µs | **1.0 µs** (even p99.99 = 1.0 µs; only max sees the stall) |
-| lane 1: open-loop p99 | ~90 ms (stall minus one interval decade) | **90.0 ms**; p99.9 = 99.0 ms, p99.99 = 99.9 ms |
-| lane 1: size of the lie at p99 | 4–5 orders of magnitude | **90,000×** (1 µs vs 90 ms) |
-| lane 2: histogram record vs sort-everything ns/op | record ~2-5 ns, sort ~50+ | (stub — measure after implementing histogram.rs) |
-| lane 2: p99.9 histogram error vs exact | ≤ 3.1% (sub_bits=5) | (stub) |
-| lane 3: clock-pair tax on a ~2 ns op | dominates — 10-20 ns/op | (stub) |
-| lane 3: slowlog check tax above clock+histogram | unmeasurable | (stub) |
+`cargo run --release --bin debug_bench`:
+
+```
+== lane 1: coordinated omission — closed vs open loop ==
+   1000000 ops, service 1 µs, 100 ms stall every 100K ops, arrivals every 10 µs
+   protocol      p50        p99        p99.9      p99.99     max
+   closed-loop     1.0 µs     1.0 µs     1.0 µs     1.0 µs   100.0 ms
+   open-loop       1.0 µs    90.0 ms    99.0 ms    99.9 ms   100.0 ms
+
+== lane 2: log-bucketed histogram vs sort-everything ==
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: the observability tax on a hot loop ==
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 runs on a virtual clock, so every figure is exact and identical to the
+first recorded run (2026-07-26): closed-loop p99 1.0 µs, open-loop p99
+90.0 ms, a 90,000× gap.
 
 The lane-1 shape is exact and worth memorizing: each 100 ms stall
 queues ~10K arrivals (100 ms / 10 µs); 9 stalls in 1M ops → ~9% of all
@@ -21,6 +31,38 @@ ones delayed ≥ ~90 ms — that's why open-loop p99 lands at exactly
 stalls in exactly 9 samples out of 1M, so even its p99.99 (rank
 999,900) is clean. The bench is a virtual clock, so these are provable
 numbers, not noise.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: closed-loop p99 under 100 ms stalls | | **1.0 µs** (even p99.99 = 1.0 µs; only max sees the stall) |
+| lane 1: open-loop p99 | | **90.0 ms**; p99.9 = 99.0 ms, p99.99 = 99.9 ms |
+| lane 1: size of the lie at p99 | | **90,000×** (1 µs vs 90 ms) |
+| lane 2: histogram record vs sort-everything ns/op | | |
+| lane 2: p99.9 histogram error vs exact | | |
+| lane 3: clock-pair tax on a ~2 ns op | | |
+| lane 3: slowlog check tax above clock+histogram | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: closed-loop p99 under 100 ms stalls | happy-path 1 µs |
+| lane 1: open-loop p99 | ~90 ms (stall minus one interval decade) |
+| lane 1: size of the lie at p99 | 4–5 orders of magnitude |
+| lane 2: histogram record vs sort-everything ns/op | record ~2-5 ns, sort ~50+ |
+| lane 2: p99.9 histogram error vs exact | ≤ 3.1% (sub_bits=5) |
+| lane 3: clock-pair tax on a ~2 ns op | dominates — 10-20 ns/op |
+| lane 3: slowlog check tax above clock+histogram | unmeasurable |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 

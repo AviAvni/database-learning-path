@@ -1,23 +1,52 @@
 # Topic 40 notes — Security & attack graphs
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: `MemberOf` closure to tier zero | 5 direct + a nested group | **8**, and it never moves |
-| lane 1: attack-path reachable, no session data | tens (only the over-privileged group) | **39 of 2000 (1.9%)** |
-| lane 1: attack-path reachable, 100 sessions | a big jump, maybe half | **1969 (98.5%)** — the cascade is near-total |
-| lane 1: sessions needed to saturate | thousands | **500** (2000 users, 100.0%) |
-| lane 1: two DA tokens on workstations | a few hundred users | **8 → 2000** with one token |
-| lane 1: shortest attack-path length | 3–4 hops | **mean 6.03, worst 8** |
-| lane 2: dominator pass vs \|V\| re-runs, 3400 nodes | 100×+ | (stub — reference: **0.8 ms vs 543 ms ≈ 600×**, exact match on every node) |
-| lane 2: tiered directory, top choke point | most of the exposure | (stub — reference: **1992 of 2000 users, 99.6%**; greedy 2000 → 8 → 5) |
-| lane 2: flat directory, top choke point | smaller, still positive | (stub — reference: **none — every single-node blast radius is 0**) |
-| lane 2: flat directory, planned gateway cut | monotone decline | (stub — reference: **2000 → 2000 → 2000 → 2000 → 2000 → 8** — nothing until the last piece) |
-| lane 3: pointer-chase tuple reads, depth 2 → 32 | linear in depth×width | (stub — reference: **19 → 559**, 0.46 → 11.28 µs) |
-| lane 3: Leopard probes, depth 2 → 32 | flat | (stub — reference: **4 → 12 probes, ~0.01 µs** — flat in depth) |
-| lane 3: index space tax at depth 32 | 2–3× | (stub — reference: 6672 tuples → **11393 entries = 1.7×**, closure quadratic in depth) |
-| lane 3: galloping vs merge, lopsided sets | 100× | (stub — reference: **>1000×** on a 1-vs-500,000 pair) |
+`cargo run --release --bin attack_bench`:
+
+```
+== lane 1: who is a Domain Admin? list answer vs graph answer ==
+   (2000 users, 400 groups, 1000 computers; 5 direct tier-zero members,
+    3 more in one nested group; tiered layout, no policy violations)
+   1% of users (20 of 2000) are in one over-privileged group.
+   sessions collected   direct   MemberOf closure   attack-path reachable
+                    0        5                  8           39 (  1.9%)
+                  100        5                  8         1969 ( 98.5%)
+                  250        5                  8         1987 ( 99.3%)
+                  500        5                  8         2000 (100.0%)
+                 1000        5                  8         2000 (100.0%)
+                 2000        5                  8         2000 (100.0%)
+
+   Domain Admin tokens left on ordinary workstations: 0 -> 8   1 -> 2000   2 -> 2000   4 -> 2000
+   (staff_fraction 0, so the gateway is shut; the tokens alone do this)
+
+   default directory: 2000 users reach tier zero; shortest path mean
+   6.03 hops, worst 8 hops — the exposure is not remote.
+
+   the MemberOf closure is what the directory console shows you and
+   what the compliance report counts: 8, forever. Every extra user in
+   the last column got there through AdminTo + HasSession — local
+   admin on a machine where a privileged token happens to be sitting.
+   Nobody granted that. It is an emergent property of the graph,
+   invisible to any per-object permission review, and it cascades:
+   20 over-privileged users expose 39 without session data and 1969
+   with 100 sessions, because each newly exposed user's own sessions
+   drag in everyone who is local admin on those machines. Note what
+   that means operationally — your exposure number is a function of
+   how long you ran the collector, not of how much privilege exists.
+
+== lane 2: choke points — dominators price every single-node cut ==
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: Zanzibar Check — pointer chasing vs a flattened index ==
+   nesting depth   tuple reads   check µs   index probes   index µs   index entries
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is seeded; every figure first recorded on 2026-07-27 (closure 8;
+attack-path reachable 39 → 1969 → 2000 as sessions grow 0 → 100 → 500;
+one DA token 8 → 2000; shortest path mean 6.03, worst 8 hops) is reproduced
+exactly.
 
 Two mechanics worth memorizing.
 
@@ -37,6 +66,63 @@ gateway set one node at a time shows no progress at all until the last
 piece lands. Remediation is a set problem on a flat directory, and the
 dominator pass returning all zeros is the report — not a failure of the
 analysis.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: `MemberOf` closure to tier zero | | **8**, and it never moves |
+| lane 1: attack-path reachable, no session data | | **39 of 2000 (1.9%)** |
+| lane 1: attack-path reachable, 100 sessions | | **1969 (98.5%)** — the cascade is near-total |
+| lane 1: sessions needed to saturate | | **500** (2000 users, 100.0%) |
+| lane 1: two DA tokens on workstations | | **8 → 2000** with one token |
+| lane 1: shortest attack-path length | | **mean 6.03, worst 8** |
+| lane 2: dominator pass vs \|V\| re-runs, 3400 nodes | | |
+| lane 2: tiered directory, top choke point | | |
+| lane 2: flat directory, top choke point | | |
+| lane 2: flat directory, planned gateway cut | | |
+| lane 3: pointer-chase tuple reads, depth 2 → 32 | | |
+| lane 3: Leopard probes, depth 2 → 32 | | |
+| lane 3: index space tax at depth 32 | | |
+| lane 3: galloping vs merge, lopsided sets | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: `MemberOf` closure to tier zero | 5 direct + a nested group |
+| lane 1: attack-path reachable, no session data | tens (only the over-privileged group) |
+| lane 1: attack-path reachable, 100 sessions | a big jump, maybe half |
+| lane 1: sessions needed to saturate | thousands |
+| lane 1: two DA tokens on workstations | a few hundred users |
+| lane 1: shortest attack-path length | 3–4 hops |
+| lane 2: dominator pass vs \|V\| re-runs, 3400 nodes | 100×+ |
+| lane 2: tiered directory, top choke point | most of the exposure |
+| lane 2: flat directory, top choke point | smaller, still positive |
+| lane 2: flat directory, planned gateway cut | monotone decline |
+| lane 3: pointer-chase tuple reads, depth 2 → 32 | linear in depth×width |
+| lane 3: Leopard probes, depth 2 → 32 | flat |
+| lane 3: index space tax at depth 32 | 2–3× |
+| lane 3: galloping vs merge, lopsided sets | 100× |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(2026-07-27, Apple M3 Pro) before it was reverted to stubs:
+
+| lane | reference |
+|---|---|
+| lane 2: dominator pass vs \|V\| re-runs, 3400 nodes | **0.8 ms vs 543 ms ≈ 600×**, exact match on every node |
+| lane 2: tiered directory, top choke point | **1992 of 2000 users, 99.6%**; greedy 2000 → 8 → 5 |
+| lane 2: flat directory, top choke point | **none — every single-node blast radius is 0** |
+| lane 2: flat directory, planned gateway cut | **2000 → 2000 → 2000 → 2000 → 2000 → 8** — nothing until the last piece |
+| lane 3: pointer-chase tuple reads, depth 2 → 32 | **19 → 559**, 0.46 → 11.28 µs |
+| lane 3: Leopard probes, depth 2 → 32 | **4 → 12 probes, ~0.01 µs** — flat in depth |
+| lane 3: index space tax at depth 32 | 6672 tuples → **11393 entries = 1.7×**, closure quadratic in depth |
+| lane 3: galloping vs merge, lopsided sets | **>1000×** on a 1-vs-500,000 pair |
 
 ## Guide-question checklist
 
