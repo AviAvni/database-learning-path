@@ -45,7 +45,7 @@ training edges, of which Core is 1,561 authors with 6,178 old edges and 5,751 ne
 > **In:** the ranked top-`n` predictions from Step 1.
 > **Out:** the one interpretable score — **factor improvement over random** — because raw precision
 > is a few percent *by design*; the random baseline is 0.15–0.48% across the datasets (this crate:
-> 0.314%), so every later number is a multiple of that. §4.
+> 0.313%), so every later number is a multiple of that. §4.
 
 > As discussed in Section 1, many collaborations form (or fail to form) for reasons outside the
 > scope of the network; thus the raw performance of our predictors is relatively low. To more
@@ -55,7 +55,7 @@ training edges, of which Core is 1,561 authors with 6,178 old edges and 5,751 ne
 
 Raw accuracy of a few percent sounds terrible and is actually excellent; only the ratio is
 interpretable. This topic's crate reproduces the setup exactly, with a random accuracy of
-**0.314%**, and `graphs::evaluate` returns the factor.
+**0.313%**, and `graphs::evaluate` returns the factor.
 
 Worked example — the factor is `(fraction of the top-n predictions that are real) / (random
 accuracy)`. On `astro-ph`, random is correct 0.475% of the time, and common neighbours scores
@@ -168,13 +168,13 @@ becomes more likely — the very mechanism common neighbours exploits):
 
 ```
    predictor                  hits / n     factor over random
-   preferential attachment       6 / 985            1.9x
-   common neighbors             64 / 985           20.7x
-   Jaccard                      79 / 985           25.6x
-   Adamic/Adar                  69 / 985           22.3x
+   preferential attachment       3 / 985            1.0x
+   common neighbors             67 / 985           21.7x
+   Jaccard                      86 / 985           27.9x
+   Adamic/Adar                  74 / 985           24.0x
 ```
 
-Same shape, same loser. (Jaccard edging out Adamic/Adar here rather than the other way round is a
+Same shape, same loser — here preferential attachment does no better than chance at all. (Jaccard edging out Adamic/Adar here rather than the other way round is a
 property of the generator — worth investigating rather than explaining away.)
 
 ### Step 6 — The meta-approaches
@@ -271,7 +271,7 @@ Answer each before unfolding it.
 
   Many collaborations form for reasons the graph never sees, so raw precision is a few percent even
   for a good predictor — the paper uses a random predictor (correct 0.15–0.48% of the time; this
-  crate 0.314%) as the baseline and reports the *ratio*. Worked: on `astro-ph`, common neighbours
+  crate 0.313%) as the baseline and reports the *ratio*. Worked: on `astro-ph`, common neighbours
   scores 18.0×, i.e. raw precision `18.0 × 0.00475 = 8.55%`. An 8.55% hit rate reads as failure but
   is 18× chance. Only the ratio is interpretable — distrust any recommender quoted at "5%
   precision@10" with no baseline attached.
@@ -286,7 +286,7 @@ Answer each before unfolding it.
   have anything in common — it just multiplies their degrees, so it ranks pairs of *famous* nodes
   highly — which is lane 1's popularity baseline in a link-prediction costume, and it fails for the
   same reason: knowing who is popular is not knowing who will connect (Figure 3: 4.7–15.2× versus
-  common neighbours' 18.0–47.2×; lane 3: 1.9× versus 20.7×).
+  common neighbours' 18.0–47.2×; lane 3: 1.0× versus 21.7×).
 
   </details>
 
@@ -307,8 +307,8 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  Lane 3's reference ordering on the synthetic graph: preferential attachment 1.9× (6/985 hits),
-  common neighbours 20.7× (64/985), Jaccard 25.6× (79/985), Adamic/Adar 22.3× (69/985) —
+  Lane 3's reference ordering on the synthetic graph: preferential attachment 1.0× (3/985 hits),
+  common neighbours 21.7× (67/985), Jaccard 27.9× (86/985), Adamic/Adar 24.0× (74/985) —
   preferential attachment an order of magnitude behind the neighbourhood measures, matching Figure
   3's shape. (Jaccard edging Adamic/Adar here, the reverse of the paper's usual order, is a property
   of the generator — investigate it rather than explain it away.) If your PA lands near the others,

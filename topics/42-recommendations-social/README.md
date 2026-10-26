@@ -20,15 +20,15 @@ the worst of the family.
    3000 users x 6000 items, 30 communities, 60000 training edges, 6000 held out
 
    recommender          hit-rate@50   personalization   overlap w/ bestsellers
-   popularity               0.340             0.155                   0.923
-   basic walk               0.403             0.820                   0.451
+   popularity               0.353             0.157                   0.922
+   basic walk               0.403             0.815                   0.457
 ```
 
 Popularity is not a weak baseline. On a power-law graph the bestseller
 list gets a third of users right, and its personalization score is only
 nonzero at all because we filter out items each user already has —
 everybody is being handed the same list. Pixie's unmodified Algorithm 1
-does personalize, but **45% of what it returns is the bestseller list
+does personalize, but **46% of what it returns is the bestseller list
 again**, because an unbiased walk's visit distribution drifts toward
 degree. That is Pixie's own complaint, stated in §1: "In classical
 random walks low degree nodes with fewer edges contribute less signal.
@@ -215,15 +215,15 @@ common case is tiny and the tail is enormous — plan for both).
 
 ## Link prediction: topology alone, measured
 
-Lane 3, on a collaboration graph where a random guess is right 0.314% of
+Lane 3, on a collaboration graph where a random guess is right 0.313% of
 the time:
 
 ```
    predictor                  hits / n     factor over random
-   preferential attachment       6 / 985            1.9x
-   common neighbors             64 / 985           20.7x
-   Jaccard                      79 / 985           25.6x
-   Adamic/Adar                  69 / 985           22.3x
+   preferential attachment       3 / 985            1.0x
+   common neighbors             67 / 985           21.7x
+   Jaccard                      86 / 985           27.9x
+   Adamic/Adar                  74 / 985           24.0x
 ```
 
 and Liben-Nowell & Kleinberg's Figure 3 on five arXiv co-authorship
@@ -277,8 +277,8 @@ cargo run --release --bin social_bench
 Bench lanes: 1 = the popularity trap (provided, above). 2 = the Pixie
 ablation (reference: early stopping at 35% of steps / 2.2× / 0.793
 overlap; the multi-hit booster showing **no** gain, at either interest
-count). 3 = link prediction (reference: PA 1.9× vs common neighbours
-20.7× / Jaccard 25.6× / Adamic-Adar 22.3× over a 0.314%-accurate
+count). 3 = link prediction (reference: PA 1.0× vs common neighbours
+21.7× / Jaccard 27.9× / Adamic-Adar 24.0× over a 0.313%-accurate
 random predictor).
 
 ## Exercises
