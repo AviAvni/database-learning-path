@@ -144,6 +144,38 @@ against maxmemory, and *opaque* to redis defrag.
 - "LeanStore: In-Memory Data Management Beyond Main Memory" (ICDE '18) +
   vmcache (SIGMOD '23) as the sequel. → [`reading-leanstore-paper.md`](reading-leanstore-paper.md) — LeanStore & vmcache: pay only on the miss
 
+## Newer work (2025–2026)
+
+- **Sampling-based Predictive Database Buffer Management** — Mohammad
+  Khalaji, Theo Vanderkooy, Runsheng Benson Guo, Khuzaima Daudjee. PVLDB
+  18(13), 2025. [paper](https://www.vldb.org/pvldb/vol18/p5569-khalaji.pdf)
+  · [code](https://github.com/serene-lamport/postgresql-test-scripts)
+
+  Concurrent analytical scans defeat CLOCK: every scan touches every page once,
+  so usage counts say nothing about which page is needed next. The policy here
+  uses the progress of the running scans to estimate when each page will next
+  be accessed — approximating the optimal policy, which would need to know
+  future accesses — and keeps eviction cheap by scoring only a small random
+  sample of buffers per eviction (Abstract).
+  Implemented in PostgreSQL, with 32 query streams each scanning 10% of a
+  table, it reduced I/O volume by 30% to 40% relative to both Clock-sweep and
+  the earlier priority-queue predictive policy at a 12 GiB cache (§6.2.1,
+  Fig. 6); the gap closes as the cache grows. It is the postgres CLOCK of §2
+  ([`reading-postgres-bufmgr.md`](reading-postgres-bufmgr.md)) with the victim
+  chosen by forecast instead of by recency; the random sample plays the role
+  that random cooling plays in LeanStore — it replaces global bookkeeping.
+- **High-Performance DBMSs with io_uring: When and How to Use It** — Matthias
+  Jasny, Muhammad El-Hindi, Tobias Ziegler, Viktor Leis, Carsten Binnig.
+  VLDB 2026 (PVLDB 19). [arXiv:2512.04859](https://arxiv.org/abs/2512.04859)
+  · [code](https://github.com/mjasny/vldb26-iouring)
+
+  The finding that matters for this topic: in their buffer manager, collecting
+  several eviction victims and submitting their writes with one
+  `io_uring_enter()` call — still synchronous, no read/write overlap yet —
+  improved throughput by about 14%, to 19 k tx/s (§3.3.1, Fig. 5), because the
+  per-eviction submission cost is amortized across the batch. Covered in depth
+  in topic 45.
+
 ## 8. Experiments (in `experiments/`)
 
 1. **`src/buffer_pool.rs`** — CLOCK buffer pool: fixed frame array,

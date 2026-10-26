@@ -132,6 +132,40 @@ reads degrade forever. Stalls are the honest choice.
 - "Constructing and Analyzing the LSM Compaction Design Space" (VLDB '21).
   → [`reading-compaction-design-space.md`](reading-compaction-design-space.md) — Compaction is four axes, not two strategies
 
+## Newer work (2025–2026)
+
+- **How Much Can RocksDB Chew? Achieving Near-Zero Write Stalls with
+  Sustainable RocksDB** — Hojin Shin, Yongmin Lee, Seehwan Yoo, Jongmoo Choi.
+  VLDB 2026 (PVLDB 19(11)).
+  [paper](https://www.vldb.org/pvldb/vol19/p3202-shin.pdf) ·
+  [code](https://github.com/shinhojin/Sustainable-RocksDB)
+
+  §3 calls write stalls "the honest choice"; this paper argues the
+  threshold-triggered stop-and-go valve oscillates, and replaces it with an
+  admission controller that throttles foreground writes to the measured
+  compaction capacity, learned online with Q-learning and fenced by
+  SAFE/SEMI-SAFE/UNSAFE guardrails (§4–5). Over a 24-hour `fillrandom` run,
+  default RocksDB accumulated 64.3M stalled writes; S-RocksDB with RocksDB's
+  resource settings accumulated 10,206, and with SILK's settings 69 (§6.2).
+  The price is visible in the same section: S-RocksDB reaches lower peak
+  throughput and "trades transient throughput peaks for smoother long-run
+  admission" — the stall is still back-pressure, applied continuously instead
+  of all at once.
+- **A Multi-tenant Relational OLTP Database at Salesforce** — Vaibhav Arora,
+  Subho Chatterjee, Terry Chong, Thomas Fanghaenel, Pat Helland, Jamie Martin,
+  Kaushal Mittal, Nat Wyatt. CIDR 2026.
+  [paper page](https://vldb.org/cidrdb/2026/a-multi-tenant-relational-oltp-database-at-salesforce.html)
+
+  A production Postgres fork on LSM storage whose read-dominated workload
+  outgrew the usual blooms, leveling and fence pointers; the paper adds a
+  location cache for index-to-base-record probes, CRaFT range filters for short
+  scans, and early tombstone pruning for queue-like tables (Abstract). Measured
+  across production clusters, CRaFT filtered 86.45% of 417 billion per-level
+  scans with a 4.17% false-positive rate (§6.2), and a location-cache hit
+  replaces an index-to-base lookup averaging 13.5 µs with one of a few hundred
+  nanoseconds (§6.1). It is §4's "paying DRAM to skip IO" extended from point
+  lookups to scans and tombstones.
+
 ## 7. Experiments (in `experiments/`)
 
 Build a **mini-LSM** (scaffold compiles; `todo!()` where the learning is).

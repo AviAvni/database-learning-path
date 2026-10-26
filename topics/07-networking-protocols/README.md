@@ -163,6 +163,39 @@ PackStream: the graph in the type system
   Costa's thread-per-core essays + valkey multithreading blog posts in the
   same guide)
 
+## Newer work (2025–2026)
+
+- **Garnet: A Next-Generation Cache-Store for Accelerating Applications and
+  Services** — Badrish Chandramouli, Vasileios Zois, Ted Hart, Tal Zaccai,
+  Lukas M. Maas, Yoganand Rajasekaran, Darren Gehring. PVLDB 19(2), 2025
+  (VLDB 2026). [paper](https://www.vldb.org/pvldb/vol19/p224-chandramouli.pdf)
+  · [code](https://github.com/microsoft/garnet)
+
+  A RESP-compatible server (written in C#) that answers §3's question
+  differently from Redis, Valkey and Dragonfly: network threads parse RESP and
+  execute the command themselves against one shared, latch-free storage engine
+  (Tsavorite) with a five-operation "narrow-waist" interface, so there is no
+  thread hand-off and no per-shard routing (§1.3). In memtier_benchmark with
+  6,400 clients, a 1:9 SET:GET mix over 256 million keys, it reports "at least
+  20× higher throughput and 3× lower latency compared to standalone Valkey"
+  (§8.2). It is the RESP server to compare M7 against when you decide what
+  your threading model serializes, alongside
+  [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md).
+- **Rearchitecting the Thread Model of In-Memory Key-Value Stores with μTPS** —
+  Youmin Chen, Jiwu Shu, Yanyan Shen, Linpeng Huang, Hong Mei. SOSP 2025.
+  [doi:10.1145/3731569.3764794](https://doi.org/10.1145/3731569.3764794)
+
+  Run-to-completion — one thread carries a request from socket to index and
+  back — mixes cache-resident work (RPC, parsing) with memory-bound,
+  contended work (the index) on the same core. μTPS splits them into two
+  thread pools with dedicated cores and cache ways, adds reconfigurable RPC
+  and an auto-tuner, and on two stores (μTPS-H over libcuckoo, μTPS-T over
+  MassTree) reports a 1.03–5.46× speedup over run-to-completion versions (§1);
+  the authors note the gains are modest for hash indexes and uniform
+  workloads. It revives thread-per-stage as a fourth row for §3's table and
+  is the counter-argument to the thread-per-core design in
+  [`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md).
+
 ## 8. Experiments (in `experiments/`)
 
 1. **`src/resp.rs`** — RESP2 parser/encoder (your build; tests fix the

@@ -168,6 +168,27 @@ proptest (topic 16).
 - [reading-tlaplus-raft.md](reading-tlaplus-raft.md) — A spec is a state machine: TLA+ through raft.tla
 - [reading-lean-perceus.md](reading-lean-perceus.md) — Perceus: reference counting precise enough to reuse memory
 
+## Newer work (2025–2026)
+
+- **Fast Verification of Strong Database Isolation** (VeriStrong) — Zhiheng
+  Cai, Si Liu, Hengfeng Wei, Yuxing Chen, Anqun Pan. PVLDB 19(4), 2025
+  (VLDB 2026). [paper](https://www.vldb.org/pvldb/vol19/p563-wei.pdf) ·
+  [extended version](https://arxiv.org/abs/2511.14067) ·
+  [code](https://github.com/CzxingcHen/VeriStrong)
+
+  A worked case of §4's point that a general solver leaves performance on the
+  table. Serializability checking reduces to "pick a version order that keeps
+  the dependency graph acyclic", which the baseline hands to MonoSAT (§4).
+  VeriStrong, built on MiniSat, adds two database-specific changes: it
+  pre-encodes the 2-transaction cycles that dominate conflicts in every
+  benchmark it measured (§5.1, §6.1), and it picks branch polarity from a
+  pseudo-topological order derived from known session and read-from edges
+  instead of blindly (§6.2) — Z3's "phase caching" from §4, replaced by a
+  domain heuristic. With 16k transactions it reports up to a 4.4x speedup even
+  over GPU-accelerated Cobra (§7.2.2, Fig. 11). Topic 8's README covers what it
+  checks; here, read it as an SMT encoding to compare with
+  [`reading-z3-tacas08.md`](reading-z3-tacas08.md).
+
 ## Experiments
 
 | file | status | what it shows |

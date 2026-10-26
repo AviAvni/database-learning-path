@@ -152,6 +152,23 @@ flowchart TD
   → chapter: [`reading-sqlite-file-format.md`](reading-sqlite-file-format.md) — The
   SQLite file format: decode a row by hand
 
+## Newer work (2025–2026)
+
+- **How to Write to SSDs** — Bohyun Lee, Tobias Ziegler, Viktor Leis. VLDB
+  2026. [arXiv:2603.09927](https://arxiv.org/abs/2603.09927)
+
+  An in-place B-tree writes more than its dirty pages: in-place systems such as
+  MySQL and PostgreSQL (the latter indirectly) issue roughly double the user
+  writes because of doublewrite buffering, and the SSD then amplifies that again —
+  an in-place LeanStore wrote 18.85 KiB of flash per 4 KiB node write on
+  YCSB-A with the SSD 90% full (§1, Fig. 1). Redesigning LeanStore's B-tree to
+  write pages out-of-place, plus a set of placement optimizations, "improves
+  throughput by 1.65–2.24× and reduces flash writes per operation by
+  6.2–9.8× on YCSB-A" (Abstract). Covered in depth in topic 45; for this
+  topic, it reopens §4 — LMDB's copy-on-write is already out-of-place, and the
+  paper's question is where the new page should land and when the old one's
+  space is reclaimed.
+
 ## 7. Experiments (in `experiments/`)
 
 Implement a **slotted-page disk B+tree**, fixed 4KB pages (scaffold compiles

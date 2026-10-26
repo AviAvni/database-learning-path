@@ -131,6 +131,58 @@ pure logic, exactly Z3's home turf. Z3 itself is a masterclass
 codebase: a high-performance search engine over logic (tactics =
 query plans for proofs).
 
+## Newer work (2025–2026)
+
+- **Dinkel: State-Aware and Granular Framework for Validating Graph
+  Databases** — Celine Wüst, Zuming Jiang, Zhendong Su. VLDB 2026 (PVLDB
+  19(6)). [paper](https://www.vldb.org/pvldb/vol19/p1198-jiang.pdf) ·
+  [code](https://github.com/CelineWuest/dinkel)
+
+  Cypher clauses change the graph while the query runs (a node created by one
+  `CREATE` is visible to the next `DELETE`), so random generators either emit
+  shallow queries or invalid ones. Dinkel tracks query context and graph schema
+  clause by clause to generate deep, valid queries, and uses clause- and
+  expression-level rewrites that preserve semantics as its oracle. On Neo4j,
+  RedisGraph and Memgraph it found 127 bugs, 113 confirmed and 84 fixed; 62 of
+  them were in RedisGraph — FalkorDB's direct ancestor — of which 48 were
+  confirmed, 29 fixed, and 34 were crashes (§5, Tables 5–6). It is §2's
+  metamorphic-oracle idea carried over to a graph query language, and a ready
+  harness to point at the capstone's Cypher front end next to the TCK runner
+  in M16.
+- **Testing Graph Databases via Transformations Between Fixed-Length and
+  Variable-Length Queries** (PATHTest) — Jinxin Gui, Yuanhong Lan, Longlong
+  Lu, Yifei Lu, Minxue Pan. VLDB 2026 (PVLDB 19(9)).
+  [paper](https://www.vldb.org/pvldb/vol19/p2234-gui.pdf) ·
+  [code](https://github.com/VLDB2026/VLDB2026_PATHTest)
+
+  Variable-length patterns such as `(a)-[*1..2]->(b)` go through different
+  operators and optimizations than the fixed-length patterns they must agree
+  with, so PATHTest rewrites one into the other — folding a chain of fixed
+  hops into a bounded variable-length path and re-imposing the original label
+  constraints as predicates — and compares results. Across seven systems
+  (Neo4j, Memgraph, AgensGraph, NebulaGraph, JanusGraph, HugeGraph,
+  TinkerGraph) it found "41 previously unknown bugs … among which 24 are logic
+  bugs, and 17 correspond to unexpected errors", 29 confirmed and 11 fixed
+  (Abstract, Table 2). FalkorDB was not among the systems tested; it is TLP's
+  partition-and-recombine trick specialized to path semantics, and a direct
+  test for the capstone's variable-length traversal.
+- **Pisco: An Isolation Bug Case Reduction and Deduplication Framework** —
+  Siyang Weng, Hongyu Yang, Zirui Hu, Rong Zhang, Zhicheng Pan, Chengcheng
+  Yang, Xuan Zhou, Yuxing Chen, Xiaolong He, Anqun Pan. VLDB 2026 (PVLDB
+  19(6)). [paper](https://www.vldb.org/pvldb/vol19/p1413-weng.pdf) ·
+  [code](https://github.com/DBHammer/Pisco)
+
+  A concurrent test case that triggers an isolation bug is large and
+  nondeterministic, so it cannot be shrunk by rerunning it. Pisco simulates the
+  DBMS's lock and version state to fix the order of conflicting operations,
+  then shrinks with a dependency-aware divide-and-conquer that never drops an
+  operation the anomaly depends on, and deduplicates reports with a
+  multi-agent LLM framework. It reached minimal cases in 20.0% of C-Reduce's
+  time and 33.3% of DDMin's (§7.3.1), with a deduplication ratio of up to
+  91.6% (§7.4). It is the shrinking problem of
+  [`reading-hypothesis.md`](reading-hypothesis.md) for the anomalies
+  [`reading-jepsen.md`](reading-jepsen.md) finds.
+
 ## Experiments (`experiments/`)
 
 1. `sim_fs.rs` + `kv.rs` — PROVIDED: a tiny WAL-backed KV store over

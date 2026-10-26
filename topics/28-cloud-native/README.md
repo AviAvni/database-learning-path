@@ -82,6 +82,40 @@ tables/pages are caches of log prefixes materialized near the reader — the
 same sentence as Kafka's thesis in topic 27's reading-kafka-log.md, arrived
 at independently for OLTP.
 
+## Newer work (2025–2026)
+
+- **Cloudspecs: Cloud Hardware Evolution Through the Looking Glass** — Till
+  Steinert, Maximilian Kuschewski, Viktor Leis. CIDR 2026.
+  [paper](https://www.cs.cit.tum.de/fileadmin/w00cfj/dis/papers/cloudspecs-final.pdf)
+  · [CIDR page](https://vldb.org/cidrdb/2026/cloudspecs-cloud-hardware-evolution-through-the-looking-glass.html)
+  · [tool](https://cloudspecs.fyi)
+
+  A ten-year (2015–2025) price/performance history of AWS instances, compared
+  with other clouds and on-premise hardware. Network is the resource that got
+  cheap: per-instance bandwidth rose from 10 to 600 Gbit/s (60×), and 10×
+  even cost-normalized (§2.3). Local NVMe did not: the i3 family from 2016 is
+  "still the best instance by almost 2×" in I/O per dollar (§2.4), while
+  on-premise SSDs kept improving. That is the hardware argument behind §2's
+  Neon shape and §0's price sheet — ship the log over the network, keep pages
+  in a disaggregated tier — and the cost model the capstone's M28 tiered
+  backend should be priced with.
+- **Interoperable ACID Transactions for Open Table Formats** (LakeVilla) —
+  Tobias Götz, Daniel Ritter, Muhammad El-Hindi, Jana Giceva. VLDB 2026
+  (PVLDB 19(11)). [paper](https://www.vldb.org/pvldb/vol19/p3216-goetz.pdf)
+  · [code](https://github.com/goetztj/LakeVilla)
+
+  Delta Lake and Iceberg coordinate through one ordered log per table, so a
+  transaction spanning tables needs an external coordinator (DuckLake's
+  database, Nessie's service), which breaks interoperability. LakeVilla does
+  multi-table ACID with object-store primitives only: shared write locks
+  stored as "markers", per-transaction SAGA-like sublogs other engines can find
+  and replay, and conditional writes (§4), with a TLA+ model of the protocol.
+  On TPC-C (1 warehouse, 4 clients, MinIO, 1 h), Delta Lake and Nessie
+  committed 0.00 transactions/min at a 100% abort rate, DuckLake 0.20 at
+  99.98%, and LakeVilla 2.81 at 21.92% (Table 4). It is the topic's
+  "consensus outsourced to S3's conditional PUT" thread (§6, SlateDB's
+  fencing) applied to transactions rather than to a single writer.
+
 ## 4. Experiments (`experiments/`)
 
 Simulated tiers with *charged* (not slept) latency — deterministic p50/p99

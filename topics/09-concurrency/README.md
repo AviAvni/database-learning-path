@@ -153,6 +153,28 @@ per-thread `used_memory` counters (topic 6); you'll measure the effect in
 | reading-concurrent-skiplists.md | Two concurrent skiplists: CAS vs lazy locking |
 | reading-bwtree.md | Bw-tree vs OLC: why lock-free lost to optimistic latches |
 
+## Newer work (2025–2026)
+
+- **Arctic: A Practical Lock-Free Adaptive Radix Tree** — Newton Ni, Nicolas
+  Garza, Jenny Stinehour, Michael Goppert, Michal Friedman, Emmett Witchel.
+  OSDI 2026. [paper](https://www.usenix.org/conference/osdi26/presentation/ni)
+  · [code (Rust)](https://github.com/nwtnni/arctic)
+
+  A lock-free ordered index whose memory reclamation sits between §4's two
+  options: instead of announcing every pointer it touches (hazard pointers) or
+  pinning a global epoch, an operation announces its *key* once — a "hazard
+  key" — and a retired node is protected if its prefix is a prefix of any
+  announced key (§3.9). At Zipf 0.99 with 100 threads (more than the
+  machine's cores), hazard keys left 5.6×–19× less peak unreclaimed garbage
+  than crossbeam-epoch and seize, at throughput within +1.3% (YCSB-A) and −12%
+  (YCSB-B) of crossbeam-epoch (§4.3, Fig. 9); the paper is explicit that the
+  efficiency depends on the key distribution. It is §4's trade-off with a new
+  point on it — bounded garbage under stalls without per-pointer traffic — to
+  read against [`reading-crossbeam-epoch.md`](reading-crossbeam-epoch.md),
+  and the §5 Bw-tree cautionary tale with a different ending (the paper
+  reports it outperforms lock-based ART on almost every YCSB workload it ran,
+  §4.1).
+
 ## 8. Experiments (`experiments/`)
 
 - `src/concurrent_set.rs` — YOU make topic 2's skiplist concurrent:
