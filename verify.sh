@@ -96,6 +96,7 @@ BENCHES=(
   "43-ops-dependency-graphs:ops_bench:one gray failure, thirty-four alerts"
   "44-egraphs-egglog:ematch_bench:N matches, N^2 candidates — e-matching as a join"
   "45-async-io:io_bench:same pread, 18x the IOPS — queue depth, not the interface"
+  "46-relational-graph:pgq_bench:2.27B tuples or 48M values — a path pattern, flat vs factorized"
 )
 
 # topic dir : criterion bench : what it measures   (--criterion only: minutes each)

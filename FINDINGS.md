@@ -63,6 +63,7 @@ instead.
 | 43 | [Ops Dependency Graphs](topics/43-ops-dependency-graphs/README.md) | One gray failure: **34 of 55 services alert** and the broken one is not among them — it ranks 35th by failure count, 41st by error rate, at exactly the baseline. | `./verify.sh 43` |
 | 44 | [E-graphs as a Database](topics/44-egraphs-egglog/README.md) | `f(a, g(a))` has **N matches** and costs a backtracking matcher **N²+N+1** units of work; generic join does **5N**. At N=1600: 2,561,601 against 8,000, a measured **21.7×**. Make the pattern linear and generic join is **1.8× slower** — the win is avoided waste, not speed. | `./verify.sh 44` |
 | 45 | [Async I/O & Modern SSDs](topics/45-async-io/README.md) | Random 4 KiB reads around the page cache: **13,810 IOPS at queue depth 1, 248,363 at 64** — **18×** through the same `pread`, Little's law predicting each row. Batch 16 reads into one `lio_listio` and you get **half** of what 16 threads get: the batch waits for its slowest read. | `./verify.sh 45` |
+| 46 | [Graph Queries on Relational Engines](topics/46-relational-graph/README.md) | A 3-hop pattern over 313,512 power-law edges: flat binary joins build **2,272,724,241 tuples** (9.04B values); the factorized result holds **47,997,149 values — 188× less**. CSR expansion is 1.3× faster per tuple but enumerates the **same** 2.27B; with no hubs the gap is 28×. | `./verify.sh 46` |
 
 ## How to read this table
 

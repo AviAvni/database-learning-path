@@ -41,6 +41,7 @@ Clone the ones in active use to `~/repos/`.
 | [apache/datafusion](https://github.com/apache/datafusion) | Rust | Arrow-native query engine — planner + vectorized exec in Rust |
 | [pola-rs/polars](https://github.com/pola-rs/polars) | Rust | vectorized columnar engine: lazy optimizer, streaming exec, SIMD kernels — DuckDB's Rust rival |
 | [kuzudb/kuzu](https://github.com/kuzudb/kuzu) | C++ | columnar graph storage, worst-case optimal joins (topic 13). *Archived; last commit 2025-10-10 is the pin. Community continuation: [LadybugDB/ladybug](https://github.com/LadybugDB/ladybug) (history diverges before the pin).* |
+| [cwida/duckpgq-extension](https://github.com/cwida/duckpgq-extension) | C++ | SQL/PGQ as a DuckDB extension: `MATCH` → joins, on-the-fly CSR + multi-source BFS UDFs, factorized-join optimizer pass (topic 46) |
 | [cberner/redb](https://github.com/cberner/redb) | Rust | clean embedded COW B-tree in Rust |
 | [spacejam/sled](https://github.com/spacejam/sled) | Rust | Bw-tree-inspired engine; read its post-mortems too |
 | [tikv/tikv](https://github.com/tikv/tikv) | Rust | raft-rs, distributed txn (Percolator) — topic 15 |
@@ -116,6 +117,7 @@ are worth fetching first.
 | `egglog` | `e264c37a` | 2026-08-25 | 76 | [https://github.com/egraphs-good/egglog](https://github.com/egraphs-good/egglog) |
 | `lmdb` | `704dc70` | 2026-06-24 | 73 | [https://github.com/LMDB/lmdb](https://github.com/LMDB/lmdb) |
 | `raft-rs` | `ad13f3d` | 2026-05-13 | 69 | [https://github.com/tikv/raft-rs](https://github.com/tikv/raft-rs) |
+| `neo4j` | `eccd584a` | 2026-07-02 | 67 | [https://github.com/neo4j/neo4j](https://github.com/neo4j/neo4j) |
 | `tiflash` | `b5093dd` | 2026-07-09 | 62 | [https://github.com/pingcap/tiflash](https://github.com/pingcap/tiflash) |
 | `prometheus` | `f282b5c` | 2026-07-10 | 61 | [https://github.com/prometheus/prometheus](https://github.com/prometheus/prometheus) |
 | `kuzu` | `89f0263` | 2025-10-10 | 59 | [https://github.com/kuzudb/kuzu](https://github.com/kuzudb/kuzu) |
@@ -176,6 +178,7 @@ are worth fetching first.
 | `pytorch_geometric` | `1f0661c` | 2026-06-19 | 5 | [https://github.com/pyg-team/pytorch_geometric](https://github.com/pyg-team/pytorch_geometric) |
 | `RustyTaintChain` | `4e12fd0` | 2021-03-05 | 5 | [https://github.com/TaintChain/RustyTaintChain](https://github.com/TaintChain/RustyTaintChain) |
 | `io-uring` | `a517178` | 2026-09-07 | 4 | [https://github.com/tokio-rs/io-uring](https://github.com/tokio-rs/io-uring) |
+| `duckpgq-extension` | `29ca668a` | 2026-10-21 | 3 | [https://github.com/cwida/duckpgq-extension](https://github.com/cwida/duckpgq-extension) |
 | `y-crdt` | `03e14a0` | 2026-06-12 | 3 | [https://github.com/y-crdt/y-crdt](https://github.com/y-crdt/y-crdt) |
 | `antithesis-sdk-rust` | `78c9db5` | 2026-06-12 | 2 | [https://github.com/antithesishq/antithesis-sdk-rust](https://github.com/antithesishq/antithesis-sdk-rust) |
 | `helix-db` | `47191c6` | 2026-07-05 | 2 | [https://github.com/HelixDB/helix-db](https://github.com/HelixDB/helix-db) |

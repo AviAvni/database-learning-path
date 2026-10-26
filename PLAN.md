@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-46 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+47 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -27,6 +27,7 @@ flowchart TD
     subgraph GRAPH["Graph — home turf"]
         T13["13 graph engines"] --> T20["20 GraphBLAS internals"] --> T24["24 graph algorithms"] --> T25["25 graph ML"]
         T24 --> T33["33 temporal graphs"]
+        T13 --> T46["46 graph queries on<br/>relational engines"]
     end
     subgraph USES["Graph use cases — deep dives"]
         T38["38 GraphRAG &<br/>agent memory"]
@@ -80,6 +81,7 @@ flowchart TD
     QUERY --> T22
     GRAPH --> T22
     T6 --> T45
+    T11 --> T46
 ```
 
 ---
@@ -565,6 +567,18 @@ flowchart TD
 - **Papers:** Jasny, El-Hindi, Ziegler, Leis & Binnig, "High-Performance DBMSs with io_uring: When and How to Use It" (VLDB'26 — Figure 1, §2.1–2.2, §3.3's models and Table 1, Figure 5, Table 2, §3.6, §5.1's four guidelines, §5.2's PostgreSQL case study: 11–15%, the abstract's 14% being the top of that range); Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26 — Figure 1, §2, §4.1–4.2, §5.3–5.5, Table 1, §7.4, §7.6, §10.1); Houlborg, Tietgen, Lund, Weisgut, Rabl, González, Shah & Tözün, "Flexible I/O for Database Management Systems with xNVMe" (CIDR'26 — §2, §3.1, §4.2, §5); background: Haas & Leis, "What Modern NVMe Storage Can Do, And How To Exploit It" (VLDB'23); revisit "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR'22) and vmcache (SIGMOD'23) from topic 6.
 - **Build & bench:** lane 1 provided — a 1 GiB seeded file written and read around the page cache (`F_NOCACHE`/`F_RDAHEAD 0` on macOS, `O_DIRECT` on Linux), random 4 KiB reads at queue depth 1–64 bought with threads with a Little's-law prediction per row, POSIX AIO `lio_listio` batches with a max-of-b barrier prediction, warm-cache syscall cost per page at 1–64 pages per call, and three sanity checks (cold-read floor, the device's own sequential ceiling, checksums across read paths); implement **io_uring reads with batched submission** (Linux; contracts: same bytes as `pread`; at most `n/batch + qd + 1` `io_uring_enter` calls; batch 16 needs under a quarter of batch 1's enters) and measure against lane 1a at equal queue depth; implement an **out-of-place engine** on the provided simulated FTL (contracts: SSD WAF = 1.00 for one erase-block-aligned zone; > 1.5 for half-block zones; DB WAF = 1/(1 − v) within 3%; total WAF below the in-place engine's 8.25 at 90% fill) and fill lane 3's table.
 - **Capstone M45:** an async page-read path for the storage backend — an `IoBackend` trait under the M6 buffer pool with synchronous, worker-pool and io_uring implementations chosen at startup; a read stream for scans whose look-ahead doubles on I/O waits and decays on hits, measured at look-ahead 1/8/32 against lane 1a; the two cost models predicted before measuring; and out-of-place writes behind the same trait with a total-WAF counter at both layers.
+
+---
+
+## 46. Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning
+
+**Why:** the most direct competition to a property-graph engine is a relational engine that reads `MATCH`. SQL:2023 added SQL/PGQ; DuckDB has it as an extension (DuckPGQ); PostgreSQL committed it (`2f094e7ac69`, 2026-03-16) and reverted it before 19 (`b1f106c80cb` / `2b9e1aff4d3`, 2026-09-07). Topic 13 treated it as a language question; this topic measures what goes wrong when a pattern becomes joins and reads the 2026 work that fixes it. Lane 1: a 3-hop pattern over 313,512 seeded power-law edges makes flat binary joins build **2,272,724,241 tuples** (9.04B values) for a result whose factorized representation holds **47,997,149 values — 188× less**; CSR expansion enumerates the same tuples 1.3× faster; with no hubs the gap is 28×.
+
+- **Concepts:** m:n joins and the `Σ in·out` blow-up; **f-representations** and **f-trees**, the path constraint, counting without flattening (siblings multiply, children add); **top vs bottom inserts** and `L ⋈_TI R ≡ R ⋈_BI L`; compiled f-trees and first-child inlining; parallel enumeration by tuple ID; **packed factorized vectors** (offset arrays + selection bitmap) vs list-based processing; **cascade update**; **RPQs/CRPQs**, automaton vs fixpoint evaluation, set vs bag semantics (walks vs pairs); the TI/KC/SJ algebra, leapfrog intersection, cache-aided Kleene closure, sampling-based cardinality and the geometric KC bound; SQL/PGQ translation to joins + `UNION ALL`, plan-time enumeration of element-table combinations; on-the-fly CSR and 512-lane bitset BFS; a quantifier as a shortest-distance filter; factorized `count(*)` as a degree product.
+- **Read code:** `cwida/duckpgq-extension` @ `29ca668` — `src/core/functions/table/match.cpp:486–495`, `:449–473`, `:730–744`, `:930–934`, `:1088–1103`; `src/core/functions/scalar/csr_creation.cpp:57–59`, `:141–147`; `iterativelength.cpp:12–32`; `src/core/optimizer/factorized_join_optimizer.cpp:282–316`, `:582–594`, `:629–642`; `docs/FACTORIZED_JOINS.md`. `postgres/postgres` @ `2f094e7ac69` (reverted; in no release) — `src/backend/rewrite/rewriteGraphTable.c:108–138`, `:351–383`, `:406–562`, `:726–733`; `src/backend/parser/parse_graphtable.c:233–236`, `:279–282`.
+- **Papers:** Lehner & Neumann, "The Data World Is Not Flat: Efficient Factorized Execution for Relational Systems" (VLDB'26 — §2, §4.1–4.5, §5.1–5.3, §6.1–6.4; the abstract's "over 25×" and "19%" are not reconstructable from §6); Yasser, Dorbani & Mhedhbi, "Factorized and Vectorized Execution" (SIGMOD'26 — §2.2, §4.1, §5.1–5.2, §7.2 Table 4, §7.3 Table 5); Pang, Zou, Bonifati, Özsu & Zhou, "A Unified Query Planning Framework for Conjunctive Regular Path Queries" (VLDB'26 — §2–4, Table 5); ten Wolde, Singh, Szárnyas & Boncz, "DuckPGQ" (CIDR'23); Lee, Ha, Tak & Han, "TurboLynx" (VLDB'26 — Table 4, whose Umbra row does not check).
+- **Build & bench:** lane 1 provided — the FFX Fig. 1a example reproduced (13 / 39 / 22 / 15), and 2-hop / 3-hop patterns on seeded power-law graphs at |V| = 10K/20K/40K plus a uniform control, as hash joins (tuples), CSR expansion and factorized size (values), counts cross-checked; implement **a factorized join operator** on packed offset vectors (bottom-insert extension to 3-hop, count without flattening, flatten, cascade-correct filter; contracts: size = closed form, count = flat join, no empty groups) and **an RPQ `a·b*` evaluator** as a product-automaton BFS (contracts: same pairs as semi-naive recursion; states = sources + pairs; edges scanned = tuples derived).
+- **Capstone M46:** factorized intermediates for `Expand` chains with deferred flattening; aggregates as products of multiplicities; cascade-correct filters; variable-length relationships planned as closures that can be intersected with other edges, under explicit set or bag semantics.
 
 ---
 

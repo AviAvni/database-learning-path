@@ -1,0 +1,12 @@
+[package]
+name = "relational-graph-experiments"
+version = "0.1.0"
+edition = "2021"
+
+# No dependencies on purpose: the generator is integer-only (SplitMix64 and
+# modular arithmetic, no floating-point pow), so every count this crate prints
+# is bit-identical on every platform, not just "the same distribution".
+[dependencies]
+
+[profile.release]
+debug = true

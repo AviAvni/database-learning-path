@@ -45,6 +45,7 @@ Everything below is either linked from a topic README or listed here:
 - HTAP: "TiDB" VLDB'20 · "F1 Lightning" VLDB'20 (→ topic 32)
 - Learned indexes: Kraska "The Case for Learned Index Structures" SIGMOD'18 → PGM → ALEX (→ topic 26)
 - Graph query languages: "Graph Pattern Matching in GQL and SQL/PGQ" SIGMOD'22 · "G-CORE" SIGMOD'18 (→ topic 13)
+- Graph queries on relational engines: ten Wolde et al. "DuckPGQ: Efficient Property Graph Queries in an analytical RDBMS" CIDR'23 · Lehner & Neumann "The Data World Is Not Flat" VLDB'26 · Yasser, Dorbani & Mhedhbi "Factorized and Vectorized Execution" SIGMOD'26 · Pang et al. "A Unified Query Planning Framework for Conjunctive Regular Path Queries" VLDB'26 (→ topic 46)
 - Storage I/O & SSDs: Haas & Leis "What Modern NVMe Storage Can Do, And How To Exploit It" VLDB'23 · Jasny et al. "High-Performance DBMSs with io_uring: When and How to Use It" VLDB'26 · Lee, Ziegler & Leis "How to Write to SSDs" VLDB'26 · Houlborg, Tietgen et al. "Flexible I/O for Database Management Systems with xNVMe" CIDR'26 (→ topic 45)
 
 ## 2025–2026 papers (each read in full)
@@ -81,6 +82,7 @@ Interesting recent arXiv finds go here with a one-line why. Search these when st
 <!-- append finds below -->
 - arXiv:2512.04859 — Jasny, El-Hindi, Ziegler, Leis & Binnig, io_uring in DBMSs (VLDB'26): naive swap 1.06×, redesign 2.05×, PostgreSQL +11–15%. Topic 45.
 - arXiv:2603.09927 — Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26): total WAF = DB WAF × SSD WAF; out-of-place + NoWA reaches SSD WAF 1 on commodity SSDs. Topic 45.
+- arXiv:2609.09002 — Yasser, Dorbani & Mhedhbi, "Factorized and Vectorized Execution" (SIGMOD'26): packed factorized vectors + cascade update; packed beats list-based on 1,883 of 1,951 plans. Topic 46.
 
 ## Blogs & talks worth following
 

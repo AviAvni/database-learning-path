@@ -9,6 +9,84 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-26 — topic 46 — Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning
+
+The deep version of what topics 10, 11 and 13 carried as one-paragraph
+"Newer work" notes: graph patterns inside relational engines, the blow-up that
+flat joins pay for them, and the 2026 work that removes it.
+
+**Lane 1, provided (Apple M3 Pro).** Seeded integer-only power-law generator
+(SplitMix64; both endpoints copied from earlier endpoints 70% of the time;
+sorted + deduplicated, so counts are bit-identical everywhere). 2-hop and 3-hop
+path patterns as left-deep pipelined hash joins (tuples produced), CSR
+expansion, and factorized size from degrees:
+
+- |V| = 10,000 / 77,164 edges: 2-hop 6,665,086 tuples vs 161,624 f-rep values
+  (124×); 3-hop 241,301,569 tuples (958,541,190 values) vs 6,738,545 (142×).
+- |V| = 20,000 / 155,727: 17,759,290 vs 326,298 (163×); 739,497,555
+  (2,940,230,930 values) vs 17,875,125 (164×).
+- |V| = 40,000 / 313,512: **47,900,847 vs 656,622 (219×); 2,272,724,241
+  tuples (9,042,996,117 values) vs 47,997,149 (188×)** — the headline.
+- Uniform control (0% preferential), |V| = 40,000 / 319,962 edges, max out 20:
+  2,560,772 vs 679,805 (11×); 23,058,939 vs 3,240,016 (28×). Skew is the premise.
+- FFX's Fig. 1a reproduced: 13 tuples, 39 values, 22 over T1, 15 over T2.
+- Timings at load {4.28 4.07 4.32}, best of 3: 3-hop at 40K hash join 624.2 ms,
+  CSR 464.3 ms (1.30–1.35× in every row, same tuple count), degree-product count
+  0.45 ms; 0.21–0.35 ns per produced tuple (a lower bound: the plan writes
+  nothing). Re-run at load {12.47 8.19 8.18}: up to 2.3× slower, counts identical.
+
+**Lane 2 (stub): factorized join operator** on FFX-style packed offset vectors
+— provided 2-hop build (656,622 values, 4.2 ms); stubbed bottom-insert
+`extend`, `count`, `flatten`, `retain_d` with cascade. Reference (written, run,
+removed): 47,997,149 values = closed form in 20.7 ms; count 2,224,823,394 in
+0.044 ms; `retain_d(d % 8 == 0)` → 6,632,319 values, 286,772,642 tuples in
+26.0 ms. Build + count ≈ 25 ms vs 624.2 ms flat.
+
+**Lane 3: RPQ `a·b*`** from 257 sources (78,165 a-edges, 235,347 b-edges).
+Provided semi-naive `WITH RECURSIVE … UNION`: 6,536,711 pairs, 10 rounds,
+40,832,336 tuples derived, 675.9 ms. Walks vs pairs: k=4 6,679,113,406 vs
+5,845,226 (1,142.7×); k=8 7.4×10⁹×. Stub: product-automaton BFS. Reference:
+same pairs, 6,536,968 states, **40,832,336 edges scanned — exactly the
+semi-naive derived count** (set semantics already makes the recursion a BFS;
+the difference is cost per step, 134.2 ms, 5.0×).
+
+**Five guides; claims verified and the ones that did not hold.**
+- Lehner & Neumann (VLDB'26): §2.2's 62.5% (6/16), §4.5's count formula on
+  Fig. 3 (10 tuples), §5.1's ID example, §6.1 break-evens (10/12/36 duplicates,
+  BI 1.9× TI), §6.2 (−15% all acyclic, +6.9% >10 ms, +52% >100 ms, cyclic −32%,
+  vs Umbra −58%), §6.4 (18× parallel, BI in 49% of queries). **Not
+  reconstructable:** the abstract's "over 25×" (only on Figure 15's log axis)
+  and "over 19% of CE queries" (19% of 2,557 = 486 matches no §6.2 count).
+- FFX (SIGMOD'26): §2.2.1's 13/39/22/15 reproduced in code; Fig. 4 offsets;
+  §7.2 1,883 of 1,951 plans (printed 96.53%/3.47%, computed 96.51%/3.49%).
+  **Table 4 prose mismatches:** caption says seconds, values are ms; "up to
+  108.4×" fewer calls vs 114.13× in the table; "1.35–3.59×" cycles mixes rows
+  and omits 8.14×. LSQB comparisons use hand-picked orders (§7.3.3).
+- CRPQ planning (VLDB'26): Table 5's "average speedup" 2.0833 / 1.6833 is the
+  ratio of average times (5.5544/2.6662, 5.3256/3.1638); timeouts 186 → 60 on
+  WDBench (−67.7%), unchanged 10 → 10 on LDBC SNB. Eqs. 37, 38, 42 worked.
+- DuckPGQ (CIDR'23 + `cwida/duckpgq-extension` @ `29ca668`, new clone, pinned):
+  `MATCH` → key equalities (`match.cpp:486–495`); CSR by atomic counting sort;
+  512-lane bitset BFS; a bounded quantifier compiles to
+  `iterativelength(...) BETWEEN l AND u` — a filter on *shortest* distance,
+  one row per pair (read from code, not run); the October 2026
+  `FactorizedJoinOptimizer` (degree-product `count(*)`, two-sided n:m test).
+  TurboLynx Table 4: DuckPGQ 15,905 ms vs DuckDB 3,467 ms on LDBC SF100 (same
+  84-query denominator, 4.6×). **TurboLynx Table 4's Umbra row does not
+  check:** printed 7.74× / 0.58× vs ms quotients 27.6 / 9.26 (DBpedia agrees);
+  DuckPGQ SF100 printed 183.9 vs 189.3; Kùzu DBpedia 18.88 vs 17.88. Topic 13's
+  README quotes the Umbra ratios — left as is, flagged here.
+- PostgreSQL SQL/PGQ at `2f094e7ac69` (reverted `b1f106c80cb` /
+  `2b9e1aff4d3`; in no release), read with `pinned-source.py --ref`: one join
+  query per element-table combination (product over factors — the cause of
+  follow-ups `2ff289d0393` stack depth and `a82e33a83d7` interruptibility),
+  `UNION ALL` (`:728`), quantifiers refused (`parse_graphtable.c:233–236`).
+
+Plumbing: PLAN.md §46 + map node, FINDINGS row, verify.sh lane, PROGRESS status
++ M46, SUMMARY entries, papers.md, codebases.md row + pin (pin table regenerated
+over the already-pinned clones plus duckpgq-extension only, so sibling agents'
+new clones were not swept in), topic counts 46 → 47, crate counts 47 → 48.
+
 ## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
 
 A review of the whole repo against today's upstreams and literature, three

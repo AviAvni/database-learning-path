@@ -342,6 +342,13 @@
   - [PostgreSQL's AIO: handles, methods, and a read-ahead that doubles](topics/45-async-io/reading-postgres-aio.md)
   - [tokio-rs/io-uring: two rings, four atomics, one syscall](topics/45-async-io/reading-io-uring-crate.md)
   - [Topic 45 notes — async I/O & modern SSDs](topics/45-async-io/notes.md)
+- [Topic 46 — Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning](topics/46-relational-graph/README.md)
+  - [The Data World Is Not Flat: factorized joins inside a compiling relational engine](topics/46-relational-graph/reading-lehner-neumann-factorized.md)
+  - [Packed factorized vectors: factorization without leaving the vectorized loop](topics/46-relational-graph/reading-ffx-factorized-vectorized.md)
+  - [CRPQ planning: one algebra for the joins and the Kleene stars](topics/46-relational-graph/reading-crpq-unified-planning.md)
+  - [DuckPGQ: SQL/PGQ as joins, a CSR for the stars, and a factorized count](topics/46-relational-graph/reading-duckpgq.md)
+  - [PostgreSQL's SQL/PGQ: a graph pattern rewritten into joins, and then reverted](topics/46-relational-graph/reading-postgres-sqlpgq.md)
+  - [Topic 46 notes — graph queries on relational engines](topics/46-relational-graph/notes.md)
 
 ---
 
