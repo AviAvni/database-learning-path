@@ -71,21 +71,24 @@ At 4 KiB pages (the same window):
   pages), and closes when neither fits (5%: 1.07×). That is the tier boundary,
   and it moved with load (next table).
 
-Run-to-run spread of scattered/packed (four runs; runs 1–3 timed each layout's
-three reps back to back, run 4 — the one above — alternates five reps):
+Run-to-run spread of scattered/packed (five runs; runs 1–3 timed each layout's
+three reps back to back, runs 4–5 alternate five reps; run 5 is the full
+`./verify.sh` pass of 2026-10-26 after every parallel build had finished; the
+machine was still not idle — load average 5.97 just after it):
 
-| hot set | run 1 (load 10.95) | run 2 (7.97) | run 3 (8.19) | run 4 (7.21) |
-|---|---|---|---|---|
-| 0.1% | 1.41× | 1.87× | 1.63× | 1.37× |
-| 0.5% | 2.82× | 1.87× | 2.10× | 2.35× |
-| 1.0% | 2.19× | 1.37× | 1.68× | 1.76× |
-| 5.0% | 2.01× | 1.06× | 0.93× | 1.07× |
+| hot set | run 1 (load 10.95) | run 2 (7.97) | run 3 (8.19) | run 4 (7.21) | run 5 (~6) |
+|---|---|---|---|---|---|
+| 0.1% | 1.41× | 1.87× | 1.63× | 1.37× | 1.38× |
+| 0.5% | 2.82× | 1.87× | 2.10× | 2.35× | 2.33× |
+| 1.0% | 2.19× | 1.37× | 1.68× | 1.76× | 1.57× |
+| 5.0% | 2.01× | 1.06× | 0.93× | 1.07× | 1.07× |
 
 Run 1's 5% scattered row read 223.6 ns against a DRAM rung of 111.3 ns — more
 than a full miss per access, impossible for a hot set — and the sanity check
 flagged it. That run's machine was not the machine the row describes; it is
 recorded as the reason the all-cold row and its check exist, not as data.
-Quote 1.4–2.8× for 0.1–1% hot sets and ~1× at 5%.
+Run 1 is therefore excluded from the quoted range as well. Runs 2–5 give
+1.4–2.4× for 0.1–1% hot sets and ~1× at 5%; that is the figure to quote.
 
 ## Predictions (fill BEFORE running the lanes or implementing the stubs)
 
