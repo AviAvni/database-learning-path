@@ -203,6 +203,31 @@ thread right, and who owns the workspace?
 - GPU GraphBLAS (GraphBLAST/Gunrock) = topic 18's regime question:
   frontiers ship, matrices stay resident.
 
+## 8. GxB_Container — handing a Rust CSR to GraphBLAS without copying it
+
+FalkorDB's Rust rewrite will own its adjacency as plain CSR arrays and call
+GraphBLAS for the operations it has not rewritten. SuiteSparse 10.0.0 added
+the door for that: **`GxB_Container`** (`Doc/ChangeLog:147–153`), a struct
+with one slot per array of a `GrB_Matrix` (`p`, `h`, `b`, `i`, `x`, and `Y`
+for the hypersparse hash). `GxB_Vector_load` points a slot at a caller's array
+— readonly, so the caller keeps ownership — and
+`GxB_load_Matrix_from_Container` moves the slots into the matrix: pointer
+assignments only, "O(1) time" by the source's own comment
+(`Source/container/GB_load_from_container.c:261`). Row pointers may be 64-bit
+and column indices 32-bit, which is exactly this topic's `Csr`.
+
+Measured on RMAT scale 14–20 (120,128 to 8,175,704 entries): load and unload
+cost **0.12–0.17 µs at every size**; `GrB_Matrix_build` of the same entries
+costs 349 → 6,822 µs in CSR order and 9,384 → 146,676 µs shuffled,
+`extractTuples` 118 → 4,039 µs, and a plain `memcpy` of the CSR 21 → 2,355 µs.
+The price of O(1) is that the library checks only lengths, not that indices are
+sorted or in range. On the same matrices `GrB_mxv` against this topic's SpMV
+kernel, on the Rust CSR in place: 3–4× slower with the JIT off (the generic
+kernel), at parity with it on, and 1.8–4.4× faster with 11 threads
+([notes.md](notes.md)). The chapter reads the source line by line and states
+the ownership rules a Rust wrapper must follow:
+[reading-gxb-container.md](reading-gxb-container.md).
+
 ## Experiments (`experiments/`)
 
 | file | role |
@@ -213,11 +238,13 @@ thread right, and who owns the workspace?
 | src/bfs.rs | PROVIDED scalar queue BFS oracle; **STUB** push (SpMSpV), pull (masked SpMV w/ early exit), and direction-optimizing switch |
 | src/hyper.rs | PROVIDED — hypersparse row index; bench shows when 80 MB of rowptr disappears |
 | src/bin/gb_bench.rs | PROVIDED — RMAT scale sweep: SpMV GB/s, SpGEMM variants, BFS push/pull/adaptive with per-level frontier trace |
+| src/bin/gb_container.rs, src/gbffi.rs, shim/gb_shim.c, build.rs | PROVIDED — links a real SuiteSparse:GraphBLAS v10 install: Container load/unload vs `GrB_Matrix_build`/`extractTuples` vs `memcpy`, and `GrB_mxv` vs the Rust SpMV on the same seeded matrix. Prints `[skip — libgraphblas not found]` and exits 0 without an install (`GRAPHBLAS_DIR` or a standard prefix) |
 
 ```bash
 cd topics/20-graphblas/experiments
 cargo test         # oracle + provided green; stubs panic
 cargo run --release --bin gb_bench
+GRAPHBLAS_DIR=/path/to/install cargo run --release --bin gb_container
 ```
 
 ## M20 (capstone)
@@ -242,3 +269,5 @@ cargo run --release --bin gb_bench
 6. reading-falkordb-delta-matrix.md — then implement the stubs
 7. reading-openmp-vs-rayon.md — saxpy3's OpenMP scheduling vs rayon
    work-stealing, before parallelizing the M20 kernels
+8. reading-gxb-container.md — how a Rust-owned CSR crosses into GraphBLAS
+   without a copy (the door a Rust CSR needs)
