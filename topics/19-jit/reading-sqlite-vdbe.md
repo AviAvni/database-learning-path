@@ -10,8 +10,8 @@ why bytecode beats a tree walk, what a register machine is, what
 dispatch costs, and the coroutine trick flattening gives you for
 free — then maps each step into vdbe.c.
 
-**Version.** Every anchor below is against sqlite at the pin in
-`resources/codebases.md`, **`951de30`**, where `src/vdbe.c` is 9456
+**Version.** Every anchor below is against sqlite at **`951de30`** (the
+commit recorded in `resources/codebases.md`), where `src/vdbe.c` is 9456
 lines. Retrieve any of them with
 `python3 tools/pinned-source.py show sqlite src/vdbe.c -r 1926:2010`.
 SQLite's opcode numbering is generated at build time by
@@ -146,11 +146,11 @@ am in table t") — which the opcode set manipulates directly
 > layout of one instruction, the real size of the instruction set,
 > and the reason forward jumps need only one codegen pass.
 
-**Corrected anchor.** The struct is in **`src/vdbe.h:55`**, not
-`src/vdbeInt.h:55`. `vdbeInt.h` only carries `typedef struct VdbeOp
-Op;` at its line 46. The old anchor pointed at the right line number
-of the wrong file, which is the most expensive kind of wrong: it
-looks checkable and isn't.
+**Which file.** The struct is in **`src/vdbe.h:55`**, not
+`src/vdbeInt.h` — `vdbeInt.h` only carries `typedef struct VdbeOp
+Op;` at its line 46. Line 55 of `vdbeInt.h` is something else, and an
+anchor with the right line number in the wrong file is the most
+expensive kind of wrong: it looks checkable and isn't.
 
 ```c
 // sqlite/src/vdbe.h — struct VdbeOp, 55-95, p4 union elided
@@ -196,7 +196,7 @@ that should never be approximate:
 means the *debug* builds you measure with are 2.3× wider than the
 shipping one — measure the plain build (Step 7).
 
-**Corrected count: the ISA is 190 opcodes, not 199.** Count it the
+**The count: the ISA is 190 opcodes.** Count it the
 way SQLite's own build does. `src/vdbe.c:1060-1065` documents the
 convention:
 
@@ -261,10 +261,10 @@ branch** (a jump whose target comes from data, so the CPU must
 ONE hot indirect jump with 190 possible targets — mispredict-prone
 (topic 17's branchy filter, interpreter edition).
 
-**Corrected claim.** The previous version of this guide said
-SQLite "gains limited benefit and keeps the portable switch by
-default" from threaded dispatch. That implies a threaded option
-exists in the source and is switched off. At `951de30` it does not:
+**No threaded dispatch.** It is tempting to say SQLite "gains
+limited benefit and keeps the portable switch by default" from
+threaded dispatch. That implies a threaded option exists in the
+source and is switched off. At `951de30` it does not:
 
 ```
  grep -niE 'computed.goto|COMPUTED_GOTO|dispatch_table|&&CASE' src/vdbe.c
@@ -292,8 +292,8 @@ the line span of each case body:
 | `OP_Add`/`Sub`/`Mul`/`Div`/`Rem` | `:1926`–`:2010` | ~85 | still not one flop |
 | `OP_Goto` | `:1098`–`:1104` | ~7 | dispatch *is* the op |
 
-**The `OP_Add` correction is the important one.** The previous
-version called it "~10 lines". It is 85, and its shape is the best
+**`OP_Add` is the important one.** It looks like it should be
+"~10 lines". It is 85, and its shape is the best
 argument for a JIT anywhere in this topic:
 
 ```c
@@ -423,7 +423,7 @@ no compile latency at all and should land between `interp` and
 
 ### Step 7 — how to read this file: turn on VDBE_PROFILE
 
-> **In:** the source at the pin, and a build you control.
+> **In:** the source at `951de30`, and a build you control.
 > **Out:** a per-opcode cycle count, so every claim in Steps 4–6
 > becomes something you measured rather than something you read.
 
@@ -466,7 +466,7 @@ the public `sqlite3_stmt_scanstatus()` API without a custom build.
 | anchor | what it is | step |
 |---|---|---|
 | `src/vdbe.h:55-95` | `struct VdbeOp` — 24 bytes: opcode, p4type, p5, p1..p3, p4 union | 3 |
-| `src/vdbeInt.h:46` | `typedef struct VdbeOp Op;` — the *only* thing here (old anchor's target) | 3 |
+| `src/vdbeInt.h:46` | `typedef struct VdbeOp Op;` — the *only* `VdbeOp` mention here, not the struct | 3 |
 | `src/vdbe.c:966` | THE loop header: `for(pOp=&aOp[p->pc]; 1; pOp++)` | 1 |
 | `src/vdbe.c:1049` | THE dispatch: `switch( pOp->opcode )`, closing at `:9357` | 1, 4 |
 | `src/vdbe.c:1060-1065` | the flush-left `case OP_` convention mkopcodeh scans for | 3 |
@@ -569,7 +569,7 @@ Answer each before unfolding it.
   re-parse. Left behind: one indirect branch per opcode through a
   190-target jump table at `vdbe.c:1049`, ~5–20 cycles depending on
   prediction, *plus* whatever dynamic type dispatch the opcode body
-  does itself. On the correction: at pin `951de30` SQLite has **no
+  does itself. On threading: at `951de30` SQLite has **no
   computed-goto / threaded-dispatch option** — grepping
   `computed goto|dispatch_table|&&CASE` in `vdbe.c` finds nothing.
   It is one portable `switch`, exited by `break` or `goto

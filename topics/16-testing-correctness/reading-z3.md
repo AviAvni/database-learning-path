@@ -509,7 +509,7 @@ Answer each before unfolding it.
   direction: SQLancer's TLP comparator checks size then `HashSet`
   equality (`ComparatorHelper.java:91, 108-112`) and turso's checks
   size then two-way containment
-  (`generation/property.rs:1138, 1146-1177`) — both blind to
+  (`generation/property.rs:1141, 1149-1180`) — both blind to
   multiplicity. Cosette is the one tool in this topic that gets bags
   right by construction, and that is precisely because it is doing
   algebra rather than comparing outputs.

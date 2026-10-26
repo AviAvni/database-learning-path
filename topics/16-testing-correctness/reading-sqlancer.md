@@ -258,7 +258,7 @@ Equal size, then equal *set*. Work the gap:
 
 A duplicate-multiplicity bug passes. turso's independent
 implementation of the same paper has the identical gap — size at
-`generation/property.rs:1138`, containment both ways at `:1146-1177`
+`generation/property.rs:1141`, containment both ways at `:1149-1180`
 (see [reading-turso-simulator.md](reading-turso-simulator.md) Step
 5). Two implementations, one paper, the same corner cut.
 
@@ -579,8 +579,8 @@ Answer each before unfolding it.
   is the one to get right, and
   [reading-turso-simulator.md](reading-turso-simulator.md) Step 4
   gives it away: `SelectSelectOptimizer` is NoREC (its doc comment at
-  `model/property.rs:142-148` cites the NoREC paper by name), and
-  `WhereTrueFalseNull` is TLP (`:153-160` cites the TLP paper). turso
+  `model/property.rs:158-164` cites the NoREC paper by name), and
+  `WhereTrueFalseNull` is TLP (`:169-176` cites the TLP paper). turso
   implements no PQS-shaped property at all — consistent with
   `README.md:80`'s reason.
 

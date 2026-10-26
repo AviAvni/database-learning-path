@@ -16,7 +16,7 @@ Every number below is quoted from a primary source: the Elle paper
 number, or the Jepsen report itself with the issue number Redis Labs
 or Dgraph filed. There is no `elle` clone in this repo's pin table,
 so the code anchors are turso's own Elle integration at commit
-`dd775bc` — which emits Elle's EDN and hands it to `elle-cli`.
+`a820079e8` (`v0.9.0-pre.1`) — which emits Elle's EDN and hands it to `elle-cli`.
 
 ## The problem in one sentence
 
@@ -164,7 +164,7 @@ The concrete data format is short enough to read in full. turso's
 simulator implements the Jepsen side of this to feed `elle-cli`:
 
 ```rust
-// simulator/testing/concurrent-simulator/elle.rs — ElleOp and to_edn, 18-67 (elided)
+// testing/concurrent-simulator/elle.rs — ElleOp and to_edn, 18-67 (elided)
     18  pub enum ElleOp {
     19      /// Append a value to a list identified by key (list-append model)
     20      Append { key: String, value: i64 },
@@ -639,7 +639,7 @@ TWO in full:
 - [elle](https://github.com/jepsen-io/elle) — the checker itself;
   not pinned in `resources/codebases.md`, so nothing here cites it
   by line
-- turso @ `dd775bc` — the Jepsen-side integration, walked in
+- turso @ `a820079e8` — the Jepsen-side integration, walked in
   [reading-turso-simulator.md](reading-turso-simulator.md)
 
 | File | Lines | What |

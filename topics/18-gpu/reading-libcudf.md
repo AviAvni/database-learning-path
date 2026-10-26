@@ -83,9 +83,9 @@ kernel — it is cuco's own `count`:
 ```
 
 Note what is *not* there: no per-thread `count[]` array, no exclusive prefix scan
-over it, no second kernel to turn counts into offsets. Older GPU joins (and this
-guide's previous version) described exactly that three-step shape; at this pin it
-lives inside cuco, and cudf only asks for a total.
+over it, no second kernel to turn counts into offsets. Older GPU joins are
+described with exactly that three-step shape; in cudf it lives inside cuco, and
+cudf only asks for a total.
 
 The retrieve pass then makes the size pass optional:
 
@@ -342,7 +342,7 @@ strings_column_view.hpp:53, 73-113`), so work per element is *variable* — the
 same ragged-frontier problem Gunrock solves with load-balancing strategies
 (`reading-gunrock.md`, Step 4).
 
-Two anchor corrections worth carrying, because the plausible-sounding versions
+Two anchors worth getting right, because the plausible-sounding versions
 are wrong:
 
 - Validity-bitmap kernels are **not** a directory of many files. `cpp/src/

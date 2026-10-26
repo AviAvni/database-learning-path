@@ -8,7 +8,7 @@ this chapter builds the two kernels every engine needs — the reduction
 and the filter — as polars actually ships them, and then works out
 what your machine gets from each.
 
-Every anchor below is `pola-rs/polars@f8bcc3d` (`resources/codebases.md`),
+Every anchor below is `pola-rs/polars@7f902bd3ff` (`py-2.1.0`, `resources/codebases.md`),
 quoted with the line numbers the code occupies in that revision. Read
 it with one fact in front of you: **on aarch64 the entire AVX-512 half
 of the filter is `#[cfg]`-ed out of existence**, so the code your Mac
@@ -44,9 +44,7 @@ release, Apple Silicon, 2026-07-10, N = 4M f32, 20 reps):
 | unrolled-8, autovectorised | 42.12 | 0.797 | 3.9× |
 
 3.9× from zero intrinsics — just writing eight accumulators so LLVM is
-permitted to reassociate. (`FINDINGS.md` row 17 records 8.88 → 26.32
-GB/s from a different run of the same bench; cite whichever run you are
-quoting, and do not average them.)
+permitted to reassociate.
 
 The compiler cannot do this for you unasked. Float addition is not
 associative — `(a+b)+c` and `a+(b+c)` round differently — so LLVM will
@@ -55,26 +53,27 @@ order of additions has to be written down. polars writes it down, and
 its comment says exactly why:
 
 ```rust
-// polars crates/polars-compute/src/float_sum.rs:44-63 — the final reduce
-    44  fn vector_horizontal_sum<V, T>(mut v: V) -> T
-// ... 45-48: bounds ...
-    49      // We have to be careful about this reduction, floating
-    50      // point math is NOT associative so we have to write this
-    51      // in a form that maps to good shuffle instructions.
-    52      // We fold the vector onto itself, halved, until we are down to
-    53      // four elements which we add in a shuffle-friendly way.
-    54      let mut width = STRIPE;
-    55      while width > 4 {
-    56          for j in 0..width / 2 {
-    57              v[j] = v[j] + v[width / 2 + j];
-    58          }
-    59          width /= 2;
-    60      }
-    62      (v[0] + v[2]) + (v[1] + v[3])
-    63  }
+// polars crates/polars-compute/src/float_sum.rs:45-64 — the final reduce
+    45  fn vector_horizontal_sum<V, T>(mut v: V) -> T
+// ... 46-49: bounds ...
+    50      // We have to be careful about this reduction, floating
+    51      // point math is NOT associative so we have to write this
+    52      // in a form that maps to good shuffle instructions.
+    53      // We fold the vector onto itself, halved, until we are down to
+    54      // four elements which we add in a shuffle-friendly way.
+    55      let mut width = STRIPE;
+    56      while width > 4 {
+    57          for j in 0..width / 2 {
+    58              v[j] = v[j] + v[width / 2 + j];
+    59          }
+    60          width /= 2;
+    61      }
+    62
+    63      (v[0] + v[2]) + (v[1] + v[3])
+    64  }
 ```
 
-Line 62 is the tell: the last four elements are added in a fixed
+Line 63 is the tell: the last four elements are added in a fixed
 *shuffle-friendly* pairing, not left to right. The summation order is
 part of the API.
 
@@ -91,20 +90,26 @@ part of the API.
 ```
 
 ```rust
-// polars crates/polars-compute/src/float_sum.rs:79-85 — the SIMD block sum
-    79      fn sum_block_vectorized(&self) -> F {
-    80          let vsum = self
-    81              .chunks_exact(STRIPE)
-    82              .map(|a| Simd::<T, STRIPE>::from_slice(a).cast_generic::<F>())
-    83              .sum::<Simd<F, STRIPE>>();
-    84          vector_horizontal_sum(vsum)
-    85      }
+// polars crates/polars-compute/src/float_sum.rs:80-88 — the SIMD block sum
+    80      fn sum_block_vectorized(&self) -> F {
+    81          let vsum = self
+    82              .as_chunks::<STRIPE>()
+    83              .0
+    84              .iter()
+    85              .map(|a| Simd::<T, STRIPE>::from_slice(a).cast_generic::<F>())
+    86              .sum::<Simd<F, STRIPE>>();
+    87          vector_horizontal_sum(vsum)
+    88      }
 ```
 
-Line 81 cuts the 128-element block into 8 chunks of `STRIPE = 16`; line
-83 sums them *as vectors*, so lane *j* accumulates elements
-j, j+16, j+32, … — 16 independent chains of length 8 instead of one
-chain of 128. Line 84 collapses them, once per 128 elements.
+Line 82 cuts the 128-element block into 8 chunks of `STRIPE = 16`.
+`as_chunks::<N>()` returns a pair — a slice of fixed-size arrays
+`&[[T; N]]` and the leftover tail — so the chunk length is part of the
+*type*, not a runtime value the compiler has to prove; line 83 keeps the
+arrays and drops the tail, which is empty because 128 is a multiple of
+16. Line 86 sums the chunks *as vectors*, so lane *j* accumulates
+elements j, j+16, j+32, … — 16 independent chains of length 8 instead
+of one chain of 128. Line 87 collapses them, once per 128 elements.
 
 Now size it on real registers, because "16 accumulators" is not what
 the hardware sees:
@@ -137,23 +142,24 @@ kernel; measure.
 The same file contains this topic's headline trick with no SIMD at all:
 
 ```rust
-// polars crates/polars-compute/src/float_sum.rs:155-169 — the non-SIMD build
-   155  #[cfg(not(feature = "simd"))]
-   156  impl<T, F> SumBlock<F> for [T; PAIRWISE_RECURSION_LIMIT]
-// ... 157-160: bounds ...
-   161      fn sum_block_vectorized(&self) -> F {
-   162          let mut vsum = [F::default(); STRIPE];
-   163          for chunk in self.chunks_exact(STRIPE) {
-   164              for j in 0..STRIPE {
-   165                  vsum[j] = vsum[j] + chunk[j].as_();
-   166              }
-   167          }
-   168          vector_horizontal_sum(vsum)
-   169      }
+// polars crates/polars-compute/src/float_sum.rs:160-174 — the non-SIMD build
+   160  #[cfg(not(feature = "simd"))]
+   161  impl<T, F> SumBlock<F> for [T; PAIRWISE_RECURSION_LIMIT]
+// ... 162-165: bounds ...
+   166      fn sum_block_vectorized(&self) -> F {
+   167          let mut vsum = [F::default(); STRIPE];
+   168          for chunk in self.as_chunks::<STRIPE>().0 {
+   169              for j in 0..STRIPE {
+   170                  vsum[j] = vsum[j] + chunk[j].as_();
+   171              }
+   172          }
+   173          vector_horizontal_sum(vsum)
+   174      }
 ```
 
-A plain `[F; 16]` array, indexed lane-wise, with a compile-time trip
-count and no intrinsic anywhere — and it is still called
+A plain `[F; 16]` array, indexed lane-wise, over `[T; 16]` chunks
+(line 168), so both trip counts are compile-time constants and no
+bounds check survives — with no intrinsic anywhere — and it is still called
 `sum_block_vectorized`, because that is exactly the shape LLVM
 autovectorises. This is `notes.md`'s "3.9× from ZERO intrinsics" as a
 library ships it: the win came from writing 16 accumulators, not from
@@ -172,16 +178,16 @@ run it before you decide.
 > using the tree the SIMD blocking already built.
 
 ```rust
-// polars crates/polars-compute/src/float_sum.rs:196-209 — the recursion
-   196      let block: Option<&[T; PAIRWISE_RECURSION_LIMIT]> = f.try_into().ok();
-   197      if let Some(block) = block {
-   198          return block.sum_block_vectorized();
-   199      }
-// ... 201-204: the safety argument for the split ...
-   206          let blocks = f.len() / PAIRWISE_RECURSION_LIMIT;
-   207          let left_len = (blocks / 2) * PAIRWISE_RECURSION_LIMIT;
-   208          let (left, right) = (f.get_unchecked(..left_len), f.get_unchecked(left_len..));
-   209          pairwise_sum(left) + pairwise_sum(right)
+// polars crates/polars-compute/src/float_sum.rs:201-214 — the recursion
+   201      let block: Option<&[T; PAIRWISE_RECURSION_LIMIT]> = f.try_into().ok();
+   202      if let Some(block) = block {
+   203          return block.sum_block_vectorized();
+   204      }
+// ... 205-210: the safety argument for the split, and `unsafe {` ...
+   211          let blocks = f.len() / PAIRWISE_RECURSION_LIMIT;
+   212          let left_len = (blocks / 2) * PAIRWISE_RECURSION_LIMIT;
+   213          let (left, right) = (f.get_unchecked(..left_len), f.get_unchecked(left_len..));
+   214          pairwise_sum(left) + pairwise_sum(right)
 ```
 
 Below 128 elements, the striped block of Step 2; above it, recursive
@@ -207,18 +213,18 @@ dependent additions any single value passes through:
 The masked variant is the same tree with a `select`:
 
 ```rust
-// polars crates/polars-compute/src/float_sum.rs:87-97 — nulls, without a branch
-    87      fn sum_block_vectorized_with_mask(&self, mask: BitMask<'_>) -> F {
-    88          let zero = Simd::default();
-// ... 89-92: the same chunks_exact(STRIPE) pipeline, enumerated ...
-    93                  let m: Mask<T::Mask, STRIPE> = mask.get_simd(i * STRIPE);
-    94                  m.select(Simd::from_slice(a).cast_generic::<F>(), zero)
-// ... 96-97: same sum, same horizontal fold ...
+// polars crates/polars-compute/src/float_sum.rs:90-103 — nulls, without a branch
+    90      fn sum_block_vectorized_with_mask(&self, mask: BitMask<'_>) -> F {
+    91          let zero = Simd::default();
+// ... 92-97: the same as_chunks::<STRIPE>() pipeline, enumerated ...
+    98                  let m: Mask<T::Mask, STRIPE> = mask.get_simd(i * STRIPE);
+    99                  m.select(Simd::from_slice(a).cast_generic::<F>(), zero)
+// ... 100-103: same sum, same horizontal fold ...
 ```
 
-Line 94 turns "is this value null?" into "add zero", which is topic
+Line 99 turns "is this value null?" into "add zero", which is topic
 11's validity-mask philosophy in one line: nulls never become control
-flow. The non-SIMD sibling at line 175 says so out loud —
+flow. The non-SIMD sibling at line 180 says so out loud —
 "Unconditional add with select for better branch-free opts."
 
 ### Step 4 — the filter: two scalar kernels and a selectivity threshold
@@ -365,9 +371,10 @@ of elements — and then truncates with `out.set_len(mask_bits_set)` at
 The `simd_filter!` macro (`avx512.rs:7-43`) is the shared skeleton:
 `avx512.rs:12` chunks by 64 for the same `m64 == 0` sparse fast path as
 the scalar file (line 20), then `avx512.rs:24` walks sub-chunks of
-`MASK_BITS` elements. Three kernels instantiate it — `epi8` under
-`avx512vbmi2` (line 59), `_mm512_maskz_compress_epi32` under `avx512f`
-(line 94), and `_mm512_maskz_compress_epi64` (line 104+).
+`MASK_BITS` elements. Four kernels instantiate it, one per element
+width — `epi8` (line 59) and `epi16` (line 77) under `avx512vbmi2`,
+`_mm512_maskz_compress_epi32` (line 94) and
+`_mm512_maskz_compress_epi64` (line 111) under plain `avx512f`.
 
 This is the **only** place polars drops to raw intrinsics for filtering,
 and the reason is structural: compress is data-dependent lane
@@ -391,9 +398,9 @@ AVX-512 module *exists*:
      7  mod avx512;
 ```
 
-The runtime test lives one file over, and — correcting a claim that is
-easy to make from the shape of the code — it happens **once per array**,
-not once per 64-element block:
+The runtime test lives one file over, and it happens **once per
+array**, not once per 64-element block — easy to misread from the
+shape of the code, since the kernels themselves loop per block:
 
 ```rust
 // polars crates/polars-compute/src/filter/primitive.rs:49-56, 67-80
@@ -439,7 +446,7 @@ This topic shows all three:
 
 | binding time | who | mechanism | cost per use |
 |---|---|---|---|
-| compile | hashbrown, memchr | `cfg_if!` / `#[cfg]` selects a backend file (`group/mod.rs:8-45`) | zero |
+| compile | hashbrown, memchr | `cfg_select!` / `#[cfg]` selects a backend file (`group/mod.rs:8-48`) | zero |
 | init | SimSIMD | `__attribute__((constructor))` fills a function-pointer table (`c/numkong.c:917-919`) | one indirect call per kernel invocation |
 | call | polars | `is_avx512_enabled() && is_x86_feature_detected!(…)` (`primitive.rs:33`) | one predictable branch per array |
 
@@ -452,17 +459,18 @@ library as a binary and cannot recompile per host.
 
 ## Where each step lives in the code
 
-polars at `f8bcc3d`, under `crates/polars-compute/src/`.
+polars at `7f902bd3ff` (`py-2.1.0`), under `crates/polars-compute/src/`.
 
 | anchor | step | what it is |
 |---|---|---|
 | `float_sum.rs:2-3` | 2 | `std::simd` imported only under `feature = "simd"` |
 | `float_sum.rs:13-14` | 2-3 | `STRIPE = 16`, `PAIRWISE_RECURSION_LIMIT = 128` |
-| `float_sum.rs:44-63` | 1-2 | `vector_horizontal_sum` — the once-per-block fold, and the non-associativity comment |
-| `float_sum.rs:79-85` | 2 | `sum_block_vectorized` — `chunks_exact(STRIPE)` into `Simd<T,16>` |
-| `float_sum.rs:87-97` | 3 | the masked variant: `m.select(v, zero)`, nulls without branches |
-| `float_sum.rs:155-186` | 2 | the **non-SIMD** fallback: a plain `[F; 16]` accumulator array |
-| `float_sum.rs:189-211` | 3 | `pairwise_sum` — recursive halving down to 128 |
+| `float_sum.rs:45-64` | 1-2 | `vector_horizontal_sum` — the once-per-block fold, and the non-associativity comment |
+| `float_sum.rs:80-88` | 2 | `sum_block_vectorized` — `as_chunks::<STRIPE>()` into `Simd<T,16>` |
+| `float_sum.rs:90-103` | 3 | the masked variant: `m.select(v, zero)`, nulls without branches |
+| `float_sum.rs:106-158` | — | `i128`, `u128` and `pf16` (half-float) blocks: no `Simd` lane type, so a plain iterator sum |
+| `float_sum.rs:160-191` | 2 | the **non-SIMD** fallback: a plain `[F; 16]` accumulator array |
+| `float_sum.rs:193-216` | 3 | `pairwise_sum` — recursive halving down to 128 |
 | `filter/mod.rs:6-7` | 6 | `mod avx512` exists only on `x86_64` |
 | `filter/mod.rs:30-52` | 6 | `filter_with_bitmap` — leading/trailing-zero trim and all-empty/all-full paths |
 | `filter/primitive.rs:11-19` | 6 | `FilterFn` and `nop_filter` — what aarch64 gets |
@@ -474,10 +482,11 @@ polars at `f8bcc3d`, under `crates/polars-compute/src/`.
 | `filter/avx512.rs:7-43` | 5 | `simd_filter!` — the shared 64-element skeleton |
 | `filter/avx512.rs:50-63` | 5 | `filter_u8_avx512vbmi2` and the "slow on Zen" comment |
 | `filter/avx512.rs:87-98` | 5 | `_mm512_maskz_compress_epi32` under plain AVX-512F |
+| `filter/avx512.rs:104-115` | 5 | `_mm512_maskz_compress_epi64`, the same shape at 8 lanes |
 | `min_max/` | — | the same pattern for min/max (`scalar.rs`, `simd.rs`) — an optional second lap |
 
-Reading order: `float_sum.rs` top to bottom (Steps 1-3 in about 210
-lines, and read the `#[cfg(not(feature = "simd"))]` impl at 155 as
+Reading order: `float_sum.rs` top to bottom (Steps 1-3 in about 215
+lines, and read the `#[cfg(not(feature = "simd"))]` impl at 160 as
 carefully as the SIMD one), then `filter/primitive.rs` to see where
 your machine lands, then `filter/scalar.rs` because that is where it
 lands, then `filter/avx512.rs` for the road not taken.
@@ -516,15 +525,15 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   One accumulator is one dependency chain of length n, costing
-  `n × latency` no matter how many adders exist. `float_sum.rs:81-83`
+  `n × latency` no matter how many adders exist. `float_sum.rs:82-86`
   accumulates into `Simd<T, 16>` so lane j sums elements j, j+16, … —
   16 lanes, folded to a scalar once per 128-element block by
-  `vector_horizontal_sum` (`:44-63`), which is careful about ordering
-  because float addition is not associative (`:49-51`).
+  `vector_horizontal_sum` (`:45-64`), which is careful about ordering
+  because float addition is not associative (`:50-52`).
 
   `notes.md` measures the same idea in this topic's dot product:
   10.89 → 42.12 GB/s (3.9×) from eight accumulators and no intrinsics.
-  (`FINDINGS.md` row 17 has 8.88 → 26.32 from another run.) Caveat: at
+  Caveat: at
   N = 4M the fast rung may be bandwidth-bound, which `notes.md`'s
   worksheet asks you to check at N = 64K.
 
@@ -554,8 +563,8 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `pairwise_sum` (`float_sum.rs:189-211`) halves the array down to
-  128-element blocks (line 207) and sums each block with Step 2's
+  `pairwise_sum` (`float_sum.rs:193-216`) halves the array down to
+  128-element blocks (line 212) and sums each block with Step 2's
   striped kernel. For n = 1e8 the longest chain of dependent additions
   any one value passes through is 128/16 = 8 within its lane, plus
   log2(16) = 4 for the horizontal fold, plus log2(1e8/128) ≈ 20 across
@@ -613,7 +622,8 @@ Answer each before unfolding it.
   polars-compute that uses raw intrinsics. (simdjson answers the same
   problem on NEON with a lookup table of shuffle patterns.)
 
-  Binding times: compile-time in hashbrown/memchr (`cfg_if!`),
+  Binding times: compile-time in hashbrown/memchr (`cfg_select!`,
+  `#[cfg]`),
   init-time in SimSIMD (a constructor filling a function-pointer table
   at `c/numkong.c:917-919`), call-time in polars
   (`primitive.rs:33`, once per array). polars' unit of dispatch is a
@@ -636,7 +646,7 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [polars](https://github.com/pola-rs/polars) at `f8bcc3d` —
+- [polars](https://github.com/pola-rs/polars) at `7f902bd3ff` —
   `crates/polars-compute/src/float_sum.rs` for the reduction (read the
   `#[cfg(not(feature = "simd"))]` impl too), `filter/primitive.rs` for
   the dispatch, `filter/scalar.rs` for the two kernels your machine

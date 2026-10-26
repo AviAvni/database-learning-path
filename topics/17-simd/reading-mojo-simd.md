@@ -22,9 +22,8 @@ which is how the quotes here were extracted. If you are reading this
 against a later release, re-check the names before trusting the
 translation table in Step 8.
 
-One naming caveat worth stating up front: many older write-ups —
-including this repo, until the H1 above was corrected alongside its
-`SUMMARY.md` link — spell the type `SIMD[type, width]`. At 1.0.0b2 the
+One naming caveat worth stating up front: many older write-ups
+spell the type `SIMD[type, width]`. At 1.0.0b2 the
 declaration is `struct SIMD[dtype: DType, size: Int]`: the second
 parameter is **`size`**, not `width`, and the first is a `DType`
 *value* rather than a type. Expect the old spelling in any tutorial
@@ -309,13 +308,12 @@ type is decided at runtime, you cannot usefully parallelize a loop
 that is already memory-bound, and tiling only pays once the inner
 kernel is fast enough that the cache is the constraint.
 
-The earlier version of this guide illustrated the ladder with a
-GFLOPS progression from Modular's matmul blog post. **That source is
-gone** — the notebook and blog URLs all return 404 as of this
-revision, and the brief's rule is that an unverifiable number does not
-go in. So the ladder above carries no borrowed numbers. What it
-carries instead is this repo's own measurement of layer 2, which you
-can rerun:
+The ladder carries no borrowed numbers. Modular's "Matrix
+Multiplication in Mojo" notebook, the usual source of a GFLOPS
+progression for it, returns 404 along with its blog mirrors, and a
+figure that cannot be checked against its source does not go in. What
+the ladder carries instead is this repo's own measurement of layer 2,
+which you can rerun:
 
 ```
  layer 2, measured here (notes.md, dot lane, N = 4M f32,
@@ -324,16 +322,14 @@ can rerun:
      dot_unrolled8  (8 accumulator chains)    42.12 GB/s
      ratio 42.12 / 10.89                    =  3.9x
 
- the same lane in FINDINGS.md row 17, a different run:
-     8.88 -> 26.32 GB/s                     =  3.0x
-
  layers 3 and 4 are NOT measured in topic 17 — they are topics
  14 and 13, and this topic's framing is deliberately "the last
  10x on a single core".
 ```
 
-Cite whichever run you use by name; never average them. And note what
-the 3.9× is *not*: it is not a lane-width effect. `dot_unrolled8`
+Rerun it and your figures will differ by machine and by run; cite the
+run you use by name, never an average of runs. And note what the 3.9×
+is *not*: it is not a lane-width effect. `dot_unrolled8`
 (`dot.rs:22-37`) has eight `f32` accumulators, no vector types
 anywhere, and no intrinsics — it is FINDINGS.md's "eight accumulators
 and no intrinsics". Layer 2 is two things wearing one name, and this
@@ -617,13 +613,12 @@ Answer each before unfolding it.
   threads (topic 14) → tiles and cache blocking (topic 13), in that
   order, because each layer needs the one before it to be settled.
   This repo has measured **only layer 2**: `notes.md`'s dot lane goes
-  10.89 → 42.12 GB/s (3.9×) and `FINDINGS.md` row 17 records
-  8.88 → 26.32 GB/s (3.0×) from a different run. Both come from
-  `dot_unrolled8`, which has eight scalar `f32` accumulators and no
-  intrinsics — so the headline is the *chain* half of layer 2, not the
-  lane half. The GFLOPS ladder that used to sit here was taken from a
-  Modular blog post that now 404s, and has been removed rather than
-  quoted from memory.
+  10.89 → 42.12 GB/s (3.9×). The fast rung is `dot_unrolled8`, which
+  has eight scalar `f32` accumulators and no intrinsics — so the
+  headline is the *chain* half of layer 2, not the lane half. No
+  GFLOPS figure for the other layers appears here, because the Modular
+  post that is the usual source for one returns 404 and cannot be
+  checked.
 
   </details>
 
@@ -704,20 +699,17 @@ Answer each before unfolding it.
 - Index pages: `https://mojolang.org/llms.txt` and
   `https://mojolang.org/sitemap.xml`. Appending `.md` to any doc URL
   returns Markdown.
-- **Removed:** the earlier version of this guide illustrated Step 5
-  with a GFLOPS ladder (Python → naive Mojo → vectorized →
-  parallelized → tiled) from Modular's "Matrix Multiplication in Mojo"
-  notebook. That page and its blog mirrors return 404 at the time of
-  writing, so the figures could not be checked against a source and
-  have been dropped rather than repeated. If it reappears, the numbers
-  belong here with their hardware.
+- Modular's "Matrix Multiplication in Mojo" notebook (a GFLOPS ladder
+  Python → naive Mojo → vectorized → parallelized → tiled) and its
+  blog mirrors return 404, so no figure from it is used in Step 5. If
+  it reappears, its numbers belong there with their hardware.
 
 **This repo**
 - `topics/17-simd/experiments/src/dot.rs` — the four rungs Step 8
   maps onto: `dot_naive` (10-17), `dot_unrolled8` (22-37), `dot_wide`
   (39-49), `dot_neon` (51-65).
-- `topics/17-simd/notes.md` and `FINDINGS.md` row 17 — the layer-2
-  measurements of Step 5, from two different runs of the same lane.
+- `topics/17-simd/notes.md` — the layer-2 baseline Step 5 quotes;
+  `FINDINGS.md` row 17 carries the topic's headline.
 - `reading-simsimd.md` — the latency × ports rule Step 6 and Step 7
   lean on, and the port/latency table it is derived from.
 - `reading-polars-compute.md` Step 2 — `STRIPE = 16`, the deliberate

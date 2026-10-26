@@ -11,7 +11,7 @@ experiments/src/jit.rs, because every ceremony the stub needs
 appears here first.
 
 **Version.** Anchors are against `bytecodealliance/cranelift-jit-demo`
-at the pin in `resources/codebases.md`, **`3e5e9b6`**, whose
+at **`3e5e9b6`** (the commit recorded in `resources/codebases.md`), whose
 `Cargo.toml` pins `cranelift`, `cranelift-module`, `cranelift-jit`
 and `cranelift-native` all at **0.125.3**, edition 2024. This is not
 pedantry: cranelift's builder API churns hard enough that most
@@ -180,8 +180,7 @@ the comments *are* the documentation for this API:
   93	    }
 ```
 
-**Corrected anchor.** `compile()` is `src/jit.rs:53-93`, not
-"55-92". And read line 92 carefully: **`compile()` returns
+`compile()` is `src/jit.rs:53-93`. Read line 92 carefully: **`compile()` returns
 `*const u8`. There is no `transmute` in this function.** The cast
 lives somewhere else entirely — Step 5.
 
@@ -275,11 +274,11 @@ needs fixing too:
  208	            }
 ```
 
-`struct FunctionTranslator` is **`:187-192`** (the old "189-191"
-lands on two of its four fields), and `translate_expr` is
+`struct FunctionTranslator` is **`:187-192`** (all four fields), and
+`translate_expr` is
 **`:197-249`**.
 
-**A correction that changes what you can copy.** The demo's toy
+**The fact that changes what you can copy.** The demo's toy
 language is **integer-only**. Line 188's field is `int`, seeded at
 `:122-124`:
 
@@ -378,12 +377,11 @@ relocations — and why adding a single `pow()` would change that.
   54	}}
 ```
 
-**Corrected claim.** The previous version of this guide said "the
-demo transmutes to `fn(f64) -> f64`". It does not. Line 51
-transmutes to a *generic* `fn(I) -> O` inside an `unsafe fn`, and
-because the toy language is I64-only (Step 4), every actual call
-site in `main` uses integer types. The `f64` in the old sentence was
-imported from our own stub's signature.
+**What the demo transmutes to.** Not `fn(f64) -> f64` — that is our
+own stub's signature, not the demo's. Line 51 transmutes to a
+*generic* `fn(I) -> O` inside an `unsafe fn`, and because the toy
+language is I64-only (Step 4), every actual call site in `main` uses
+integer types.
 
 Line 45's `unsafe fn` and line 44's doc comment are doing real work:
 the demo pushes the entire type-correctness obligation onto the
@@ -428,11 +426,11 @@ obligation is universal to JITs, only the spelling differs.
  designed for    wasmtime JIT         everything
 ```
 
-**Claim removed as unverifiable.** The previous version of this
-guide printed "~10-100× faster than LLVM" and "e-graph based mid-end
-(aegraph)". Neither is checkable from anything in this repo's pin
-table — no cranelift-vs-LLVM benchmark ships in `cranelift-jit-demo`
-— so both are gone rather than repeated. What *is* measured, in a
+**What this guide does not claim.** Two descriptions often attached
+to Cranelift — "~10-100× faster than LLVM" and "e-graph based mid-end
+(aegraph)" — are not checkable from anything in this repo's pin
+table (no cranelift-vs-LLVM benchmark ships in `cranelift-jit-demo`),
+so they are not repeated here. What *is* measured, in a
 peer-reviewed paper this topic already reads, is the same design
 point for a different fast compiler:
 
@@ -567,11 +565,10 @@ All anchors are `cranelift-jit-demo` at `3e5e9b6` (461 lines total).
 | `Cargo.toml:11-15` | the version lock: cranelift 0.125.3 × 4 crates | 6 |
 | `src/frontend.rs` | the toy parser (87 lines — ignore, we have `Expr`) | — |
 
-**Anchor corrections against the previous version of this guide:**
-`compile()` is `:53-93` (was "55-92"); `struct FunctionTranslator`
-is `:187-192` (was "189-191"); the `JIT` struct is `:10-26` (was
-"12-25"); and the helper emitters are `:251-395`, **not `:400+`** —
-`:398-461` is variable declaration, a different subject.
+The anchors that are easiest to misplace: `compile()` is `:53-93`;
+`struct FunctionTranslator` is `:187-192`; the `JIT` struct is
+`:10-26`; and the helper emitters are `:251-395` — `:398-461` is
+variable declaration, a different subject.
 
 Read `jit.rs` top to bottom once, then re-read `compile()`
 (`:53-93`) against Step 3's seven rungs until each line maps to a

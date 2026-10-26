@@ -276,7 +276,7 @@ diameters in that range, which is why the stretch-goal BFS in this topic's
 > **Out:** the two n at which this program stops working, and which fix each one
 > needs.
 
-Two defaults decide it (`wgpu-types/src/limits.rs`, values verified at the pin):
+Two defaults decide it (`wgpu-types/src/limits.rs`, values verified):
 
 | limit | default | line |
 |---|---|---|
@@ -474,7 +474,7 @@ Answer each before unfolding it.
 
 **Code**
 
-- [wgpu](https://github.com/gfx-rs/wgpu) @ `f945c78` (the pin) — read in order:
+- [wgpu](https://github.com/gfx-rs/wgpu) @ `f945c78` — read in order:
   `examples/standalone/01_hello_compute/src/main.rs` (the full ladder, and the
   doc comment at lines 8-12 that admits the overhead),
   `examples/features/src/repeated_compute/` (what amortising looks like),

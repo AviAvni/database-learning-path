@@ -10,8 +10,8 @@ it) and maps each to the modern "Essentials" codebase.
 Two warnings before you start. First, none of this runs here: Gunrock is CUDA
 (or HIP) and this machine has no such device, so every claim below is a claim
 about source, anchored to a line. Second, the API moved between Gunrock 1.x and
-Essentials, and most secondary descriptions of Gunrock — including this guide's
-previous version — describe the old one. Where the code and the paper disagree,
+Essentials, and most secondary descriptions of Gunrock describe the old
+one. Where the code and the paper disagree,
 this guide says so and takes the code.
 
 Every code anchor is
@@ -101,7 +101,7 @@ specialised by a lambda. Here is BFS's, whole:
    128      };
 ```
 
-Read lines 125-127 carefully, because the correction matters. There is **no
+Read lines 125-127 carefully, because they differ from the textbook BFS. There is **no
 compare-and-swap** and there is **no `parent[]` array**: the state is
 `distances[]`, the update is an atomic *min*, and the "did I win?" answer is
 derived from the *old* value the atomic returns. Two threads reaching the same
@@ -395,7 +395,7 @@ idempotence and push/pull.
    problem with size-then-retrieve. Name Gunrock's answer, the function it lives
    in, and the one property of CSR that makes it cheaper than cudf's second
    probe.
-2. This guide's previous version said BFS does a CAS on `parent[]`. The pinned
+2. The textbook GPU BFS does a CAS on `parent[]`. Gunrock's
    code does `math::atomic::min` on `distances[]` (`bfs.hxx:125-127`). Work out
    why a lost race is benign in *either* formulation — and then why the `min`
    version is the one that also works for SSSP.

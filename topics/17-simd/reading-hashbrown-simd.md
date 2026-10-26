@@ -11,12 +11,12 @@ comparison result already *is* the mask; memchr answers with the
 Between them sits the portability pattern every SIMD kernel layer
 copies.
 
-Every anchor below is `rust-lang/hashbrown@d69025b` or
+Every anchor below is `rust-lang/hashbrown@00c1756` or
 `BurntSushi/memchr@5fdb40c` (`resources/codebases.md`), quoted with the
 line numbers the code occupies in those revisions. Both crates pick
-their backend with `cfg!`, so the code your Mac compiles is the
-aarch64 branch — and for hashbrown that branch is **not** the one the
-crate's own design comment describes.
+their backend with `cfg` predicates at compile time, so the code your
+Mac compiles is the aarch64 branch — and for hashbrown that branch is
+**not** the one the crate's own design comment describes.
 
 ## The problem in one sentence
 
@@ -60,7 +60,7 @@ consequence.
  (a) SSE2, 16-byte group        native, 1 bit per lane
      _mm_cmpeq_epi8   -> 16 lanes of 0xFF/0x00
      _mm_movemask_epi8-> u16, bit i = lane i
-     BITMASK_STRIDE = 1                   (sse2.rs:12)
+     BITMASK_STRIDE = 1                   (sse2.rs:11)
 
  (b) NEON, memchr style, 16-byte vector   4 bits per lane
      vceqq_u8         -> 16 lanes of 0xFF/0x00
@@ -73,7 +73,7 @@ consequence.
  (c) NEON, hashbrown style, 8-byte group  8 bits per lane
      vceq_u8 on uint8x8_t -> 8 lanes of 0xFF/0x00 = one u64 exactly
      vget_lane_u64        -> done; no narrowing instruction at all
-     BITMASK_STRIDE = 8                   (neon.rs:8)
+     BITMASK_STRIDE = 8                   (neon.rs:7)
      lane = trailing_zeros() / 8          (bitmask.rs:58)
 ```
 
@@ -89,28 +89,36 @@ number in Steps 4 and 5:
 
 ```rust
 // hashbrown src/control/group/mod.rs:8-33 — backend selection
-     8  cfg_if! {
+     8  cfg_select! {
 // ... 9-12: SSE2 preferred; no AVX because the probability of finding a
 //           match drops off drastically after the first few buckets ...
     14      // I attempted an implementation on ARM using NEON instructions, but it
     15      // turns out that most NEON instructions have multi-cycle latency, which in
     16      // the end outweighs any gains over the generic implementation.
-    17      if #[cfg(all(
+    17      all(
     18          target_feature = "sse2",
-// ... 19-21: x86 / x86_64, not miri ...
-    22          mod sse2;
-    23          use sse2 as imp;
-    24      } else if #[cfg(all(
+    19          any(target_arch = "x86", target_arch = "x86_64"),
+    20      ) => {
+    21          mod sse2;
+    22          use sse2 as imp;
+    23      }
+    24      all(
     25          target_arch = "aarch64",
     26          target_feature = "neon",
-// ... 27-30: little-endian only, not miri ...
-    32          mod neon;
-    33          use neon as imp;
+// ... 27-28: comment — NEON intrinsics are broken on big-endian targets ...
+    29          target_endian = "little",
+    30      ) => {
+    31          mod neon;
+    32          use neon as imp;
+    33      }
 ```
 
-Read that carefully. The comment at lines 14-16 is **stale**: it
-records a past experiment, but a NEON backend ships now and lines 24-33
-select it on your machine. It also does not say what the failed
+`cfg_select!` takes the first arm whose predicate holds and expands to
+its body, so exactly one `mod …; use … as imp;` survives compilation;
+the LoongArch `lsx` arm follows at 34-42 and the `_ =>` fallback to the
+generic backend at 44-47. Read the block carefully. The comment at
+lines 14-16 is **stale**: it records a past experiment, but a NEON
+backend ships and lines 24-33 select it on your machine. It also does not say what the failed
 experiment's group width was, does not cite a benchmark, and does not
 mention narrowing — it blames "multi-cycle latency" generally. Any
 claim that "a 16-byte NEON group lost to the u64 SWAR in benchmarks"
@@ -120,33 +128,34 @@ which finally shipped **shrank the group to 8 bytes so that no
 narrowing instruction is needed at all**:
 
 ```rust
-// hashbrown src/control/group/neon.rs:6-21 — the shape of the group
-     6  pub(crate) type BitMaskWord = u64;
-     8  pub(crate) const BITMASK_STRIDE: usize = 8;
-     9  pub(crate) const BITMASK_ITER_MASK: BitMaskWord = 0x8080_8080_8080_8080;
-// ... 11-15: doc comment — "uses a 64-bit NEON value" ...
-    16  pub(crate) struct Group(neon::uint8x8_t);
-// ... 18-20 ...
-    21      pub(crate) const WIDTH: usize = mem::size_of::<Self>();
+// hashbrown src/control/group/neon.rs:5-20 — the shape of the group
+     5  pub(crate) type BitMaskWord = u64;
+// ... 6: NonZeroBitMaskWord ...
+     7  pub(crate) const BITMASK_STRIDE: usize = 8;
+     8  pub(crate) const BITMASK_ITER_MASK: BitMaskWord = 0x8080_8080_8080_8080;
+// ... 10-14: doc comment — "uses a 64-bit NEON value" ...
+    15  pub(crate) struct Group(neon::uint8x8_t);
+// ... 16-19 ...
+    20      pub(crate) const WIDTH: usize = size_of::<Self>();
 ```
 
 `uint8x8_t` is 8 bytes, so `WIDTH` is **8**. The SSE2 sibling
-(`sse2.rs:20`) is `__m128i`, so its `WIDTH` is **16**. Same crate,
+(`sse2.rs:19`) is `__m128i`, so its `WIDTH` is **16**. Same crate,
 same algorithm, half the group.
 
 And the match itself is two instructions:
 
 ```rust
-// hashbrown src/control/group/neon.rs:68-73 — match_tag on aarch64
-    68      pub(crate) fn match_tag(self, tag: Tag) -> BitMask {
-    69          unsafe {
-    70              let cmp = neon::vceq_u8(self.0, neon::vdup_n_u8(tag.0));
-    71              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
-    72          }
-    73      }
+// hashbrown src/control/group/neon.rs:67-72 — match_tag on aarch64
+    67      pub(crate) fn match_tag(self, tag: Tag) -> BitMask {
+    68          unsafe {
+    69              let cmp = neon::vceq_u8(self.0, neon::vdup_n_u8(tag.0));
+    70              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
+    71          }
+    72      }
 ```
 
-Line 70 compares, line 71 moves the 64-bit result to a general-purpose
+Line 69 compares, line 70 moves the 64-bit result to a general-purpose
 register. `vreinterpret_u64_u8` is a type pun, not an instruction.
 There is no movemask because there is nothing left to pack.
 
@@ -167,22 +176,10 @@ BITMASK_STRIDE`, and `BITMASK_STRIDE` is 8 here and 1 on SSE2 — so the
 
 On NEON a matching lane is `0xFF` — eight set bits, so
 `trailing_zeros` would land correctly but `mask & (mask-1)` would step
-*within* a lane. ANDing with `0x8080_8080_8080_8080` (`neon.rs:9`)
+*within* a lane. ANDing with `0x8080_8080_8080_8080` (`neon.rs:8`)
 keeps exactly the top bit of each lane. On SSE2 `BITMASK_ITER_MASK` is
-`!0` (`sse2.rs:13`) — a no-op, because `PMOVMSKB` already produced one
+`!0` (`sse2.rs:12`) — a no-op, because `PMOVMSKB` already produced one
 bit per lane.
-
-> **Upstream since the pin.** Two changes have landed on hashbrown's
-> `src/control/group/mod.rs`, neither yet in a release (the latest tag is
-> v0.17.1). `4165f9a` (PR #740) replaced the `cfg_if! { if #[cfg(…)] … else
-> if … }` chain with `cfg_select!`, whose arms read `all(…) => { mod sse2; use
-> sse2 as imp; }` with a `_ =>` fallback; and `896f957` ("miri supports SSE
-> and neon nowadays") dropped `not(miri)` from the SSE2 and NEON arms, keeping
-> it only on the LoongArch `lsx` arm. The steps above describe the pinned code,
-> which is what the line numbers point at; the argument holds — the backend is
-> still fixed at compile time by the same target predicates, and the stale
-> "NEON wasn't worth it" comment is still there, now at lines 14-16 of a block
-> that spans 8-48.
 
 ### Step 3 — SWAR: a u64 is an 8-lane vector if you are careful
 
@@ -192,31 +189,31 @@ bit per lane.
 
 SWAR — SIMD Within A Register — does lane-parallel work with ordinary
 integer instructions. It is hashbrown's fallback when no supported
-vector ISA is present (`mod.rs:42-44`), and it is the reference
+vector ISA is present (`mod.rs:44-47`), and it is the reference
 implementation the SIMD backends are checked against:
 
 ```rust
-// hashbrown src/control/group/generic.rs:97-109 — SWAR match_tag
-    97      /// This function may return a false positive in certain cases where
-    98      /// the tag in the group differs from the searched value only in its
-    99      /// lowest bit. This is fine because:
-   100      /// - This never happens for `EMPTY` and `DELETED`, only full entries.
-   101      /// - The check for key equality will catch these.
-   102      /// - This only happens if there is at least 1 true match.
-   103      /// - The chance of this happening is very low (< 1% chance per tag).
-// ... 104-107: attribute and the bithacks citation ...
-   108          let cmp = self.0 ^ repeat(tag);
-   109          BitMask((cmp.wrapping_sub(repeat(Tag(0x01))) & !cmp & repeat(Tag::DELETED)).to_le())
+// hashbrown src/control/group/generic.rs:98-110 — SWAR match_tag
+    98      /// This function may return a false positive in certain cases where
+    99      /// the tag in the group differs from the searched value only in its
+   100      /// lowest bit. This is fine because:
+   101      /// - This never happens for `EMPTY` and `DELETED`, only full entries.
+   102      /// - The check for key equality will catch these.
+   103      /// - This only happens if there is at least 1 true match.
+   104      /// - The chance of this happening is very low (< 1% chance per tag).
+// ... 105-108: attribute, signature and the bithacks citation ...
+   109          let cmp = self.0 ^ repeat(tag);
+   110          BitMask((cmp.wrapping_sub(repeat(Tag(0x01))) & !cmp & repeat(Tag::DELETED)).to_le())
 ```
 
-Line 108 turns every matching byte into `0x00`. Line 109 is the classic
+Line 109 turns every matching byte into `0x00`. Line 110 is the classic
 zero-byte detector: subtracting `0x01` from each byte borrows into
 bit 7 only where the byte was zero; `& !cmp` cancels bytes that already
 had bit 7 set; `& 0x8080…` keeps one bit per lane. Four ALU ops for
 eight lanes.
 
 Get the failure mode right, because it is narrower than "adjacent
-bytes can false-positive". The doc comment at lines 97-103 says the
+bytes can false-positive". The doc comment at lines 98-104 says the
 false positive happens when a byte differs from the searched tag
 **only in its lowest bit**, that it happens **only when there is at
 least one true match** (the borrow has to come from somewhere), and
@@ -238,10 +235,10 @@ that its probability is **under 1 % per tag**. Work an example:
 (`tag.rs:9` and `:12`), and only `EMPTY` also has bit 6 set:
 
 ```rust
-// hashbrown src/control/group/generic.rs:115-119 — no subtraction needed
-   115      pub(crate) fn match_empty(self) -> BitMask {
-// ... 116-118: comment — top two bits set means EMPTY ...
-   119          BitMask((self.0 & (self.0 << 1) & repeat(Tag::DELETED)).to_le())
+// hashbrown src/control/group/generic.rs:116-120 — no subtraction needed
+   116      pub(crate) fn match_empty(self) -> BitMask {
+// ... 117-119: comment — top two bits set means EMPTY ...
+   120          BitMask((self.0 & (self.0 << 1) & repeat(Tag::DELETED)).to_le())
 ```
 
 Three ops, no borrow, no false positive. The encoding was designed to
@@ -277,19 +274,21 @@ The encoding is the trick: `EMPTY` and `DELETED` both have the sign bit
 set and a full tag never does, so each predicate is one comparison:
 
 ```rust
-// hashbrown src/control/group/neon.rs:85-97 — the sign-bit predicates
-    85      pub(crate) fn match_empty_or_deleted(self) -> BitMask {
-    87              let cmp = neon::vcltz_s8(neon::vreinterpret_s8_u8(self.0));
-    88              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
-// ... 92-93: doc comment for match_full ...
-    94      pub(crate) fn match_full(self) -> BitMask {
-    96              let cmp = neon::vcgez_s8(neon::vreinterpret_s8_u8(self.0));
-    97              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
+// hashbrown src/control/group/neon.rs:84-96 — the sign-bit predicates
+    84      pub(crate) fn match_empty_or_deleted(self) -> BitMask {
+// ... 85: unsafe { ...
+    86              let cmp = neon::vcltz_s8(neon::vreinterpret_s8_u8(self.0));
+    87              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
+// ... 88-92: closing braces, doc comment and attribute for match_full ...
+    93      pub(crate) fn match_full(self) -> BitMask {
+// ... 94: unsafe { ...
+    95              let cmp = neon::vcgez_s8(neon::vreinterpret_s8_u8(self.0));
+    96              BitMask(neon::vget_lane_u64(neon::vreinterpret_u64_u8(cmp), 0))
 ```
 
 `vcltz_s8` is "lanes less than zero as signed bytes" — that is the sign
 bit, and it answers "empty or deleted" with no constant to load and no
-comparison operand. `vcgez_s8` at line 96 is its complement, "full".
+comparison operand. `vcgez_s8` at line 95 is its complement, "full".
 
 ### Step 5 — the probe loop, and what the group width costs
 
@@ -300,36 +299,41 @@ comparison operand. `vcgez_s8` at line 96 is its complement, "full".
 The real loop is short enough to read whole:
 
 ```rust
-// hashbrown src/raw.rs:2009-2045 — RawTableInner::find_inner
-  2009      unsafe fn find_inner(&self, hash: u64, eq: &mut dyn FnMut(usize) -> bool) -> Option<usize> {
-  2010          let tag_hash = Tag::full(hash);
-  2011          let mut probe_seq = self.probe_seq(hash);
-  2013          loop {
-// ... 2014-2027: safety argument for the unaligned load ...
-  2028              let group = unsafe { Group::load(self.ctrl(probe_seq.pos)) };
-  2030              for bit in group.match_tag(tag_hash) {
-// ... 2031-2032: the mask is cheaper than a modulo ...
-  2033                  let index = (probe_seq.pos + bit) & self.bucket_mask;
-  2035                  if likely(eq(index)) {
-  2036                      return Some(index);
-  2037                  }
-  2038              }
-  2040              if likely(group.match_empty().any_bit_set()) {
-  2041                  return None;
-  2042              }
-  2044              probe_seq.move_next(self.bucket_mask);
-  2045          }
+// hashbrown src/raw.rs:2015-2051 — RawTableInner::find_inner
+  2015      unsafe fn find_inner(&self, hash: u64, eq: &mut dyn FnMut(usize) -> bool) -> Option<usize> {
+  2016          let tag_hash = Tag::full(hash);
+  2017          let mut probe_seq = self.probe_seq(hash);
+  2018
+  2019          loop {
+// ... 2020-2033: safety argument for the unaligned load ...
+  2034              let group = unsafe { Group::load(self.ctrl(probe_seq.pos)) };
+  2035
+  2036              for bit in group.match_tag(tag_hash) {
+// ... 2037-2038: the mask is cheaper than a modulo ...
+  2039                  let index = (probe_seq.pos + bit) & self.bucket_mask;
+  2040
+  2041                  if likely(eq(index)) {
+  2042                      return Some(index);
+  2043                  }
+  2044              }
+  2045
+  2046              if likely(group.match_empty().any_bit_set()) {
+  2047                  return None;
+  2048              }
+  2049
+  2050              probe_seq.move_next(self.bucket_mask);
+  2051          }
 ```
 
-Line 2030 iterates only the candidate lanes; line 2035 is the only
-place a real key is touched. Line 2040 is the termination rule: an
+Line 2036 iterates only the candidate lanes; line 2041 is the only
+place a real key is touched. Line 2046 is the termination rule: an
 `EMPTY` slot in the group proves the key is absent, because insertion
 would have used it. A tag false positive — two keys sharing 7 bits, or
 Step 3's borrow noise — costs exactly one extra `eq` call. Correctness
 never depended on the mask being exact, only on it never *missing* a
 real match.
 
-Line 2044 is not a linear scan:
+Line 2050 is not a linear scan:
 
 ```rust
 // hashbrown src/raw.rs:83-92 — triangular probing
@@ -344,7 +348,7 @@ the triangular numbers times `WIDTH` — which, for a power-of-two table,
 visits every group exactly once (the proof is linked at line 74).
 
 Now cost it, because this is where the group width shows up.
-hashbrown's maximum load factor is 7/8: `raw.rs:182-190` reserves
+hashbrown's maximum load factor is 7/8: `raw.rs:182-194` reserves
 "12.5 % of the slots as empty". So, ignoring `DELETED` and treating
 slots as independent, the probability that a group contains **no**
 empty slot — i.e. that the probe must continue — is `(7/8)^W`:
@@ -479,7 +483,7 @@ implement that interface per ISA:
   `MoveMask` (`vector.rs:82`), owns the bits-per-lane convention.
 - hashbrown defines `struct Group` with `WIDTH`, `load`, `match_tag`,
   `match_empty`, `match_empty_or_deleted`, `match_full` — one file per
-  backend, chosen by the `cfg_if!` of Step 2.
+  backend, chosen by the `cfg_select!` of Step 2.
 
 Both bind at **compile** time. That is the cheapest of the three
 binding times this topic shows you: hashbrown and memchr bind with
@@ -498,24 +502,24 @@ NEON compaction — write the scalar version first, then diff.
 
 ## Where each step lives in the code
 
-hashbrown at `d69025b`, memchr at `5fdb40c`.
+hashbrown at `00c1756`, memchr at `5fdb40c`.
 
 | anchor | step | what it is |
 |---|---|---|
-| `hashbrown src/control/group/mod.rs:8-45` | 2, 7 | the `cfg_if!` backend choice; the stale "NEON wasn't worth it" comment at 14-16 |
-| `hashbrown src/control/group/sse2.rs:12-20` | 2 | `BITMASK_STRIDE = 1`, `Group(__m128i)` — 16 control bytes |
-| `hashbrown src/control/group/sse2.rs:73-86` | 1-2 | `match_tag` = `_mm_cmpeq_epi8` + `_mm_movemask_epi8` |
-| `hashbrown src/control/group/neon.rs:6-21` | 2 | `BitMaskWord = u64`, `BITMASK_STRIDE = 8`, `Group(uint8x8_t)` — EIGHT bytes |
-| `hashbrown src/control/group/neon.rs:68-73` | 2 | `match_tag` = `vceq_u8` + `vget_lane_u64` — no narrowing at all |
-| `hashbrown src/control/group/neon.rs:85-99` | 4 | `match_empty_or_deleted` via `vcltz_s8`, `match_full` via `vcgez_s8` |
+| `hashbrown src/control/group/mod.rs:8-48` | 2, 7 | the `cfg_select!` backend choice; the stale "NEON wasn't worth it" comment at 14-16 |
+| `hashbrown src/control/group/sse2.rs:11-19` | 2 | `BITMASK_STRIDE = 1`, `Group(__m128i)` — 16 control bytes |
+| `hashbrown src/control/group/sse2.rs:72-85` | 1-2 | `match_tag` = `_mm_cmpeq_epi8` + `_mm_movemask_epi8` |
+| `hashbrown src/control/group/neon.rs:5-20` | 2 | `BitMaskWord = u64`, `BITMASK_STRIDE = 8`, `Group(uint8x8_t)` — EIGHT bytes |
+| `hashbrown src/control/group/neon.rs:67-72` | 2 | `match_tag` = `vceq_u8` + `vget_lane_u64` — no narrowing at all |
+| `hashbrown src/control/group/neon.rs:84-98` | 4 | `match_empty_or_deleted` via `vcltz_s8`, `match_full` via `vcgez_s8` |
 | `hashbrown src/control/bitmask.rs:55-59` | 2 | the divide by `BITMASK_STRIDE` that makes both conventions share code |
 | `hashbrown src/control/bitmask.rs:86-90` | 2 | `BITMASK_ITER_MASK` — one bit per lane before iterating |
-| `hashbrown src/control/group/generic.rs:97-109` | 3 | SWAR `match_tag` and the exact false-positive condition |
-| `hashbrown src/control/group/generic.rs:115-119` | 3 | `match_empty` with no subtraction — why the encoding matters |
+| `hashbrown src/control/group/generic.rs:98-110` | 3 | SWAR `match_tag` and the exact false-positive condition |
+| `hashbrown src/control/group/generic.rs:116-120` | 3 | `match_empty` with no subtraction — why the encoding matters |
 | `hashbrown src/control/tag.rs:9,12,35-48` | 4 | `EMPTY`, `DELETED`, and the top-7-bits tag |
-| `hashbrown src/raw.rs:2009-2045` | 5 | `find_inner` — the real probe loop |
+| `hashbrown src/raw.rs:2015-2051` | 5 | `find_inner` — the real probe loop |
 | `hashbrown src/raw.rs:83-92` | 5 | `ProbeSeq::move_next` — triangular stride |
-| `hashbrown src/raw.rs:182-190` | 5 | the 7/8 maximum load factor used in Step 5's arithmetic |
+| `hashbrown src/raw.rs:182-194` | 5 | the 7/8 maximum load factor used in Step 5's arithmetic |
 | `memchr src/vector.rs:17-82` | 7 | `trait Vector` and `trait MoveMask` |
 | `memchr src/vector.rs:321-329` | 2 | NEON movemask: `vshrn_n_u16(_, 4)` then `& 0x8888…` |
 | `memchr src/vector.rs:358-368` | 6 | `movemask_will_have_non_zero` via `vpmaxq_u8` — the miss path |
@@ -523,10 +527,10 @@ hashbrown at `d69025b`, memchr at `5fdb40c`.
 | `memchr src/arch/generic/memchr.rs:107` | 6 | `LOOP_SIZE = 4 * V::BYTES` |
 | `memchr src/arch/generic/memchr.rs:172-206` | 6 | the unrolled loop: OR tree, one test, localise on hit |
 
-Reading order: `mod.rs` first (48 lines, and it tells you which file
+Reading order: `mod.rs` first (50 lines, and it tells you which file
 matters), then `neon.rs` → `sse2.rs` → `generic.rs` in that order
 (shrunk → native → SWAR), then `bitmask.rs` to see how the three
-conventions share an iterator, then `raw.rs:2009` for the loop that
+conventions share an iterator, then `raw.rs:2015` for the loop that
 uses them. Then memchr's `vector.rs` NEON block and the unrolled loop.
 
 ## Questions for notes.md
@@ -538,7 +542,7 @@ uses them. Then memchr's `vector.rs` NEON block and the unrolled loop.
    Write the two `trailing_zeros` expressions, then say what goes wrong
    if you swap them: which one silently returns a *valid but wrong*
    index, and which one returns an out-of-range one?
-3. `generic.rs:97-103` says the SWAR false positive needs at least one
+3. `generic.rs:98-104` says the SWAR false positive needs at least one
    true match. Construct an 8-byte group and a tag where it fires, and
    one where a naive reading ("adjacent bytes false-positive") would
    predict a hit but the code gives none.
@@ -566,12 +570,12 @@ Answer each before unfolding it.
   finish the search.
 
   (a) SSE2: `_mm_movemask_epi8` gives 1 bit per lane, stride 1
-  (`sse2.rs:12`). (b) memchr on NEON: `vshrn_n_u16(_,4)` plus
+  (`sse2.rs:11`). (b) memchr on NEON: `vshrn_n_u16(_,4)` plus
   `& 0x8888…` gives 4 bits per lane, so the index is
   `trailing_zeros() >> 2` (`vector.rs:325-328`, `:455`). (c) hashbrown
   on NEON: an 8-byte group means the compare result *is* the mask,
   8 bits per lane, index `trailing_zeros() / 8`
-  (`neon.rs:8`, `bitmask.rs:58`).
+  (`neon.rs:7`, `bitmask.rs:58`).
 
   </details>
 
@@ -579,16 +583,16 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  **8 bytes.** `mod.rs:24-33` selects `mod neon` when
-  `target_arch = "aarch64"`, `target_feature = "neon"` and
-  `target_endian = "little"`; `neon.rs:16` is
-  `struct Group(neon::uint8x8_t)` and `neon.rs:21` defines `WIDTH` as
-  its size — 8. SSE2's is `__m128i`, so 16 (`sse2.rs:20`).
+  **8 bytes.** The `cfg_select!` arm at `mod.rs:24-33` selects
+  `mod neon` when `target_arch = "aarch64"`, `target_feature = "neon"`
+  and `target_endian = "little"`; `neon.rs:15` is
+  `struct Group(neon::uint8x8_t)` and `neon.rs:20` defines `WIDTH` as
+  its size — 8. SSE2's is `__m128i`, so 16 (`sse2.rs:19`).
 
   The comment at `mod.rs:14-16` says only that an earlier NEON attempt
   lost to the generic implementation because "most NEON instructions
   have multi-cycle latency". It names no width, cites no benchmark, and
-  is now stale, since a NEON backend ships. The design that *did* win
+  is stale, since a NEON backend ships. The design that *did* win
   is visible in the code: shrink the group to 8 so that
   `vceq_u8` + `vget_lane_u64` needs no narrowing step at all.
 
@@ -601,15 +605,15 @@ Answer each before unfolding it.
   SWAR treats a `u64` as eight byte lanes and uses integer
   instructions: `cmp = word ^ repeat(tag)` makes matching bytes zero,
   then `(cmp - repeat(0x01)) & !cmp & repeat(0x80)` sets bit 7 in
-  exactly the zero bytes (`generic.rs:108-109`). Four ALU ops for eight
+  exactly the zero bytes (`generic.rs:109-110`). Four ALU ops for eight
   lanes.
 
-  The documented failure (`generic.rs:97-103`) is narrower than "the
+  The documented failure (`generic.rs:98-104`) is narrower than "the
   borrow can cross lanes": it fires only for a byte differing from the
   tag **in its lowest bit only**, only when there is **at least one
   true match** to originate the borrow, never for `EMPTY` or `DELETED`,
   and with probability under 1 % per tag. It is safe because the key
-  comparison at `raw.rs:2035` rejects it.
+  comparison at `raw.rs:2041` rejects it.
 
   </details>
 
@@ -617,12 +621,12 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `find_inner` (`raw.rs:2009-2045`): compute the 7-bit tag, load a
+  `find_inner` (`raw.rs:2015-2051`): compute the 7-bit tag, load a
   group, iterate `match_tag`'s candidate lanes calling `eq` on each,
   stop with `None` if the group holds an `EMPTY`, else advance by the
   triangular stride (`raw.rs:90-91`).
 
-  At hashbrown's 7/8 load factor (`raw.rs:188-189`), a group continues
+  At hashbrown's 7/8 load factor (`raw.rs:191-192`), a group continues
   the probe with probability `(7/8)^W`: 0.3436 at W = 8 and 0.1181 at
   W = 16, so the expected groups scanned are 1.52 and 1.13 — but the
   expected *control bytes* scanned are 12.2 and 18.1. The narrow group
@@ -658,7 +662,8 @@ Answer each before unfolding it.
   `Group` struct — and give each ISA a ~100-line implementation. The
   generic backend is both the portability floor and the test oracle.
 
-  Binding times: **compile** (hashbrown/memchr `cfg_if!`), **init**
+  Binding times: **compile** (hashbrown's `cfg_select!`, memchr's
+  `cfg`), **init**
   (SimSIMD's `__attribute__((constructor))` at `c/numkong.c:917`
   filling a function-pointer table), **call** (polars'
   `is_avx512_enabled()` test in `filter/primitive.rs:33`). Compile-time
@@ -683,10 +688,10 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [hashbrown](https://github.com/rust-lang/hashbrown) at `d69025b` —
+- [hashbrown](https://github.com/rust-lang/hashbrown) at `00c1756` —
   `src/control/group/` (one file per backend), `src/control/bitmask.rs`
   and `src/control/tag.rs` for the shared conventions, and
-  `src/raw.rs:2009` for the probe loop that uses them. Read `neon.rs`
+  `src/raw.rs:2015` for the probe loop that uses them. Read `neon.rs`
   before `sse2.rs`: it is the one your machine compiles.
 - [memchr](https://github.com/BurntSushi/memchr) at `5fdb40c` —
   `src/vector.rs` (the `Vector` trait, the NEON movemask idiom, and the

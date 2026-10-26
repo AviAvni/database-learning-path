@@ -13,9 +13,9 @@ matrix multiply ([reading-graphblas-internals.md](reading-graphblas-internals.md
 
 Every claim below is cited to a section, lemma or theorem of a paper
 that is linked in the References and was read to check it. Two things
-the previous version of this chapter got loose — who proved which half
-of "the AGM bound", and what the bound is a bound *on* — are corrected
-in place and flagged.
+that are easy to get loose — who proved which half of "the AGM bound",
+and what the bound is a bound *on* — get their own paragraphs in
+Step 2.
 
 ## The problem in one sentence
 
@@ -107,9 +107,9 @@ The bound itself:
 > Q we have |Q(D)| ≤ ∏_{R∈σ} |R(D)|^{x_R}.
 > — AGM §3.1
 
-**Correction — attribution.** The previous version of this chapter
-attributed the bound to "AGM (Atserias–Grohe–Marx)" without
-qualification. The upper bound is not theirs: AGM's own paper cites it
+**Attribution.** The bound is usually credited to "AGM
+(Atserias–Grohe–Marx)" without qualification, but the upper bound is
+not theirs: AGM's own paper cites it
 as Lemma 2 **[10]**, i.e. Grohe & Marx, *Constraint solving via
 fractional edge covers* (SODA 2006), and reproves it via Shearer's
 lemma (AGM §3.1, "The proof of Lemma 2 is based on a combinatorial
@@ -140,9 +140,8 @@ exactly two of the three relations, so x = (½, ½, ½) is feasible
    gap              m² / m^1.5 = √m                             = 4 000×
 ```
 
-**Correction — what the bound bounds.** The previous version wrote
-"output ≤ 2³⁶ ≈ 64G in theory". That is right as an arithmetic
-statement but easy to misread: `m^1.5` is a *worst-case* ceiling over
+**What the bound bounds.** "Output ≤ 6.4e10 in theory" is right as
+an arithmetic statement but easy to misread: `m^1.5` is a *worst-case* ceiling over
 all instances with m edges, not an estimate of this graph's triangle
 count, which is far smaller. The number that matters is the ratio, not
 either endpoint.

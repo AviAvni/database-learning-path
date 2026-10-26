@@ -10,9 +10,10 @@ map. Read it as the reference implementation for our `dst.rs` stub
 and for M16 — every piece here has a miniature counterpart in the
 experiments.
 
-Every anchor below is turso at commit **`dd775bc`**, the revision
-this repo pins (`resources/codebases.md`), quoted with the line
-numbers the code occupies at that commit. Several of them contradict
+Every anchor below is turso at commit **`a820079e8`**
+(`v0.9.0-pre.1`), the revision this repo pins
+(`resources/codebases.md`), quoted with the line numbers the code
+occupies at that commit. Several of them contradict
 what the simulator's own documentation implies; where they do, this
 chapter says so and shows the line.
 
@@ -46,8 +47,9 @@ are backed by the RNG:
 ```
  real:  code → syscalls → kernel  (time, threads, fsync — nondeterministic)
  DST:   code → traits ──→ SimulatorClock (ChaCha8 from seed)
-                     ├──→ SimulatorFile  (buffered; crash DROPS unsynced,
-                     │                    may TEAR the last write)
+                     ├──→ SimulatorFile  (real file + seeded faults, latency)
+                     ├──→ MemorySimFile  (power loss reverts every block
+                     │                    to its last synced state)
                      └──→ SimNet         (topic 15's sim.rs already did this)
         ⇒ failure = a u64 seed. Re-run seed = same bug, every time.
 ```
@@ -63,10 +65,11 @@ supply a different one).
 
 The boundary is never quite total, and turso's is a good example of
 a partial one. `impl Clock for SimulatorIO`
-(`testing/simulator/runner/io.rs:114-122`) routes
+(`testing/simulator/runner/io.rs:120-128`) routes
 `current_time_wall_clock` through the simulated clock but returns
 `MonotonicInstant::now()` — the *real* monotonic clock — from
-`current_time_monotonic`. And `SimulatorClock::new` seeds its
+`current_time_monotonic`; the in-memory backend's `impl Clock for
+MemorySimIO` (`runner/memory/io.rs:373-381`) makes the same split. And `SimulatorClock::new` seeds its
 starting instant from the real `Utc::now()` (`clock.rs:18`), so
 absolute timestamps differ between runs of the same seed; only the
 *deltas* are deterministic. Anything in the SUT that branches on an
@@ -187,7 +190,7 @@ The second is latency. Every op consults
    106                  let sum = now + std::time::Duration::from_millis(rng.random_range(5..20));
    107                  sum.into()
    108              })
-   109          }
+   109      }
 ```
 
 Line 103 is the load-bearing one: `latency_probability` is declared
@@ -212,9 +215,8 @@ The delay path is duplicated per operation rather than factored:
 pread at `file.rs:149-158`, pwrite at `175-184`, sync at `200-215`,
 pwritev at `233-244`, truncate at `257-266`.
 
-Now the correction. **Sync faults do not fire at this revision.** A
-previous version of this chapter said turso can "fail a `sync`
-(fsync)". It cannot:
+**Sync faults do not fire.** The fault-enable set suggests turso can
+fail a `sync` (fsync) with an injected error. It cannot:
 
 ```rust
 // testing/simulator/runner/file.rs — sync(), 192-199
@@ -235,15 +237,36 @@ zero for it, with the comment `// No fault counter for sync`
 (`file.rs:87-91`). The profile still defaults `sync: true` in its
 fault-enable set (`profiles/io.rs:70-78`), which is exactly why this
 is worth knowing: the configuration says the fault is on and the
-code says it is off.
+code says it is off. The in-memory backend makes the same choice in
+one line — `let fault = self.fault.get() && !matches!(op,
+OperationType::Sync { .. });` (`runner/memory/file.rs:169-170`,
+under a `FIXME` saying fsync faults wait until the expected behaviour
+is defined).
+
+What the simulator does to `sync` instead is take the power away.
+With `--io-backend memory` (the default is the real-file backend,
+`runner/cli.rs:181-186`), every file keeps two copies of its 4 KiB
+blocks: the `buffer` that reads and writes see, and a `durable` copy
+that only a *completed* sync advances (`FileState`,
+`runner/memory/io.rs:40-92`). `power_loss` (`:94-98`) copies
+`durable` back over `buffer` and forgets the dirty set, so every
+write since the last completed sync is gone; `MemorySimIO::power_loss`
+(`:307-350`) first aborts every queued operation, then applies that
+to every open file. The plan generator adds `Fault::PowerLoss` to its
+fault menu only when `can_simulate_power_loss()` holds — non-MVCC,
+memory backend, a `Default` simulation (`runner/env.rs:1406-1410`;
+`generation/plan.rs:349-355`) — and the `FsyncNoWait` property runs a
+query until an fsync is pending, cuts the power, reopens, retries and
+compares against the shadow model (`model/property.rs:187-197`).
 
 Why it matters: the fault your harness *reports* injecting and the
 fault it *actually* injects are two different facts, and topic 16's
 own baseline is the argument for checking. `NoSyncOnCommit` is the
 easiest planted bug in `crash_matrix` to catch — 99.6% of seeds
 find it — precisely because sync behaviour is where crash-recovery
-bugs live. A harness that silently declines to perturb `sync` is
-declining to look in the richest place.
+bugs live. turso perturbs `sync` in exactly one way — by losing what
+it had not yet made durable, and only on the memory backend — and
+never by making `sync` itself report an error.
 
 ### Step 4 — the generator: interaction plans with properties woven in
 
@@ -259,32 +282,32 @@ is a **metamorphic oracle**: an oracle that doesn't know the right
 answer, only a relationship two results must satisfy (topic README
 §2).
 
-The `Property` enum (`testing/simulator/model/property.rs:11-212`)
+The `Property` enum (`testing/simulator/model/property.rs:11-228`)
 has sixteen variants. The ones worth naming, with the line each is
 declared on:
 
 | variant | line | what it asserts |
 |---|---|---|
-| `InsertValuesSelect` | 27 | inserted rows come back |
-| `ReadYourUpdatesBack` | 49 | UPDATE success *and* failure |
-| `TableHasExpectedContent` | 61 | model vs engine, one table |
-| `DoubleCreateFailure` | 87 | the error path is pinned |
-| `SelectLimit` | 100 | LIMIT n returns ≤ n |
-| `DeleteSelect` | 120 | deleted rows are gone |
-| `DropSelect` | 137 | dropped table is gone |
-| `SelectSelectOptimizer` | 149 | NoREC — see below |
-| `WhereTrueFalseNull` | 157 | TLP — see below |
-| `UnionAllPreservesCardinality` | 167 | counts add up |
-| `FsyncNoWait` | 179 | behaviour under fault |
-| `FaultyQuery` | 182 | behaviour under fault |
-| `SavepointRollback` | 189 | nested rollback |
-| `SequenceMonotonicity` | 203 | sequences never go back |
+| `InsertValuesSelect` | 29 | inserted rows come back |
+| `ReadYourUpdatesBack` | 53 | UPDATE success *and* failure |
+| `TableHasExpectedContent` | 67 | model vs engine, one table |
+| `DoubleCreateFailure` | 97 | creating a table twice must error |
+| `SelectLimit` | 112 | LIMIT n returns ≤ n |
+| `DeleteSelect` | 134 | deleted rows are gone |
+| `DropSelect` | 153 | dropped table is gone |
+| `SelectSelectOptimizer` | 165 | NoREC — see below |
+| `WhereTrueFalseNull` | 173 | TLP — see below |
+| `UnionAllPreservesCardinality` | 183 | counts add up |
+| `FsyncNoWait` | 195 | recovery after power loss at a pending fsync |
+| `FaultyQuery` | 198 | behaviour under fault |
+| `SavepointRollback` | 205 | nested rollback |
+| `SequenceMonotonicity` | 219 | sequences never go back |
 
-Two of those need correcting, and the corrections come from the
-doc comments the code itself carries.
+Two of those names mislead, and the doc comments the code itself
+carries say so.
 
 `SelectSelectOptimizer` is **NoREC, not TLP.** Its doc
-(`model/property.rs:142-148`) names the paper: "As highlighted by
+(`model/property.rs:158-164`) names the paper: "As highlighted by
 Rigger et al. in Non-Optimizing Reference Engine
 Construction(NoREC), SQLite tends to optimize `where` statements
 while keeping the result column expressions unoptimized." It runs
@@ -295,11 +318,11 @@ the NoREC oracle exactly (see
 [reading-pqs-tlp-papers.md](reading-pqs-tlp-papers.md) Step 6).
 
 `WhereTrueFalseNull` is the TLP one, and its doc says so
-(`model/property.rs:153-160`): "canonically called Ternary Logic
+(`model/property.rs:169-176`): "canonically called Ternary Logic
 Partitioning (TLP)".
 
 `ReadYourUpdatesBack` is **not** a session guarantee. Its doc
-(`model/property.rs:39-53`) spells out both arms: on UPDATE success
+(`model/property.rs:41-53`) spells out both arms: on UPDATE success
 the after-rows carry the new values; on UPDATE failure
 `select_before == select_after`. The second arm is a rollback
 check — an atomicity property, not a read-your-writes one.
@@ -321,34 +344,34 @@ OOPSLA 2020, Table 1, WHERE row). turso builds the three partitions
 faithfully:
 
 ```rust
-// testing/simulator/generation/property.rs — the three partitions, 1073-1083
-  1073                  let old_predicate = select.body.select.where_clause.clone();
-  1074
-  1075                  let p_true = Predicate::and(vec![old_predicate.clone(), predicate.clone()]);
-  1076                  let p_false = Predicate::and(vec![
-  1077                      old_predicate.clone(),
-  1078                      Predicate::not(predicate.clone()),
-  1079                  ]);
-  1080                  let p_null = Predicate::and(vec![
-  1081                      old_predicate,
-  1082                      Predicate::is(predicate.clone(), Predicate::null()),
-  1083                  ]);
+// testing/simulator/generation/property.rs — the three partitions, 1076-1086
+  1076                  let old_predicate = select.body.select.where_clause.clone();
+  1077
+  1078                  let p_true = Predicate::and(vec![old_predicate.clone(), predicate.clone()]);
+  1079                  let p_false = Predicate::and(vec![
+  1080                      old_predicate.clone(),
+  1081                      Predicate::not(predicate.clone()),
+  1082                  ]);
+  1083                  let p_null = Predicate::and(vec![
+  1084                      old_predicate,
+  1085                      Predicate::is(predicate.clone(), Predicate::null()),
+  1086                  ]);
 ```
 
-— and stitches them with `UNION ALL` (`generation/property.rs:1094-1115`).
+— and stitches them with `UNION ALL` (`generation/property.rs:1097-1118`).
 But the check that follows is not `⊎`:
 
 ```rust
-// testing/simulator/generation/property.rs — the assertion, 1138 and 1146-1147, 1162-1163
-  1138                                  if select_rows.len() != select_tlp_rows.len() {
-// ... 1139-1144: report a row-count mismatch ...
-  1145                                  // Check if any row in select_rows is not in select_tlp_rows
-  1146                                  for row in select_rows.iter() {
-  1147                                      if !select_tlp_rows.iter().any(|r| r == row) {
-// ... 1148-1160: report "in select but not in select_tlp" ...
-  1161                                  // Check if any row in select_tlp_rows is not in select_rows
-  1162                                  for row in select_tlp_rows.iter() {
-  1163                                      if !select_rows.iter().any(|r| r == row) {
+// testing/simulator/generation/property.rs — the assertion, 1141 and 1149-1150, 1165-1166
+  1141                                  if select_rows.len() != select_tlp_rows.len() {
+// ... 1142-1147: report a row-count mismatch ...
+  1148                                  // Check if any row in select_rows is not in select_tlp_rows
+  1149                                  for row in select_rows.iter() {
+  1150                                      if !select_tlp_rows.iter().any(|r| r == row) {
+// ... 1151-1163: report "in select but not in select_tlp" ...
+  1164                                  // Check if any row in select_tlp_rows is not in select_rows
+  1165                                  for row in select_tlp_rows.iter() {
+  1166                                      if !select_rows.iter().any(|r| r == row) {
 ```
 
 That is **equal cardinality plus mutual set containment** — which is
@@ -358,9 +381,9 @@ strictly weaker than multiset equality. Work an example:
  whole  = {a, a, b}        len 3, set {a, b}
  parts  = {a, b, b}        len 3, set {a, b}
 
- line 1138  3 == 3                            → pass
- line 1146  every row of whole appears in parts → pass
- line 1162  every row of parts appears in whole → pass
+ line 1141  3 == 3                            → pass
+ line 1149  every row of whole appears in parts → pass
+ line 1165  every row of parts appears in whole → pass
  verdict:   PASS — but a is duplicated on one side and b on the other.
 
  multiset equality would require count(a) = 2 on both sides. It does not.
@@ -388,15 +411,15 @@ This oracle needs NO model of correct behaviour — only the promise
 from Step 1. But it is not "run the plan twice and diff stdout". The
 mechanism (`testing/simulator/runner/doublecheck.rs`) is:
 
-- Two environments, both turso. `main.rs:484-491` builds the second
+- Two environments, both turso. `main.rs:483-490` builds the second
   with `env.clone_as(SimulationType::Default)` — this is *not* a
   differential test against SQLite.
 - They are advanced **in lockstep, interaction by interaction, in
-  one process** (`doublecheck.rs:104-176`), not run to completion
+  one process** (`doublecheck.rs:105-176`), not run to completion
   and diffed at the end.
 - Each interaction's result values are compared as they are produced
-  (`compare_results`, `doublecheck.rs:178-201`; the mismatch report
-  is at line 193).
+  (`compare_results`, `doublecheck.rs:179-202`; the mismatch report
+  is at line 194).
 - At the end, the two on-disk database **files** are compared
   byte-for-byte (`doublecheck.rs:56-73`).
 
@@ -420,9 +443,9 @@ that checks the assumption the others rest on.
 > **Out:** a smaller plan that produces *the same error string*.
 
 A failing seed typically produces a plan where most interactions are
-irrelevant. **Shrinking** minimises it. The previous version of this
-chapter called turso's shrinker delta debugging; it is not, and the
-code says so in its own comment.
+irrelevant. **Shrinking** minimises it. It is tempting to call
+turso's shrinker delta debugging; it is not, and the code says so in
+its own comment.
 
 Phase 1, `shrink_interaction_plan` (`shrink/plan.rs:24-100`), is
 purely static: truncate everything after the failing interaction,
@@ -470,8 +493,8 @@ single greedy pass tells you when to shrink again by hand.
 > **Out:** a directory under `.bugbase` holding the plan, the shrunk
 > plan, and the run history.
 
-The previous version of this chapter said "the regression suite is
-literally a list of u64s". It isn't. `runner/bugbase.rs` locates a
+It is natural to picture the regression suite as a list of u64s. It
+isn't. `runner/bugbase.rs` locates a
 `.bugbase` directory — searching the limbo project dir, then the
 home dir, then the cwd (`bugbase.rs:132-158`) — and writes **one
 directory per seed** containing `seed.txt`, `plan.sql`,
@@ -499,17 +522,17 @@ of the program.
 Two things live outside `testing/simulator/` and change what the
 tree can find.
 
-`fuzz/fuzz_targets/expression.rs` (299 lines) is a **differential**
-target, not a "doesn't crash" one. `do_fuzz` (lines 248-297)
-evaluates the generated expression in in-memory SQLite (257-264) and
-in turso (266-287) and `assert_eq!`s the two (289-294); expressions
-deeper than 100 are rejected from the corpus (252-255). The
-`fuzz_target!` macro invocation is the last line of the file, 299.
+`fuzz/fuzz_targets/expression.rs` (306 lines) is a **differential**
+target, not a "doesn't crash" one. `do_fuzz` (lines 249-304)
+evaluates the generated expression in in-memory SQLite (258-265) and
+in turso (267-294) and `assert_eq!`s the two (296-301); expressions
+deeper than 100 are rejected from the corpus (253-256). The
+`fuzz_target!` macro invocation is the last line of the file, 306.
 Sibling targets: `cast_real.rs`, `scalar_func.rs`, `schema.rs`.
 
 The corresponding restriction inside the simulator is worth knowing:
 `Differential` mode disables fault injection outright
-(`runner/env.rs:1341-1359` sets `profile.io.enable = false` with the
+(`runner/env.rs:1508-1526` sets `profile.io.enable = false` with the
 comment that faults can't be controlled on rusqlite), and also turns
 off LIMIT and CREATE SEQUENCE generation. So in this tree, *faults
 and a second implementation are mutually exclusive*.
@@ -550,6 +573,7 @@ The tree, top to bottom:
      clock.rs       SimulatorClock — time is an RNG stream        (step 2)
      io.rs          SimulatorIO — fault injection switchboard     (step 3)
      file.rs        SimulatorFile — per-op faults + seeded latency (step 3)
+     memory/        MemorySimIO — durable blocks, power loss      (step 3)
      env.rs         SimulatorEnv — profiles, Differential mode    (step 9)
      doublecheck.rs two envs stepped in lockstep, then file diff  (step 6)
      bugbase.rs     .bugbase — a directory per failing seed       (step 8)
@@ -569,32 +593,39 @@ The tree, top to bottom:
 | `profiles/io.rs:70-78` | 3 | fault-enable defaults: read/write/sync all `true` |
 | `runner/io.rs:14` | 3 | `pub(crate) fault: Cell<bool>` — the injection master switch |
 | `runner/io.rs:64-80` | 3 | `inject_fault` / `inject_fault_selective` (per-file stem) |
-| `runner/io.rs:114-122` | 1 | `impl Clock` — wall clock simulated, **monotonic clock real** |
+| `runner/io.rs:120-128` | 1 | `impl Clock` — wall clock simulated, **monotonic clock real** |
+| `runner/memory/io.rs:373-381` | 1 | the in-memory backend's `impl Clock` — the same split |
 | `runner/file.rs:19-34` | 3 | the six call/fault counters; `nr_sync_faults` at :34 |
 | `runner/file.rs:40` | 3 | `pub latency_probability: u8` — a **percent** |
 | `runner/file.rs:87-91` | 3 | `stats_table` prints a hard-coded `0` for sync faults |
 | `runner/file.rs:99-109` | 3 | `generate_latency_duration` — `/100.0` at :103, `5..20` ms at :106 |
 | `runner/file.rs:149-268` | 3 | the per-op delay blocks (pread 149, pwrite 175, sync 200, pwritev 233, truncate 257) |
-| `runner/file.rs:192-199` | 3 | **sync faults are swallowed and cleared** at this revision |
-| `runner/env.rs:1341-1359` | 9 | `Differential` mode disables fault injection |
-| `model/property.rs:11-212` | 4 | the `Property` enum — 16 variants |
-| `model/property.rs:39-53` | 4 | `ReadYourUpdatesBack` — success *and* rollback arms |
-| `model/property.rs:142-148` | 4 | `SelectSelectOptimizer` — doc cites **NoREC** |
-| `model/property.rs:153-160` | 4 | `WhereTrueFalseNull` — doc cites **TLP** |
-| `generation/property.rs:1073-1083` | 5 | the three TLP partitions built as predicates |
-| `generation/property.rs:1094-1115` | 5 | stitched with `UNION ALL` |
-| `generation/property.rs:1138`, `1146-1177` | 5 | the assertion: size, then set containment both ways |
+| `runner/file.rs:192-199` | 3 | **sync faults are swallowed and cleared** |
+| `runner/memory/file.rs:169-170` | 3 | the in-memory backend excludes `Sync` from fault injection |
+| `runner/memory/io.rs:40-98` | 3 | `FileState` — `buffer` vs `durable` blocks; `power_loss` at :94-98 |
+| `runner/memory/io.rs:307-350` | 3 | `MemorySimIO::power_loss` — abort queued IO, revert every file |
+| `runner/env.rs:1406-1410` | 3 | `can_simulate_power_loss` — non-MVCC, memory backend, `Default` |
+| `generation/plan.rs:349-355` | 3 | `Fault::PowerLoss` joins the fault menu when it can be simulated |
+| `runner/env.rs:1508-1526` | 9 | `Differential` mode disables fault injection |
+| `model/property.rs:11-228` | 4 | the `Property` enum — 16 variants |
+| `model/property.rs:41-53` | 4 | `ReadYourUpdatesBack` — success *and* rollback arms |
+| `model/property.rs:158-164` | 4 | `SelectSelectOptimizer` — doc cites **NoREC** |
+| `model/property.rs:169-176` | 4 | `WhereTrueFalseNull` — doc cites **TLP** |
+| `model/property.rs:187-197` | 3 | `FsyncNoWait` — power loss at a pending fsync, then compare |
+| `generation/property.rs:1076-1086` | 5 | the three TLP partitions built as predicates |
+| `generation/property.rs:1097-1118` | 5 | stitched with `UNION ALL` |
+| `generation/property.rs:1141`, `1149-1180` | 5 | the assertion: size, then set containment both ways |
 | `runner/doublecheck.rs:56-73` | 6 | final byte-for-byte database file comparison |
-| `runner/doublecheck.rs:104-176` | 6 | the lockstep interaction loop |
-| `runner/doublecheck.rs:178-201` | 6 | `compare_results`; mismatch reported at :193 |
-| `main.rs:484-491` | 6 | `env.clone_as(SimulationType::Default)` — both sides are turso |
+| `runner/doublecheck.rs:105-176` | 6 | the lockstep interaction loop |
+| `runner/doublecheck.rs:179-202` | 6 | `compare_results`; mismatch reported at :194 |
+| `main.rs:483-490` | 6 | `env.clone_as(SimulationType::Default)` — both sides are turso |
 | `shrink/plan.rs:24-100` | 7 | phase 1: truncate + drop by table dependency, no re-runs |
 | `shrink/plan.rs:103-173` | 7 | phase 2: one property at a time, reverse order, re-run each |
 | `shrink/plan.rs:175-201` | 7 | `test_shrunk_plan` — "same failure" is `e1 == e2` at :198 |
 | `runner/bugbase.rs:41-54` | 8 | `BugRun` — commit hash, timestamp, error, options, `shrunk` |
 | `runner/bugbase.rs:132-158` | 8 | `.bugbase` directory discovery |
-| `fuzz/fuzz_targets/expression.rs:248-297` | 9 | differential against in-memory SQLite |
-| `fuzz/fuzz_targets/expression.rs:299` | 9 | `fuzz_target!(\|expr: Expr\| -> Corpus {...})` |
+| `fuzz/fuzz_targets/expression.rs:249-304` | 9 | differential against in-memory SQLite |
+| `fuzz/fuzz_targets/expression.rs:306` | 9 | `fuzz_target!(\|expr: Expr\| -> Corpus {...})` |
 | `testing/concurrent-simulator/elle.rs:36-67` | 9 | `to_edn` — elle's list-append history format |
 
 Reading order: follow the anchor map top to bottom — clock, then IO
@@ -629,7 +660,7 @@ Answer each before unfolding it.
   files (`file.rs`).
 
   The two leaks are both visible in the code. `impl Clock for
-  SimulatorIO` (`runner/io.rs:114-122`) returns the real
+  SimulatorIO` (`runner/io.rs:120-128`) returns the real
   `MonotonicInstant::now()` from `current_time_monotonic` — only
   `current_time_wall_clock` is simulated. And `SimulatorClock::new`
   seeds `curr_time` from the real `Utc::now()` (`clock.rs:18`), so
@@ -655,7 +686,7 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can describe fault injection at the file layer, quantify the latency injection, and say which fault does *not* fire at `dd775bc`.
+- [ ] You can describe fault injection at the file layer, quantify the latency injection, say which fault does *not* fire, and say how `sync` is exercised instead.
 
   <details><summary>Answer</summary>
 
@@ -677,7 +708,17 @@ Answer each before unfolding it.
   current simulator design", and clears it. `nr_sync_faults`
   (`file.rs:34`) is never incremented and `stats_table` hard-codes a
   zero (`file.rs:87-91`) — even though `profiles/io.rs:70-78` defaults
-  `sync: true`.
+  `sync: true`. The in-memory backend excludes `Sync` from injection
+  too (`memory/file.rs:169-170`).
+
+  `sync` is exercised by **power loss** instead, on the in-memory
+  backend only: each file keeps a `durable` block copy that only a
+  completed sync advances (`memory/io.rs:40-92`), and `power_loss`
+  reverts the visible blocks to it (`:94-98`), discarding every write
+  since the last completed sync. `Fault::PowerLoss` and the
+  `FsyncNoWait` property are generated only when
+  `can_simulate_power_loss()` holds (`env.rs:1406-1410`: non-MVCC,
+  `--io-backend memory`, a `Default` simulation).
 
   </details>
 
@@ -686,11 +727,11 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   It runs two `SimulatorEnv`s — both turso, built by
-  `env.clone_as(SimulationType::Default)` at `main.rs:484-491` — in
+  `env.clone_as(SimulationType::Default)` at `main.rs:483-490` — in
   **lockstep, interaction by interaction, inside one process**
-  (`doublecheck.rs:104-176`). Result values are compared as each
-  interaction completes (`compare_results`, `:178-201`, mismatch at
-  `:193`), and at the end the two database *files* are compared
+  (`doublecheck.rs:105-176`). Result values are compared as each
+  interaction completes (`compare_results`, `:179-202`, mismatch at
+  `:194`), and at the end the two database *files* are compared
   byte-for-byte (`:56-73`).
 
   It needs no model of correctness — only the determinism promise from
@@ -707,9 +748,9 @@ Answer each before unfolding it.
 
   The paper's identity uses `⊎`, multiset addition (Rigger & Su,
   OOPSLA 2020, Table 1, WHERE row). turso builds the partitions
-  correctly (`generation/property.rs:1073-1083`, `UNION ALL` at
-  `1094-1115`) but then checks **equal length** (`:1138`) plus **set
-  containment in both directions** (`:1146-1177`).
+  correctly (`generation/property.rs:1076-1086`, `UNION ALL` at
+  `1097-1118`) but then checks **equal length** (`:1141`) plus **set
+  containment in both directions** (`:1149-1180`).
 
   `{a, a, b}` versus `{a, b, b}`: both have length 3, both have set
   `{a, b}`, every element of each appears in the other. It passes. A
@@ -780,7 +821,7 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [turso](https://github.com/tursodatabase/turso) @ `dd775bc` —
+- [turso](https://github.com/tursodatabase/turso) @ `a820079e8` (`v0.9.0-pre.1`) —
   `testing/simulator/` (clock/io/file fault injection, interaction
   plans, properties, doublecheck, shrink), `fuzz/fuzz_targets/` for
   differential fuzzing against rusqlite, and
@@ -790,15 +831,18 @@ Answer each before unfolding it.
 |---|---|---|
 | `testing/simulator/runner/clock.rs` | 8-13, 18, 25-34 | the entire simulated clock (35 lines) |
 | `testing/simulator/profiles/io.rs` | 45-53, 70-78 | tick range, latency probability, fault-enable defaults |
-| `testing/simulator/runner/io.rs` | 14, 64-80, 114-122 | fault switch, injection, the partial `Clock` impl |
+| `testing/simulator/runner/io.rs` | 14, 64-80, 120-128 | fault switch, injection, the partial `Clock` impl |
+| `testing/simulator/runner/memory/io.rs` | 40-98, 307-350, 373-381 | durable blocks, power loss, the same partial `Clock` |
+| `testing/simulator/runner/memory/file.rs` | 169-170 | `Sync` excluded from fault injection |
 | `testing/simulator/runner/file.rs` | 19-34, 40, 87-91, 99-109, 149-268, 192-199 | counters, latency, per-op delay, the disabled sync fault |
-| `testing/simulator/model/property.rs` | 11-212 | the 16-variant `Property` enum with its doc comments |
-| `testing/simulator/generation/property.rs` | 1073-1083, 1094-1115, 1138-1177 | TLP partition construction and its weaker-than-`⊎` assertion |
-| `testing/simulator/runner/doublecheck.rs` | 56-73, 104-176, 178-201 | file diff, lockstep loop, per-interaction compare |
+| `testing/simulator/model/property.rs` | 11-228 | the 16-variant `Property` enum with its doc comments |
+| `testing/simulator/generation/property.rs` | 1076-1086, 1097-1118, 1141-1180 | TLP partition construction and its weaker-than-`⊎` assertion |
+| `testing/simulator/generation/plan.rs` | 349-355 | the fault menu, `PowerLoss` included when possible |
+| `testing/simulator/runner/doublecheck.rs` | 56-73, 105-176, 179-202 | file diff, lockstep loop, per-interaction compare |
 | `testing/simulator/shrink/plan.rs` | 24-100, 103-173, 175-201 | two-phase greedy shrinker |
 | `testing/simulator/runner/bugbase.rs` | 41-54, 132-158 | `BugRun` records and `.bugbase` layout |
-| `testing/simulator/runner/env.rs` | 1341-1359 | `Differential` mode disables faults |
-| `fuzz/fuzz_targets/expression.rs` | 248-297, 299 | differential fuzz target vs in-memory SQLite |
+| `testing/simulator/runner/env.rs` | 1406-1410, 1508-1526 | when power loss can be simulated; `Differential` mode disables faults |
+| `fuzz/fuzz_targets/expression.rs` | 249-304, 306 | differential fuzz target vs in-memory SQLite |
 | `testing/concurrent-simulator/elle.rs` | 1-7, 18-30, 36-67, 72-79 | elle list-append EDN histories |
 
 **Papers**

@@ -1,13 +1,14 @@
 # Topic 16 notes — testing & correctness engineering
 
-## Meta-surprise (recorded before you even start)
+## Why recovery truncates the WAL tail
 
-The provided crash_matrix caught a REAL bug in this crate's own
-"correct" KV during development: recovery didn't truncate the WAL
-tail, so torn leftover records silently joined the NEXT commit's
-batch (Bug::None showed 72.7% divergence). Tail repair fixed it to
-0.0%. The tooling paid for itself before the exercises began —
-that's the whole thesis of the topic.
+`kv.rs` recovery cuts the WAL back to the last complete commit
+(`self.wal.truncate(last_good)`). Without that one line, torn leftover
+records silently join the NEXT commit's batch and replay as committed:
+delete it and crash_matrix reports `Bug::None` diverging on 3634 of
+5000 seeds (72.7%) — on the "correct" KV. The provided harness catches
+the bug in the harness's own reference implementation, which is the
+whole thesis of the topic.
 
 ## Baseline (provided, measured 2026-07-10)
 
@@ -101,8 +102,9 @@ Surprises / dead ends:
 ## Cross-topic threads
 
 - sim_fs's buffered/synced/torn model = topic 5's crash matrix made
-  exhaustive; the WAL-tail-truncation bug it caught is topic 5's
-  "recovery must repair the tail" lesson, relearned the hard way.
+  exhaustive; the WAL-tail truncation in kv.rs recovery is topic 5's
+  "recovery must repair the tail" lesson, and crash_matrix shows what
+  happens without it.
 - The topology of every oracle here = topic 15's sim.rs: seed →
   deterministic world → invariant check. DST is the single-node
   version of what sim.rs does for clusters.

@@ -639,8 +639,9 @@ Answer each before unfolding it.
 
 ## References
 
-- `HypothesisWorks/hypothesis` at the pinned commit (see the pin table
-  at the end of [resources/codebases.md](../../resources/codebases.md)).
+- `HypothesisWorks/hypothesis` at `49a797bdf`, the commit recorded in
+  the pin table at the end of
+  [resources/codebases.md](../../resources/codebases.md).
   Files read here, under `hypothesis/src/hypothesis/`:
   `internal/conjecture/choice.py`, `shrinker.py`, `junkdrawer.py`,
   `datatree.py`, `_settings.py`, `strategies/_internal/featureflags.py`,

@@ -16,8 +16,8 @@ vendor-independent latency table you are reading *is your machine's*.
 Second, that means you can use it to predict `notes.md`'s numbers
 instead of admiring them, which Step 2 does.
 
-Every anchor below is SimSIMD at the pinned revision
-`ashvardanian/SimSIMD@63a254f` (`resources/codebases.md`), quoted with
+Every anchor below is SimSIMD at
+`ashvardanian/SimSIMD@63a254f` (the commit recorded in `resources/codebases.md`), quoted with
 the line numbers the code occupies in that revision. The headers live
 under `include/numkong/` — the project renamed its internal namespace
 to `numkong`/`nk_`, so `SimSIMD` the repo ships `numkong` the C
@@ -725,7 +725,7 @@ for its own dispatched unit:
 
 | binding time | who | mechanism | cost per use | dispatched unit |
 |---|---|---|---|---|
-| compile | hashbrown, memchr | `cfg_if!` picks a backend module (`group/mod.rs:8-45`) | zero | a handful of instructions |
+| compile | hashbrown, memchr | `cfg_select!` picks a backend module (`control/group/mod.rs:8-48`) | zero | a handful of instructions |
 | init | SimSIMD | `__attribute__((constructor))` fills a fn-pointer table (`c/numkong.c:917-919`) | one indirect call | one whole vector distance |
 | call | polars | `is_x86_feature_detected!` per array (`filter/primitive.rs:33`) | one predictable branch | one whole column |
 
@@ -906,7 +906,7 @@ Answer each before unfolding it.
   (`c/numkong.c:832-843`), which memoizes in a `static` at line 834
   and calls `nk_dispatch_table_init()` at 840. Line 833 gives the
   motive: CPUID can cost over 100 cycles. That is **init-time**
-  binding — between hashbrown's compile-time `cfg_if!` (zero cost,
+  binding — between hashbrown's compile-time `cfg_select!` (zero cost,
   but the dispatched unit is a few instructions) and polars'
   per-call `is_x86_feature_detected!` (one branch, but the dispatched
   unit is a whole column). SimSIMD's unit is one distance over
@@ -956,8 +956,8 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [SimSIMD](https://github.com/ashvardanian/SimSIMD) at the pinned
-  revision `63a254f` (`resources/codebases.md`) — headers under
+- [SimSIMD](https://github.com/ashvardanian/SimSIMD) at
+  `63a254f` (the commit recorded in `resources/codebases.md`) — headers under
   `include/numkong/`, one file per ISA per kernel family
   (`dot/neon.h`, `spatial/neon.h`, and their `sve`/`haswell`/`skylake`
   siblings). The port/latency tables at the top of each NEON header

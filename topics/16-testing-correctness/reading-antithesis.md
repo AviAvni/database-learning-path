@@ -534,9 +534,9 @@ Answer each before unfolding it.
 
 ## References
 
-- The `antithesis-sdk-rust` SDK (`antithesishq/antithesis-sdk-rust`) at the
-  pinned commit (see the pin table at the end of
-  [resources/codebases.md](../../resources/codebases.md)). Files read
+- The `antithesis-sdk-rust` SDK (`antithesishq/antithesis-sdk-rust`) at
+  `78c9db5`, the commit recorded in the pin table at the end of
+  [resources/codebases.md](../../resources/codebases.md). Files read
   here: `lib/src/lib.rs`, `lib/src/random.rs`, `lib/src/assert/macros.rs`,
   `lib/src/assert/mod.rs`, `lib/src/assert/guidance.rs`,
   `lib/src/lifecycle.rs`, `lib/src/internal/mod.rs`,

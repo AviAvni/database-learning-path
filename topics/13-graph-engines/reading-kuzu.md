@@ -15,19 +15,20 @@ paper claim is from Feng, Jin, Chen, Liu & Salihoğlu, *KÙZU Graph
 Database Management System*, CIDR 2023, cited by section. Mind the
 gap: the paper is from January 2023 and the pin is much later, so
 where the two disagree the code wins and the chapter says so. Two
-numbers the previous version of this chapter asserted — the node
-group size, and the shape of the CSR — did not survive the check.
+numbers in particular — the node group size and the shape of the CSR
+— are read from the code, not from the paper or from summaries of it.
 
-> **Upstream since the pin.** The `kuzudb/kuzu` repository is archived:
-> GitHub reports it read-only, its last push was 2025-10-10, and its README now
-> opens "We are archiving the KuzuDB project here". The pin `89f0263` ("remove
-> logo (#6054)", 2025-10-10) is its final commit, so every anchor below stays
-> valid for good. Development continues in the community project
-> [LadybugDB/ladybug](https://github.com/LadybugDB/ladybug), whose README says
-> "The database was formerly known as Kuzu". It is not a GitHub fork: its
-> history replays Kuzu's commits (rewritten SHAs) up to "Optimize checkpointing
-> updates (#6016)" of 2025-10-01, then renames `kuzu` → `ladybug`, so it does
-> not contain `89f0263` and the line numbers here do not carry over to it.
+The `kuzudb/kuzu` repository is archived (read-only; its README opens
+"We are archiving the KuzuDB project here"), and `89f0263` ("remove
+logo (#6054)", 2025-10-10) is its final commit — the one read here,
+so every anchor below stays valid for good. Development continues in
+the community project
+[LadybugDB/ladybug](https://github.com/LadybugDB/ladybug), whose README
+says "The database was formerly known as Kuzu". It is not a GitHub
+fork: its history replays Kuzu's commits (rewritten SHAs) up to
+"Optimize checkpointing updates (#6016)" of 2025-10-01, then renames
+`kuzu` → `ladybug`, so it does not contain `89f0263` and the line
+numbers here do not carry over to it.
 
 ## The problem in one sentence
 
@@ -120,8 +121,7 @@ Storing both means the rows for node i do **not** run right up to the
 rows for node i+1. There is slack between them, and the slack is the
 whole update story.
 
-**Correction.** The previous version of this chapter described plain
-CSR. What kuzu builds is a **packed CSR** — a
+What kuzu builds is not plain CSR but a **packed CSR** — a
 packed-memory-array-style layout with deliberate gaps, governed by a
 calibrator tree and density thresholds:
 
@@ -180,8 +180,8 @@ Now do the arithmetic, because it is all determined:
  highDensityStep           = (1.0 − 0.8) / 7 = 0.02857…
 ```
 
-**Correction.** The previous version said a node group is "say, 64K
-nodes". It is 2^17 = **131 072** at the default build, twice that.
+A node group is 2^17 = **131 072** nodes at the default build — twice
+the "64K" it is sometimes assumed to be.
 
 The densities say what the slack is for: a leaf region is kept at
 0.8 occupancy, and the allowed density ramps from 0.8 up to 1.0 over

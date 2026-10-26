@@ -634,7 +634,7 @@ Answer each before unfolding it.
   both papers as running code; walked in
   [reading-sqlancer.md](reading-sqlancer.md)
 - turso's independent TLP implementation —
-  `simulator/generation/property.rs:1073-1177`, walked in
+  `simulator/generation/property.rs:1076-1180`, walked in
   [reading-turso-simulator.md](reading-turso-simulator.md) Step 5
 
 | Paper section | What to take from it |

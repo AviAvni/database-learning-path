@@ -12,8 +12,8 @@ interpret-vs-compile choice unnecessary, and how far the stencil
 trick pushes the floor — then routes you through both papers.
 
 **Sources.** Every number below is quoted with the table or figure
-it came from, because the previous version of this guide carried
-three that turned out to be wrong (Steps 4, 5 and 7 flag each).
+it came from, because three of the figures most often repeated about
+Umbra are not in its papers (Steps 4, 5 and 7 flag each).
 The two papers:
 
 - Kersten, Leis, Neumann, *"Tidy Tuples and Flying Start: Fast
@@ -198,9 +198,9 @@ the whole design:
 > in one pass, with the four optimizations that make it fast enough
 > to be worth using unoptimized.
 
-**Correction — the IR is variable-length, not fixed-size.** The
-previous version of this guide said Umbra IR ops are "fixed-size in
-one contiguous array." §3.2 says the opposite: "The first ingredient
+**The IR is variable-length, not fixed-size.** It is tempting to
+picture Umbra IR ops as "fixed-size in one contiguous array." §3.2
+says the opposite: "The first ingredient
 to Umbra IR's compact program representation is a **variable length
 instruction format**. All instructions begin with an opcode which
 identifies the instruction — and determines its length — followed
@@ -280,9 +280,8 @@ translates an operand on demand and can pass a *placement hint*
 are freed in `~Reg()`. The emitter itself is the `asmJIT` library,
 assembling x86 directly into a buffer.
 
-**Correction — Flying Start does not use linear scan.** The
-previous version of this guide said "a linear-scan register
-allocator," and question 2 was built on that premise. §4.4 uses a
+**Flying Start does not use linear scan.** A one-pass backend is
+usually assumed to use a linear-scan register allocator; §4.4 uses a
 **best-effort heuristic** instead: of the 16 x86 registers, 4 are
 scratch and 1 is the stack pointer, leaving **11** to hold values
 across instruction translations; a value is prioritized if it lives
@@ -367,7 +366,7 @@ Umbra decides with *measured elapsed time*, after the fact, off the
 critical path. Short queries never pay LLVM; long queries pay it
 while already running.
 
-What the tiers cost, measured — and here is the third correction:
+What the tiers cost, measured — the third figure worth checking:
 
 ```
  Table 3 — TPC-H SF=1, 20 threads, geometric mean over all queries,
@@ -377,12 +376,11 @@ What the tiers cost, measured — and here is the third correction:
    HyPer: Interpreter  vs LLVM O3    91× faster compile, 4.1× slower exec
    HyPer: LLVM O0      vs LLVM O3     6× faster compile, 1.3× slower exec
 
- CORRECTION: the previous version of this guide said Flying Start
- runs at "~70-80% of LLVM -O3's execution speed." Table 3 says
+ NOT "~70-80% of LLVM -O3's execution speed": Table 3 says
  1.2× slower, and  1 / 1.2 = 0.833  →  83%. Quote the paper's
  own form ("1.2× slower") rather than a derived percentage.
 
- CORRECTION: "compile in ~100 µs" was also not a paper number.
+ NOT "compile in ~100 µs" either — that is not a paper number.
  The closest measured figure is Table 2's x86 column: 0.21 ms
  geometric mean at SF=0.01 — i.e. ~210 µs, and that is machine-code
  generation only, on the smallest data set in the paper.
@@ -450,7 +448,7 @@ fn compile(ops: &[IrOp], stencils: &Stencils, out: &mut Code) {
 }
 ```
 
-**Correction of emphasis.** The trick making stencils composable is
+**Where the emphasis belongs.** The trick making stencils composable is
 continuation-passing style *plus a calling convention*, not
 `musttail` by itself. §3: control passes directly to the next
 operation instead of returning to the parent; those calls are tail
@@ -588,8 +586,8 @@ actually run.
   the five layers) against Step 3 and §2.3 for how one operator
   becomes instructions. Then §3.1–3.4 against Step 4's checklist,
   and read §3.2 carefully enough to notice "variable length
-  instruction format" — that sentence is why this guide has a
-  correction in it. §4.1 is Step 5's adaptive execution; §4.2's
+  instruction format" — that sentence is why Step 4 insists the
+  IR is not fixed-size. §4.1 is Step 5's adaptive execution; §4.2's
   Algorithm 1 and §4.7's Fig. 9/10 are the emitter, and Fig. 10
   lines 4-5 are the register heuristic that is *not* linear scan.
   In the evaluation, read Table 2 (§5.3) for where the milliseconds

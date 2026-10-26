@@ -46,7 +46,8 @@ The DB kernel (SIGMOD '15's centerpiece). Three shapes:
  branchy:     if v[i] < t { out[k++] = v[i] }        ← mispredicts at 50% sel
  branchless:  out[k] = v[i]; k += (v[i] < t) as usize ← always-store, no branch
  compress:    mask = v .< t
-   AVX-512:   vpcompressd (polars filter/avx512.rs:59 — hardware)
+   AVX-512:   vpcompressb (`_mm512_maskz_compress_epi8`,
+              polars filter/avx512.rs:59 — hardware)
    NEON:      no compress! 4-bit mask → LUT of shuffle masks →
               vqtbl1q (simdjson arm64/simd.h:283-299,
               `compress_halves`, does exactly this for 8-byte
@@ -64,7 +65,7 @@ the idiom is `vshrn` (shift-right-narrow) folding 16 lanes into a
 64-bit "4 bits per lane" mask (hashbrown group/neon.rs, memchr's
 Vector::movemask). SwissTable = SIMD probing: **8** control bytes per
 group on this host — `src/control/group/mod.rs:24-33` picks the NEON
-backend on aarch64 and `neon.rs:16` is `Group(uint8x8_t)`; the familiar
+backend on aarch64 and `neon.rs:15` is `Group(uint8x8_t)`; the familiar
 16 is the SSE2 group. One `vceq`+narrow gives candidate slots in 2
 instructions — topic 2's hash table, now explained at lane level.
 

@@ -68,8 +68,9 @@ results were produced: "The physical database design is tuned only lightly, for 
 specify primary keys, but **do not** change the compression of individual columns, create
 projections, or skipping indexes."
 
-So the benchmark ClickHouse wins is run with the sparse index and the default LZ4, and with
-options 2 and 3 switched off. That is the brute-force claim, stated by the authors against
+So the benchmark ClickHouse wins is run with the sparse index and the default codec — LZ4,
+which §3.1 names as the default ("By default, ClickHouse employs LZ4") — and with options 2
+and 3 switched off. That is the brute-force claim, stated by the authors against
 their own interest, and it is the strongest evidence in the paper for the thesis of this
 topic: if scanning is cheap enough, most index machinery is optional.
 
@@ -117,7 +118,7 @@ never a discovery; it is a bug in the measurement.
 "self-contained… include all metadata required to interpret their content without
 additional lookups to a central catalog", and merges continue "until a configurable part
 size is reached (**150 GB** by default)" — the same number as
-`MergeTreeSettings.cpp:475`'s `max_bytes_to_merge_at_max_space_in_pool`.
+`MergeTreeSettings.cpp:541`'s `max_bytes_to_merge_at_max_space_in_pool`.
 
 Two sentences in §3.1 are the ones to underline, because both contradict the LSM mental
 model you brought from topic 4:
@@ -343,7 +344,7 @@ Budget about two hours. Order:
    paragraph is the prose version of the two search algorithms you found in
    `MergeTreeDataSelectExecutor.cpp` — "the range is split into sub-ranges which are
    analyzed recursively" is `merge_tree_coarse_index_granularity` at
-   `src/Core/Settings.cpp:1593`. Also note the monotonicity and preimage tricks
+   `src/Core/Settings.cpp:1935`. Also note the monotonicity and preimage tricks
    (`toYear(k) = 2024` rewritten as `k >= 2024-01-01 && k < 2025-01-01`) and the "over 30"
    hash table variants.
 7. **§6.2** — Step 7. Read the setup paragraphs before the graphs; the tuning disclosure is
@@ -394,7 +395,8 @@ interpretable:
    analytics? Then account for §3.6's second optimization: when a replica *recomputes* a
    merge instead of fetching it, what property of merges is being relied on, and what would
    break it?
-4. **M12 decision.** User-declared codecs (ClickHouse) versus analyze-and-score (DuckDB)
+4. **M12 decision.** User-declared codecs (ClickHouse, whose per-block adaptive selection is
+   an experimental opt-in) versus analyze-and-score (DuckDB)
    versus sampling (BtrBlocks): which would you ship for a **graph** database where property
    columns arrive via `MERGE` statements with unknown distributions? Commit to one and note
    why. Consider that §3.1's `LowCardinality(T)` is itself a *declared* dictionary encoding
@@ -456,7 +458,7 @@ an index over rows (§3.5).
 keys, but do not change the compression of individual columns, create projections, or
 skipping indexes." So of §3.2's three pruning techniques, only the first — the sparse
 primary key index — is in play; **projections and skipping indices are off**, and the
-default LZ4 codec is used everywhere.
+default codec — LZ4, per §3.1 — is used everywhere.
 
 It strengthens the result because the claim being tested is precisely that scanning is
 cheap enough to make the rest optional. Winning with the optional machinery disabled is
@@ -546,9 +548,13 @@ records *state transitions* ("parts Y+Z merged into W"), not the data itself.
 **Code**
 
 - [ClickHouse](https://github.com/ClickHouse/ClickHouse) — the code side is covered by
-  [reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md), pinned at
-  `ClickHouse/ClickHouse@4d598fb2c`. The paper's §3.1 numbers (10 MB Compact threshold,
-  1 MB block, 150 GB max merged part) all appear there as settings defaults.
+  [reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md), read at
+  `ClickHouse/ClickHouse@c6428eb` (`v26.10.2.103-stable`). The paper's §3.1 numbers (10 MB
+  Compact threshold, 1 MB block, 150 GB max merged part) all appear there as settings
+  defaults. Its §3.1 default codec, LZ4, is there as the codec for parts below 100 MiB; the
+  code's built-in default switches parts at or above that size to `ZSTD(3)`
+  (`src/Storages/CompressionCodecSelector.h:40-60`), so the same load on that code ends up in
+  `ZSTD(3)` wherever merges grow parts past 100 MiB — the paper's run is the LZ4 one.
 - [ClickBench](https://github.com/ClickHouse/ClickBench) — the 43 queries and the public
   results dashboard for over 45 systems.
 

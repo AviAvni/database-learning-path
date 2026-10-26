@@ -121,6 +121,29 @@ Data flows *upward through registers*, control flow is inverted
 is done by generated code with zero interpretation. Guide:
 [reading-neumann-vldb11.md](reading-neumann-vldb11.md).
 
+The same move extends past flat tuples. Graph-shaped queries in a
+relational engine produce many-to-many joins whose flat intermediates
+repeat the same values over and over; a factorized representation
+stores them once as nested "value × {children}" trees, but that tree
+is pointer-heavy and CPU-unfriendly. Lehner and Neumann (*The Data
+World Is Not Flat: Efficient Factorized Execution for Relational
+Systems*, PVLDB 19(11), VLDB 2026,
+[pdf](https://www.vldb.org/pvldb/vol19/p3006-lehner.pdf) ·
+[code](https://github.com/lehners/FactDB)) build a push-based,
+code-generating engine that emits specialized data structures for
+each query's factorization tree, runs it with intra-query
+parallelism, and adds "bottom-inserts" so a factorized join is
+symmetric and the join order can still be chosen freely (§1,
+§4–§5) — the generated code, not an interpreter, absorbs the cost of
+the nested structure. The result is honest about where it pays: on
+the CE benchmark's acyclic queries the factorized engine has a 15%
+geometric-mean slowdown against the same engine run flat, but for
+queries whose flat run takes over 100 ms it is 52% faster, and it
+remains 58% slower in geometric mean than Umbra overall while beating
+it on long-running queries (§6.2). It pairs with topic 11's FFX
+paper, which attacks the same problem inside a vectorized engine
+instead.
+
 ## 4. Umbra's Tidy Tuples & copy-and-patch — attacking compile LATENCY
 
 HyPer used LLVM and ate 10-100 ms compiles. Umbra's answer
@@ -156,9 +179,9 @@ SuiteSparse takes a third road: the JIT unit is not a query but a
 *kernel specialization* (semiring × types × sparsity formats).
 `Source/jitifyer/GB_jitifyer.c` — encode the problem to a hash
 (GB_encodify_mxm.c:58-61), look up an in-memory hash table
-(GB_jitifyer.c:2122), fall back to an on-disk cache of compiled
+(GB_jitifyer.c:2114), fall back to an on-disk cache of compiled
 `.so` files, fall back to invoking THE C COMPILER at runtime and
-`dlopen`ing the result (GB_jitifyer.c:1576,1937). Compile once per
+`dlopen`ing the result (GB_jitifyer.c:1573,1931). Compile once per
 type-combo ever, not per query — amortization across the process
 lifetime, not across rows. FalkorDB inherits this whole machinery.
 Guide: [reading-graphblas-jit.md](reading-graphblas-jit.md).
@@ -187,32 +210,6 @@ For what "fast single-pass" is worth against LLVM, the sourced numbers
 are Umbra's own (Table 3: 108× the compile speed of LLVM -O3 for code
 1.2× slower) rather than a folk figure.
 Guide: [reading-cranelift-jit-demo.md](reading-cranelift-jit-demo.md).
-
-## Newer work (2025–2026)
-
-**The Data World Is Not Flat: Efficient Factorized Execution for
-Relational Systems** — Stefan Lehner, Thomas Neumann. PVLDB 19(11),
-VLDB 2026. [pdf](https://www.vldb.org/pvldb/vol19/p3006-lehner.pdf) ·
-[code](https://github.com/lehners/FactDB)
-
-Graph-shaped queries in a relational engine produce many-to-many
-joins whose flat intermediates repeat the same values over and over;
-a factorized representation stores them once as nested "value ×
-{children}" trees, but that tree is pointer-heavy and CPU-unfriendly.
-This paper builds a push-based, code-generating engine that emits
-specialized data structures for each query's factorization tree, runs
-it with intra-query parallelism, and adds "bottom-inserts" so a
-factorized join is symmetric and the join order can still be chosen
-freely (§1, §4–§5). The result is honest about where it pays: on the
-CE benchmark's acyclic queries the factorized engine has a 15%
-geometric-mean slowdown against the same engine run flat, but for
-queries whose flat run takes over 100 ms it is 52% faster, and it
-remains 58% slower in geometric mean than Umbra overall while beating
-it on long-running queries (§6.2). It applies §3's produce/consume
-idea to a non-flat tuple layout — the generated code, not an
-interpreter, absorbs the cost of the nested structure — and it pairs
-with topic 11's FFX paper, which attacks the same problem inside a
-vectorized engine instead.
 
 ## Experiments (`experiments/`)
 
