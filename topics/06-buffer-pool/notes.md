@@ -24,8 +24,39 @@ playing with an advantage. If your pool still wins the tail, that is conclusive;
 if mmap wins the median, that is expected and the interesting question is why
 the tail behaves differently from the median at all.
 
+## Baseline (translation_micro, provided lane, Apple M3 Pro, measured 2026-10-26)
+
+`cargo run --release --bin translation_micro` — 2²⁰ pages × 64 B (64 MiB), a
+50%-full open-addressing table (32 MiB), 5 M accesses per cell, two runs
+(run 1 / run 2), ns per access. The machine was loaded by unrelated builds:
+trust ratios, not absolutes.
+
+| miss% | workload | direct | hash | predictive |
+|---|---|---|---|---|
+| 0 | independent | 4.2 / 4.9 | 14.2 / 10.8 | 10.9 / 8.5 |
+| 0 | chained | 101.5 / 102.9 | 213.4 / 198.2 | 107.5 / 107.5 |
+| 10 | independent | – | 9.8 / 10.2 | 8.8 / 8.6 |
+| 10 | chained | – | 201.1 / 200.9 | 130.6 / 118.5 |
+| 50 | independent | – | 11.2 / 10.3 | 16.4 / 16.1 |
+| 50 | chained | – | 243.2 / 209.5 | 178.4 / 184.2 |
+
+`miss%` = fraction of pages not in their preferred frame (the guess is wrong).
+`direct` is only valid at 0%. The chained lane is a B-tree descent in miniature
+(the next page id is read out of the page just fetched); the independent lane
+lets the CPU overlap iterations anyway.
+
+**Read:** chained at 0% miss, `hash` ≈ 2 × `direct` (two serial misses) and
+`predictive` ≈ `direct` + 6%. The saving erodes with the miss rate and breaks
+even near 66% under a two-point linear model (slow path ≈ 255 ns). Independent
+accesses gain little (the CPU overlaps them already) and lose at 50% miss. The
+first version of this lane showed **no** gain: with the guessed read inside the
+`if f == pred` arm the optimizer can reuse the equality and make the read
+depend on the lookup again; hoisting the read above the branch fixed it. See
+`reading-predictive-translation.md`, Step 8.
+
 ## Predictions (fill BEFORE running)
 
+- translation_micro, chained 0% miss: predictive / hash = ___ (the paper's whole-system figure is 0.83: +20.6% throughput, §6.4)
 - pool_vs_mmap p50: mmap ___ ns vs pool ___ ns (who wins the median and why?)
 - pool_vs_mmap p99.9: mmap ___ vs pool ___ (who wins the tail?)
 - CLOCK hit rate vs strict LRU on Zipf(0.99), 16× universe: gap of ___ %

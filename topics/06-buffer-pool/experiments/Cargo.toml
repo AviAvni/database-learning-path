@@ -17,6 +17,10 @@ criterion = "0.5"
 name = "pool_vs_mmap"
 path = "src/bin/pool_vs_mmap.rs"
 
+[[bin]]
+name = "translation_micro"
+path = "src/bin/translation_micro.rs"
+
 [[bench]]
 name = "eviction"
 harness = false

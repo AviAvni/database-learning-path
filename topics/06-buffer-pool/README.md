@@ -4,6 +4,9 @@
 > shared array), DuckDB (approximate-LRU queue with lazy purging), LeanStore
 > (pointer swizzling — no mapping table at all on the hot path), and mmap
 > (let the kernel decide — the CIDR '22 paper on why that's usually wrong).
+> And one question under all of them — who pays for `page_id → frame` — with
+> three answers on the hot path: delete the table (swizzling, vmcache), or keep
+> it and hide its latency behind the page read (predictive translation).
 > Plus redis's answer to a different question: not page caching but
 > *allocator accounting* (zmalloc + jemalloc + active defrag).
 
@@ -30,6 +33,25 @@ row: mmap gets the whole machine's page cache here, while your pool will be
 held to 256 MiB against a 1 GiB file. If your pool still wins the tail under
 that disadvantage, the result is conclusive.
 
+A second provided lane isolates the other half of the translation question,
+`cargo run --release --bin translation_micro` — one page access through a
+direct pointer, through a hash lookup, and through a hash lookup with the page
+read issued at a *guessed* frame beside it (predictive translation, §3), over a
+dependent chain of accesses (each page names the next), M3 Pro, ns per access:
+
+```
+ miss%  workload       direct      hash     predictive
+     0  chained         101.5     213.4        107.5
+    10  chained           -       201.1        130.6
+    50  chained           -       243.2        178.4
+```
+
+**A hash lookup in front of a dependent page read doubles the cost — two DRAM
+misses in series instead of one — and reading the guessed frame beside the
+lookup gets it back to within 6% of no translation at all, as long as the guess
+is right.** At 50% wrong guesses most of the saving is gone. Two runs, ratios
+stable; full table in `notes.md`.
+
 ## Outcomes
 
 By the end you can:
@@ -38,7 +60,9 @@ By the end you can:
 2. Explain why mmap loses to a buffer pool (TLB shootdowns, no write
    ordering, page-fault stalls you can't schedule around) and when it's fine.
 3. Explain pointer swizzling and the cooling stage — how LeanStore makes an
-   in-memory hit cost ~0 extra instructions.
+   in-memory hit cost ~0 extra instructions — and the alternative that keeps
+   the hash table: predictive translation, which reads a guessed frame beside
+   the lookup.
 4. Build a CLOCK buffer pool for your topic-3 B+tree and beat mmap on a
    larger-than-RAM workload (or measure exactly why you don't).
 
@@ -55,6 +79,9 @@ who pays for the translation:
  swizzling  (LeanStore)            0 — the parent's pointer IS the frame ptr
  page table (mmap/OS)              0-ish until a TLB miss / minor fault
                                    ... then the kernel takes over your latency
+ hash table + predicted frame      the probe still happens, but the page read is
+ (predictive translation, 2026)    issued at a guessed frame in parallel: the
+                                   probe's latency hides behind the read
 ```
 
 ```mermaid
@@ -128,8 +155,35 @@ random cooling plays in LeanStore — it replaces global bookkeeping.
 ```
 
 Consequence: a page can only be referenced by ONE parent (else two swips to
-re-swizzle) — fine for B-trees, awkward for arbitrary graphs. Worth pondering
-for the capstone: matrix blocks form a tree of tiles, so swizzling applies.
+re-swizzle). That is fine for a B-tree's parent→child edges and awkward for
+anything with a second referent: sibling pointers between leaves, or a graph's
+tiles reached by both a row index and a column index. The SIGMOD '26 paper
+that this topic's last reading guide covers states it as a design-goal failure
+— swizzling "restricts each page to a single reference", and evicting a page
+means latching both the page and its parent (§1, §2.1). Two alternatives remove
+the restriction by keeping the page id as the reference: **LIPAH** stores a
+fat pointer (page id plus a hinted frame address, falling back to a hash lookup
+when the hint is stale) but caps the database at 2³² pages — 17.6 TB at 4 KiB —
+and **predictive translation** keeps a plain hash table and hides it (below).
+For the capstone, matrix tiles referenced from both a row and a column index
+form a DAG, not a tree, so swizzling is the design to rule out first.
+
+### The hash table fights back: predictive translation
+
+A hit in a classic hash-table pool is a chain of dependent loads — bucket, then
+control block, then frame — and a chain of misses cannot overlap. Predictive
+translation (Zinsmeister, Nguyen, Leis, Neumann, SIGMOD '26) gives each page id
+a *preferred frame* computed from the id alone and issues the page read there
+**speculatively, in parallel with the hash lookup**; the lookup then only
+confirms the guess. Hot pages are moved into their preferred frames by
+probabilistic promotion (1/32 per access if no page is displaced, 1/512 if one
+is), so the guess is right where the accesses are. Measured in the paper, on a
+192-thread EPYC: +34% over vmcache and +19% over LeanStore on in-memory TPC-C
+(§6.1), and +20.6% single-threaded from the predictive placement alone in the
+ablation (§6.4). The micro-lane `translation_micro` in `experiments/` tests the
+overlap argument by itself — numbers in `notes.md` — and
+[`reading-predictive-translation.md`](reading-predictive-translation.md) builds
+the idea from the dependent-load chain up.
 
 ## 4. Why mmap is (usually) wrong — the CIDR '22 checklist
 
@@ -143,8 +197,12 @@ for the capstone: matrix blocks form a tree of tiles, so swizzling applies.
 
 But: LMDB (topic 3) ships on mmap happily — read-mostly, single-writer,
 COW keeps ordering trivial. The paper's "usually" is doing real work.
-vmcache (SIGMOD '23) is the synthesis: virtual memory *assisted* — mmap the
-address space, but the DB keeps explicit control of residency and eviction.
+vmcache (SIGMOD '23) is the first synthesis: virtual memory *assisted* — mmap
+the address space, but the DB keeps explicit control of residency and
+eviction. Its bill is a kernel module for good performance and one frame
+header per *storage* page (about 480 GB of headers for a 30 TB SSD, by the
+SIGMOD '26 paper's arithmetic, §2.1). Predictive translation (§3) is the
+second: pay neither, keep the hash table.
 
 ## 5. redis: the other memory management
 
@@ -173,6 +231,9 @@ against maxmemory, and *opaque* to redis defrag.
   → [`reading-mmap-paper.md`](reading-mmap-paper.md) — mmap is not a buffer pool
 - "LeanStore: In-Memory Data Management Beyond Main Memory" (ICDE '18) +
   vmcache (SIGMOD '23) as the sequel. → [`reading-leanstore-paper.md`](reading-leanstore-paper.md) — LeanStore & vmcache: pay only on the miss
+- "Predictive Translation: High-Performance Buffer Management Without the
+  Trade-Offs" (SIGMOD '26) — the hash table fights back.
+  → [`reading-predictive-translation.md`](reading-predictive-translation.md) — Predictive translation: hide the lookup instead of deleting it
 
 ## 8. Experiments (in `experiments/`)
 
@@ -183,7 +244,11 @@ against maxmemory, and *opaque* to redis defrag.
 2. **`src/bin/pool_vs_mmap.rs`** — same random-read workload over a file 4×
    larger than the pool/RAM budget: your pool vs mmap. HdrHistogram —
    compare p50 AND p99.9 (the mmap story is in the tail).
-3. **`benches/eviction.rs`** — CLOCK vs strict-LRU (linked list) vs FIFO on
+3. **`src/bin/translation_micro.rs`** (provided, runs today) — direct pointer vs
+   hash lookup vs predicted-frame read, independent and dependent (chained)
+   access, at 0/10/50% of pages away from their preferred frame. Measures the
+   overlap claim of §3 in isolation; numbers in `notes.md`.
+4. **`benches/eviction.rs`** — CLOCK vs strict-LRU (linked list) vs FIFO on
    Zipf-skewed access: hit rate AND ns/lookup. Shows why nobody ships strict
    LRU (per-hit list surgery costs more than the hit-rate gain).
 

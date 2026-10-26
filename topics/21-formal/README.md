@@ -59,6 +59,66 @@ the equivalent forms and extracts the cheapest at the end, which is why the egg
 column exists and why "phase ordering" is a compiler problem with a data
 structure for an answer rather than a heuristic for one.
 
+### How often does fixed order fail, and what does saturation cost? (lane 1b)
+
+`cargo run --release --bin normalise_bench` — the same hand rewriter against an
+e-graph holding the *same* rules unordered (nine rewrites plus a
+constant-folding analysis; 12 iterations or 20 000 e-nodes, whichever first),
+over 200 seeded random expressions per depth. An expression is **failed to
+normalise** when the hand rewriter's fixpoint costs more than the cheapest term
+the e-graph reached. It does not call `src/eqsat.rs`, so it runs on a fresh
+clone and the exercise stays an exercise.
+
+```
+depth      in |      hand hand-R4-1   egg min |  hand fails  swap fails | saturat. max enodes | stop reasons
+    2     7.0 |       5.7       5.7       5.6 |     4/200       4/200   |      194         64 | IterationLimit(12)=6 Saturated=194
+    3    15.0 |      12.2      12.2      11.8 |     9/200       9/200   |      187        320 | IterationLimit(12)=13 Saturated=187
+    4    31.0 |      24.1      24.1      23.1 |    23/200      23/200   |      177       1836 | IterationLimit(12)=23 Saturated=177
+    5    63.0 |      48.6      48.6      43.1 |    63/200      63/200   |      144       2569 | IterationLimit(12)=56 Saturated=144
+    6   127.0 |      95.1      95.1      73.9 |   118/200     118/200   |       98       4750 | IterationLimit(12)=102 Saturated=98
+
+rule-order control: swapping R4 ahead of R2 changed the rewriter's output on 0 of 1000 expressions
+  and on the trap (a*2)/2 it still returns cost 5
+
+-- e-graph growth per iteration (depth 4, mean e-nodes over 20 seeds) --
+ iter  seed     1     2     3     4     5     6     7     8     9    10    11    12
+ e-nodes 31.0  21.6  36.0  40.9  44.0  47.2  50.1  53.6  58.6  66.8  81.2 107.8 120.2
+```
+
+**The failure rate climbs with expression size: 2% at depth 2, 4.5% at depth 3,
+11.5% at depth 4, 31.5% at depth 5, 59% at depth 6** (4, 9, 23, 63, 118 of 200).
+A larger tree has more places for a locally good rewrite to destroy a shape a
+later rule needed, so the chance that *some* node falls into a trap grows with
+size — and the hand rewriter leaves 95.1 / 73.9 = 1.29× the cost of the
+cheapest reachable form at depth 6. Every count is exact and reproduces
+(seeded generator, no hash-order dependence).
+
+Three things the table says that the `(a*2)/2` line does not:
+
+- **Reordering the rules does not rescue a fixed-order rewriter.** The control
+  moves division reassociation (R4) ahead of strength reduction (R2) and changes
+  the output on **0 of 1000** expressions; the trap still returns cost 5. The
+  reason is the traversal, not the list: the rewriter works bottom-up, so the
+  `Mul` child is visited and turned into a shift before its `Div` parent is ever
+  looked at, whatever order the rules are tried in at each node. The fix has to
+  be "keep both forms", not "try a better order".
+- **Saturation does not always finish.** With commutativity in the rule set the
+  e-graph stops at the 12-iteration cap on 102 of 200 depth-6 expressions
+  (Saturated = 98), so "egg min" there is the best form found, an upper bound on
+  the true optimum, and the failure counts at depth 5–6 are lower bounds. The
+  growth rows show why: depth-4 graphs grow 1.06–1.14× per iteration for eight
+  rounds, then accelerate (1.22×, 1.33×) as reassociation and commutativity
+  compose. Topic 44 measures what an iteration *costs* (matching work, in the
+  same e-node unit); this lane measures how large the graph is allowed to get.
+  Note the first step goes *down* (31.0 → 21.6): the seed counts tree nodes, the
+  e-graph counts distinct e-nodes after hashconsing, and random trees repeat
+  small subterms.
+- **The unsound rule shows up.** `x/x → 1` assumes `x ≠ 0` (hand.rs R5 has the
+  same assumption), and after `x*0 → 0` the analysis sees a class proved both 0
+  and 1 — 1090 times across the 1000 expressions. The lane keeps the first value
+  and prints the count; soundness is not what this table measures, but it is the caveat to carry into
+  any optimizer rule that divides.
+
 ## 1. E-graphs: the data structure
 
 An e-graph = union-find over e-classes + hashcons (memo) + congruence
@@ -195,6 +255,7 @@ proptest (topic 16).
 | `hand.rs` | provided | ordered fixpoint rewriter with the R2-before-R4 trap |
 | `eqsat.rs` | **stub** | `egg_optimize` — saturate, extract, beat the trap |
 | `bin/eqsat_bench.rs` | provided | trap case + depth sweep, hand vs egg lanes |
+| `bin/normalise_bench.rs` | provided | failure rate of the fixed-order rewriter vs an e-graph oracle, rule-order control, e-graph growth per iteration |
 | `specs/WalReplication.tla` | provided | quorum-commit WAL replication, TLC-checked |
 
 ## M21 checklist
