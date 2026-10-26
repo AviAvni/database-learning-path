@@ -228,6 +228,29 @@ functions that yield at `.await` points rather than blocking a thread —
 one set per execution phase. `is_memory_intensive_pipeline_blocker`
 (99-103) is polars' name for DuckDB's pipeline breaker.
 
+> **Upstream since the pin.** The yes/no breaker flag is gone. polars
+> [#29786](https://github.com/pola-rs/polars/pull/29786) (commit
+> `7b7a9285bf`, shipped in py-2.1.0) replaced
+> `is_memory_intensive_pipeline_blocker(&self) -> bool` with
+> `fn memory_usage(&self) -> NodeMemoryUsage`, an enum with six states —
+> `Bounded`, `Unbounded`, `WillAccumulate`, `Accumulating`,
+> `HoldingUntilDone`, `Draining` — whose doc comment adds the scheduling
+> rule that "each phase runs at most one" `Accumulating` node "unless all
+> such nodes remaining are sinks". A node now says not just *whether* it
+> breaks the pipeline but *how* its memory evolves (about to fill, filling,
+> holding until done, freeing as it drains). That information matters
+> because, from py-2.0.0 (2026-10-06), out-of-core execution is on by
+> default: [#29741](https://github.com/pola-rs/polars/pull/29741) (commit
+> `3de661d29c`) made the effective spill budget the smaller of
+> `POLARS_OOC_MEMORY_BUDGET_MB` (default `u64::MAX`, i.e. no limit) and
+> `POLARS_OOC_MEMORY_BUDGET_FRACTION` × total memory (default 0.8), where
+> before it was the unlimited MB setting alone. The steps above describe
+> the pinned code, which is what the line numbers point at; the
+> correspondence with DuckDB's pipeline breaker still holds — the breaker
+> now corresponds most closely to the `Accumulating` state (it "stores
+> (substantial parts of) its input while running") rather than to a
+> `true`.
+
 And the execution is *phased*: `execute_graph` (`execute.rs:301`) loops —
 update all port states, find a runnable subgraph
 (`find_runnable_subgraph`, `:106`), run it, repeat until nothing is

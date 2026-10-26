@@ -335,6 +335,26 @@ DuckDB's "deliminator" pass (`OptimizerType::DELIMINATOR`,
 `datafusion/optimizer/src/decorrelate_predicate_subquery.rs:130` — took decades to get right and is still
 the hardest rewrite family in any pipeline.
 
+> **Upstream since the pin.** DataFusion supplied a live example of that
+> difficulty after the pin. The **COUNT bug** is the classic
+> decorrelation error: when the inner block is an aggregate with no
+> `GROUP BY`, the subquery returns one row even for an outer row with no
+> matches (`COUNT(*)` over nothing is 0, not "no row"), but a plain join
+> rewrite produces no row for it, so the answer changes. DataFusion
+> [#25391](https://github.com/apache/datafusion/pull/25391) (commit
+> `86e10a549`, 2026-10-21) found that correlated `EXISTS`/`NOT EXISTS`
+> "had count-bug compensation available but never turned it on"; it now
+> decorrelates those cases into a `LEFT JOIN` and substitutes the
+> aggregate's empty-input value. The `IN`/`NOT IN` forms still return
+> wrong rows in that shape, so
+> [#26677](https://github.com/apache/datafusion/pull/26677) (commit
+> `4b7bc8b5b`, 2026-10-25) makes them fail with an error until
+> compensation exists for them too. Both are on `main`, not in a tagged
+> release as of 55.2.0, and both edit
+> `decorrelate_predicate_subquery.rs`. The anchor above describes the
+> pinned code, which is what the line number points at; the claim that
+> this is still the hardest rewrite family is, if anything, reinforced.
+
 Why it matters: read §6 as the "before" picture. It tells you exactly what
 problem all that machinery exists to escape, and why an engine's subquery
 support is a fair proxy for its optimizer's maturity.

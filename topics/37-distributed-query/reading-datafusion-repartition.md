@@ -203,6 +203,36 @@ not meet, that pass inserts the RepartitionExec — round-robin via `add_roundro
 `RepartitionExec::try_new` at :1291. Do not be confused when you grep for the rule the old guides mention and find
 only helpers behind a moved path.
 
+> **Upstream since the pin.** The exchange the rule inserts is no longer
+> only round-robin or hash. A third routing policy, `Partitioning::Range`
+> ("Partition rows by source-declared ranges", partitioning.rs:124 at the
+> pin), was already in the enum and in `RepartitionExec`'s router
+> (repartition/mod.rs:783), but at the pin `EnsureRequirements` only ever
+> built hash for a key requirement (the `create_partitioning` call at
+> :1289). On DataFusion `main` since then:
+> [#24600](https://github.com/apache/datafusion/pull/24600) (commit
+> `d109f1b13`) lets a co-partitioned join adapt one input's existing
+> partitioning — a Range included — for the input that does not satisfy
+> it; [#24766](https://github.com/apache/datafusion/pull/24766) (commit
+> `b73054a07`) renamed `should_add_hash_repartition` to
+> `should_add_repartition` and, when the child is already Range-partitioned
+> on compatible keys, inserts a `RepartitionExec` that *rescales* that
+> Range to `target_partitions` instead of hashing, falling back to hash
+> when the range's boundary sample is too small; and
+> [#25589](https://github.com/apache/datafusion/pull/25589) (commit
+> `91cd7ffb9`) reorders a multi-key equi-join's key pairs to match an
+> input's range ordering, so `ON b = b1 AND a = a1` over inputs ranged on
+> `(a, b)` no longer hash-repartitions both sides. Separately,
+> [#24598](https://github.com/apache/datafusion/pull/24598) (commit
+> `864215432`) replaced range routing's per-row `ScalarValue` comparisons
+> with a shared `RangeRouter` that binary-searches Arrow buffers directly
+> for a single primitive key and compares `RowConverter` rows otherwise. None of the four is in a tagged
+> release as of 55.2.0 (2026-10-04); they are on `main`. The steps above
+> describe the pinned code, which is what the line numbers point at; the
+> argument that the rule inserts an exchange wherever a child's
+> distribution misses a requirement still holds, but "round-robin or
+> hash" is now an incomplete list of what it can insert.
+
 ## Where each step lives in the code
 
 | Step | What | Anchor |

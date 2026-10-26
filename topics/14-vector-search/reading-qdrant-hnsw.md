@@ -256,6 +256,16 @@ declared at `types.rs:684-686`, with `payload_m0 = payload_m * 2` at
 own. The failure mode is *measured during build*: topic 0's
 discipline, inside an index builder.
 
+> **Upstream since the pin.** The connectivity measurement no longer
+> lives in `hnsw/build.rs`: qdrant
+> [#10709](https://github.com/qdrant/qdrant/pull/10709) (commit
+> `fe10dfd7f`, shipped in v1.19.2) split `HNSWIndex::build` into phase
+> modules, and the 2/K comment, the `percolation = 1. - 2. / K` line and
+> the three `subgraph_connectivity` samples now sit in
+> `hnsw/build/additional_links.rs`, byte-for-byte the same logic. The
+> steps above describe the pinned code, which is what the line numbers
+> point at; the argument is unchanged because only the file moved.
+
 ### Step 4 — the per-query decision: a planner inside the index
 
 > **In:** a query with an optional filter. **Out:** one of three
@@ -320,6 +330,26 @@ is in a different module,
 `lib/segment/src/index/vector_index_search_common.rs:27-45`, and it
 belongs to quantization rather than to the planner — see
 [reading-qdrant-quantization.md](reading-qdrant-quantization.md).
+
+> **Upstream since the pin.** Two changes touch this step. First,
+> `hnsw/search.rs` is gone: the read-only HNSW index work (qdrant
+> [#9427](https://github.com/qdrant/qdrant/pull/9427), commit
+> `17958c9ca`, v1.19.0) moved the search path to
+> `hnsw/read_view/search.rs` and the algorithm choice into
+> `filtered_graph_algorithm` in `hnsw/read_view/dispatch.rs`, which
+> receives the cardinality estimate from its caller and computes the
+> same `query_cardinality.exp / available_vector_count` selectivity
+> against the same `ACORN_MAX_SELECTIVITY_DEFAULT`. Second, the
+> `self.config.m0 != 0` gate quoted at :61 survived that move (as
+> `self.config.m0 == 0` → `Hnsw`) and was then removed by
+> [#10907](https://github.com/qdrant/qdrant/pull/10907) (commit
+> `6701e9915`, v1.20.0): a graph built with `m = 0` has only
+> payload-block links, and ACORN now runs on it with unlimited hop
+> limits instead of falling back to plain HNSW. The steps above
+> describe the pinned code, which is what the line numbers point at;
+> the planner argument — estimate selectivity, compare it with 0.4,
+> pick the walk — holds unchanged at v1.20.0, with one more kind of
+> graph now eligible for ACORN.
 
 ### Step 5 — ACORN: traverse through the blocked nodes
 
@@ -394,6 +424,26 @@ both set to `get_m(level)` (:181-182), and the 2-hop pass stops at
 formulation suggests. Two pooled visited lists (:167, :173) keep the
 hop-1 and hop-2 frontiers from re-scoring each other.
 
+> **Upstream since the pin.** At the pin the `else` at :209-211 has no
+> limit: every non-matching neighbour of the candidate goes into
+> `to_explore`, and because `total_limit` is recomputed for each
+> `hop1` (:219), each of those bridges can add up to `hop2_limit` more
+> points. qdrant [#10777](https://github.com/qdrant/qdrant/pull/10777)
+> (commit `c70238300`, v1.19.2) capped the bridges, because with
+> `payload_m` a point's level-0 list carries the payload blocks' links
+> appended without re-pruning and "a point can carry several hundred
+> links" (the commit message). After the change a candidate explores
+> every non-match among its first `get_m(level)` links plus at most
+> `get_m(level)` evenly spaced non-matches from the rest of the list,
+> and a 1-hop link is marked visited only when it is actually pushed
+> for scoring or exploration, so a link the cap skips stays reachable
+> from another candidate. On a collection without payload links the
+> list is at most `m0` long and the cap is a no-op. The steps above
+> describe the pinned code, which is what the line numbers point at;
+> the design point of this step — only filtered-out neighbours are
+> expanded, so ACORN costs nothing where the filter removed nothing —
+> holds unchanged.
+
 Why it works: if a fraction p of nodes pass, 1-hop expansion sees
 ~K·p useful edges but 2-hop reaches ~K²·p candidates, pushing the
 percolation threshold from ~1/K down toward ~1/K². Put in the
@@ -464,6 +514,17 @@ The other three:
 - **`gpu/`** — GPU-built HNSW (topic 18 preview).
 - **`graph_layers_healer.rs`** — repairing the graph around deleted
   points instead of rebuilding: the paper's deletes wart, patched.
+
+> **Upstream since the pin.** Two of these anchors moved without a
+> change in logic. `full_scan_threshold`'s KiB-to-points conversion
+> left `hnsw/build.rs` for a helper in `hnsw.rs` in qdrant
+> [#10709](https://github.com/qdrant/qdrant/pull/10709) (commit
+> `fe10dfd7f`, v1.19.2) — the same `checked_div` /
+> `saturating_mul(BYTES_IN_KB)` chain — and `graph_links.rs` became
+> `graph_links/mod.rs` in the read-only-index work
+> ([#9427](https://github.com/qdrant/qdrant/pull/9427), v1.19.0). The
+> steps above describe the pinned code, which is what the line numbers
+> point at; the 20 000 / 1 666 point arithmetic is unchanged.
 
 ## Where each step lives in the code
 

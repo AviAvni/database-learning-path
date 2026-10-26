@@ -172,6 +172,23 @@ Four ways to lose, all in that loop:
    hatch, sitting inside the automatic system. `PRAGMA force_compression` (`:185-188`) is the
    session-level version, and is how you run this topic's experiments.
 
+> **Upstream since the pin.** The fourth way to lose is gone. DuckDB
+> [#24429](https://github.com/duckdb/duckdb/pull/24429) (merge commit
+> `2bc58f8681`, 2026-08-17, released in v2.0.0 on 2026-10-21) deleted
+> `skip_scan` and the `if (!skip_scan)` around the scan: a column declared
+> `USING COMPRESSION` now runs the analyze scan like any other. The PR's
+> reason is that analyze does more than choose — it prepares the chosen
+> codec's state: validity changes must be scanned, ZSTD needs the exact
+> tuple count for its layout, and Dictionary must see the values before it
+> can fall back to Uncompressed. A declared type still decides the outcome
+> through `ForceCompression`, which nulls every candidate except the
+> declared one and `UNCOMPRESSED` — the same path `PRAGMA
+> force_compression` takes — so the declaration narrows the menu instead
+> of skipping the pass. The steps above describe the pinned code, which is
+> what the line numbers point at; the ClickHouse-style escape hatch still
+> exists, but at v2.0.0 it no longer saves the first pass of the two-pass
+> ingest described next.
+
 The cost is honest and stated by the design: this is a **two-pass** ingest. DuckDB reads the
 whole column once to choose and once to compress. And if nothing qualifies, `:265-268`
 throws — which is why `UNCOMPRESSED` is in the menu, as the candidate that always scores.

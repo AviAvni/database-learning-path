@@ -458,6 +458,23 @@ Where you have already seen the idea shipped:
 - **Your topic 9 `scaling.rs`**: you measured the stranding effect
   without naming it.
 
+> **Upstream since the pin.** polars' executor has since picked up part of
+> the NUMA half. [#28464](https://github.com/pola-rs/polars/pull/28464)
+> (commit `4e69898ff0`) groups executor threads into NUMA regions read
+> from the machine topology through hwloc (the Portable Hardware Locality
+> library), pins each worker thread to its
+> region, and makes work stealing region-local first: of four steal
+> passes, the first three skip victims in other regions and only the last
+> steals globally (`crates/polars-async/src/executor/mod.rs`,
+> `try_steal_task`). [#28785](https://github.com/pola-rs/polars/pull/28785)
+> (commit `e3f23bc6bd`) then put it behind a `numa` cargo feature, which
+> the Python release builds enable. Both shipped in py-1.44.0
+> (2026-08-24), and at runtime it is still opt-in:
+> `DEFAULT_NUMA_AWARE` is `false`, switched by `POLARS_NUMA_AWARE`. The
+> polars bullet above describes the pinned code; what polars added is the
+> paper's preference for stealing local work first, not its NUMA-aware
+> placement of the data itself, and only when the variable is set.
+
 ## Takeaway
 
 The paper's contribution is not "pull instead of push" — it is moving

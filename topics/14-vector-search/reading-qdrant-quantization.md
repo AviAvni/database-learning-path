@@ -86,6 +86,28 @@ of cache.
 The recall each rung loses is recovered by one shared mechanism,
 Step 5's pipeline, which is why the riskier rungs are usable at all.
 
+> **Upstream since the pin.** `quantized_vectors.rs` was split into a
+> module in qdrant [#9345](https://github.com/qdrant/qdrant/pull/9345)
+> (commit `ae5a0fd70`, v1.19.0): per-scheme `create.rs`/`load.rs`
+> files now sit under `quantized_vectors/`, and the parent file shrank
+> to 368 lines at v1.20.0, where `get_bucket_size` is at :241 with the
+> same X4→1 … X64→16 mapping. Separately, the TurboQuant family —
+> already present at the pin as `QuantizationConfig::Turbo` with 1-,
+> 1.5-, 2- and 4-bit widths (`lib/segment/src/types.rs:866-898`), and
+> not one of the three rungs this guide covers — grew an 8-bit width:
+> the `Turbo8` vector datatype in
+> [#10874](https://github.com/qdrant/qdrant/pull/10874) (commit
+> `6b60fc724`; per its commit message a Hadamard rotation then a
+> per-vector absmax scale onto [-127, 127], `dim + 4` bytes per vector),
+> the same encoding as search-side quantization in
+> [#10939](https://github.com/qdrant/qdrant/pull/10939) (commit
+> `a9ee13409`), and a `Turbo16` datatype in
+> [#11024](https://github.com/qdrant/qdrant/pull/11024), all in v1.20.0.
+> The steps above describe the pinned code, which is what the line
+> numbers point at; the ladder's argument — score on the codes, move
+> fewer bytes, rescore to recover recall — applies to TurboQuant
+> unchanged, but the table is not the complete menu at either version.
+
 ### Step 2 — scalar u8: the affine trick, and scoring without decode
 
 > **In:** an f32 vector and a per-index scale/offset pair. **Out:**

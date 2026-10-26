@@ -253,6 +253,21 @@ drive's volatile cache. `PRAGMA fullfsync=on` moves you to 2.97 ms and 337/s.
 That is a 131× price, and it is the price of the guarantee most people assume
 they already had.
 
+> **Upstream since the pin.** The "one sync per commit" arithmetic above is
+> still the WAL path's, but turso's other commit path has since learned to
+> share a sync. In MVCC mode (turso's multi-version concurrency control
+> engine, which logs each transaction as one **logical-log** record — a
+> description of the rows changed rather than whole page images) every
+> concurrent commit used to append and fsync its own record.
+> [Merge `c896a51bc`](https://github.com/tursodatabase/turso/commit/c896a51bc)
+> ("batch concurrent logical-log commits behind one fsync", v0.8.0) adds
+> **group commit** — queueing concurrent commits so that one writer
+> appends the whole batch and issues one fsync for all of them — in
+> `core/mvcc/database/group_commit.rs`, behind `PRAGMA mvcc_group_commit`,
+> off by default. The steps above describe the pinned code, which is what
+> the line numbers point at; for the WAL mode this guide reads, each commit
+> still pays its own sync at the rung the table prices.
+
 The sync sits inside a documented three-phase commit protocol
 (`wal.rs:4148–4158`): *prepare* — serialise frames and compute checksums;
 *write + fsync* — "caller submits I/O and waits for durability"; *commit* —
@@ -303,6 +318,20 @@ checkpoint is pure overhead.
 *Why it matters:* it explains why SQLite-family engines have a
 `wal_autocheckpoint` threshold at all. Left alone, read latency degrades with
 WAL length, and no amount of write tuning fixes it.
+
+> **Upstream since the pin.** At the pin turso had the threshold but not
+> the knob: `WalFile::should_checkpoint` (`wal.rs:3789–3791`) compares the
+> un-backfilled frame count with a `checkpoint_threshold` fixed at `1000`
+> (`wal.rs:4514`), and `PRAGMA wal_autocheckpoint` was silently ignored.
+> [Merge `735cdd83a`](https://github.com/tursodatabase/turso/commit/735cdd83a)
+> ("core: implement PRAGMA wal_autocheckpoint", first in the v0.9.0-pre.1
+> pre-release, 2026-10-15) moves the threshold to the `Connection` and
+> implements the pragma as SQLite documents it: it reads back 1000 by
+> default, `= N` sets it per connection, and N ≤ 0 turns automatic
+> checkpoints off. The steps above describe the pinned code, which is what
+> the line numbers point at; the argument is unchanged — the default
+> threshold is still 1000 frames — but an application can now trade read
+> latency for fewer checkpoints, or take checkpointing over itself.
 
 ### Step 6 — checkpoint: moving frames home
 

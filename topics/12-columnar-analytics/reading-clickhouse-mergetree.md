@@ -378,6 +378,32 @@ both exist to make the *next* stage's job easier.
 (`reading-btrblocks-fsst.md`). Which is right depends entirely on who knows the data's
 shape, and each system's answer is really a statement about who its users are.
 
+> **Upstream since the pin.** ClickHouse now also has an analyzing answer,
+> as an opt-in. [#111134](https://github.com/ClickHouse/ClickHouse/pull/111134)
+> added `CompressionCodecAdaptive`, which compresses each block with
+> whichever candidate codec gives the smallest output and writes the
+> winner's method byte, so readers need no knowledge of the wrapper;
+> [#111834](https://github.com/ClickHouse/ClickHouse/pull/111834) wired it
+> into merges and mutations behind the `MergeTree` setting now named
+> `enable_adaptive_codec_selection` (tier `EXPERIMENTAL`, default `false`,
+> new in 26.8 per the setting's own history entry). It applies only to
+> columns with no `CODEC` clause or `CODEC(Default)`; candidates are the
+> table's default codec, `NONE` and type-specific codecs, and since
+> [#121630](https://github.com/ClickHouse/ClickHouse/pull/121630) (26.10)
+> also each type-specific codec followed by the default. The chain
+> mechanics changed too, without changing the format: the
+> `[codec count][method byte × N]` header is still `1 + codecs.size()`
+> bytes, but decompression now lets the first stage read the caller's
+> block in place and the last stage write straight into the caller's
+> output unless that codec needs a padded buffer (`LZ4`, `ZXC`)
+> ([#120043](https://github.com/ClickHouse/ClickHouse/pull/120043), 26.10),
+> and compression writes its last stage in place when its reserve fits
+> (#121630) — the buffer swapping at `:60-61` remains for the middle
+> stages. The steps above describe the pinned code, which is what the line
+> numbers point at; at the pin, and by default today, "the user declares,
+> nothing analyzes" still holds, but it is no longer the only mode a
+> ClickHouse table can run in.
+
 ---
 
 ## Where each step lives in the code

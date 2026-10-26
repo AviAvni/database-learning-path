@@ -152,6 +152,32 @@ Why it matters: a fixed order is a fixed set of bugs. If pass B only fires on
 output pass A produces, and B runs first, the rewrite is simply never found —
 and nothing in the system reports that.
 
+> **Upstream since the pin.** The count has moved, which is the reason to
+> count rather than trust. At the DuckDB v2.0.0 tag (released 2026-10-21)
+> `RunBuiltInOptimizers` makes **44** `RunOptimizer(OptimizerType::…)`
+> calls covering **41** distinct types: five calls were added — four new
+> passes and a second run of an existing one. They are `AGGREGATE_REUSE`
+> right after `JOIN_ORDER`
+> ([#24543](https://github.com/duckdb/duckdb/pull/24543)),
+> `REDUNDANT_ORDER_KEYS` after `JOIN_ELIMINATION`, dropping `ORDER BY`
+> keys that follow a unique prefix
+> ([#25878](https://github.com/duckdb/duckdb/pull/25878)),
+> `PROJECTION_PLACEMENT` after `STATISTICS_PROPAGATION`, keeping
+> variable-size projections below joins
+> ([#24914](https://github.com/duckdb/duckdb/pull/24914)), a second
+> `UNUSED_COLUMNS` after `COMMON_AGGREGATE`
+> ([#24607](https://github.com/duckdb/duckdb/pull/24607), so a column
+> made dead by the `COUNT(x)` → `COUNT(*)` rewrite is no longer read), and
+> `SCALAR_FN_PUSHDOWN` last, pushing scalar functions into file readers
+> ([#23528](https://github.com/duckdb/duckdb/pull/23528)). DuckDB `main`
+> after the tag adds two more, `DISJUNCTIVE_JOIN_REWRITER` and
+> `REDUNDANT_ORDER`, for 46 calls. The steps above describe the pinned
+> code, which is what the line numbers point at; every argument in this
+> step — pullup before pushdown, join ordering mid-pipeline, a fixed
+> order with no fixpoint — holds at v2.0.0, and the second
+> `UNUSED_COLUMNS` is itself an instance of the last point: a pass
+> re-run because a later pass created work for it.
+
 ### Step 3 — filter pushdown mechanics: a bag of filters sinking until blocked
 
 > **In:** the plan as it stands at :218, the FILTER_PUSHDOWN slot in Step 2's
@@ -545,6 +571,19 @@ It is applied in exactly two places: `relation_statistics_helper.cpp:259-262`,
 where a base table has non-equality filters and no equality filter to estimate
 from, and `cardinality_estimator.cpp:915-918`, where a relation set is covered
 by an OR filter. Everything else goes through the numerator/denominator above.
+
+> **Upstream since the pin.** The constant moved with its file.
+> `relation_statistics_helper.hpp/.cpp` left `optimizer/join_order/` in
+> DuckDB [#24512](https://github.com/duckdb/duckdb/pull/24512) ("Add
+> reusable relation statistics extraction", 2026-08-05, released in
+> v2.0.0), which splits statistics extraction out of the join-order
+> optimizer into `src/optimizer/relation_statistics/` so other passes can
+> reuse it. At v2.0.0 the declaration is
+> `src/include/duckdb/optimizer/relation_statistics/relation_statistics_helper.hpp:32`,
+> still `static constexpr double DEFAULT_SELECTIVITY = 0.2;`, and the
+> base-table fallback now lives in `relation_statistics_scan.cpp`. The
+> steps above describe the pinned code, which is what the line numbers
+> point at; the value, and the absence of any histogram, are unchanged.
 
 Why it matters: these estimates are the *only* signal ranking the plans Step 5
 enumerates, and the guess above is arithmetic over two statistics per column.

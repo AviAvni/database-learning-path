@@ -85,6 +85,27 @@ aggregation is deferred to the moment you copy the struct out. The Rust
 equivalent is a context owned by the query task (or a `thread_local!`
 slot), not an `Arc<Mutex<_>>`.
 
+> **Upstream since the pin.** "No synchronization" turned out not to mean
+> "free". Because `PerfContext` has a non-trivial destructor, C++ must
+> ensure the calling thread's copy is constructed before each use from
+> another source file, so at the pin every `PERF_COUNTER_ADD` first
+> called a compiler-generated **TLS init function** (TLS: thread-local
+> storage, the per-thread copy above) through the **PLT** (procedure
+> linkage table, the jump table for calls that may resolve into another
+> shared library). RocksDB
+> [#15428](https://github.com/facebook/rocksdb/pull/15428) (commit
+> `ee305ac1c`, released in 11.13.0, 2026-10-21) adds a
+> `thread_local constinit PerfContext* perf_context_fast_ptr` that each
+> thread sets on first use, so an update becomes a pointer load, a null
+> check and the add; `perf_level` is likewise made `constinit`. The PR
+> reports its own microbenchmark of `PERF_COUNTER_ADD` in a loop at 2.10 →
+> 0.84 ns per update with counting enabled (HISTORY.md: "about 60% less")
+> and unchanged at 0.42 ns with counting disabled — RocksDB's numbers, not
+> measured in this repo. The steps above describe the pinned code, which
+> is what the line numbers point at; the argument still holds — the
+> counters need no atomics or locks because each thread owns its copy —
+> but the price of reaching that copy was a function call, not zero.
+
 ### Step 3 — PerfLevel: the ladder, ordered by clock reads
 
 > **In:** the thread-local counters from Step 2, which are cheap to

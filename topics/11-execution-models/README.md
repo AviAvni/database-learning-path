@@ -194,3 +194,21 @@ Vectorized runtime for the graph engine (reference mirror:
       kernel already (one GraphBLAS call per batch of source nodes);
       decide where matrix ops end and row-ish batches begin
 - [ ] bench: M11 runtime vs M10's naive interpreter on the same plan
+
+> **Upstream since the pin.** The reference mirror's files live in
+> FalkorDB's Rust engine, which is now `main` of
+> [FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) and shipped as
+> FalkorDB 6.0.0 on 2026-09-25, replacing the C engine (the C code
+> continues on `master` as 4.22.x). There,
+> [#2628](https://github.com/FalkorDB/FalkorDB/pull/2628) (commit
+> `342a6823d`, in v6.0.0) changed the expression-eval checkbox's
+> reference answer: `VectorEval` in `graph/src/runtime/vector_expr.rs`
+> evaluates the *whole* expression tree column-at-a-time, one bulk
+> property fetch per reference and one pass per operator, where before
+> only `entity.property <op> constant` predicates took a columnar kernel
+> and everything else fell back to row-at-a-time. A node with no columnar
+> arm is evaluated per row into a column and the walk stays columnar above
+> it, so the "is this vectorizable?" classification
+> (`SimplePredicate`, `VectorizablePredicate`) was deleted. Read
+> `vector_expr.rs` at v6.0.0 alongside `vectorized.rs` and `eval.rs` when
+> designing M11's expression evaluator.

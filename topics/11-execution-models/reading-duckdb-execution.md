@@ -270,6 +270,25 @@ on what that avoids — a branchy filter runs 0.95 GB/s where a branchless
 one runs ~10 GB/s on the same data. A DICTIONARY vector (Step 2) is this
 same trick promoted from a call argument to a vector representation.
 
+> **Upstream since the pin.** `SelectLoopSelSwitch`, the anchor the
+> illustration points at (`unary_executor.hpp:310`, and again in the
+> source table below), no longer exists. DuckDB
+> [#24564](https://github.com/duckdb/duckdb/pull/24564) ("Unify and
+> optimize scalar executor infrastructure", merge commit `7a61069345`,
+> 2026-08-17, released in v2.0.0) moved the representation, validity and
+> selection handling that unary, binary, ternary and variadic execution
+> each did separately into one internal `ScalarExecutor`
+> (`src/include/duckdb/common/vector_operations/scalar_executor.hpp`),
+> keeping `UnaryExecutor` and the others as facades with their old entry
+> points. At v2.0.0 the select kernels are `SelectFlatLoop`,
+> `SelectGenericLoop` and `SelectGenericConstantLoop` there; the flat loop
+> reads validity one 64-bit word at a time, runs an all-valid word through
+> a loop with no per-row validity test, appends an all-NULL word as one
+> range, and hands each comparison result plus its `sel` index to a sink,
+> which records the match. The steps above describe the pinned code,
+> which is what the line numbers point at; the `(data, sel, count)` shape
+> the illustration models is unchanged.
+
 ### Step 4 — pipelines: the plan splits at its breakers
 
 > **In:** an operator tree, which says what to compute but not what may
