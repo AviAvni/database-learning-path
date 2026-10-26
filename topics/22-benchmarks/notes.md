@@ -101,6 +101,15 @@ Surprises / dead ends:
 4. Q9 with join order disabled — how much slower:
 5. capstone ldbc_datagen table function requirements:
 
+### README case studies (TPC-C ceiling, ingest-cost crossover)
+
+1. Recompute TPC-C's 12.86 tpmC per warehouse from the Clause 5.2.5.7 table
+   (answer in the README: 20.99 s average cycle, 45 % New-Order, 10 terminals):
+2. Your engine's ingest rows/s and point-update latency vs the baseline's;
+   q* between them (arXiv:2609.23315 Eq. 6; their worked value ≈ 38,318):
+3. Which two of the paper's 20 query shapes would you expect FalkorDB to fail,
+   and what would you need from the authors to know:
+
 ## Cross-topic threads
 
 - Q6 branchy-at-2%-is-fine = topic 0's branch_misprediction sorted

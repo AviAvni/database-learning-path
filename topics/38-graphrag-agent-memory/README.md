@@ -13,6 +13,19 @@ of the tokens. **Zep/Graphiti** (arXiv 2501.13956): agent memory is a
 *temporal* knowledge graph — facts get four timestamps, contradictions
 invalidate without deleting, and any past moment stays answerable.
 
+```mermaid
+flowchart LR
+    SRC["text: documents, chat turns"] --> EX["LLM extraction<br/>entities + relations"]
+    EX --> KG[("property graph in FalkorDB<br/>+ vector + fulltext indices")]
+    KG --> PPR["HippoRAG<br/>PPR from query entities<br/>association, 1 graph query"]
+    KG --> COM["GraphRAG<br/>Leiden communities + summaries<br/>global questions, map-reduce"]
+    KG --> TMP["Zep / Graphiti<br/>four timestamps per edge<br/>as_of(event, ingest)"]
+    PPR --> CTX["context for the LLM"]
+    COM --> CTX
+    TMP --> CTX
+    EX -. "ingest cost: LLM calls + writes<br/>paid before the first query" .-> KG
+```
+
 ## The problem, measured (bench lane 1, provided — runs today)
 
 ```
@@ -113,6 +126,73 @@ RRF, MMR, episode-mentions, node-distance, cross-encoder) → χ
 (assembly). Measured: DMR 94.8% vs MemGPT 93.4%; LongMemEval +8.6%
 accuracy with latency 28.9 s → 2.58 s (~90% cut) because context
 shrinks from 115k to 1.6k tokens; temporal questions +38.4%.
+
+## What a graph-memory benchmark has to report: the ingest bill
+
+All three systems above pay at ingest so that queries are cheap — GraphRAG
+spends 281 minutes of gpt-4-turbo on one podcast corpus so that every
+global question is cheap. That makes the *engine's* ingest and update
+cost part of the memory's price, not a footnote. One 2026 paper puts
+numbers on it. Nguyen, Gill, Ahmadi and Rossbach, *Graph Memory for LLM
+Agents: At What Cost?* ([arXiv:2609.23315](https://arxiv.org/abs/2609.23315),
+v1, 20 Sep 2026; Corvic AI Research), benchmark their own columnar engine
+Corvic AI against seven others — LoraDB, Ladybug, DuckPGQ, Memgraph, Neo4j,
+HugeGraph and FalkorDB — on a synthetic biomedical-shaped property graph of
+1.02 million nodes and 5.34 million node-and-edge rows, with a twenty-query
+workload (§3.1–3.2). Two of its results matter here.
+
+**1. Ingest, not query latency, is the largest spread (§5.5, Fig. 3).**
+Bulk-ingest throughput runs from 4.3 M rows/s (Corvic AI) down to 5.0 k
+rows/s (LoraDB) — roughly 860× — larger than any query-latency gap in the
+study. Memgraph ingests at 87,000 rows/s and Neo4j at 53,000 (Table 1).
+**The total-cost model** (§4.5, Eq. 5–6) makes the trade explicit: an
+engine's cost for q operations is TCO(q) = T_ingest + q · t̄, where t̄ is
+its mean per-operation latency, and two engines A and B cross where
+q\* = (T_ingest,B − T_ingest,A) / (t̄_A − t̄_B). Worked on the paper's own
+inputs (§5.5): N = 5.34 M rows, Corvic AI at 4.3 M rows/s ingests in
+5.34 M / 4.3 M = 1.24 s, Memgraph at 87 k rows/s in 5.34 M / 87 k = 61.4 s;
+per point update they take 2.47 ms and 0.90 ms. Then
+q\* = (61.4 − 1.24) / (0.00247 − 0.00090) = 60.16 / 0.00157 ≈ 38,318
+updates — the paper prints 38,304, a 0.04% difference that is input
+rounding. Below that many updates the slow-to-update engine that loads in
+a second wins on wall clock; above it the in-memory, mutation-oriented
+engine does. The authors' conclusion is a rule of thumb, not a ranking:
+ingest dominates total cost for any workload with fewer than roughly 10⁵
+queries per data refresh (abstract; §6 puts the estimate at that order for
+millisecond-class queries against a corpus ingested at 10⁴ rows/s).
+
+**2. What it reports for FalkorDB — and what it does not (§5.1, §5.5,
+Appendix A.1).** At the 1.02 M-node scale FalkorDB's query geomean is
+**1.81 ms**, lower than Corvic AI's 2.19 ms, but it completed only
+**18 of 20** query shapes correctly, so the paper does not rank it among the
+engines that answered everything. Its point-update latency is **0.85 ms**,
+the fastest in the study (Memgraph 0.90 ms, Corvic AI 2.47 ms). The paper
+reports **no FalkorDB ingest throughput, no batch-update throughput, no
+per-scale (1 K / 10 K) latencies, and no version, engine variant (the C
+module or the Rust rewrite), build flags, hardware, or thread count for any
+system** — the only hardware statement is "identical hardware under a fixed
+harness" (§3.4). Appendix A.1 lists FalkorDB as "partially or fully
+excluded" because it did not complete the full workload "under our
+harness"; which two shapes failed is not stated. Read it as one vendor's
+harness failing to run 2 of 20 queries on an engine it did not tune, not as
+a statement about the engine — and certainly not as a number to put next to
+the capstone's own M22 results.
+
+Two checks on the paper itself, because the lesson of this topic is that a
+benchmark is only as good as its own consistency. Ladybug's Table 1 row is
+labelled "(copy)" and shows 476,000 rows/s ingest, 0.96 ms point update and a
+4.08 ms geomean, but Appendix A.1 says the *copy* configuration measured
+793,462 rows/s, 4.08 ms and 1.57 ms, and that 476,360 rows/s / 3.97 ms /
+0.96 ms belong to *attach* — and §5.1's prose quotes 3.97 ms. The table
+mixes two configurations in one row. And the authors disclose that Corvic AI
+is both the subject system and their own product (§7); the one workload
+where it does not lead (point update) is reported unadjusted.
+
+For M38 the takeaway is a measurement requirement, not a ranking: the
+capstone's ingest path (entity resolution, mention edges, index build) must
+be timed as rows/s alongside the PPR latency, and the crossover q\* against
+the baseline engine computed from both. See [topic 22](../22-benchmarks/README.md)
+for the methodology reading of the same paper.
 
 ## Production shape: FalkorDB GraphRAG-SDK (cloned under ~/repos)
 

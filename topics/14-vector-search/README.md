@@ -28,6 +28,16 @@ exercise lanes attack different walls. HNSW cuts the *number* of candidates;
 scalar quantization shrinks each candidate 4× and rescopes the same scan. Predict
 where the two land relative to each other, and to this row, before writing either.
 
+The other side of the ratio, from a reference solution of the two stubs
+(full table in [notes.md](notes.md#reference-numbers-for-the-exercise-lanes),
+one locked run in which brute force itself ran at 149 QPS): HNSW with
+m = 16, ef_construction = 128 reaches recall 0.962 at 22,336 QPS (150× brute
+force) at ef = 16, 0.999 at 11,450 QPS (77×) at ef = 64; the u8 scan with
+rescore ×2 reaches recall 1.000 at 602 QPS (4×). The graph wins by two
+orders of magnitude; quantization alone, still an O(n) scan, does
+not. This generator is easy for HNSW (tight Gaussian clusters, queries are
+perturbed dataset rows), so treat the recall figures as a ceiling.
+
 ## 1. The problem shape
 
 Exact k-NN over n vectors of dimension d = n·d multiply-adds per
@@ -69,6 +79,30 @@ metric space):
   makes HNSW navigable, not just M-NN)
 - memory hunger: links = n·(M0 + M·E[levels]) ids + the raw vectors —
   RAM-resident by design
+
+The query path, with the filtered variants of §5 marked on the one
+step where they differ (the graph is the same in every case):
+
+```mermaid
+flowchart TD
+    Q["query q (+ filter f)"] --> E["entry point on the top layer"]
+    E --> D["layers L … 1: greedy descent, ef = 1<br/>(filter ignored)"]
+    D --> B["layer 0: best-first beam of width ef<br/>candidates min-heap, results max-heap"]
+    B --> X{"expand node c:<br/>does neighbour n match f?"}
+    X -->|"yes"| A["score n, admit to results"]
+    X -->|"no — score-through"| T["score n, enqueue as a stepping stone,<br/>never return it"]
+    X -->|"no — restricted"| C["skip n: the edge is cut"]
+    A --> B
+    T --> B
+    C --> B
+    B --> S["stop when the closest candidate is worse<br/>than the ef-th result (or the queue empties)"]
+    S --> R["top k of the results"]
+```
+
+Score-through never loses recall but its cost grows as the matching
+fraction falls (the beam must walk through non-matching territory to
+reach a match); restricted traversal is cheap until the matching nodes
+stop being connected, and then recall collapses. §5 measures both.
 
 ## 3. The quantization ladder
 
@@ -113,6 +147,22 @@ codebooks at 1–4 bits or a per-vector-scaled grid at 8 — read in
 Step 5 of
 [reading-qdrant-quantization.md](reading-qdrant-quantization.md).
 
+A code's average distance error is not what decides a graph search,
+because the search only ever *compares* two candidates. Xiao and Cao
+(*When Does Low-Bit Quantization Preserve the Decisions of Vector
+Search?*, [arXiv:2609.09854](https://arxiv.org/abs/2609.09854), Sep
+2026) bound the chance a comparison flips by the probability its exact
+margin is near zero plus the tail of the quantization noise (§3.1,
+Theorem 2), and measure that on 4,960 Cohere two-bit decisions: the
+flip rate falls from 48.6 % at standardized margin below 0.25 to 0.14 %
+at 3–5 and 0.00 % above 5 (§8.2, Table 6). Across 24 configurations the
+margin predicts flip rates with Spearman 0.970 (ranking) and 0.992
+(pruning), where global rank fidelity gives 0.739 and 0.053. Their
+scope is fixed candidate lists, not end-to-end recall (§1). Step 7 of
+[reading-qdrant-quantization.md](reading-qdrant-quantization.md) works
+the numbers; the practical reading is to measure flip rate by margin
+bin on your own candidate lists before choosing a rung.
+
 ## 4. IVF and DiskANN — the other two families
 
 - **IVF**: k-means the space into nlist cells; query probes nprobe
@@ -125,6 +175,28 @@ Step 5 of
   per hop visits a node's vectors+links together. The B-tree/LSM
   disk-layout lesson (topics 3-4) applied to ANN: layout = access
   pattern.
+
+Two 2026 papers attack DiskANN's two costs, hops and pages per query,
+from different sides; Step 6 of [reading-diskann.md](reading-diskann.md)
+works both. **RaBitQ-SSD** (Gao et al.,
+[arXiv:2610.02652](https://arxiv.org/abs/2610.02652)) goes back to IVF:
+it keeps only a *prefix* of each RaBitQ binary code in DRAM, uses the
+estimator's error bound to prune candidates inside a probed list, and
+reads the survivors page by page through an asynchronous pipeline. When
+the SSD is the limit, throughput is page-read rate over pages per query,
+and it reads fewer pages — at recall 0.90 the best baseline reads
+1.1–3.8× as many (Table 3) — and its on-SSD index for 1 B vectors is
+587 GB against DiskANN's 4,096 GB (Table 6). The authors also report
+the negative case: at recall 0.98 with the full-length prefix the fastest
+graph baseline overtakes it on four of five datasets, because the CPU
+scan, not the SSD, becomes the bottleneck (§5.2). **CatapultDB**
+(Abuzakuk et al., [arXiv:2603.02164](https://arxiv.org/abs/2603.02164))
+leaves the graph alone and learns where to start: a 256-bucket
+LSH-keyed table of recent landing nodes (40 KiB) feeds extra starting
+points to the unchanged beam search — 2.23× the QPS of DiskANN-style
+search at beam width 1 on a Zipfian query stream (27,078.6 vs 12,154.5,
+§4.2.1), and 25.4 % *slower* on uniform queries (§4.3.1), compared at
+equal beam width rather than equal recall.
 
 The same lesson decides whether a vector index belongs *inside* a
 general-purpose engine's storage. pgvector stores its HNSW and IVF
@@ -167,6 +239,55 @@ The planner-shaped decision (topic 10!): estimate filter cardinality
 → pick the algorithm. M14 inherits this: graph query + vector
 similarity = the anchor-selection problem again.
 
+The three regimes are not qdrant's invention. The SIGMOD 2026 survey
+*Attribute Filtering in Approximate Nearest Neighbor Search: An In-depth
+Experimental Study* (Li et al.,
+[arXiv:2508.16263](https://arxiv.org/abs/2508.16263)) measured twelve
+filtered-search methods at selectivities of 0.1 %, 1 %, 10 % and 50 %
+and reports the same ladder (§5.2–5.4): above 50 % plain HNSW with
+post-filtering is competitive, in the middle indexes that know the
+attribute win, and at 0.1 % HNSW with post-filtering and ACORN "often
+fail" while IVF and partition-and-scan still reach 90 % recall — the
+authors blame HNSW's monotonic search, which cannot leave a region that
+holds no match. [reading-filtered-ann-survey.md](reading-filtered-ann-survey.md)
+reads it with the repository's measurements beside it.
+
+Those measurements, on this repository's 100,000 × 128-d generator with
+K = 10 (`cargo run --release --bin filter_bench`, exact rankings — no
+index involved). The **over-fetch factor** α is the rank of the K-th
+matching vector in the exact ordering, i.e. how many candidates a
+post-filter must fetch; K/s is what selectivity s alone predicts:
+
+```
+filter          s       |Vf|  | mean α   median     p99  α/(K/s) |   K/s
+independent    50.0%   50000  |   19.9      19       33     1.00  |    20
+independent    10.0%   10000  |   99.1      97      170     0.99  |   100
+independent     1.0%    1000  |  958.6     922     1652     0.96  |  1000
+independent     0.1%     100  | 8527.0    8153    14641     0.85  | 10000
+aligned        50.0%   50000  |   10.2      10       14     0.51  |    20
+aligned        10.0%   10000  |   34.3      22      293     0.34  |   100
+aligned         1.0%    1000  |  317.5     211     1918     0.32  |  1000
+aligned         0.1%     100  | 6779.4    6160    17120     0.68  | 10000
+anti-aligned   50.0%   50000  |  337.8     484      747    16.89  |    20
+anti-aligned   10.0%   10000  |  852.5     687     2665     8.53  |   100
+anti-aligned    1.0%    1000  | 2332.7    1734    13220     2.33  |  1000
+anti-aligned    0.1%     100  |11563.0   10532    32584     1.16  | 10000
+```
+
+*independent* is a random subset (what most benchmarks draw), *aligned*
+is a window of an attribute that is a random projection of the vector,
+centred on the query's own value (a filter that tracks the embedding),
+and *anti-aligned* is the same window half the range away. With a
+filter independent of the vectors, α tracks K/s to within 15 %: a 1 %
+filter needs about 1,000 fetched candidates for 10 results. At the same
+50 % selectivity the three filters differ 33-fold — α = 10.2, 19.9 and
+337.8 — so selectivity alone does not say how hard a filtered query is.
+The recall/QPS consequences on a reference HNSW (restricted traversal:
+recall 0.999 → 0.566 → 0.018 → 0.002 as s falls 50 % → 0.1 %;
+score-through: recall ≥ 0.996 everywhere but 99,880 distance
+evaluations per query at 0.1 % against 100 for a scan of the matching
+rows) are in [notes.md](notes.md#reference-numbers-for-the-exercise-lanes).
+
 Cardinality is also where the planner is weakest, because selectivity
 alone does not order filtered queries by difficulty. A more
 restrictive filter makes a vector-first (post-filtering) search
@@ -186,6 +307,22 @@ next to [reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): a planner
 that estimates only filter cardinality is estimating the proxy this
 paper shows is unreliable.
 
+The ρ ≤ −0.7 is checked against the source: §3.4.3 reports α-Hardness
+"typically ρ ≤ −0.7" against search performance across 29 datasets (25
+synthetic, 4 semi-real) and seven hybrid strategies (Fig. 3 caption),
+where ρ is computed between each batch of queries' average hardness and
+that batch's Pareto-optimal recall–QPS score; selectivity is "near zero
+or unstable", with opposite signs for vector-first and filter-first
+strategies. The paper's practical estimator, Eq. 5, is
+α̂ = (|V₀| / |V_f|) · (d(q, K-NN | V_f) / d(q, K-NN | V₀)) · K, where
+V₀ is the whole dataset, V_f the filtered subset and d(q, K-NN | V) the
+distance from q to its K-th neighbour inside V. Evaluated on the table
+above it is an ordering device, not a magnitude: it has K/s as a floor
+(the distance ratio is at least 1), and its mean is 3,798 on the 1 %
+independent filter where the measured α is 959 (4.0×) and 41,248 against
+8,527 at 0.1% (4.8×). The paper validates it only by rank correlation,
+which this table does not test.
+
 ## Experiments (`experiments/`)
 
 1. `brute.rs` + `data.rs` + `distance.rs` — PROVIDED: exact top-k
@@ -196,10 +333,15 @@ paper shows is unreliable.
 3. `quant.rs` — YOU implement: global-min/max scalar u8 quantization +
    integer-dot distance + rescoring pipeline. Tests pin the error
    bound and rescored recall.
-4. `ann_bench` — PROVIDED: 100K × 128-d, 1K queries; brute-force
+4. `ann_bench` — PROVIDED: 100K × 128-d, 500 queries; brute-force
    baseline, then your HNSW recall/QPS across ef ∈ {16..256}, then
    quantized+rescore. Plot the curve, compare qdrant on same data
    (optional, via docker) in notes.md.
+5. `filter_bench` — PROVIDED, runs today (exact rankings, no index): the
+   over-fetch factor α of a filtered query under three attribute/vector
+   correlations at selectivities 50 % / 10 % / 1 % / 0.1 % — the table in §5.
+   Extend it by running your `hnsw.rs` under restricted vs score-through
+   traversal on the same filters; the reference numbers are in `notes.md`.
 
 ## Reading guides
 
@@ -210,7 +352,8 @@ paper shows is unreliable.
 | [reading-qdrant-quantization.md](reading-qdrant-quantization.md) | The quantization ladder: shrink, search, rescore |
 | [reading-usearch.md](reading-usearch.md) | usearch: HNSW with the fat trimmed |
 | [reading-pq.md](reading-pq.md) | Product quantization: 2^128 centroids in 16 bytes |
-| [reading-diskann.md](reading-diskann.md) | DiskANN: one SSD read per hop |
+| [reading-diskann.md](reading-diskann.md) | DiskANN: one SSD read per hop — plus RaBitQ-SSD and CatapultDB (Step 6) |
+| [reading-filtered-ann-survey.md](reading-filtered-ann-survey.md) | Filtered ANN: which index survives which selectivity |
 
 (helix-db was on the menu but its public repo now ships only
 CLI/SDKs — engine source no longer readable; qdrant + usearch cover
