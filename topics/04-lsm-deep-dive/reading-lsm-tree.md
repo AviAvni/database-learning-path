@@ -866,7 +866,7 @@ Answer each before unfolding it.
 - [fjall-rs/lsm-tree](https://github.com/fjall-rs/lsm-tree) — the engine under
   fjall, pinned at `8526dd3`; read it all (~3 h). Verify any anchor below with
   `tools/pinned-source.py show lsm-tree <path> -r <range>`.
-- [fjall-rs/fjall](https://github.com/fjall-rs/fjall) at `80cf6bc` —
+- [fjall-rs/fjall](https://github.com/fjall-rs/fjall) at `cfcdce3` (3.1.13) —
   `src/keyspace/options.rs:91` for the 64 MiB memtable default that decides how
   often Step 3 runs.
 

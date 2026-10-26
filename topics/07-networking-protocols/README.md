@@ -84,8 +84,10 @@ flowchart TB
 
 The two non-obvious moves:
 - **Replies are buffered, not written** — `addReply` appends to a per-client
-  buffer and the *next* beforeSleep writes everything with one `write()` per
-  client (`handleClientsWithPendingWrites`). Batching by loop iteration.
+  buffer and the *next* beforeSleep writes everything with one write call per
+  client (`handleClientsWithPendingWrites`) — a plain `write()` when the replies
+  fit the client's fixed buffer, `writev()` once they spill into its reply
+  list. Batching by loop iteration.
 - **Pipelining falls out for free** — the input buffer may hold 100 commands;
   `processInputBuffer` loops until the buffer is drained, and all 100 replies
   coalesce into one write. This is why `redis-benchmark -P 64` is **66.2×**
@@ -100,20 +102,51 @@ The two non-obvious moves:
 | single loop | serial | serial, same thread | redis ≤5, our M7 v1 |
 | io-threads | **serial** (main thread) | parallel | redis 6+, valkey 8 (rewritten) |
 | thread-per-core | parallel (keyspace sharded) | parallel, no cross-core locks | DragonflyDB, ScyllaDB, Glauber's essays |
+| shared-everything, run-to-completion | parallel, against one latch-free store | parallel, on the same thread that executes | Garnet |
+| thread-per-stage | parallel (index pool) | parallel (RPC pool), separate cores | μTPS |
 
 io-threads keep redis's contract (commands are atomic, no locks in data
-structures) and parallelize only the syscall+parse layer — valkey 8's rework
-made the main thread hand *batches* over SPSC queues and prefetch dict
-entries before executing (memory stalls, topic-0 style, hidden by batching).
+structures) and parallelize only the syscall+parse layer — valkey's rework
+made the main thread hand *batches* of jobs to I/O threads over lock-free
+queues (a private single-producer/single-consumer inbox per thread plus shared
+single-producer/multi-consumer queues) and prefetch dict entries before
+executing (memory stalls, topic-0 style, hidden by batching).
 Thread-per-core abandons the shared keyspace instead: hash-partition keys to
 cores, cross-slot ops become messages. FalkorDB inherits redis's model: one
 graph = one keyspace entry ⇒ module-level locking is the concurrency story.
 
+The last two rows are the recent answers. **Garnet: A Next-Generation
+Cache-Store for Accelerating Applications and Services** (Badrish
+Chandramouli, Vasileios Zois, Ted Hart, Tal Zaccai, Lukas M. Maas, Yoganand
+Rajasekaran, Darren Gehring; PVLDB 19(2), 2025 (VLDB 2026);
+[paper](https://www.vldb.org/pvldb/vol19/p224-chandramouli.pdf) ·
+[code](https://github.com/microsoft/garnet)) is a RESP-compatible server,
+written in C#, whose network threads parse RESP and execute the command
+themselves against one shared, latch-free storage engine (Tsavorite) with a
+five-operation "narrow-waist" interface, so there is no thread hand-off and no
+per-shard routing (§1.3). In memtier_benchmark with 6,400 clients, a 1:9
+SET:GET mix over 256 million keys, it reports "at least 20× higher throughput
+and 3× lower latency compared to standalone Valkey" (§8.2) — the RESP server to
+compare M7 against when you decide what your threading model serializes,
+alongside [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md).
+**Rearchitecting the Thread Model of In-Memory Key-Value Stores with μTPS**
+(Youmin Chen, Jiwu Shu, Yanyan Shen, Linpeng Huang, Hong Mei; SOSP 2025;
+[doi:10.1145/3731569.3764794](https://doi.org/10.1145/3731569.3764794)) argues
+the opposite of run-to-completion — one thread carrying a request from socket
+to index and back mixes cache-resident work (RPC, parsing) with memory-bound,
+contended work (the index) on the same core. μTPS splits them into two thread
+pools with dedicated cores and cache ways, adds reconfigurable RPC and an
+auto-tuner, and on two stores (μTPS-H over libcuckoo, μTPS-T over MassTree)
+reports a 1.03–5.46× speedup over run-to-completion versions (§1); the authors
+note the gains are modest for hash indexes and uniform workloads. It is the
+counter-argument to the thread-per-core design in
+[`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md).
+
 ## 4. Backpressure — the part everyone forgets
 
-- Input side: `PROTO_IOBUF_LEN` 16KB reads (server.h:188), max query buffer
+- Input side: `PROTO_IOBUF_LEN` 16KB reads (server.h:207, redis `e87dda2a4`), max query buffer
   size; a client streaming faster than execution grows `querybuf` → kill.
-- Output side: `PROTO_REPLY_CHUNK_BYTES` 16KB chunks (server.h:189); a slow
+- Output side: `PROTO_REPLY_CHUNK_BYTES` 16KB chunks (server.h:208); a slow
   reader (or a `KEYS *` on 10M keys) grows the reply list →
   client-output-buffer-limit → kill. **A database is a flow-control device**:
   a graph query returning 1M rows must either stream with backpressure
@@ -147,7 +180,7 @@ PackStream: the graph in the type system
 
 - **redis `ae.c` + `networking.c`** — the loop, the parse path, pending
   writes. → [`reading-redis-ae-networking.md`](reading-redis-ae-networking.md) — The redis event loop: pipelining for free
-- **valkey io-threads rework** — SPSC job queues, command-batch prefetch.
+- **valkey io-threads rework** — SPSC/SPMC job queues, command-batch prefetch.
   → [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md) — valkey io-threads: parallelize the majority, nothing else
 - **pgwire (Rust) + qdrant's tonic setup** — what a protocol crate looks
   like; gRPC as the anti-RESP. → [`reading-pgwire-qdrant.md`](reading-pgwire-qdrant.md) — pgwire & tonic: sessions, portals, and protocols you don't write
@@ -162,39 +195,6 @@ PackStream: the graph in the type system
   C10K to thread-per-core: what is a server thread for? (covers Glauber
   Costa's thread-per-core essays + valkey multithreading blog posts in the
   same guide)
-
-## Newer work (2025–2026)
-
-- **Garnet: A Next-Generation Cache-Store for Accelerating Applications and
-  Services** — Badrish Chandramouli, Vasileios Zois, Ted Hart, Tal Zaccai,
-  Lukas M. Maas, Yoganand Rajasekaran, Darren Gehring. PVLDB 19(2), 2025
-  (VLDB 2026). [paper](https://www.vldb.org/pvldb/vol19/p224-chandramouli.pdf)
-  · [code](https://github.com/microsoft/garnet)
-
-  A RESP-compatible server (written in C#) that answers §3's question
-  differently from Redis, Valkey and Dragonfly: network threads parse RESP and
-  execute the command themselves against one shared, latch-free storage engine
-  (Tsavorite) with a five-operation "narrow-waist" interface, so there is no
-  thread hand-off and no per-shard routing (§1.3). In memtier_benchmark with
-  6,400 clients, a 1:9 SET:GET mix over 256 million keys, it reports "at least
-  20× higher throughput and 3× lower latency compared to standalone Valkey"
-  (§8.2). It is the RESP server to compare M7 against when you decide what
-  your threading model serializes, alongside
-  [`reading-valkey-iothreads.md`](reading-valkey-iothreads.md).
-- **Rearchitecting the Thread Model of In-Memory Key-Value Stores with μTPS** —
-  Youmin Chen, Jiwu Shu, Yanyan Shen, Linpeng Huang, Hong Mei. SOSP 2025.
-  [doi:10.1145/3731569.3764794](https://doi.org/10.1145/3731569.3764794)
-
-  Run-to-completion — one thread carries a request from socket to index and
-  back — mixes cache-resident work (RPC, parsing) with memory-bound,
-  contended work (the index) on the same core. μTPS splits them into two
-  thread pools with dedicated cores and cache ways, adds reconfigurable RPC
-  and an auto-tuner, and on two stores (μTPS-H over libcuckoo, μTPS-T over
-  MassTree) reports a 1.03–5.46× speedup over run-to-completion versions (§1);
-  the authors note the gains are modest for hash indexes and uniform
-  workloads. It revives thread-per-stage as a fourth row for §3's table and
-  is the counter-argument to the thread-per-core design in
-  [`reading-c10k-thread-per-core.md`](reading-c10k-thread-per-core.md).
 
 ## 8. Experiments (in `experiments/`)
 

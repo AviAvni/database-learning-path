@@ -125,8 +125,8 @@ Two backward pointers complete the structure:
   the log record that the current log record is compensating" — it is zero when
   nothing remains. This one field is the whole of Step 6.
 
-The paper's own name is `UndoNxtLSN`; earlier versions of this chapter called it
-`undoNext`, which appears nowhere in the paper.
+The paper's own name is `UndoNxtLSN`; the name `undoNext`, common in
+secondary accounts, appears nowhere in the paper.
 
 Two more of §1.1's definitions matter, because they explain what the LSN buys.
 **Page-oriented redo** means "the log record whose update is being redone
@@ -286,7 +286,7 @@ exactly equal to the number of undoable log records written during forward
 processing" — no matter how many times recovery itself crashes.
 
 **Undo is one merged backward sweep, not a loop over transactions.** This is the
-detail earlier versions of this chapter got wrong. §3 and §6.3 describe it as
+detail most easily gotten wrong. §3 and §6.3 describe it as
 "continually taking the **maximum** of the LSNs of the next log record to be
 processed for each of the yet-to-be-completely-undone loser transactions":
 

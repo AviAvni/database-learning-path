@@ -77,7 +77,7 @@ common ones:
 
 The familiar one is **level saturation** — RocksDB's score ≥ 1.0 from the
 compaction chapter, where the score is bytes-in-level ÷ target-bytes-for-level
-(`db/version_set.cc:4136-4137`). The paper notes a wrinkle worth knowing: some
+(`db/version_set.cc:3817-3818`). The paper notes a wrinkle worth knowing: some
 engines measure saturation by *file count* rather than bytes, which "works only
 when all immutable files are of equal size, or for systems that have a tunable
 file size" — RocksDB's L0 trigger (`level0_file_num_compaction_trigger`, default
@@ -493,7 +493,7 @@ Answer each before unfolding it.
 - `lsm-tree src/compaction/mod.rs:70` at `8526dd3` — `Choice::Move`, the
   pseudo-compaction of O2; taken at `src/compaction/leveled/mod.rs:524-527`
   and `:574-577`.
-- `rocksdb db/version_set.cc:4136-4137` at `7c80a5a` — the level-saturation
+- `rocksdb db/version_set.cc:3817-3818` at `ea3136053` — the level-saturation
   trigger of §3.1.1, as a score.
 
 **Repo cross-references**

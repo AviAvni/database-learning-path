@@ -90,9 +90,8 @@ only *waiting*.
 > **Out:** four distinct waits with four distinct causes — a disk, a lock table,
 > a scheduler, and a mutex — each with its own fix and its own measurement.
 
-The paper's abstract names them, and this chapter now uses the paper's letters.
-(An earlier version of this file assigned A–D in a different order; if you
-remember "A = the buffer mutex", relabel.) Quoting the abstract:
+The paper's abstract names them, and this chapter uses the paper's letters.
+Quoting the abstract:
 
 > "(a) the high volume of small-sized I/O requests may saturate the disk, (b)
 > transactions hold locks while waiting for the log flush, (c) extensive context
@@ -153,8 +152,8 @@ Top rung — macOS F_FULLFSYNC, T = 2.967 ms
 Middle rung — fdatasync / macOS fsync, T = 22.67 µs
     100 000/s          2.27             44 109/s
 
-The old claim in this file was "1 ms per fsync and 32 waiting committers
-⇒ ~32K commits/s". Neither number came from anywhere. The honest local
+The usual back-of-envelope is "1 ms per fsync and 32 waiting committers
+⇒ ~32K commits/s"; neither number is measured. The honest local
 form of the same sentence:
     32 committers riding one F_FULLFSYNC = 32 × 337  =  10 784 commits/s
     32 committers riding one fdatasync   = 32 × 44109 = 1 411 488 commits/s
@@ -310,8 +309,8 @@ The underlying principle is one sentence: decouple *sequencing* (assigning log
 offsets — must be serial, so make it tiny) from *copying* (moving bytes —
 needn't be serial, so make it parallel).
 
-**Which one is postgres?** §5.2, not §5.1 — and this chapter used to say the
-opposite. `ReserveXLogInsertLocation` (`xlog.c:1172–1184`) holds a spinlock for
+**Which one is postgres?** §5.2, not §5.1 — it is easy to guess the opposite.
+`ReserveXLogInsertLocation` (`xlog.c:1172–1184`) holds a spinlock for
 one addition and four field moves, then releases it and copies outside; the
 format conversions happen at `:1182–1184`, deliberately after the release. That
 is decoupled buffer fill exactly. Postgres's answer to §5.2's release-in-order

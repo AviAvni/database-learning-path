@@ -10,8 +10,7 @@ up the per-level-bits experiment in the mini-LSM.
 
 Every formula, symbol and number below is checked against the paper —
 Dayan, Athanassoulis and Idreos, *Monkey: Optimal Navigable Key-Value Store*,
-SIGMOD 2017 — and cited to the section, equation or figure it came from. Where
-this guide previously disagreed with the paper, the paper won.
+SIGMOD 2017 — and cited to the section, equation or figure it came from.
 
 ## The problem in one sentence
 

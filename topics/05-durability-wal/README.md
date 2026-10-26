@@ -78,7 +78,16 @@ invariant:
   (dead tuples), not the log's.
 - **redis AOF**: log = the commands. `appendfsync everysec` trades ≤1s of
   acknowledged writes for throughput — a *policy* choice the others don't offer.
-  RDB = fork + COW snapshot (durability by checkpoint only).
+  RDB = fork + COW snapshot (durability by checkpoint only). The fork is a
+  choice too: Valkey can take the RDB snapshot from a background thread instead
+  of `fork()` + copy-on-write ([#4460](https://github.com/valkey-io/valkey/pull/4460),
+  first in 9.2.0-rc1). It is opt-in — `bgsave-default-method` defaults to
+  `fork`, and `forkless` requires starting with
+  `forkless-infrastructure-enabled yes` (valkey `src/config.c:3451`, `:3476`,
+  at `668d875ca`) — and replication full sync still forks. Step 5 of topic 15's
+  [`reading-valkey-replication.md`](../15-replication-consensus/reading-valkey-replication.md)
+  reads it; compare the fork-based path in
+  [`reading-redis-aof-rdb.md`](reading-redis-aof-rdb.md).
 - **RocksDB WAL**: LevelDB record format — 32KB blocks, records fragmented
   as FULL/FIRST/MIDDLE/LAST with per-fragment CRC (`db/log_format.h:22,54`,
   `log_writer.cc:87 AddRecord → EmitPhysicalRecord`). Block-aligned so a torn
@@ -111,6 +120,23 @@ flowchart LR
 Postgres does exactly this: `XLogFlush` rechecks `LogwrtResult.Flush` after
 acquiring the lock (xlog.c:2885) — most backends find their work already done.
 
+In the cloud the ladder grows a rung on top. The instance-local SSD is
+ephemeral, so the WAL must be durable somewhere remote — and remote block
+storage such as EBS adds most of the commit latency. **BtrLog: Low-Latency
+Logging for Cloud Database Systems** (Maximilian Kuschewski, Lam-Duy Nguyen,
+Matthias Jasny, Tobias Ziegler, Viktor Leis, Muhammad El-Hindi; VLDB 2026,
+PVLDB 19(10); [arXiv:2606.27051](https://arxiv.org/abs/2606.27051) ·
+[code](https://github.com/maxi-k/btrlog)) handles the common single-writer log
+by sending each append straight to a quorum of SSD-backed log nodes in one
+network round trip (no sequencer, since the writer already orders its LSNs) and
+archiving full segments to S3 off the commit path (§1, §3); it is written in
+Rust over io_uring and UDP (§5). Its best median append latency was 70 µs
+(79 µs p99) against EBS io2's best median of 318 µs, and across the load sweep
+EBS io2 showed 4–5× higher median latency (§6.1, Fig. 6). That rung —
+"durable on two of three remote NVMe devices" — is the same shape as Neon's
+safekeepers in topic 28, which the paper names as a system-specific example of
+the design.
+
 ## 4. Code reading (5–7 h)
 
 - **postgres `xlog.c`** (10K lines — guided skim).
@@ -128,35 +154,6 @@ acquiring the lock (xlog.c:2885) — most backends find their work already done.
 - "Aether: A Scalable Approach to Logging" (VLDB '10) — group commit +
   log-contention analysis on multicore.
   → [`reading-aether.md`](reading-aether.md) — Aether: one log, no bottleneck
-
-## Newer work (2025–2026)
-
-- **BtrLog: Low-Latency Logging for Cloud Database Systems** — Maximilian
-  Kuschewski, Lam-Duy Nguyen, Matthias Jasny, Tobias Ziegler, Viktor Leis,
-  Muhammad El-Hindi. VLDB 2026 (PVLDB 19(10)).
-  [arXiv:2606.27051](https://arxiv.org/abs/2606.27051) ·
-  [code](https://github.com/maxi-k/btrlog)
-
-  In the cloud the instance-local SSD is ephemeral, so the WAL must be durable
-  somewhere remote — and remote block storage such as EBS adds most of the
-  commit latency. For the common single-writer log, BtrLog sends each append
-  straight to a quorum of SSD-backed log nodes in one network round trip (no
-  sequencer, since the writer already orders its LSNs) and archives full
-  segments to S3 off the commit path (§1, §3); it is written in Rust over
-  io_uring and UDP (§5). Its best median append latency was 70 µs (79 µs p99)
-  against EBS io2's best median of 318 µs, and across the load sweep EBS io2
-  showed 4–5× higher median latency (§6.1, Fig. 6). It adds a rung above the
-  §3 fsync ladder — "durable on two of three remote NVMe devices" — and is the
-  same shape as Neon's safekeepers in topic 28, which the paper names as a
-  system-specific example of the design.
-- **Valkey Forkless Save (2026).** Valkey 9.2.0-rc1
-  ([#4460](https://github.com/valkey-io/valkey/pull/4460)) can take an RDB
-  snapshot from a background thread instead of `fork()` + copy-on-write; it is
-  opt-in, and replication full sync still forks. See the "Upstream since the
-  pin" callout in Step 5 of topic 15's
-  [`reading-valkey-replication.md`](../15-replication-consensus/reading-valkey-replication.md),
-  and compare with the fork-based RDB path in
-  [`reading-redis-aof-rdb.md`](reading-redis-aof-rdb.md).
 
 ## 6. Experiments (in `experiments/`)
 

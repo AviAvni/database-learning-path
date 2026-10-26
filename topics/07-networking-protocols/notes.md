@@ -78,18 +78,19 @@ Record: req/s for each cell, and the top-3 flamegraph entries with rough %.
    processInputBuffer → processMultibulkBuffer → addReply →
    handleClientsWithPendingWrites. Where is the syscall boundary crossed
    (exactly twice — where)?
-3. What do multibulklen/bulklen (server.h:184–185) buy over re-parsing from
-   the buffer start (what your resp.rs does)? Estimate the cost difference
-   for a 1MB bulk arriving in 16KB reads.
-4. PROTO_MBULK_BIG_ARG (:191): what copy does the zero-copy path avoid, and
+3. What do multibulklen/bulklen (server.h:1608–1609, redis `e87dda2a4`) buy
+   over re-parsing from the buffer start (what your resp.rs does)? Estimate
+   the cost difference for a 1MB bulk arriving in 16KB reads.
+4. PROTO_MBULK_BIG_ARG (:210): what copy does the zero-copy path avoid, and
    why does it only matter above 32KB?
 
 ## Questions — reading-valkey-iothreads.md
 
-1. What exactly does an io thread own in valkey 8 (read side, write side),
+1. What exactly does an io thread own in valkey (read side, write side),
    and what remains main-thread-only? Why is that split Amdahl-optimal for
    GET-shaped workloads?
-2. How does the tagged-pointer inbox (untagJob :333) avoid a second queue —
+2. How does the tagged-pointer inbox (`untagJob`, io_threads.c:72, valkey
+   `668d875ca`) avoid a second queue —
    and where have you seen bit-smuggling like this before (topics 0, 6)?
 3. memory_prefetch.c batches dict lookups to overlap cache misses. What is
    the equivalent MLP opportunity in a GraphBLAS BFS step?
