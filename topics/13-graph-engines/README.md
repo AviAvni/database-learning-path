@@ -114,7 +114,11 @@ optimizer that merges graphlets before join enumeration to keep the
 search space bounded (§1, §4). With all systems single-threaded, its
 geometric-mean end-to-end speedup on LDBC SNB Interactive SF100 is
 183.9× over DuckPGQ and 7.74× over Umbra, while on TPC-H SF100 Umbra is
-the faster one (0.58×) (§5.3, Table 4). The capstone's attribute storage
+the faster one (0.58×) (§5.3, Table 4). Read the Umbra ratios with care:
+Table 4 prints each cell as "ratio — competitor ms / TurboLynx ms", and the
+Umbra row does not agree with itself — 2319 / 84 is 27.6, not 7.74, and
+113,512 / 12,253 is 9.26, not 0.58 — while the Neo4j row does (880 / 84 =
+10.5); topic 46's DuckPGQ guide works through the table. The capstone's attribute storage
 faces the same row-vs-columnar choice its adjacency already made.
 
 ## 4. Worst-case optimal joins (the kuzu angle)
