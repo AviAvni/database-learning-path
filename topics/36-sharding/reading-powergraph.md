@@ -12,7 +12,7 @@ For this learning path the paper matters twice: it is the theoretical backbone f
 design input for the M36 capstone, where a sharded Rust graph engine must decide what to
 do with high-degree vertices. Read it as a sharding paper first, computation second.
 
-Every theorem, figure and table cited below is from the OSDI 2012 paper as text-extracted
+Every theorem, figure and table cited below is from the OSDI 2012 paper, text-extracted from the PDF,
 and every number was checked against it. The paper attaches no power-law exponents to its
 real-world graphs; Step 9 is careful about which α belongs to which table.
 

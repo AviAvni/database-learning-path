@@ -142,7 +142,7 @@ Read these after filling the worksheet. What the reference solution printed
   115k→1.6k; temporal +38.4%; single-session-preference +184%;
   regression single-session-assistant −17.7%.
 - GraphRAG-SDK (~/repos/GraphRAG-SDK @ f42ab3d) anchors verified by
-  grep/read this session — full list in README table plus:
+  grep/read — full list in README table plus:
   pipeline.py:94 run; graph_extraction.py:438 _aggregate_entities /
   :479 _aggregate_relations; exact_match.py:21, description_merge.py:30,
   semantic_resolution.py:33 (:122 _fuzzy_merge); graph_store.py:21/:56/

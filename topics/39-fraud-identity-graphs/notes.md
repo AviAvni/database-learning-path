@@ -171,7 +171,7 @@ Read these after filling the worksheet. What the reference solution printed
   the excluded field's m comes from the other pass; doubly-estimated
   fields averaged. Exercise 3 reproduces the degeneracy on purpose.
 - splink anchors (cloned ~/repos/splink @ 04189f5) verified by
-  grep/read this session — full table in README, headline set:
+  grep/read — full table in README, headline set:
   linker.py:66; training.py:163 (u by random sampling) / :231 (EM per
   blocking rule); expectation_maximisation.py:225 (E `:268`, M `:45`/`:278` in
   `maximisation_step:193`);
