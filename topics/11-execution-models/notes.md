@@ -22,6 +22,42 @@ Predict before implementing: at 50% selectivity, how much of the gap between
 103 M rows/s and memory bandwidth (topic 12 measures ~50 GB/s = 6.2 G u64/s on
 this box) does batching close, and what does the remainder consist of?
 
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. A scratch reference solution
+(vectorized: 1024-row batches, selection vector, flat 64-slot sums; kernel: one
+branch-free pass `sums[k] += v * (f < t) as i64`; both pass the oracle tests)
+printed, in one back-to-back run of `exec_bench` (Apple M3 Pro, 50 M rows, best
+of 3, 2026-10-26; the machine was shared with other jobs, so absolute rates
+differ from the Baseline block above, which is a different run — compare ratios
+only within a row):
+
+| selectivity | volcano | vectorized | kernel | vec / volcano | kernel / volcano |
+|---|---|---|---|---|---|
+| 5% | 449.6 M rows/s | 1408.5 M rows/s | 1663.8 M rows/s | 3.1x | 3.7x |
+| 50% | 175.0 M rows/s | 299.5 M rows/s | 1618.1 M rows/s | 1.7x | 9.2x |
+| 95% | 294.0 M rows/s | 821.5 M rows/s | 1594.1 M rows/s | 2.8x | 5.4x |
+
+- **The Volcano/vectorized gap is 1.7-3.1x here, not "one to two orders of
+  magnitude".** Across three further runs on a heavily loaded machine the 50% ratio
+  ranged 1.2x-5.9x (vectorized) and 3.5x-24x (kernel). The textbook figure
+  is not reproduced by a modern branch predictor and a
+  `Box<dyn>` chain whose indirect calls are perfectly predictable; the
+  fused kernel is the only lane that approaches one order of magnitude.
+- A second full run reproduced the table's ratios (50%: volcano 178.7, vectorized 300.1, kernel 1660.6 M rows/s = 1.7x / 9.3x; 5%: 2.9x / 3.3x; 95%: 2.8x / 5.5x).
+- The kernel is flat across selectivity (1594-1664 M rows/s: it is branch-free,
+  so the data it touches does not depend on the filter); Volcano and the
+  vectorized lane are not, because both branch per row. At 50% the vectorized
+  lane's selection-vector build is a data-dependent branch on random data.
+- **BATCH_SIZE sweep** (vectorized, M rows/s at selectivity 5/50/95%): 64 -
+  1299/298/808; 1024 - 1409/300/822; 65536 - 903/238/542. No U on the small
+  side here: 64 rows already fits L1 and the per-batch overhead is a few
+  instructions, so 64 and 1024 are within 10% (each sweep point is its own run); only 65536 (768 KB of three columns,
+  past L1) loses, by 20-36%. X100's left arm of the U needs interpretation
+  overhead per batch that this engine does not have.
+- Not recorded: a NEON instruction mix for the kernel, a flamegraph, the
+  multi-accumulator variant.
+
 ## Predictions (fill BEFORE implementing vectorized.rs / kernels.rs)
 
 Measured baseline (provided volcano, release, 50M rows, sel 50%), from the
