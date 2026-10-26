@@ -17,7 +17,7 @@ read here as the author manuscript
 paper numbers its sections in Roman numerals, so **§II** is the
 quantizer, **§III** is SDC/ADC, **§IV** is IVFADC and **§V** is the
 evaluation; equation and table numbers are the paper's own. Code
-anchors are `qdrant/qdrant@44ad62f`, the pin in
+anchors are qdrant v1.20.0, `qdrant/qdrant@222b2e44a`, the pin in
 `resources/codebases.md`.
 
 ## The problem in one sentence
@@ -193,8 +193,8 @@ That is why nobody ships SDC, and it answers question 5.
 ```rust
 // ILLUSTRATION — not quoted from any file; this is Eq. 13 of the PQ
 // paper as Rust. The production version is qdrant's
-// lib/quantization/src/encoded_vectors_pq.rs:515-537 (the table) and
-// :474-489 (the scan).
+// lib/quantization/src/encoded_vectors_pq.rs:520-542 (the table) and
+// :479-494 (the scan).
 
 // ADC: pay m·k* exact sub-distances ONCE per query…
 fn adc_table(q: &[f32], cb: &Codebook) -> Vec<[f32; 256]> {
@@ -318,16 +318,16 @@ builds.
 > out of.
 
 - **ADC lookup tables** — unchanged everywhere. qdrant's
-  `lib/quantization/src/encoded_vectors_pq.rs:515-537` is Eq. 13
+  `lib/quantization/src/encoded_vectors_pq.rs:520-542` is Eq. 13
   verbatim: `lut_capacity = vector_division.len() * centroids.len()`
-  at :516, then an exact sub-distance per (chunk, centroid) pair at
-  :518-534. The scan at :474-489 is one f32 load per code byte,
+  at :521, then an exact sub-distance per (chunk, centroid) pair at
+  :523-540. The scan at :479-494 is one f32 load per code byte,
   strided by `centroids_count`, summed.
 - **k* = 256** — qdrant hard-codes `CENTROIDS_COUNT = 256`
-  (`encoded_vectors_pq.rs:30`), and its user-facing
-  `CompressionRatio` enum (`lib/segment/src/types.rs:749-757`) is
+  (`encoded_vectors_pq.rs:33`), and its user-facing
+  `CompressionRatio` enum (`lib/segment/src/types.rs:954-960`) is
   really a choice of `D*`: `get_bucket_size`
-  (`lib/segment/src/vector_storage/quantized/quantized_vectors.rs:2314-2322`)
+  (`lib/segment/src/vector_storage/quantized/quantized_vectors.rs:241-251`)
   maps X4→1, X8→2, X16→4, X32→8, X64→16 dimensions per chunk. At
   d=128, qdrant's X64 *is* the paper's recommended m=8, k*=256,
   64-bit code.
@@ -533,16 +533,16 @@ Answer each before unfolding it.
 - Ge, He, Ke, Sun — "Optimized Product Quantization" (CVPR 2013) —
   optional; the rotation refinement worth knowing exists
 
-**Code** — `qdrant/qdrant@44ad62f`, pinned in `resources/codebases.md`.
+**Code** — qdrant v1.20.0, `qdrant/qdrant@222b2e44a`, pinned in `resources/codebases.md`.
 
 | file:line | what |
 |---|---|
-| `lib/quantization/src/encoded_vectors_pq.rs:30` | `CENTROIDS_COUNT = 256` |
-| `lib/quantization/src/encoded_vectors_pq.rs:38-43` | `EncodedQueryPQ { lut }` — the ADC table |
-| `lib/quantization/src/encoded_vectors_pq.rs:515-537` | building it, Eq. 13 |
-| `lib/quantization/src/encoded_vectors_pq.rs:474-489` | the ADC scan |
-| `lib/segment/src/types.rs:749-757` | `CompressionRatio { X4 … X64 }` |
-| `lib/segment/src/vector_storage/quantized/quantized_vectors.rs:2314-2322` | ratio → dimensions per chunk (D*) |
+| `lib/quantization/src/encoded_vectors_pq.rs:33` | `CENTROIDS_COUNT = 256` |
+| `lib/quantization/src/encoded_vectors_pq.rs:41-46` | `EncodedQueryPQ { lut }` — the ADC table |
+| `lib/quantization/src/encoded_vectors_pq.rs:520-542` | building it, Eq. 13 |
+| `lib/quantization/src/encoded_vectors_pq.rs:479-494` | the ADC scan |
+| `lib/segment/src/types.rs:954-960` | `CompressionRatio { X4 … X64 }` |
+| `lib/segment/src/vector_storage/quantized/quantized_vectors.rs:241-251` | ratio → dimensions per chunk (D*) |
 
 Walked in
 [reading-qdrant-quantization.md](reading-qdrant-quantization.md).

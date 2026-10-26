@@ -111,8 +111,8 @@ row vs delta-heavy vs merged replica + freshness lag vs batch size.
    macOS, an unfair `os_unfair_lock`) and run it a few times: the scanner
    re-acquires the lock before the woken writer runs, one write starves for
    seconds, and the "2 s" window stretches to whatever the starvation
-   lasted — this lane once reported p99s of 3 s, 7.5 s and 37 s on
-   consecutive runs that way. Then try a readers-writer lock: does p99
+   lasted — expect p99s of several seconds that differ on every run. Then
+   try a readers-writer lock: does p99
    recover? What did full scans *still* cost?
 3. Lane 2's merged scan beats the delta-heavy scan. Find the delta size
    where scanning delta+main crosses over merged+fresh-delta — that

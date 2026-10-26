@@ -14,6 +14,7 @@ Usage
 -----
     python3 tools/pin-table.py                 # refresh counts, add new clones
     python3 tools/pin-table.py --bump redis    # re-pin named clones to HEAD
+    python3 tools/pin-table.py --bump qdrant=v1.20.0   # ...or to a tag/SHA
     python3 tools/pin-table.py --check         # exit 1 if the table is stale
 
 A pin is sticky. A repo already in the table keeps the SHA it was read at no
@@ -95,7 +96,15 @@ def main() -> int:
     check = "--check" in args
     bump = set()
     if "--bump" in args:
-        bump = {a for a in args[args.index("--bump") + 1 :] if not a.startswith("--")}
+        # NAME re-pins to the clone's HEAD; NAME=REV to any tag or SHA the
+        # clone has fetched, so re-pinning never needs a checkout.
+        bump_rev = {}
+        for a in args[args.index("--bump") + 1 :]:
+            if a.startswith("--"):
+                break
+            name, _, rev = a.partition("=")
+            bump_rev[name] = rev or "HEAD"
+        bump = set(bump_rev)
         if not bump:
             print("--bump needs at least one clone name", file=sys.stderr)
             return 2
@@ -133,8 +142,9 @@ def main() -> int:
                         else "not descended from"
                     drifted.append(f"{d} (HEAD {head[:9]} is {how} pin {sha})")
         else:
-            sha = git(repo, "rev-parse", "--short", "HEAD")
-            date = git(repo, "log", "-1", "--format=%cs")
+            rev = bump_rev.get(d, "HEAD") if bump else "HEAD"
+            sha = git(repo, "rev-parse", "--short", f"{rev}^{{commit}}")
+            date = git(repo, "log", "-1", "--format=%cs", rev)
             url = re.sub(r"\.git$", "", git(repo, "remote", "get-url", "origin"))
             if not (sha and date and url):
                 unverified.append(d)

@@ -99,7 +99,7 @@ are worth fetching first.
 | `neon` | `8f60b04` | 2026-05-25 | 215 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |
 | `sqlite` | `951de30` | 2026-07-09 | 203 | [https://github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) |
 | `GraphBLAS` | `1fd54756ca` | 2026-02-05 | 189 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
-| `qdrant` | `44ad62f` | 2026-06-03 | 178 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
+| `qdrant` | `222b2e44a` | 2026-10-21 | 178 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
 | `turso` | `dd775bc` | 2026-07-10 | 174 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
 | `valkey` | `8891441ab` | 2026-05-03 | 171 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
 | `datafusion` | `1e77af8` | 2026-07-10 | 148 | [https://github.com/apache/datafusion](https://github.com/apache/datafusion) |

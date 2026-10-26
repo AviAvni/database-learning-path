@@ -50,11 +50,10 @@ fn stub_lane(name: &str, f: fn()) {
 fn lane1_interference() {
     println!("=== lane 1: OLTP/OLAP interference on one copy ===");
     let run = |with_scans: bool| -> (Vec<u64>, usize) {
-        // A *fair* lock, handing off FIFO. With std's Mutex (os_unfair_lock on
-        // macOS) the scanner re-acquired the lock before a woken writer could
-        // run, so one write starved for 3-37 s, the "2 s" window ran 5-40 s, and
-        // p99 measured scheduler luck. Fair hand-off makes each full scan
-        // exactly one write outage — which is the thing being measured.
+        // A *fair* lock, handing off FIFO, so each full scan is exactly one
+        // write outage — the thing being measured. Under an unfair lock (std's
+        // Mutex is os_unfair_lock on macOS) the scanner re-takes the lock before
+        // a woken writer runs and p99 measures scheduler luck instead.
         let store = FairMutex::new(HashMap::<u64, (i64, i64)>::new());
         {
             let mut s = store.lock();

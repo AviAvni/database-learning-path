@@ -23,23 +23,20 @@ Every figure is a timing or a count of work done in a fixed window, so none
 is seeded; three consecutive runs gave p99 2.24–2.25 ms and 21,349–21,946
 writes with scans, i.e. one outage per scan of ~2.25 ms (2 s / 889 scans).
 
-**The lane used to measure the scheduler, not the scan.** Until 2026-10-26
-the store sat behind `std::sync::Mutex`, which on macOS is `os_unfair_lock`:
-the scanner finished a scan and re-acquired the lock before the parked
-writer woke, so a single write starved for as long as luck allowed, and
-the 2 s window (checked only between writes) stretched with it. Recorded
-2026-07-11: p99 333 ns → 7.49 s, 11,438,647 → 69 writes; on 2026-10-26 the
-same code gave 5.32 s, then 20.3 s, 37.5 s, 3.2 s and 22.2 s on consecutive
-runs, with the lane taking 5–40 s of wall clock. A p99 longer than the
-measurement window is the repo's "implausible number" rule firing. The
-store is now a `parking_lot::FairMutex` (FIFO hand-off), which makes each
-scan exactly one write outage — the HTAP problem itself — and reproduces;
-starvation under an unfair lock is now exercise 2.
+**Why the lock is fair.** The store sits behind `parking_lot::FairMutex`,
+which hands the lock to waiters in FIFO order. That is what makes each full
+scan exactly one write outage, as long as the scan, and nothing else. With an
+unfair lock — `std::sync::Mutex` is `os_unfair_lock` on macOS — the scanner
+finishes a scan and re-acquires the lock before the parked writer wakes, so
+one write starves for as long as the scheduler allows: the lane would then
+report p99s of seconds, different on every run, and longer than its own 2 s
+window (the deadline is only checked between writes). A p99 longer than the
+measurement window is the repo's "implausible number" rule; exercise 2 makes
+you produce one on purpose.
 
-Methodology note: lane 1 originally did a fixed 200K writes; with the
-scanner holding ~0.6 ms locks that serializes into minutes. Switched to a
-fixed 2 s window per mode — the writes-completed collapse became the
-headline number instead of the runtime.
+**Why a fixed window.** A fixed number of writes would serialize behind the
+scanner's lock holds into minutes; a fixed 2 s window per mode makes the
+writes-completed collapse the headline instead of the runtime.
 
 ## Predictions (fill BEFORE implementing the stubs)
 

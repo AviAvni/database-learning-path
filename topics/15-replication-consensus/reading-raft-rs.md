@@ -141,7 +141,7 @@ from `src/config.rs`:
   uniformly from [min, max) = [20, 40) ticks.
 
   A tick is whatever period YOU call tick() on. At qdrant's
-  tick_period_ms: 100 (qdrant config/config.yaml:359):
+  tick_period_ms: 100 (qdrant v1.20.0 config/config.yaml:511):
 
     heartbeat interval =  2 × 100 ms =   200 ms
     election timeout   ∈ [20, 40) × 100 ms = [2.0 s, 4.0 s)
@@ -442,8 +442,9 @@ Answer each before unfolding it.
 
   The cost is that the untestable part did not vanish, it moved: every
   embedder writes its own driving loop and must get Step 4's ordering
-  right. qdrant's is `Consensus::start` (qdrant `src/consensus.rs:481`)
-  and it is roughly 500 lines.
+  right. qdrant's is `Consensus::start` (qdrant v1.20.0 `src/consensus.rs:612`),
+  and with the `on_ready` machinery it calls it runs to
+  `process_light_ready`'s end at :1189 — nearly 600 lines.
 
   </details>
 

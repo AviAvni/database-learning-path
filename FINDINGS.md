@@ -6,9 +6,8 @@ collection cannot be wrong in a way you can detect, and every row below can.
 
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
 Pro (5P + 6E, 36 GB)** on 2026-07-28, except topic 44's row, measured on
-the same machine on 2026-08-26, and rows 32 and 42, re-measured on 2026-10-26
-after fixes to their benches (a lock whose unfairness was being measured, and
-a hash-order dependence in a seeded generator), and topic 45's, measured on 2026-10-26. Generators are seeded, so counts,
+the same machine on 2026-08-26, and rows 32, 42 and 45, measured on
+2026-10-26. Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.

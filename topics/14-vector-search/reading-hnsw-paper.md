@@ -16,8 +16,8 @@ number from Malkov & Yashunin, *"Efficient and robust approximate
 nearest neighbor search using Hierarchical Navigable Small World
 graphs"*, IEEE TPAMI 42(4), 2018 — read here as
 [arXiv:1603.09320v4](https://arxiv.org/abs/1603.09320). Code anchors
-are `qdrant/qdrant@44ad62f` and `unum-cloud/usearch@9fd6b01`, the
-revisions pinned in `resources/codebases.md`. Where the paper and an
+are qdrant v1.20.0 (`qdrant/qdrant@222b2e44a`) and
+`unum-cloud/usearch@9fd6b01`, the revisions pinned in `resources/codebases.md`. Where the paper and an
 implementation disagree, this guide says so rather than smoothing it
 over.
 
@@ -174,12 +174,14 @@ NSW, none of this depends on insertion order: the level is drawn
 from a distribution, not earned by arriving early.
 
 One implementation note to carry into
-[reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): qdrant does not
-floor. `graph_layers_builder.rs:392` calls `.round()` on the same
-`-ln(U)·level_factor` expression, which raises the fraction of nodes
-promoted above layer 0 from `1/(M−1)` to roughly `M^(−1/2)` — for
-M=16, from 6.7% to about 25%. usearch floors, via a C++ cast to an
-integer type (`index.hpp:4339`). Same paper, two different graphs.
+[reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): the floor matters,
+and qdrant's builder says why. `graph_layers_builder.rs:446` floors
+the same `-ln(U)·level_factor` expression, and the doc comment above
+it (:435-438) works out the alternative: rounding would promote a
+node above layer 0 whenever `U ≤ M^(−1/2)` instead of `U ≤ M^(−1)` —
+for M=16, 25% of nodes instead of 6.25%, four times the upper-layer
+links for no search benefit. usearch floors too, via a C++ cast to an
+integer type (`index.hpp:4339`).
 
 ### Step 4 — search: greedy descent, then a bounded best-first beam
 
@@ -207,7 +209,7 @@ element of W, break — no unexpanded candidate can improve the answer.
 // condensed into one function. The real ones are the paper's
 // pseudocode, and in code at usearch include/usearch/index.hpp:4629
 // (search_to_find_in_base_) and qdrant
-// lib/segment/src/index/hnsw_index/graph_layers.rs:109 (search_on_level).
+// lib/segment/src/index/hnsw_index/graph_layers.rs:114 (search_on_level).
 fn search(idx: &Hnsw, q: &[f32], k: usize, ef: usize) -> Vec<Id> {
     let mut ep = idx.entry_point;
     for level in (1..=idx.max_level).rev() {
@@ -236,7 +238,7 @@ trade is decided at search time, nothing in the index changes. Second,
 `visited` is the hot structure — it is touched once per neighbour
 examined and must be cleared once per query, which is why both qdrant
 and usearch pool it rather than allocating (topic 13's stamp trick;
-qdrant's is `lib/segment/src/index/visited_pool.rs:78`, a `u8`
+qdrant's is `lib/segment/src/index/visited_pool.rs:86`, a `u8`
 generation counter that only really zeroes the array every 255
 queries).
 
@@ -316,10 +318,13 @@ useful only for extremely clustered data.
 `keepPrunedConnections` back-fills the budget with rejected
 candidates so every node reaches exactly M links. Neither appears in
 qdrant's implementation of the heuristic
-(`lib/segment/src/index/hnsw_index/links_container.rs:47`); qdrant
-implements the plain Algorithm 4 and makes the whole heuristic
-optional behind a `use_heuristic` flag
-(`graph_layers_builder.rs:41-42`).
+(`lib/segment/src/index/hnsw_index/links_container.rs:71`); qdrant
+implements Algorithm 4 with a single change — a candidate exactly as
+close to the query as an already-kept link is pruned when it is *at
+least* as close to that link, not strictly closer
+(`is_redundant`, :21-31), so a group of identical vectors cannot fill
+each other's link slots — and makes the whole heuristic optional
+behind a `use_heuristic` flag (`graph_layers_builder.rs:42`).
 
 ### Step 7 — parameters, memory, and the warts
 
@@ -332,11 +337,11 @@ particular values into defaults. Keep the columns separate:
 
 | param | what it is | paper (§4.1) | qdrant default | usearch default |
 |---|---|---|---|---|
-| M | links/node, upper layers | *"a reasonable range of M is from 5 to 48"* | 16 (`types.rs:1412`) | 16 (`index.hpp:1563`, `connectivity`) |
-| Mmax0 | links at layer 0 | *"simulations suggest 2·M is a good choice"* | `m * 2` (`config.rs:46`) | `connectivity * 2` (`index.hpp:1591`) |
-| mL | level constant | `1/ln(M)` | `1/ln(max(m,2))` (`graph_layers_builder.rs:317`) | `1/log(connectivity)` (`index.hpp:4149`) |
-| efConstruction | build-time beam | no default; *"large enough to produce recall ≈ 0.95 during construction"* | 100 (`types.rs:1409`) | 128 (`index.hpp:1568`) |
-| ef | query-time beam — THE knob | ≥ k, chosen per query | defaults to `ef_construct` (`config.rs:48`) | 64 (`index.hpp:1573`) |
+| M | links/node, upper layers | *"a reasonable range of M is from 5 to 48"* | 16 (`types.rs:1683`) | 16 (`index.hpp:1563`, `connectivity`) |
+| Mmax0 | links at layer 0 | *"simulations suggest 2·M is a good choice"* | `m * 2` (`config.rs:47`) | `connectivity * 2` (`index.hpp:1591`) |
+| mL | level constant | `1/ln(M)` | `1/ln(max(m,2))` (`graph_layers_builder.rs:322`) | `1/log(connectivity)` (`index.hpp:4149`) |
+| efConstruction | build-time beam | no default; *"large enough to produce recall ≈ 0.95 during construction"* | 100 (`types.rs:1678`) | 128 (`index.hpp:1568`) |
+| ef | query-time beam — THE knob | ≥ k, chosen per query | defaults to `ef_construct` (`config.rs:49`) | 64 (`index.hpp:1573`) |
 
 Three properties round out the picture.
 
@@ -481,7 +486,7 @@ Answer each before unfolding it.
   does not contain the answer. The paper's two extra flags,
   `extendCandidates` and `keepPrunedConnections`, are off by default
   (§4.1) and absent from qdrant's implementation
-  (`links_container.rs:47-71`).
+  (`links_container.rs:71-102`).
 
   </details>
 
@@ -522,17 +527,20 @@ Answer each before unfolding it.
 - [ ] You can name one place where a production implementation deviates from the paper, and say what the deviation changes.
   <details><summary>Answer</summary>
 
-  Several are verifiable at the pinned revisions. (a) Alg. 1 line 4
-  *floors* the level draw; qdrant *rounds*
-  (`graph_layers_builder.rs:392`), which promotes roughly 25% of
-  points above layer 0 at M=16 instead of 6.7% — a taller, wider
-  hierarchy and more link memory. (b) §4.1 gives no efConstruction
-  default; qdrant picks 100 (`types.rs:1409`) and usearch picks 128
-  (`index.hpp:1568`). (c) The paper's `extendCandidates` and
-  `keepPrunedConnections` do not exist in qdrant's heuristic
-  (`links_container.rs:47-71`). (d) qdrant's serve-time `ef` defaults
-  to `ef_construct` rather than to anything derived from k
-  (`config.rs:48`).
+  Several are verifiable at the pinned revisions. (a) Alg. 4 line 11
+  prunes a candidate only when it is *strictly* closer to a kept
+  neighbour than to the query; qdrant makes that test non-strict when
+  the candidate and the kept neighbour are exactly equidistant from
+  the query (`links_container.rs:21-31`). Under the strict rule a
+  group of byte-identical vectors never prunes itself, fills every
+  link slot of its members, and becomes a sink with no edges leaving
+  it; the change removes that and leaves ordinary vectors untouched.
+  (b) §4.1 gives no efConstruction default; qdrant picks 100
+  (`types.rs:1678`) and usearch picks 128 (`index.hpp:1568`). (c) The
+  paper's `extendCandidates` and `keepPrunedConnections` do not exist
+  in qdrant's heuristic (`links_container.rs:71-102`). (d) qdrant's
+  serve-time `ef` defaults to `ef_construct` rather than to anything
+  derived from k (`config.rs:49`).
 
   </details>
 
@@ -577,10 +585,10 @@ Answer each before unfolding it.
 | `include/usearch/index.hpp:1563,1568,1573,1591` | usearch@9fd6b01 | M=16, efConstruction=128, ef=64, Mmax0=2M |
 | `include/usearch/index.hpp:4149` | usearch@9fd6b01 | `inverse_log_connectivity` — mL |
 | `include/usearch/index.hpp:4336-4340` | usearch@9fd6b01 | `choose_random_level_`, the floored draw |
-| `lib/segment/src/types.rs:1409-1422` | qdrant@44ad62f | m=16, ef_construct=100 |
-| `lib/segment/src/index/hnsw_index/config.rs:46,48` | qdrant@44ad62f | `m0 = m*2`, `ef = ef_construct` |
-| `lib/segment/src/index/hnsw_index/graph_layers_builder.rs:317,392` | qdrant@44ad62f | `level_factor`, and `.round()` where the paper floors |
-| `lib/segment/src/index/hnsw_index/links_container.rs:47-71` | qdrant@44ad62f | Algorithm 4, without the two flags |
+| `lib/segment/src/types.rs:1678-1692` | qdrant@222b2e44a | m=16, ef_construct=100 |
+| `lib/segment/src/index/hnsw_index/config.rs:47,49` | qdrant@222b2e44a | `m0 = m*2`, `ef = ef_construct` |
+| `lib/segment/src/index/hnsw_index/graph_layers_builder.rs:322,433-447` | qdrant@222b2e44a | `level_factor`, and the floored draw with its doc comment on rounding |
+| `lib/segment/src/index/hnsw_index/links_container.rs:21-31,71-102` | qdrant@222b2e44a | Algorithm 4, without the two flags, with the tie rule |
 
 **Companion guides**
 - [reading-usearch.md](reading-usearch.md) — the algorithms as C++,

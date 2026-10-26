@@ -179,7 +179,8 @@ So the tape is ~1.4× smaller *and* costs one miss instead of two per
 node visit. One miss to reach the tape, then the neighbor ids stream
 in sequentially — the prefetcher's favorite pattern. Compare qdrant
 (per-level `Vec<Vec<RwLock<LinksContainer>>>` in the builder at
-`lib/segment/src/index/hnsw_index/graph_layers_builder.rs:43`,
+`lib/segment/src/index/hnsw_index/graph_layers_builder.rs:43`, read at
+qdrant v1.20.0 `222b2e44a`,
 serialized compressed later) and neo4j's scattered records (topic 13):
 usearch picks "everything about a node in one place". The cost: slots
 are preallocated to the max (M or M0), so a node with 3 links pays for
@@ -190,7 +191,7 @@ are preallocated to the max (M or M0), so a node with 3 links pays for
 
 > **In:** the paper's parameter advice. **Out:** usearch's four
 > constants, the `validate()` rule linking two of them, and the
-> rounding detail that makes usearch's hierarchy differ from qdrant's.
+> floor-versus-round detail that decides how tall the hierarchy is.
 
 usearch hard-codes the parameter choices the ecosystem converged on,
 as source constants: `default_connectivity() = 16` (M) at
@@ -223,9 +224,10 @@ The level draw is where implementations quietly diverge:
 `pre_.inverse_log_connectivity` is `1/ln(connectivity)` from `:4149`
 — the paper's **mL**. The C-style cast on `:4339` is a
 double→integer **truncation**, i.e. a floor, which is what the
-paper's Algorithm 1 line 4 specifies. qdrant, at
-`graph_layers_builder.rs:391`, calls `.round()` instead. Compute the
-difference at M = 16:
+paper's Algorithm 1 line 4 specifies. qdrant floors too
+(`graph_layers_builder.rs:446`), and its doc comment at :435-438
+names what the alternative would cost. Compute the difference at
+M = 16:
 
 ```
   P(level ≥ 1) with floor:   exp(-1/mL)      = exp(-ln 16) = 1/16
@@ -234,8 +236,11 @@ difference at M = 16:
                                              = 16^-0.5 = 25% promoted
 ```
 
-Four times as many nodes reach layer 1 in qdrant as in usearch at the
-same M. Same paper, same formula, one cast apart.
+A rounded draw would put four times as many nodes on layer 1 at the
+same M — four times the upper-layer links for no search benefit, as
+qdrant's comment says. Both libraries floor, so both build the
+paper's hierarchy; the truncating cast on `:4339` is the whole of
+usearch's version of that decision.
 
 ### Step 4 — the three walks: the paper's algorithms as three functions
 
@@ -312,14 +317,23 @@ Contrast qdrant, which does the opposite and therefore has the
 opposite problem:
 
 ```rust
-// lib/segment/src/index/hnsw_index/point_scorer.rs — qdrant cuts the frontier, 231
-   231          point_ids.retain(|id| self.filters.check_vector(*id));
+// lib/segment/src/index/hnsw_index/point_scorer.rs — qdrant cuts the
+// frontier, FilteredScorer::score_points 336-345 (qdrant v1.20.0, 222b2e44a).
+   336          let mut n = self
+   337              .filters
+   338              .check_batched(point_ids, Select::Matches, Rest::Discard)
+   339              .unwrap_or(0 /* TODO(uio): propagate error */);
+// ... 340-342: cap n at the caller's limit ...
+   343          point_ids.truncate(n);
+   344
+   345          self.score_points_unfiltered(point_ids)
 ```
 
-qdrant drops filtered ids *before scoring*, so they never become
-frontier — the walk really does disconnect, which is why qdrant needs
-a cardinality planner and ACORN-1
-(`graph_layers.rs:155`, walked in
+qdrant partitions the neighbour ids so the matches come first (the
+line to focus on is 338) and truncates the rest away (:343) *before
+scoring*, so they never become frontier — the walk really does
+disconnect, which is why qdrant needs a cardinality planner and
+ACORN-1 (`graph_layers.rs:157`, walked in
 [reading-qdrant-hnsw.md](reading-qdrant-hnsw.md)). usearch has
 neither, and does not need them for *recall*; what it lacks is a
 plan B for the cost blow-up.
@@ -458,8 +472,10 @@ The external kernel library at this pin is **NumKong** (included at
 `configure_with_autovec()` runs — plain C++ loops handed to the
 compiler's auto-vectorizer. This is the topic-11 argument in
 miniature: usearch **templates** the metric so the compiler
-specializes it (compiled), where qdrant enum-dispatches into
-`unsafe extern "C"` hand-written kernels (vectorized). Neither is
+specializes it (compiled), where qdrant dispatches at run time into
+hand-written kernels (vectorized) — `unsafe extern "C"` ones for
+AVX2/SSE/NEON and Rust intrinsics for AVX-512 VNNI
+(`lib/quantization/src/encoded_vectors_u8.rs:877-893`). Neither is
 free: usearch pays in compile time and binary size and depends on
 the auto-vectorizer's judgment; qdrant pays a dispatch per batch and
 maintains the intrinsics by hand.
@@ -587,10 +603,11 @@ Answer each before unfolding it.
   `top.size() == top_limit`, and with a 1% predicate `top` rarely
   fills, so the walk continues until `next` empties and the query
   degrades toward exhaustive. **Cost blow-up, not recall collapse.**
-  qdrant does the reverse: `point_scorer.rs:231` `retain`s ids before
-  scoring, cutting the frontier itself, which is genuine percolation —
-  and precisely why qdrant needs a cardinality planner and ACORN-1
-  (`graph_layers.rs:155`) and usearch does not.
+  qdrant does the reverse: `point_scorer.rs:336-343` partitions the
+  neighbour ids with `check_batched` and truncates the non-matches
+  before scoring, cutting the frontier itself, which is genuine
+  percolation — and precisely why qdrant needs a cardinality planner
+  and ACORN-1 (`graph_layers.rs:157`) and usearch does not.
 
   </details>
 
@@ -633,7 +650,7 @@ Answer each before unfolding it.
 - `index_dense.hpp` — the type-erased/quantized wrapper and the slot
   versioning that makes concurrent *updates* safe (not read here;
   named because Step 5's answer depends on it)
-- qdrant, for the two contrasts drawn above:
-  `lib/segment/src/index/hnsw_index/point_scorer.rs:231` (filter
-  before scoring) and `graph_layers_builder.rs:391` (`.round()` on the
-  level draw)
+- qdrant v1.20.0 (`222b2e44a`), for the contrasts drawn above:
+  `lib/segment/src/index/hnsw_index/point_scorer.rs:331-346` (filter
+  before scoring) and `graph_layers_builder.rs:433-447` (the floored
+  level draw, with the cost of rounding in its doc comment)

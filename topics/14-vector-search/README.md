@@ -79,11 +79,39 @@ Compression IS performance again (topic 12), now with a recall knob:
 | scalar u8 | 1 | integer dot + affine postprocess | tiny |
 | PQ (m chunks × 256 centroids) | ~0.06–0.5 | LUT sums — d/m table lookups | real |
 | binary | 1 bit | XOR + popcount | big, needs rescore |
+| rotate, then quantize (TurboQuant, RaBitQ) | 1–8 bits | rotated codes + a per-vector correction | set by the bit width; RaBitQ's error is bounded |
 
 The standard trick: search quantized with **oversampling** (fetch
 3–4× top), then **rescore** the shortlist with full-precision vectors
-(qdrant `get_oversampled_top`, search.rs:57). Late materialization,
-vector edition.
+(qdrant `get_oversampled_top`, `vector_index_search_common.rs:26-44`).
+Late materialization, vector edition.
+
+The last row is the rung with a proof attached. Rotate the space at
+random first, and every coordinate of every vector looks alike, so
+one fixed grid fits them all. RaBitQ (Gao & Long, SIGMOD 2024,
+[doi](https://doi.org/10.1145/3654970)) does this at one bit: apply a
+random rotation, snap each normalized vector to the nearest rotated
+hypercube vertex — one bit per dimension, 32× smaller than f32 — and
+estimate distances with an estimator that is unbiased and comes with
+an error bound (§2.2 of the extended paper below). One bit is too
+coarse to reach high recall without rescoring against the raw
+vectors, so **extended RaBitQ** quantizes to B bits per dimension
+with a codebook built by shifting, normalizing and rotating a grid of
+B-bit integers, and splits each code so its most significant bits are
+exactly the 1-bit RaBitQ code: search estimates from those bits first
+and reads the remaining bits only for candidates it cannot prune (§1,
+§3, §4.2). At more than 6 bits per dimension, LVQ's average relative
+distance error is 1.3–3.1× larger than extended RaBitQ's at the same
+bit budget (§5.2.1, Fig. 3; arXiv v1 numbering) — Gao, Gou, Xu, Yang,
+Long, Wong, *Practical and Asymptotically Optimal Quantization of
+High-Dimensional Vectors in Euclidean Space for Approximate Nearest
+Neighbor Search*, Proc. ACM Manag. Data 3(3), Article 202 (SIGMOD
+2025), [doi](https://doi.org/10.1145/3725413) ·
+[arXiv](https://arxiv.org/abs/2409.09913). qdrant's own member of
+this family is TurboQuant — a Hadamard rotation, then Lloyd-Max
+codebooks at 1–4 bits or a per-vector-scaled grid at 8 — read in
+Step 5 of
+[reading-qdrant-quantization.md](reading-qdrant-quantization.md).
 
 ## 4. IVF and DiskANN — the other two families
 
@@ -98,13 +126,35 @@ vector edition.
   disk-layout lesson (topics 3-4) applied to ANN: layout = access
   pattern.
 
+The same lesson decides whether a vector index belongs *inside* a
+general-purpose engine's storage. pgvector stores its HNSW and IVF
+indexes in PostgreSQL pages, so every graph hop goes through the
+buffer manager and every update is an in-place page write — a poor
+fit for indexes built to live in memory. PostgreSQL-V (Liu, Zhang,
+Jin, Gupta, Liu, Wang, *Fast Vector Search in PostgreSQL: A
+Decoupled Approach*, CIDR 2026,
+[pdf](https://www.cidrdb.org/cidr2026/papers/p2-liu.pdf)) keeps
+PostgreSQL's index-access-method interface but implements the index
+outside the page structure, using native libraries (Faiss, hnswlib)
+inside an LSM-style framework of a mutable memtable plus immutable
+indexed segments; crash consistency comes from keeping the index's
+existence metadata in PostgreSQL's transactional storage and
+recovering the memtable and per-segment delete bitmaps on restart
+(§3). On SIFT10M and DEEP10M with pgvector's buffer pool sized to
+hold the whole index, search is 6.5–8.9× faster than pgvector with
+IVF_FLAT and 2.9–3.5× faster with HNSW (§4.2, Figs. 3–4). For the
+capstone's M14 this is the integration question in miniature: whether
+the vector index lives in the engine's own storage or beside it with a
+consistency protocol.
+
 ## 5. Filtered search — the actually hard part
 
 `WHERE category = X AND vec NEAR q` breaks graph indexes: filtering
 DURING traversal cuts edges → the graph disconnects below a
 selectivity threshold (percolation: a graph with avg degree K falls
-apart when ~1/K of nodes survive — qdrant estimates this literally,
-build.rs:378-386). The menu qdrant implements (search.rs:59-84):
+apart when ~1/K of nodes survive — qdrant measures this literally at
+build time, `hnsw/build/additional_links.rs:123-145`). The menu qdrant
+implements (`hnsw/read_view/dispatch.rs:94-249`):
 
 ```
  selectivity ~1.0  → HNSW, filter as you score
@@ -117,77 +167,24 @@ The planner-shaped decision (topic 10!): estimate filter cardinality
 → pick the algorithm. M14 inherits this: graph query + vector
 similarity = the anchor-selection problem again.
 
-## Newer work (2025–2026)
-
-**Practical and Asymptotically Optimal Quantization of
-High-Dimensional Vectors in Euclidean Space for Approximate Nearest
-Neighbor Search** (extended RaBitQ) — Jianyang Gao, Yutong Gou,
-Yuexuan Xu, Yongyi Yang, Cheng Long, Raymond Chi-Wing Wong. Proc. ACM
-Manag. Data 3(3), Article 202 (SIGMOD 2025).
-[doi](https://doi.org/10.1145/3725413) ·
-[arXiv](https://arxiv.org/abs/2409.09913)
-
-RaBitQ (Gao & Long, SIGMOD 2024, [doi](https://doi.org/10.1145/3654970))
-is the rung §3's ladder is missing: apply a random rotation, snap each
-normalized vector to the nearest rotated hypercube vertex — one bit per
-dimension, 32× smaller than f32 — and estimate distances with an
-estimator that is unbiased and comes with an error bound (§2.2 of this
-paper). One bit is too coarse to reach high recall without rescoring
-against the raw vectors, so the extension quantizes to B bits per
-dimension with a codebook built by shifting, normalizing and rotating
-a grid of B-bit integers, and splits each code so its most significant
-bits are exactly the 1-bit RaBitQ code: search estimates from those
-bits first and reads the remaining bits only for candidates it cannot
-prune (§1, §3, §4.2). At more than 6 bits per dimension, LVQ's average
-relative distance error is 1.3–3.1× larger than extended RaBitQ's at
-the same bit budget (§5.2.1, Fig. 3; arXiv v1 numbering). It slots
-between the scalar-u8 and binary rows of §3's table, and the
-TurboQuant callout in
-[reading-qdrant-quantization.md](reading-qdrant-quantization.md)
-describes Qdrant's own rotate-then-quantize family.
-
-**Fast Vector Search in PostgreSQL: A Decoupled Approach** — Jiayi Liu,
-Yunan Zhang, Chenzhe Jin, Aditya Gupta, Shige Liu, Jianguo Wang. CIDR
-2026. [pdf](https://www.cidrdb.org/cidr2026/papers/p2-liu.pdf)
-
-pgvector stores its HNSW and IVF indexes in PostgreSQL pages, so every
-graph hop goes through the buffer manager and every update is an
-in-place page write — a poor fit for indexes built to live in memory.
-PostgreSQL-V keeps PostgreSQL's index-access-method interface but
-implements the index outside the page structure, using native
-libraries (Faiss, hnswlib) inside an LSM-style framework of a mutable
-memtable plus immutable indexed segments; crash consistency comes from
-keeping the index's existence metadata in PostgreSQL's transactional
-storage and recovering the memtable and per-segment delete bitmaps on
-restart (§3). On SIFT10M and DEEP10M with pgvector's buffer pool sized
-to hold the whole index, search is 6.5–8.9× faster than pgvector with
-IVF_FLAT and 2.9–3.5× faster with HNSW (§4.2, Figs. 3–4). For the
-capstone's M14 this is the integration question in miniature: whether
-the vector index lives in the engine's own storage or beside it with a
-consistency protocol.
-
-**Revisiting Filtered ANN Benchmarks: A Hardness-Controlled Benchmark
-Generator for Realistic Evaluation** — Mintaek Lim, Dogeun Kim, Minwoo
-Kim, Jaeyoung Do. PVLDB 19(10), VLDB 2026.
-[arXiv](https://arxiv.org/abs/2606.14193)
-
-§5 says filtered search is the hard part; this paper asks how to
-measure how hard a given filtered query is. Selectivity alone does not
-order queries: a more restrictive filter makes a vector-first
-(post-filtering) search harder, because more candidates must be
-fetched, but a filter-first search easier, because less is left to
-traverse (§3.4.3). The authors
-define the over-fetch factor — how many vector-ranked candidates must
-be examined before K of them satisfy the filter — and build
-α-Hardness on it; across datasets and strategies it tracks measured
-performance with Spearman correlation typically ρ ≤ −0.7, while
-selectivity and attribute–vector correlation are often near zero or
-change sign (§3.2, §3.4.3, Fig. 3). Widely used synthetic filtered-ANN
-benchmarks turn out to sample a narrow, easy band of that hardness
-range. Read it with §5's planner menu and
-[reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): a planner that
-estimates only filter cardinality is estimating the proxy this paper
-shows is unreliable.
+Cardinality is also where the planner is weakest, because selectivity
+alone does not order filtered queries by difficulty. A more
+restrictive filter makes a vector-first (post-filtering) search
+harder, because more candidates must be fetched, but a filter-first
+search easier, because less is left to traverse (§3.4.3 of Lim, Kim,
+Kim, Do, *Revisiting Filtered ANN Benchmarks: A Hardness-Controlled
+Benchmark Generator for Realistic Evaluation*, PVLDB 19(10), VLDB
+2026, [arXiv](https://arxiv.org/abs/2606.14193)). The authors define
+the over-fetch factor — how many vector-ranked candidates must be
+examined before K of them satisfy the filter — and build α-Hardness
+on it; across datasets and strategies it tracks measured performance
+with Spearman correlation typically ρ ≤ −0.7, while selectivity and
+attribute–vector correlation are often near zero or change sign
+(§3.2, §3.4.3, Fig. 3). Widely used synthetic filtered-ANN benchmarks
+turn out to sample a narrow, easy band of that hardness range. Read it
+next to [reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): a planner
+that estimates only filter cardinality is estimating the proxy this
+paper shows is unreliable.
 
 ## Experiments (`experiments/`)
 
