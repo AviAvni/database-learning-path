@@ -83,6 +83,7 @@ Interesting recent arXiv finds go here with a one-line why. Search these when st
 <!-- append finds below -->
 - arXiv:2505.14661 — Russo et al., Abacus (VLDB'26): Pareto-Cascades + UCB bandit over ~3,000 physical semantic operators; 10.8× cheaper / 3.4× faster derive from Table 2, §4.3's prose numbers do not. Topic 50.
 - arXiv:2511.01716 — Lao et al., SemBench (VLDB'26): 55 semantic queries, 4 engines; LIMIT handling alone spreads cost >100×. Topic 50.
+- Semi-join reduction (→ topic 47): Yang, Zhao, Yu & Koutris "Predicate Transfer" CIDR'24 · Qiao, Boncz & Zhang "Robust Predicate Transfer with Dynamic Execution" VLDB'26 · Zhao et al. "I Can't Believe It's Not Yannakakis" CIDR'26 · Birler & Neumann "On the Vexing Difficulty of Evaluating IN Predicates" CIDR'26 · Yannakakis "Algorithms for Acyclic Database Schemes" VLDB'81 (not obtainable online; 403 from the VLDB archive).
 - arXiv:2512.04859 — Jasny, El-Hindi, Ziegler, Leis & Binnig, io_uring in DBMSs (VLDB'26): naive swap 1.06×, redesign 2.05×, PostgreSQL +11–15%. Topic 45.
 - arXiv:2603.09927 — Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26): total WAF = DB WAF × SSD WAF; out-of-place + NoWA reaches SSD WAF 1 on commodity SSDs. Topic 45.
 - arXiv:2609.09002 — Yasser, Dorbani & Mhedhbi, "Factorized and Vectorized Execution" (SIGMOD'26): packed factorized vectors + cascade update; packed beats list-based on 1,883 of 1,951 plans. Topic 46.

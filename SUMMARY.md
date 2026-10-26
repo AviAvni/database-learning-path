@@ -357,6 +357,14 @@
   - [Text-to-SQL benchmarks are broken: when half the labels are wrong](topics/50-llm-query-processing/reading-text-to-sql-broken.md)
   - [Agent-first data systems: speculation is a workload with redundancy you can price](topics/50-llm-query-processing/reading-agent-first.md)
   - [Topic 50 notes — LLM-era query processing](topics/50-llm-query-processing/notes.md)
+- [Topic 47 — Semi-join Reduction in Practice: Yannakakis, Predicate Transfer & Bitmap Filters](topics/47-semijoin-reduction/README.md)
+  - [Yannakakis and predicate transfer: two passes of semi-joins, then any order](topics/47-semijoin-reduction/reading-yannakakis-predicate-transfer.md)
+  - [RPT+: predicate transfer that knows when to stop](topics/47-semijoin-reduction/reading-rpt-plus.md)
+  - [SQL Server's bitmap filters: Yannakakis by accident](topics/47-semijoin-reduction/reading-sqlserver-bitmaps.md)
+  - [IN predicates: when a semi-join is not a semi-join](topics/47-semijoin-reduction/reading-in-predicates.md)
+  - [DuckDB's join filters: min-max, IN-lists, exact bitmaps and a register-blocked Bloom filter](topics/47-semijoin-reduction/reading-duckdb-join-filters.md)
+  - [DataFusion's dynamic filters: the hash table as the filter](topics/47-semijoin-reduction/reading-datafusion-dynamic-filters.md)
+  - [Topic 47 notes — semi-join reduction in practice](topics/47-semijoin-reduction/notes.md)
 
 ---
 

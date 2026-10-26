@@ -113,6 +113,86 @@ plan                                    oracle   proxy   $ MODEL  s MODEL   rows
 **Anchors.** Two new clones, pinned with the sticky `pin-table.py` (run with `DLP_CLONES` pointing at a view of `~/repos` that excludes sibling agents' fresh `delta`, `f3` and `ducklake` clones, so this commit adds only its own rows): `lotus-data/lotus` at `136ae4f` (1.2.4) and `mitdbg/palimpzest` at `807ed30` (1.5.3; Abacus is its optimizer, `README.md:55`, `optimization.mdx:22`). Every anchor checked with `pinned-source.py`; all 108 quoted snippet lines diffed against the pinned files, 0 mismatches. Findings in LOTUS at the pin: `CascadeArgs` defaults are γ = 0.8, δ = 0.2, 10% sample, not the paper's evaluation settings (`types.py:164-167`); importance sampling draws only from the **first 200 entries** it is handed, with replacement (`cascade_utils.py:20-26`; a numpy replication of lines 16–26 for N = 10,000 drew 1,000 indices, max 199, 194 distinct), and `sem_filter` uses them as row positions (`sem_filter.py:510`) with caching off by default (`settings.py:24`); the recall correction divides per-side means (`cascade_utils.py:120`) — worked to give 0.953 or 0.971 for the same 84/93 recall depending on the split; precision candidates share the full δ (`:133`), so the code's failure budget sums to 2δ; the join optimizer compares plans on band size only (`sem_join.py:533`) though it pays both plans' samples and the map pass. In Palimpzest: cost = per-record cost × input cardinality with selectivity propagated (`cost_model.py:252, 260`) — the predicate-ordering effect of lane 1a, not Equation 1's flat sum; join quality = op quality × the *mean* of its inputs (`models.py:965`), not the product; the bandit adds selectivity as a fourth metric (`mab_execution_strategy.py:473, 544`).
 
 **Gates.** `./verify.sh 50` PASS; `check-reading-depth.py --check --all` 247/247; `mdbook build` + `check-book-links.py` 6,021 internal links, 0 dead; `check-mermaid.js` 3 blocks (topic 50 + PLAN), 0 errors; `RUSTFLAGS="-D warnings" cargo build --release` clean; `cargo test --release`: 12 provided tests pass, 5 stub tests fail as the specification.
+## 2026-10-26 — topic 47 — Semi-join Reduction in Practice: Yannakakis, Predicate Transfer & Bitmap Filters
+
+Built from topic 10's "Newer work" items (RPT+, SQL Server bitmaps, the IN
+paper) and topic 44's Yannakakis thread, taken deep. Four papers downloaded
+and read in full: Predicate Transfer (CIDR'24), RPT+ (VLDB'26), SQL Server
+bitmap filters (CIDR'26), IN predicates (CIDR'26). Yannakakis VLDB'81 could
+not be obtained (VLDB 1981 archive: HTTP 403; no other copy found); its
+guarantees are quoted via PT §2.2, RPT+ §2.1 and CIDR'26 §2.1 and checked by
+the crate's tests, and no number is attributed to it.
+
+**Lane 1 (provided).** Seeded social graph (seed 47): knows 200,000, likes
+100,000, has_tag 100,000, rare_tag 10 of 1,000 tags; the three-hop chain
+`knows ⋈ likes ⋈ has_tag ⋈ rare_tag`, OUT = 20,210, checksum
+a77191f1c5106d95 in all four plans. Good order: 1,000 / 2,036 / 20,210 =
+23,246 intermediates, 400,000 build rows. Bad order: 1,000,000 / 2,000,000 /
+20,210 = 3,020,210 (149.44 × OUT), 200,010 build rows. After a full
+reduction rooted at knows: good 868 / 2,036 / 20,210 = 23,114; bad 20,084 /
+20,210 / 20,210 = 60,504 (2.99 × OUT). Bad ÷ good 129.9× → 2.62×. Reduction:
+forward 3,035 inserts + 400,000 probes, backward 22,233 + 3,035; 428,303
+hash ops = 1.07 × N (N = 400,010). Sizes base / after forward / after both:
+knows 200,000 / 19,340 / 19,340; likes 100,000 / 2,025 / 2,025; has_tag
+100,000 / 1,000 / 868; rare_tag 10. Hand predictions: knows′ ≈ 19,100;
+has_tag after backward ≈ 865 (e⁻²). Timings (best of 3, load 4.39 at start,
+other agents benchmarking): good 6.94 ms, bad 37.94, reduce 1.50, good after
+0.54, bad after 0.52; bad plan 80 M tuples/s. Earlier runs at load 4.52 and
+8.16: bad 35.90 and 44.61 ms. Negative result: on the good order the
+reduction costs 428,303 hash ops to save 132 intermediates; and the good
+order is slower in time than reduce + bad order because it builds 400,000
+rows.
+
+**Lane 1b (provided).** 10⁶ absent keys, equal bits: 1,000 keys / 16,384
+bits: classic 0.00045 (formula 0.00038), register-blocked DuckDB layout
+0.00548; 10,000 / 131,072: 0.00181 (0.00184) vs 0.00901; 100,000 /
+2,097,152: 0.00006 (0.00004) vs 0.00249. The classic filter at 20.97
+bits/key matches RPT+'s CSBF 6.1 × 10⁻⁵ at 20 (§5.4).
+
+**Lane 2 (stub; reference written, run, removed).** Bloom predicate
+transfer, survivors / not exact / filter FP / inherited / bad-order
+intermediates: 2 bits/key 264,558 / 242,315 / 42,144 / 200,171 / 839,862;
+4: 198,190 / 175,947 / 24,189 / 151,758 / 436,532; 8: 58,087 / 35,844 /
+6,004 / 29,840 / 106,100; 16: 22,851 / 608 / 159 / 449 / 60,960 (exact
+22,243 rows, 60,504 intermediates). Per-key FPR at 8 bits/key 0.0221–0.0227
+vs formula 0.0214–0.0215. Inherited rows are 5× the filters' own false
+positives at 8 bits/key — the term PT §3.5's model omits (it predicts 3,884
+own FPs for knows; measured 3,340, plus 28,648 inherited). First draft of the
+FPR test measured per row and failed on a 10-key filter; FPR is per key.
+
+**Lane 3 (stub; reference written, run, removed).** Exact bitmaps, left-deep
+plans: bad + into lower builds 3,035 build rows, 400,000 bitmap probes,
+60,504 intermediates (= full reduction, one pass — CIDR'26 §3.3 reproduced);
+bad + probe spine only 3,020,210 (no help); good + into lower builds 386,439
+build rows, 23,114; good + probe spine only 400,000, 23,246.
+
+**Paper claims checked.** RPT+: 1.47/1.28/1.17/1.01× (Figure 11) hold; RPT
+28.1% and RPT+ 2.1% regressions (Tables 1–2) hold; τ_stop is 0.9 in §5.4/§7.2
+but 0.95 in §5.3/Figure 9; "up to 500×" is figure prose (Table 2's >100×
+bucket averages 226.29×). SQL Server: 7 of 22 > 2× (max 3.47×), 12
+instance-optimal (prose only — check marks lost in extraction), 5 optimizer
+slowdowns, Q12 2.96 M vs 2.92 M; "deployed since 2012" vs "shipped in SQL
+Server 2014" inconsistent; "~900 rows" per rowgroup not used. PT: §4.2
+averages hold per scale factor; **the introduction's "4.8× (up to 47×)" over
+Yannakakis does not hold as stated** — 4.8× is SF10 while the paired 3.3× is
+SF1, and the only 47× is Q2 vs NoPredTrans. IN paper: survey and Figure 10's
+9 ms / 15 ms hold.
+
+**Code read.** `duckdb` — no local clone existed; made a blobless clone at
+the pinned `6c0c1a68` (pin unchanged). At the pin DuckDB builds Bloom
+filters (register-blocked, ≥ 12 bits/key), exact range bitmaps and IN-lists
+for join keys, unlike the v1.3.0 RPT+ measured against; filters reach only
+the probe spine (`join_filter_pushdown_optimizer.cpp:156-160`, `:216-219`);
+the selectivity-optional pause (`table_filter_selectivity_optional_function.cpp:25-46`)
+as written never resumes once paused (hand trace + transcription; not run in
+DuckDB). `datafusion` at `1e77af8`: dynamic filters routed by column
+ownership into build sides too (`exec.rs:1675-1693`); above 150 keys / 128 KiB
+the filter is the build's hash table (`exec.rs:2106-2129`). 32 anchors
+checked with `pinned-source.py check`.
+
+Plumbing: PLAN.md §47 + map node, FINDINGS row, verify.sh lane, PROGRESS
+status + M47, SUMMARY entries, papers.md, topic counts 46 → 47, crate counts
+47 → 48, capstone milestone range.
 
 ## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
 
