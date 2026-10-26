@@ -9,6 +9,90 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
+
+A review of the whole repo against today's upstreams and literature, three
+months after most pins were taken. Topic 45 (below) is the new topic it
+seeded; everything else is here.
+
+**The C FalkorDB anchors had stopped resolving.** Topic 44's regeneration of
+the pin table ran while `~/repos/FalkorDB` was on the Rust engine and moved the
+FalkorDB pin from `ccb449a9a` (C) to `aa75821ab`, a tree with no `src/graph/`;
+`pinned-source.py check FalkorDB src/graph/delta_matrix/delta_matrix.h:108`
+failed while four guides still named `ccb449a9a`. Restored, and fixed at the
+cause: `tools/pin-table.py` now keeps every existing pin, re-pins only on
+`--bump NAME`, keeps rows for clones deleted from this machine (seven had been,
+and a regeneration would have dropped them), and reports drifted clones
+without rewriting them.
+
+**The published book had 85 dead links**, every one a `.../README.md` link that
+mdbook renders as a `README.html` it never writes — 43 of them in FINDINGS.md.
+A preprocessor (`tools/mdbook-readme-links.py`) rewrites them in the book's copy
+only. Two CI steps were added for what CI could not see: every internal link
+and anchor in the rendered HTML (`tools/check-book-links.py`: 5,857 links, 0
+dead) and every diagram through mermaid's own parser (`tools/check-mermaid.js`:
+91 blocks, 0 errors; a deliberately broken control fails).
+
+**Three benchmarks were measuring something other than what they claimed.**
+- Topic 27: `ChurnGen` drew deletions by seeded index into a `HashSet`'s
+  iteration order, which std randomizes per process — 1364 vs 1365 triangles
+  and 21,062,928 vs 21,063,216 wedges on consecutive runs. Now sorted: 1365 /
+  21,063,140 on every run.
+- Topic 42: the same pattern in the collaboration generator's triadic closure
+  and in `personalization()`'s sample. Now 0.353 / 0.157 / 0.922 and 0.403 /
+  0.815 / 0.457 on every run, random predictor 0.313%; lane 3's references
+  re-derived (PA 1.0×, common neighbours 21.7×, Jaccard 27.9×, Adamic/Adar
+  24.0×). And the July audit's "correction" of FINDINGS row 42 to 34.0% / 92.3%
+  was itself the error: the crate as first committed gives 0.353 / 0.922 today,
+  and 0.340 / 0.923 never came from committed code. The original 35.3% / 92.2%
+  is restored.
+- Topic 32: lane 1's write p99 was 20.3 s, then 37.5 s, then 3.2 s and 22.2 s
+  on consecutive runs of a "2 s" window — `std::sync::Mutex` on macOS is
+  `os_unfair_lock`, the scanner re-took the lock before the woken writer ran,
+  and the lane measured starvation. With `parking_lot::FairMutex` it measures
+  the HTAP problem itself: p99 209 ns → 2.25 ms (= 2 s / 889 scans, one scan),
+  14,052,932 → 21,543 writes, reproducing within 1% over three runs.
+A full double run of `./verify.sh`, diffed, found no other count that differs
+between runs.
+
+**Upstream since the pins**, as ~45 "Upstream since the pin" callouts with
+anchors left at the pin, each checked against code and release tags: Redis
+8.8–8.10 rax rework and the unstable B+-tree sorted sets; Valkey 9.2-rc1's
+fbtree ordered index, SPSC/SPMC I/O-thread jobs and Forkless Save (full sync
+still forks — read from `startBgsaveForReplication`); qdrant v1.19–1.20
+(the `m0 != 0` gate went in 1.20.0, not 1.19.2); DuckDB 2.0.0 (44 optimizer
+calls, +5; `skip_scan` gone); DataFusion range repartitioning; Polars 2.x;
+RocksDB 11.13's PerfContext change (attributed, not measured); Turso
+`wal_autocheckpoint`; ClickHouse adaptive codec selection, which contradicts a
+guide's "nothing analyzes". FalkorDB 6.0.0 (2026-09-29) is the Rust engine on
+`main`; the C engine continues on `master`, and `ccb449a9a` is pre-split C
+history. Kùzu is archived at exactly its pin. PostgreSQL 19 does not ship
+SQL/PGQ: committed as 2f094e7ac69, reverted as b1f106c80cb / 2b9e1aff4d3.
+Seven claims turned out to be wrong at the pin itself and were corrected
+(qdrant's "≈2M points scored", "three quantization families", DataFusion's
+two partitioning schemes, DuckDB's "exactly two" selectivity sites, an
+unsourced "~1 ns" PerfContext bump, a rax snippet that elided the line its
+prose pointed at, an unqualified Valkey ignition rule).
+
+**Newer work.** 39 papers from 2025–2026, each downloaded and read, added to
+22 topic READMEs with section/table citations and to resources/papers.md.
+The papers corrected their own leads more than once: TurboLynx's 183.9× is over
+DuckPGQ only and it is 0.58× Umbra on TPC-H; RPT+ is built on DuckDB 1.3.0, not
+shipped in it; S-RocksDB's abstract pairs two settings (like-for-like 64.3M →
+10,206 stalled writes); TVA's "9.9×" is nowhere in its evaluation. Five could
+not be read and were left out (cache_ext, Fawkes, ValScope, Aquila, CGIF).
+
+**Notes.** Topics 26–43 now open with a dated baseline from this day's run and
+an empty prediction worksheet; the author's predictions moved into collapsed
+blocks.
+
+**Capstone baselines.** Re-measured against clean, tagged builds of both
+shipping engines — C FalkorDB v4.22.2 (7b61f511d) and Rust FalkorDB v6.0.3
+(c937aa4fa) — 100 rounds, median and p99, plus memory. Against the C bar, Rust
+is 1.18–1.60× slower on bulk creates, level on matches (0.94–0.99×), 0.34–0.62×
+on deletes, and 3–22% lower on peak RSS (1M edges: 693 vs 879 MiB). Load
+average 2.9–3.4 during the runs, recorded.
+
 ## 2026-10-26 — topic 45 — Async I/O & Modern SSDs: the interface is not the win
 
 **New topic 45, `Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help`** — the topic that prices what topics 5, 6, 7 and 19 only named. Package: README, five reading guides, `notes.md`, a Rust crate with lane 1 implemented and two lanes stubbed, `FINDINGS.md` row, `verify.sh` lane, `PLAN.md` §45 and a map node (`T6 --> T45`), capstone M45, SUMMARY entries, `resources/papers.md` entries. `check-reading-depth.py --check --all` reads **241/241**.

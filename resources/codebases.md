@@ -92,13 +92,13 @@ are worth fetching first.
 | clone | read at | dated | mentions | origin |
 |---|---|---|---|---|
 | `postgres` | `701f021` | 2026-07-10 | 524 | [https://github.com/postgres/postgres](https://github.com/postgres/postgres) |
-| `redis` | `a176d1225` | 2026-03-24 | 511 | [https://github.com/redis/redis](https://github.com/redis/redis) |
-| `FalkorDB` | `ccb449a9a` | 2026-07-15 | 387 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
+| `redis` | `a176d1225` | 2026-03-24 | 513 | [https://github.com/redis/redis](https://github.com/redis/redis) |
+| `FalkorDB` | `ccb449a9a` | 2026-07-15 | 396 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
 | `duckdb` | `6c0c1a68` | 2026-07-10 | 377 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
 | `rocksdb` | `7c80a5a` | 2026-07-09 | 315 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
 | `neon` | `8f60b04` | 2026-05-25 | 215 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |
 | `sqlite` | `951de30` | 2026-07-09 | 203 | [https://github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) |
-| `GraphBLAS` | `1fd54756ca` | 2026-02-05 | 188 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
+| `GraphBLAS` | `1fd54756ca` | 2026-02-05 | 189 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
 | `qdrant` | `44ad62f` | 2026-06-03 | 178 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
 | `turso` | `dd775bc` | 2026-07-10 | 174 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
 | `valkey` | `8891441ab` | 2026-05-03 | 171 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
@@ -161,9 +161,9 @@ are worth fetching first.
 | `influxdb` | `d783411` | 2026-06-17 | 18 | [https://github.com/influxdata/influxdb](https://github.com/influxdata/influxdb) |
 | `spicedb` | `8422483` | 2026-07-24 | 16 | [https://github.com/authzed/spicedb](https://github.com/authzed/spicedb) |
 | `cranelift-jit-demo` | `3e5e9b6` | 2025-11-07 | 15 | [https://github.com/bytecodealliance/cranelift-jit-demo](https://github.com/bytecodealliance/cranelift-jit-demo) |
+| `falkordb-rs-next-gen` | `9d28bdc6` | 2026-07-29 | 15 | [https://github.com/FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) |
 | `VictoriaMetrics` | `c1e39b2` | 2026-07-10 | 15 | [https://github.com/VictoriaMetrics/VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) |
 | `automerge` | `c39339d` | 2026-07-10 | 14 | [https://github.com/automerge/automerge](https://github.com/automerge/automerge) |
-| `falkordb-rs-next-gen` | `9d28bdc6` | 2026-07-29 | 14 | [https://github.com/FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) |
 | `GraphRAG-SDK` | `f42ab3d` | 2026-04-12 | 14 | [https://github.com/FalkorDB/GraphRAG-SDK](https://github.com/FalkorDB/GraphRAG-SDK) |
 | `arrow-rs` | `fed7862` | 2026-07-10 | 13 | [https://github.com/apache/arrow-rs](https://github.com/apache/arrow-rs) |
 | `bloodhound` | `1968388` | 2026-07-24 | 13 | [https://github.com/SpecterOps/BloodHound](https://github.com/SpecterOps/BloodHound) |
