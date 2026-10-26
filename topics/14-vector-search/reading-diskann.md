@@ -330,6 +330,115 @@ the 40-shard merge produced a comparable index in **~5 days on the
 z840 with memory staying under 64 GB**. Sharded build trades wall
 clock for a machine you can actually rent.
 
+### Step 6 — two 2026 answers to the same wall: IVF on SSD, and query-aware entry points
+
+> **In:** Steps 3–4's cost model (each hop is a dependent SSD round trip;
+> a "page" is one 4 KB read). **Out:** how an inverted-file index and a
+> workload-aware entry-point layer attack the same two costs — pages read
+> per query and hops per query — with each paper's numbers and the
+> conditions they hold under. Neither is DiskANN; both are measured against it.
+
+**RaBitQ-SSD** (Gao, Xu, Norris, Singh, Qi, Douze, Zhakubayev, Long,
+[arXiv:2610.02652](https://arxiv.org/abs/2610.02652), Oct 2026) starts from
+the observation in its introduction that a graph walk on SSD *discovers*
+candidates one hop at a time, so it cannot plan reads ahead: expanding an
+uncached vertex needs its on-disk record to learn its neighbours. An **IVF**
+index (*inverted file*: k-means cells, a query reads the `nprobe` closest
+cells) knows which lists it will read up front, but reads each list in full.
+RaBitQ-SSD keeps that up-front knowledge and avoids the full read by pruning
+*inside* a list, using an error bound on a compressed in-memory code.
+
+**Split-RaBitQ.** RaBitQ (§2.2) rotates a vector, keeps one sign bit per
+dimension — a D-bit **binary code** — and estimates the inner product of the
+vector with a query with an *unbiased* estimator and a probabilistic error
+bound (Lemma 2.1). From the estimate plus or minus the bound, a **lower bound**
+on the true distance follows: if that lower bound already exceeds the current
+k-th best distance, the vector cannot enter the answer and its on-SSD record
+need never be read. Split-RaBitQ (§3) keeps only a **prefix** of D_m ≤ D bits
+of each code in DRAM, so memory is a dial, and the bound gets looser as the
+prefix shrinks (its width scales as 1/√D_m, §5.3). The per-point in-memory
+footprint is D_m / 8 + 12 bytes (§5.3): for 768-d vectors, D_m = D gives
+768 / 8 + 12 = 108 bytes and D_m = D/4 gives 192 / 8 + 12 = 36 — the 3.0×
+shrink the paper reports. Surviving candidates are fetched at **page**
+granularity through an asynchronous pipeline that keeps a bounded number of
+reads in flight (Q = 16 pages per thread for ≤ 16 threads, 8 above; §5.1) and
+re-tests each queued page against the latest threshold before issuing it.
+
+**The cost model that explains the results.** When the device is saturated,
+QPS is the device's page-read rate divided by pages per query (§5.2: for all
+methods the read rate is 1.4–1.7 M pages/s on four of the five datasets,
+"close to r_max"). Worked on the paper's own Wiki-10M numbers at D_m = D/2
+and recall 0.98 (§5.2): RaBitQ-SSD reads 141.7 pages per query and sustains
+1.61 M pages/s, so 1.61 M / 141.7 ≈ 11.4 K QPS — the paper's "about 11.4K";
+DiskANN reads 329.3 pages per query, and 329.3 × 4.8 K ≈ 1.58 M pages/s is the
+same device ceiling, which is why it manages "only 4.8K QPS" and RaBitQ-SSD's
+advantage is 11.4 / 4.8 ≈ 2.37×. On a saturated SSD, throughput *is* the
+page count.
+
+| result | number | where, and under what conditions |
+|---|---|---|
+| pages read per query at recall 0.90, k = 10, T = 64, D_m = D | RaBitQ-SSD 37.5 / 37.9 / 112.6 / 32.3 / 37.8 on OpenAI-5M / Wiki-10M / DPR-100M / LAION-100M / YFCC-100M; DiskANN 64.1 / 41.2 / 555.7 / 40.4 / 72.3 | Table 3. The best baseline reads 1.1–3.8× as many pages (Wiki 41.2 / 37.9 = 1.09; DPR 426.5 / 112.6 = 3.79, where PipeANN is the best baseline) |
+| throughput vs the fastest graph baseline | up to 1.74× at 90 % recall (abstract); on DPR-100M at recall 0.90 the advantage is 1.74× at D_m = D and 14× at D_m = D/2, because the baselines' shorter PQ codes raise their page reads 6.5–9.6× | §5.2 ("The DPR-100M outlier") |
+| on-SSD index size and build time | DataComp-1B: 587 GB and 9.2 h vs DiskANN's 4,096 GB and 45.6 h | Table 6, §5.7 ("4.0–7.0×" smaller; 4,096 / 587 = 6.98) |
+| 10 B vectors, one server, one SSD | 3,210 QPS at recall 0.90 and 2,226 at 0.95 | §5.4: DINO-10B, 1024-d uint8, D_m = 256, 545 GB resident of 768 GB DRAM, 10.24 TB raw on SSD |
+| scaling 100 k → 10 B (100,000× more data) | throughput falls only 4.21× (recall 0.90) and 4.93× (0.95) | §5.4, Figure 9b |
+
+**The negative case, stated by the authors** (§5.2, "High recall operating
+points"): at recall 0.98 with D_m = D, the fastest graph baseline *overtakes*
+RaBitQ-SSD on each of the four datasets other than DPR-100M. On Wiki-10M
+RaBitQ-SSD still reads fewer pages (73.2 vs 108.7 per query) but sustains a
+lower page-read rate (0.97 M vs 1.54 M per second), because reaching that
+recall needs a larger `nprobe`, which turns the in-memory code scan — not the
+SSD — into the bottleneck. Fewer pages only helps while the device, not the
+CPU, is the limit. That is why the 2.11–2.80× advantage at recall 0.98 appears
+only at the smaller memory budget D_m = D/2, where the baselines' PQ codes are
+shorter and they read more.
+
+Conditions that bound these: the 10 B run could not include DiskANN or PipeANN
+because their 32-bit node ids cannot address 10 B nodes (§5.4), so the
+10 B figure has no baseline; the headline ratios hold at specific recall
+targets and memory budgets (the abstract's "up to 1.74×" is at 90 % recall);
+and the comparison is on an IVF-friendly regime — high-dimensional (512–1536-d)
+embeddings where a graph record is large and few related vertices share a
+page (introduction).
+
+**CatapultDB** (Abuzakuk, Kermarrec, Pires, Randl, de Vos,
+[arXiv:2603.02164](https://arxiv.org/abs/2603.02164), Mar 2026) attacks the
+other factor, hops per query, by noticing that a Vamana search always starts
+from the same **medoid** (the point closest to all others on average) even
+though real query streams are clustered. It keeps a small table keyed by a
+random-hyperplane **LSH** hash of the query (L = 8 sign bits, so 2⁸ = 256
+buckets); each bucket holds up to b = 40 recent "landing" nodes — the best
+result of earlier queries that hashed there — evicted least-recently-used. A
+query passes its bucket's nodes plus the medoid as extra starting points to the
+*unchanged* beam search (Algorithm 2). Memory is bounded at 256 × 40 × 4 bytes
+= 40,960 bytes, the paper's "40 KiB" (§3.2). Because recall depends on the
+graph, not the start, a bad catapult costs hops, never correctness, and the
+medoid is always included. For filtered search a catapult destination that
+fails the predicate is dropped from the start set and the per-label entry
+point is used instead (§3.4).
+
+| result (CatapultDB vs DiskANN-style beam search, Rust implementation) | number | conditions |
+|---|---|---|
+| MedRAG-Zipf (35 M PubMed documents, Zipf 0.8 paraphrase clusters), 4 threads, beam width 1 | 27,078.6 vs 12,154.5 QPS (2.23×); LSH-APG 11,485.1 | §4.2.1 |
+| same, beam width 16 | 15,328.0 vs 7,623.9 QPS (2.01×) | §4.2.1 |
+| nodes visited, 4 threads, beam width 1 / 16 | 66.3 % / 26.9 % fewer than DiskANN | §4.2.2 |
+| worst case: uniform random queries, beam width 1, 4 threads | 25.4 % *lower* throughput than DiskANN | §4.3.1 |
+| filtered search (Papers, 2.7 M × 4096-d, C++ DiskANN fork), beam width 1 / 16 | +38.47 % / +22.10 % throughput; recall up to 11.01 % higher | §4.4 |
+
+Two cautions on reading these. The abstract's "up to 2.51×" is a maximum over
+configurations whose values appear only in figures, so it cannot be recomputed
+from the text; the checkable ratios are the 2.23× and 2.01× above. And "beam
+width" here is the paper's k: at width 1, CatapultDB's recall is reported 48.6 %
+higher than DiskANN's (§4.2.1), so those throughput comparisons are at equal
+beam width, not at equal recall — the paper says throughput gains "are only
+meaningful when recall is held constant" (§4.1.4) and then compares at equal
+beam width. The gains shrink as the beam widens (2.23× to 2.01× above) because
+catapults only shorten the walk to the neighbourhood, and the fraction of work
+in that walk falls as the beam grows. The mechanism is the same lesson as the
+filtered-search survey's finding that more entry points beat a deeper hierarchy
+([reading-filtered-ann-survey.md](reading-filtered-ann-survey.md), Step 4c).
+
 ## How to read the paper (with the concepts in hand)
 
 | paper | step | what to extract |
@@ -362,6 +471,13 @@ paper rests on, and both contain a qualifier that summaries drop.
 5. M28 preview: DiskANN blocks over object storage — what breaks
    when a "read" is 50 ms S3 GET instead of 100 µs NVMe? Which knob
    moves?
+6. RaBitQ-SSD reads fewer pages than DiskANN at every operating point
+   in Table 3 but loses to it at recall 0.98 with D_m = D. Using the
+   device-ceiling model (QPS = page-read rate / pages per query), say
+   which resource is saturated in each regime.
+7. CatapultDB reports +48.6 % recall at beam width 1 alongside its
+   throughput gain. Why does that make the throughput comparison
+   unequal, and what would you hold fixed instead?
 
 ## Done when
 
@@ -463,7 +579,40 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You wrote answers to all five questions in notes.md, including the M28 object-storage preview.
+- [ ] You can say when pruning inside an IVF list beats a graph walk on SSD, and when it does not.
+  <details><summary>Answer</summary>
+
+  When the SSD is the bottleneck, QPS is the device's page-read rate over
+  pages per query, so reading fewer pages wins: on Wiki-10M at recall 0.98
+  and D_m = D/2, 141.7 pages per query at 1.61 M pages/s is 11.4 K QPS
+  against DiskANN's 329.3 pages and 4.8 K QPS, a 2.37× advantage (§5.2).
+  It does not win when the CPU is the bottleneck: at recall 0.98 with
+  D_m = D the fastest graph baseline overtakes RaBitQ-SSD on four of five
+  datasets, because the larger `nprobe` makes the in-memory scan of the
+  prefix codes the limit even though fewer pages are read (73.2 vs 108.7
+  on Wiki-10M, but a page-read rate of 0.97 M/s against 1.54 M/s). The
+  graph side of the contrast is structural, not a tuning gap: a hop's read
+  depends on the previous hop's result, so reads cannot be planned ahead.
+
+  </details>
+
+- [ ] You can describe CatapultDB's mechanism, its memory bound, and the caveat on its headline speedup.
+  <details><summary>Answer</summary>
+
+  A table keyed by an 8-bit random-hyperplane LSH hash of the query (256
+  buckets) holds up to 40 recent landing nodes per bucket, LRU-evicted,
+  and passes them with the medoid as extra starting points to the
+  unchanged beam search; 256 × 40 × 4 B = 40,960 B (§3.2). Recall cannot
+  suffer because the medoid is always a start. Checkable gains: 27,078.6
+  vs 12,154.5 QPS (2.23×) at 4 threads and beam width 1 on MedRAG-Zipf,
+  2.01× at width 16 (§4.2.1); the worst case, uniform queries, is 25.4 %
+  slower at width 1 (§4.3.1). The abstract's "up to 2.51×" is not
+  recoverable from the text, and the comparisons are at equal beam
+  width rather than equal recall (recall differs by 48.6 % at width 1).
+
+  </details>
+
+- [ ] You wrote answers to all seven questions in notes.md, including the M28 object-storage preview.
   <details><summary>Answer</summary>
 
   For question 5, the arithmetic is the point: at 250 µs per read a 3
@@ -504,6 +653,16 @@ Answer each before unfolding it.
 | §4.3 | one-shot index 98.68% 1-recall@1 at < 5 ms; merged ≤ 20% extra latency; `ℓ/k = 5%` edge locality; build costs (~2 days / 1100 GB vs ~5 days / < 64 GB) |
 | §4.4 | > 95% 1-recall@1 under 3.5 ms at 32-byte codes; IVFOADC+G+P plateaus at 62.74% (-32) and 37.04% (-16) |
 
+- Gao, Xu, Norris, Singh, Qi, Douze, Zhakubayev, Long — "RaBitQ-SSD:
+  Split Codes and Pipelined I/O for SSD-Resident Vector Search"
+  ([arXiv:2610.02652](https://arxiv.org/abs/2610.02652), v1, Oct 2026):
+  §2.2 and Lemma 2.1 (the bound), §3 (Split-RaBitQ), §5.1 (setup:
+  Q = 16 / 8 in-flight pages), §5.2 and Table 3 (pages per query), §5.4
+  (10 B scale), §5.7 and Table 6 (build and size).
+- Abuzakuk, Kermarrec, Pires, Randl, de Vos — "Catapults to the Rescue:
+  Accelerating Vector Search by Exploiting Query Locality"
+  ([arXiv:2603.02164](https://arxiv.org/abs/2603.02164), v1, Mar 2026):
+  §3.2 (mechanism, 40 KiB bound), §4.2–4.4 (results).
 - Singh, Subramanya, Krishnaswamy, Simhadri — "FreshDiskANN"
   (2021) — the *separate* paper on streaming updates. Not covered
   here; do not attribute its results to the 2019 paper.

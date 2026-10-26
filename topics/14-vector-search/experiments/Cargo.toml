@@ -10,5 +10,9 @@ rand = "0.8"
 name = "ann_bench"
 path = "src/bin/ann_bench.rs"
 
+[[bin]]
+name = "filter_bench"
+path = "src/bin/filter_bench.rs"
+
 [profile.release]
 debug = true
