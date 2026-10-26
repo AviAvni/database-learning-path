@@ -33,6 +33,30 @@ work the mutex never had to redo. Find the keyspace size where the crossover
 happens — that number, not the read-heavy speedup, is what decides whether MVCC
 is the right answer for a given workload.
 
+A reference implementation (one `RwLock` over the version map, reads under the
+read lock, commit validating under the write lock — the shape `mvcc.rs`
+suggests) fills the empty column, median of three runs, same machine:
+
+```
+mix                                 global-lock/s     mvcc txn/s    aborts/commit
+read-heavy  95/5, 10K keys                 600 842        2 119 487       0.000
+write-heavy 50/50, 10K keys                526 678        1 353 137       0.001
+write-heavy 50/50, 64 keys (HOT)           576 817        1 640 987       0.16
+```
+
+**The prediction that MVCC loses the hot row is wrong for this baseline, and the
+reason is in the baseline.** MVCC is 3.5× the lock on read-heavy, as predicted,
+and still 2.8× on the HOT row at 0.16 aborts per commit — an abort here costs
+four cheap operations, and the mutex baseline builds its key strings *while
+holding the lock*. Move key construction outside the lock (a fairer baseline,
+~0.9 M txn/s on the hot rows) and the margin shrinks to 1.6× on HOT-64 and the
+crossover appears: MVCC loses at 1–2 keys (0.70× and 0.90× of the fair lock),
+ties at 4, and wins from 8 up. That crossover sits near one key per thread, at
+1.2–1.7 aborts per commit — where retrying costs more than the lock's
+serialization. `notes.md` has the full sweep. The lesson is the one the baseline
+row already hinted at, made quantitative: what decides MVCC's worth is not the
+read/write mix but the *abort rate times the cost of redoing a transaction*.
+
 ## 1. Isolation levels are defined by their bugs
 
 Read the levels bottom-up, as "which anomalies are permitted":
@@ -159,6 +183,67 @@ on commit or deleted on abort (§1); compared with the in-memory MVCC scheme it
 improves insertion throughput by up to 19% (§1). Read it next to
 [`reading-rocksdb-transactions.md`](reading-rocksdb-transactions.md): it is the
 case M8 would meet if a bulk graph load committed as one transaction.
+
+Two 2026 papers push on the premise rather than the menu. The first asks
+whether the primary engine needs versions at all. **The Case for Single-Version
+Concurrency Control in the Cloud** (Lam-Duy Nguyen, Gabriel Haas, Muhammad
+El-Hindi, Viktor Leis, Philip A. Bernstein; CIDR '27,
+[arXiv:2610.15793](https://arxiv.org/abs/2610.15793)) is a position paper. Its
+argument (§1, §3.1): cloud OLTP systems such as Aurora, Socrates, Taurus and
+PolarDB run one writer and push long-running reads to replicas or a separate
+analytics engine, so the job MVCC was adopted for — letting long snapshots read
+beside writers inside *one* engine — has moved out of the primary. What is left,
+they say, is MVCC's bill: version storage, garbage collection, and 16–32 bytes
+or more of visibility metadata per record (§2.2, citing Wu et al. and
+Alhomssi–Leis). Their proposal is two-phase locking with Wait-Die in the
+primary, with lightweight extensions — an on-demand `BeginSnapshot()` that
+captures overwritten tuples into a throwaway auxiliary index, and bounds on
+transaction size (§3.4, citing Aurora DSQL's 10 MiB / five-minute and
+FoundationDB's 10 MB / five-second limits). The evidence is deliberately thin
+and the paper says so: on LeanStore they implement both protocols and report
+303 lines of core code against 426 for Hyper-style MVCC, 45 against 265 lines of
+modification, and 665 against 1325 lines of tests (Table 1, §3.3); a serializable
+TPC-C run with 8 threads gives 127K txn/s for the 2PL prototype against 119K for
+MVCC, a gap the authors attribute to both prototypes sitting on the same
+concurrent hash tables and to a run too short for garbage collection to matter
+(§3.3). They do not re-measure performance — "we do not revisit them in depth
+here" — and cite Tanabe et al. (CCBench) for the claim that MVCC beats
+single-version schemes only in limited cases such as high contention (§5). Hold
+it up against this topic's own sweep (notes.md): the
+single-writer / single-version end of the design space is exactly M8's first
+step, and the paper's argument is that it is also where cloud OLTP engines are
+heading, but the paper's evidence for "cheaper" is lines of code, not txn/s.
+
+The second keeps versions and asks where they live in the *index*. **Multiversion
+Concurrency Control for Multiversion B-Trees** (Amir Tonta, Bernhard Seeger,
+Eljas Soisalon-Soininen; [arXiv:2606.09133](https://arxiv.org/abs/2606.09133),
+June 2026, PVLDB-format preprint) makes the 1996 multiversion B-tree (MVBT)
+concurrent. A version-chain B+-tree attaches a list of versions to each key, so
+scans slow as the lists grow and deleted keys linger in the tree (§1); a
+copy-on-write B+-tree copies a whole root-to-leaf path per write. The MVBT is a
+DAG of nodes in which a *version split* copies only the live entries of an
+overflowing node into a fresh node, giving space linear in the number of writes (O(1) amortized cost per write)
+and range-scan cost matching a B+-tree holding only the target version (§2.1). The
+paper's contribution (§3–5) is a node layout split into an immutable *committed*
+section that scans read without latches and an *uncommitted* tail, an 8-byte
+atomic word per node packing a latch bit with live and dead entry counters, and
+proactive splits during a top-down optimistic-latch descent, so scans never
+conflict with writers. Read it with two limits in mind, both the authors':
+every operation is its own single-row transaction — "support for arbitrary ACID
+transactions is beyond the scope of this paper" (§3.1) — and the experiments are
+called "a preliminary set" (§8): YCSB-derived mixes on a 64-core EPYC 7742 with
+32 writer and 16 reader threads, against a version-chain B+-tree and the
+frugal-skip-list `vWeaver` variant, with results given as figures rather than
+tables. What they show is qualitative: scan latency independent of the update
+percentage (Fig. 8), higher write and scan throughput than both baselines
+(Fig. 9–10) — the smallest advantage on update-only workloads, "orders of
+magnitude" once insertions and deletions are in the mix (§9) — and nearly all
+node allocations served from the garbage list (about 1% from the allocator,
+Fig. 13).
+For M8 the transferable idea is the version unit: a version split is a local
+rewrite of live data into a fresh block, the same move as flushing a delta
+matrix into a tile (topic 20); the transactional layer M8 needs on top is the
+part the paper leaves to future work.
 
 ## 5. Code to read (guides in this dir)
 

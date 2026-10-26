@@ -26,6 +26,95 @@ version should crush the baseline on row 1 (readers never block) and may well
 *lose* on row 3, where first-committer-wins turns key contention into aborted
 work that the mutex never has to redo. Find the crossover keyspace size.
 
+## Reference numbers for the exercise lanes (Apple M3 Pro, measured 2026-10-26)
+
+A reference `mvcc.rs` — `HashMap<Key, Vec<Version>>` behind one `RwLock`, reads
+under the read lock, commit validating and installing under the write lock, a
+separate small mutex for the active-snapshot set, `Drop` as abort, `gc()` taking
+the minimum active snapshot — passes all eight tests. It is not committed; this
+is what `txn_bench` prints with it (4 threads × 50 000 txns × 4 ops, median of
+three runs; an aborted transaction retries with the same operations).
+
+| mix | global-lock/s | mvcc txn/s | speed-up | aborts (of 200 000 commits) |
+|---|---|---|---|---|
+| read-heavy 95/5, 10K keys | 600 842 | 2 119 487 | 3.53× | ~4 |
+| write-heavy 50/50, 10K keys | 526 678 | 1 353 137 | 2.57× | ~250 |
+| write-heavy 50/50, 64 keys (HOT) | 576 817 | 1 640 987 | 2.84× | ~31 800 |
+
+Abort counts depend on thread timing and are not reproducible to the digit; the
+throughputs are timings.
+
+### Keyspace sweep: where is the crossover?
+
+The prediction in the README was that first-committer-wins aborts would make
+MVCC lose the HOT row. It does not, against this baseline. The baseline is
+suspect for a reason visible in `txn_bench.rs`: `key(...)` allocates a `String`
+*inside* the critical section. The sweep therefore adds **lock-fair**, the same
+global mutex with every key built before taking the lock. 50/50 mix unless
+stated, median of 3 runs (2 for the smallest keyspaces), txn/s in thousands:
+
+| keys | lock | lock-fair | mvcc (RwLock) | mvcc (one mutex) | aborts per commit | mvcc ÷ lock | mvcc ÷ fair | serializable mvcc |
+|---|---|---|---|---|---|---|---|---|
+| 100 000 | 513 | 642 | 963 | 676 | 0.000 | 1.88× | 1.50× | 883 |
+| 10 000 | 533 | 766 | 1 239 | 928 | 0.001 | 2.32× | 1.62× | 1 248 |
+| 1 000 | 592 | 786 | 1 430 | 1 017 | 0.011 | 2.42× | 1.82× | 1 362 |
+| 256 | 562 | 917 | 1 497 | 1 065 | 0.042 | 2.66× | 1.63× | 1 391 |
+| 64 | 591 | 923 | 1 491 | 1 012 | 0.154 | 2.52× | 1.61× | 1 254 |
+| 32 | 571 | 939 | 1 439 | 940 | 0.291 | 2.52× | 1.53× | 1 166 |
+| 16 | 568 | 960 | 1 284 | 947 | 0.516 | 2.26× | 1.34× | 960 |
+| 8 | 585 | 974 | 1 210 | 1 162 | 0.833 | 2.07× | 1.24× | 865 |
+| 4 | 572 | 939 | 1 000 | 993 | 1.246 | 1.75× | 1.06× | 750 |
+| 2 | 576 | 968 | 872 | 847 | 1.496 | 1.51× | **0.90×** | 726 |
+| 1 | 580 | 1 212 | 850 | 868 | 1.673 | 1.47× | **0.70×** | 821 |
+
+Read-only-ish and write-only corners: 95/5 on 10K keys — 606 / 1 221 / 1 950
+(lock / fair / mvcc), 3.2× the provided baseline and 1.6× the fair one;
+100% writes on 64 keys — 542 / 720 / 1 508 (2.8× / 2.1×); 100% writes on 8 keys
+— 544 / 722 / 783 (1.44× / 1.08×, 1.8 aborts per commit).
+
+**Findings.**
+
+1. **Read-heavy: MVCC crushes the lock, as predicted** — 3.5× the provided
+   baseline, 1.6× the fair one. Readers take the read lock and never conflict.
+2. **The crossover exists but sits far lower than the README guessed.** Against
+   the fair lock MVCC stops winning between 4 and 2 keys — about one key per
+   thread — where each transaction retries 1.2–1.7 times on average. Above that
+   it wins everywhere in the sweep, even at 0.5 aborts per commit (16 keys),
+   because an abort costs four cheap operations and the commit-time validation
+   is short. A workload with *expensive* transactions would cross over at a much
+   lower abort rate; this one cannot show it.
+3. **How the baseline is written moves the answer by 1.6×.** Compare the `lock`
+   and `lock-fair` columns: allocation inside the critical section is a real cost
+   of the provided lane, and a result like "3.5×" is partly that. Quote the fair
+   column when the question is concurrency control rather than allocation.
+4. **A single metadata mutex gives away a third of the win.** The `one mutex`
+   column (every read takes the exclusive lock, the shape `mvcc.rs`' docs call
+   "fine") is 0.7× of the `RwLock` version at 64 keys and still above the lock:
+   MVCC's gain is mostly "the critical section is short", and the read lock is the
+   rest.
+5. **Serializable (backward read-set validation) costs 0–25% and aborts more:**
+   at 64 keys 1.25 M txn/s with 58 K aborts against 1.49 M with 31 K. It
+   converges on snapshot isolation at 10K keys (1 248 vs 1 239) where there is
+   nothing to conflict on. This is the false-positive count the implementation log
+   asks for, seen as throughput.
+
+### What the two 2026 papers add to the measurement
+
+*Case for SVCC* (CIDR '27) argues that a single-writer primary does not need
+versions. The sweep agrees with the one claim it can test: single-version
+locking is not slow — the fair lock holds ~0.9 M txn/s at every hot keyspace here
+— and MVCC's margin shrinks to nothing as contention concentrates. It cannot
+confirm the paper's complexity argument (lines of code), and the paper's own
+TPC-C comparison (127 K vs 119 K txn/s at 8 threads, §3.3) is the same size of
+effect as the noise between my three runs. Note what the sweep does *not*
+contain: long-running readers. That is MVCC's actual job, and the only workload
+on which a 2PL baseline would stall the writer for the length of the scan (topic
+32 measures exactly that: 652× fewer writes with full scans).
+
+*cMVBT* is an index design, not a transaction protocol: it does not change this
+table, but it changes what a "version" costs when many versions of a key
+accumulate — the thing the `gc()` test checks for in miniature.
+
 ## Predictions (fill in BEFORE running txn_bench)
 
 | Measurement | Prediction | Actual | Surprised? |

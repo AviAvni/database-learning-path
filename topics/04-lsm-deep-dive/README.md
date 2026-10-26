@@ -109,6 +109,43 @@ price is visible in the same section: S-RocksDB reaches lower peak throughput
 and "trades transient throughput peaks for smoother long-run admission" — the
 stall is still back-pressure, applied continuously instead of all at once.
 
+A third answer keeps the valve and attacks the pipe it sits on. **DiaLSM:
+Towards Write-Stall-Free Performance via Shard-based LSM-tree** (Hongsu Byun,
+Safdar Jamil, Honghyeon Yoo, Sungyong Park, Myungcheol Lee, Xubin He, Zhichao
+Cao, Youngjae Kim; [arXiv:2609.14370](https://arxiv.org/abs/2609.14370), a
+September 2026 preprint; [code](https://github.com/DISCOS-LAB/DiaLSM)) models
+the write→flush→compaction path as one M/G/1 queue with "vacations" (§II-A,
+Eq. 1–3): a *memtable* stall happens when the arrival rate λ exceeds the flush
+rate µ_flush, lasts M/µ_flush (the time to flush one memtable of size M) and
+recurs at (λ − µ_flush)/M per second; an *L0* stall happens when flush outruns
+L0→L1 compaction (rate µ_cmp0) for long enough to fill the gap ΔN of files
+between the compaction trigger and the stop trigger (the 4 and 36 above), lasts
+ΔN·S_sst/µ_cmp0 (the time to drain that gap) and recurs at
+(µ_flush − µ_cmp0)/(ΔN·S_sst); a *pending-bytes* stall is the same story one
+level down.
+Against `db_bench` FillRandom runs with 8 KB values the model's predicted
+memtable- and L0-stall rates differ from observed by a mean absolute error of
+0.03 stalls/s (§II-B, Table I). The model's sharpest consequence is the
+"balloon effect": speeding up flush removes memtable stalls and feeds L0 faster;
+adding compaction threads removes L0 stalls and pushes pending-bytes pressure
+downstream — so tuning ADOC- or sub-compaction-style *moves* stalls between the
+three causes without removing them, as long as one pipeline carries all writes
+(§II-B). DiaLSM's remedy is structural: hash the keyspace into several internal
+shards, each a full RocksDB instance with its own memtables and compactions, and
+when a shard is stalled redirect the write to a healthy *fallback* shard, leaving
+a small "clue entry" in the primary shard so reads can find it (§III). If one
+shard stalls with probability α, all L stall together with probability α^L
+(§II-C, Eq. 9). On its testbed (two 24-core EPYC 7352, one NVMe SSD, RocksDB
+v8.3.2) the authors report, for `db_bench` FillRandom, 94.3% fewer stalls and up
+to 2.4× the throughput of ADOC, with throughput saturating beyond about 8 shards
+once software overhead rather than stalls is the limit (§IV-B). Two costs are
+stated: at p99.9–p99.99 DiaLSM "incurs extra latency from fallback redirection
+and CE insertion", which the authors call bounded (§IV-B), and hash sharding
+gives up key order, which the paper spends a design section recovering for range
+scans (§III).
+This is the preprint's own evidence on one machine, not a replicated result; the
+reading to take from it is the model, not the 2.4×.
+
 ```
  write amp intuition, leveled, ratio T=10:
  a key is rewritten ~once per level it descends through, but each merge into
