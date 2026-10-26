@@ -2,7 +2,7 @@
 
 **A self-paced curriculum in database internals, where every claim is measured.**
 
-47 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
+51 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
 through the papers and the production code, then hands you a Rust benchmark that
 demonstrates the thing being claimed — so you finish with a number you produced
 yourself, not a fact you read.

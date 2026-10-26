@@ -63,10 +63,10 @@ is done.
 | 44 | E-graphs as a Database: Relational E-matching & egglog | done | todo |  |
 | 45 | Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help | done | todo |  |
 | 46 | Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning | done | todo |  |
-| 50 | LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost | done | todo |  |
 | 47 | Semi-join Reduction in Practice: Yannakakis, Predicate Transfer & Bitmap Filters | done | todo |  |
 | 48 | Memory Tiering: CXL, Disaggregated Memory & Placement | done | todo |  |
 | 49 | Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage | done | todo |  |
+| 50 | LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -119,10 +119,10 @@ is done.
 | M44 relational rewrite stage (e-graph planner pass whose patterns compile to conjunctive queries and run through generic join, a timestamped e-node table driving a semi-naive saturation loop, and one cyclic rewrite pattern measured against a binary-join plan) | 44 | todo |
 | M45 async page-read path for the storage backend (an `IoBackend` trait under the M6 buffer pool — sync `pread`, worker pool, io_uring on Linux — chosen at startup; a read stream whose look-ahead doubles on I/O waits; the two cost models predicted before measuring; out-of-place writes with a total-WAF counter) | 45 | todo |
 | M46 factorized intermediates for the pattern engine (`Expand` chains kept as packed `Level { vals, off }` siblings with deferred flattening; `count`/`sum` as products of multiplicities; cascade-correct filters property-tested against flat plans; variable-length relationships planned as closures that can be intersected with other edges, under explicit set or bag semantics) | 46 | todo |
-| M50 semantic predicates in the planner (`ExpensivePredicate` with declared cost and a paid selectivity sample, rank ordering, LIMIT pushdown, (row, predicate) answer cache, two-threshold cascade with a guaranteed-threshold learner; call counts match lane 1 against a mock model) | 50 | todo |
 | M47 semi-join pass for the Cypher planner (forward/backward semi-joins over label and relationship matrices for acyclic `MATCH` patterns with the ≤ OUT bound asserted; exact bitmap or Bloom filter behind one trait with per-hop false-positive and inherited counters; RPT+-style run-time abandon; null-bearing `IN` kept out of the filter path; both anchors benchmarked against C FalkorDB) | 47 | todo |
 | M48 tier-aware placement for the graph store (fast/slow arenas, `mbind` on Linux; vertex renumbering by access frequency with pages-for-90% reported before and after; the partial-move decision before bulk traversals over a slow-tier adjacency; engine metadata pinned to the fast tier) | 48 | todo |
 | M49 graph snapshots and branches on object storage (immutable segment files + a manifest with per-segment statistics; commits and branch/tag references by conditional put; an O(1)-metadata planner measured with lane 1a's meter; lane 2's conflict rules for concurrent writers to a branch; manifest-merge interval chosen by lane 3's EOQ rule) | 49 | todo |
+| M50 semantic predicates in the planner (`ExpensivePredicate` with declared cost and a paid selectivity sample, rank ordering, LIMIT pushdown, (row, predicate) answer cache, two-threshold cascade with a guaranteed-threshold learner; call counts match lane 1 against a mock model) | 50 | todo |
 
 ## Session log
 

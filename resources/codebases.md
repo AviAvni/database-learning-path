@@ -122,15 +122,16 @@ are worth fetching first.
 | `egglog` | `e264c37a` | 2026-08-25 | 76 | [https://github.com/egraphs-good/egglog](https://github.com/egraphs-good/egglog) |
 | `lmdb` | `704dc70` | 2026-06-24 | 73 | [https://github.com/LMDB/lmdb](https://github.com/LMDB/lmdb) |
 | `raft-rs` | `ad13f3d` | 2026-05-13 | 69 | [https://github.com/tikv/raft-rs](https://github.com/tikv/raft-rs) |
-| `neo4j` | `eccd584a` | 2026-07-02 | 67 | [https://github.com/neo4j/neo4j](https://github.com/neo4j/neo4j) |
+| `neo4j` | `eccd584a` | 2026-07-02 | 68 | [https://github.com/neo4j/neo4j](https://github.com/neo4j/neo4j) |
 | `tiflash` | `b5093dd` | 2026-07-09 | 62 | [https://github.com/pingcap/tiflash](https://github.com/pingcap/tiflash) |
+| `materialize` | `b06b3d6` | 2026-07-10 | 61 | [https://github.com/MaterializeInc/materialize](https://github.com/MaterializeInc/materialize) |
 | `prometheus` | `f282b5c` | 2026-07-10 | 61 | [https://github.com/prometheus/prometheus](https://github.com/prometheus/prometheus) |
 | `kuzu` | `89f0263` | 2025-10-10 | 59 | [https://github.com/kuzudb/kuzu](https://github.com/kuzudb/kuzu) |
 | `materialize` | `b06b3d6` | 2026-07-10 | 56 | [https://github.com/MaterializeInc/materialize](https://github.com/MaterializeInc/materialize) |
 | `neo4j` | `eccd584a` | 2026-07-02 | 55 | [https://github.com/neo4j/neo4j](https://github.com/neo4j/neo4j) |
 | `memchr` | `5fdb40c` | 2026-07-07 | 53 | [https://github.com/BurntSushi/memchr](https://github.com/BurntSushi/memchr) |
 | `tikv` | `eb8dd65` | 2026-07-09 | 53 | [https://github.com/tikv/tikv](https://github.com/tikv/tikv) |
-| `hypothesis` | `49a797bdf` | 2026-08-25 | 51 | [https://github.com/HypothesisWorks/hypothesis](https://github.com/HypothesisWorks/hypothesis) |
+| `hypothesis` | `49a797bdf` | 2026-08-25 | 52 | [https://github.com/HypothesisWorks/hypothesis](https://github.com/HypothesisWorks/hypothesis) |
 | `ducklake` | `947c849` | 2026-10-24 | 49 | [https://github.com/duckdb/ducklake](https://github.com/duckdb/ducklake) |
 | `go-ycsb` | `f030f99` | 2025-12-31 | 49 | [https://github.com/pingcap/go-ycsb](https://github.com/pingcap/go-ycsb) |
 | `tantivy` | `7152d53` | 2026-07-10 | 49 | [https://github.com/quickwit-oss/tantivy](https://github.com/quickwit-oss/tantivy) |
@@ -156,6 +157,7 @@ are worth fetching first.
 | `simdjson` | `c783809` | 2026-07-10 | 28 | [https://github.com/simdjson/simdjson](https://github.com/simdjson/simdjson) |
 | `tidb` | `b94006d` | 2026-07-10 | 28 | [https://github.com/pingcap/tidb](https://github.com/pingcap/tidb) |
 | `iceberg-rust` | `26356f5` | 2026-10-26 | 27 | [https://github.com/apache/iceberg-rust](https://github.com/apache/iceberg-rust) |
+| `palimpzest` | `807ed30` | 2026-04-13 | 27 | [https://github.com/mitdbg/palimpzest](https://github.com/mitdbg/palimpzest) |
 | `splink` | `04189f5` | 2026-07-23 | 27 | [https://github.com/moj-analytical-services/splink](https://github.com/moj-analytical-services/splink) |
 | `quickwit` | `a5ad540` | 2026-07-08 | 26 | [https://github.com/quickwit-oss/quickwit](https://github.com/quickwit-oss/quickwit) |
 | `risingwave` | `119de0a` | 2026-07-10 | 25 | [https://github.com/risingwavelabs/risingwave](https://github.com/risingwavelabs/risingwave) |
@@ -171,7 +173,6 @@ are worth fetching first.
 | `cranelift-jit-demo` | `3e5e9b6` | 2025-11-07 | 15 | [https://github.com/bytecodealliance/cranelift-jit-demo](https://github.com/bytecodealliance/cranelift-jit-demo) |
 | `VictoriaMetrics` | `c1e39b2` | 2026-07-10 | 15 | [https://github.com/VictoriaMetrics/VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) |
 | `automerge` | `c39339d` | 2026-07-10 | 14 | [https://github.com/automerge/automerge](https://github.com/automerge/automerge) |
-| `GraphRAG-SDK` | `f42ab3d` | 2026-04-12 | 14 | [https://github.com/FalkorDB/GraphRAG-SDK](https://github.com/FalkorDB/GraphRAG-SDK) |
 | `bloodhound` | `1968388` | 2026-07-24 | 13 | [https://github.com/SpecterOps/BloodHound](https://github.com/SpecterOps/BloodHound) |
 | `feldera` | `bb49055` | 2026-07-10 | 13 | [https://github.com/feldera/feldera](https://github.com/feldera/feldera) |
 | `RedisBloom` | `ab734fa` | 2026-07-05 | 9 | [https://github.com/RedisBloom/RedisBloom](https://github.com/RedisBloom/RedisBloom) |
@@ -186,6 +187,7 @@ are worth fetching first.
 | `duckpgq-extension` | `29ca668a` | 2026-10-21 | 3 | [https://github.com/cwida/duckpgq-extension](https://github.com/cwida/duckpgq-extension) |
 | `y-crdt` | `03e14a0` | 2026-06-12 | 3 | [https://github.com/y-crdt/y-crdt](https://github.com/y-crdt/y-crdt) |
 | `antithesis-sdk-rust` | `78c9db5` | 2026-06-12 | 2 | [https://github.com/antithesishq/antithesis-sdk-rust](https://github.com/antithesishq/antithesis-sdk-rust) |
+| `ducklake-web` | `42237d5` | 2026-10-26 | 2 | [https://github.com/duckdb/ducklake-web](https://github.com/duckdb/ducklake-web) |
 | `hashjoins-meet-cxl` | `0aeea0d` | 2026-01-30 | 2 | [https://github.com/fukien/hashjoins-meet-cxl](https://github.com/fukien/hashjoins-meet-cxl) |
 | `helix-db` | `47191c6` | 2026-07-05 | 2 | [https://github.com/HelixDB/helix-db](https://github.com/HelixDB/helix-db) |
 | `timely-dataflow` | `15fc7c9` | 2026-06-12 | 2 | [https://github.com/TimelyDataflow/timely-dataflow](https://github.com/TimelyDataflow/timely-dataflow) |

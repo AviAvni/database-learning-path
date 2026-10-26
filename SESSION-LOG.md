@@ -9,83 +9,6 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
-## 2026-10-26 — topic 46 — Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning
-
-The deep version of what topics 10, 11 and 13 carried as one-paragraph
-"Newer work" notes: graph patterns inside relational engines, the blow-up that
-flat joins pay for them, and the 2026 work that removes it.
-
-**Lane 1, provided (Apple M3 Pro).** Seeded integer-only power-law generator
-(SplitMix64; both endpoints copied from earlier endpoints 70% of the time;
-sorted + deduplicated, so counts are bit-identical everywhere). 2-hop and 3-hop
-path patterns as left-deep pipelined hash joins (tuples produced), CSR
-expansion, and factorized size from degrees:
-
-- |V| = 10,000 / 77,164 edges: 2-hop 6,665,086 tuples vs 161,624 f-rep values
-  (124×); 3-hop 241,301,569 tuples (958,541,190 values) vs 6,738,545 (142×).
-- |V| = 20,000 / 155,727: 17,759,290 vs 326,298 (163×); 739,497,555
-  (2,940,230,930 values) vs 17,875,125 (164×).
-- |V| = 40,000 / 313,512: **47,900,847 vs 656,622 (219×); 2,272,724,241
-  tuples (9,042,996,117 values) vs 47,997,149 (188×)** — the headline.
-- Uniform control (0% preferential), |V| = 40,000 / 319,962 edges, max out 20:
-  2,560,772 vs 679,805 (11×); 23,058,939 vs 3,240,016 (28×). Skew is the premise.
-- FFX's Fig. 1a reproduced: 13 tuples, 39 values, 22 over T1, 15 over T2.
-- Timings at load {4.28 4.07 4.32}, best of 3: 3-hop at 40K hash join 624.2 ms,
-  CSR 464.3 ms (1.30–1.35× in every row, same tuple count), degree-product count
-  0.45 ms; 0.21–0.35 ns per produced tuple (a lower bound: the plan writes
-  nothing). Re-run at load {12.47 8.19 8.18}: up to 2.3× slower, counts identical.
-
-**Lane 2 (stub): factorized join operator** on FFX-style packed offset vectors
-— provided 2-hop build (656,622 values, 4.2 ms); stubbed bottom-insert
-`extend`, `count`, `flatten`, `retain_d` with cascade. Reference (written, run,
-removed): 47,997,149 values = closed form in 20.7 ms; count 2,224,823,394 in
-0.044 ms; `retain_d(d % 8 == 0)` → 6,632,319 values, 286,772,642 tuples in
-26.0 ms. Build + count ≈ 25 ms vs 624.2 ms flat.
-
-**Lane 3: RPQ `a·b*`** from 257 sources (78,165 a-edges, 235,347 b-edges).
-Provided semi-naive `WITH RECURSIVE … UNION`: 6,536,711 pairs, 10 rounds,
-40,832,336 tuples derived, 675.9 ms. Walks vs pairs: k=4 6,679,113,406 vs
-5,845,226 (1,142.7×); k=8 7.4×10⁹×. Stub: product-automaton BFS. Reference:
-same pairs, 6,536,968 states, **40,832,336 edges scanned — exactly the
-semi-naive derived count** (set semantics already makes the recursion a BFS;
-the difference is cost per step, 134.2 ms, 5.0×).
-
-**Five guides; claims verified and the ones that did not hold.**
-- Lehner & Neumann (VLDB'26): §2.2's 62.5% (6/16), §4.5's count formula on
-  Fig. 3 (10 tuples), §5.1's ID example, §6.1 break-evens (10/12/36 duplicates,
-  BI 1.9× TI), §6.2 (−15% all acyclic, +6.9% >10 ms, +52% >100 ms, cyclic −32%,
-  vs Umbra −58%), §6.4 (18× parallel, BI in 49% of queries). **Not
-  reconstructable:** the abstract's "over 25×" (only on Figure 15's log axis)
-  and "over 19% of CE queries" (19% of 2,557 = 486 matches no §6.2 count).
-- FFX (SIGMOD'26): §2.2.1's 13/39/22/15 reproduced in code; Fig. 4 offsets;
-  §7.2 1,883 of 1,951 plans (printed 96.53%/3.47%, computed 96.51%/3.49%).
-  **Table 4 prose mismatches:** caption says seconds, values are ms; "up to
-  108.4×" fewer calls vs 114.13× in the table; "1.35–3.59×" cycles mixes rows
-  and omits 8.14×. LSQB comparisons use hand-picked orders (§7.3.3).
-- CRPQ planning (VLDB'26): Table 5's "average speedup" 2.0833 / 1.6833 is the
-  ratio of average times (5.5544/2.6662, 5.3256/3.1638); timeouts 186 → 60 on
-  WDBench (−67.7%), unchanged 10 → 10 on LDBC SNB. Eqs. 37, 38, 42 worked.
-- DuckPGQ (CIDR'23 + `cwida/duckpgq-extension` @ `29ca668`, new clone, pinned):
-  `MATCH` → key equalities (`match.cpp:486–495`); CSR by atomic counting sort;
-  512-lane bitset BFS; a bounded quantifier compiles to
-  `iterativelength(...) BETWEEN l AND u` — a filter on *shortest* distance,
-  one row per pair (read from code, not run); the October 2026
-  `FactorizedJoinOptimizer` (degree-product `count(*)`, two-sided n:m test).
-  TurboLynx Table 4: DuckPGQ 15,905 ms vs DuckDB 3,467 ms on LDBC SF100 (same
-  84-query denominator, 4.6×). **TurboLynx Table 4's Umbra row does not
-  check:** printed 7.74× / 0.58× vs ms quotients 27.6 / 9.26 (DBpedia agrees);
-  DuckPGQ SF100 printed 183.9 vs 189.3; Kùzu DBpedia 18.88 vs 17.88. Topic 13's
-  README quotes the Umbra ratios — left as is, flagged here.
-- PostgreSQL SQL/PGQ at `2f094e7ac69` (reverted `b1f106c80cb` /
-  `2b9e1aff4d3`; in no release), read with `pinned-source.py --ref`: one join
-  query per element-table combination (product over factors — the cause of
-  follow-ups `2ff289d0393` stack depth and `a82e33a83d7` interruptibility),
-  `UNION ALL` (`:728`), quantifiers refused (`parse_graphtable.c:233–236`).
-
-Plumbing: PLAN.md §46 + map node, FINDINGS row, verify.sh lane, PROGRESS status
-+ M46, SUMMARY entries, papers.md, codebases.md row + pin (pin table regenerated
-over the already-pinned clones plus duckpgq-extension only, so sibling agents'
-new clones were not swept in), topic counts 46 → 47, crate counts 47 → 48.
 ## 2026-10-26 — topic 50 — LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost
 
 **New topic 50, `LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost`** — semantic operators (LLM-powered filter, join, map, top-k inside a plan), text-to-query and the agent as client, read as a cost-based optimization problem for an operator that costs dollars and seconds per row and is sometimes wrong. Package: README, six reading guides, `notes.md`, a dependency-free Rust crate (`semop_bench`) with lane 1 implemented and two lanes stubbed, `FINDINGS.md` row, `verify.sh` lane, `PLAN.md` §50 and a map node (`T10 --> T50 --> T38`), capstone M50, SUMMARY entries, `resources/papers.md` entries; topic count 46 → 47 and crate count 47 → 48 where they appear (sibling topics 46–49 are being built in parallel; the merge reconciles). `check-reading-depth.py --check --all` reads **247/247**.
@@ -113,6 +36,155 @@ plan                                    oracle   proxy   $ MODEL  s MODEL   rows
 **Anchors.** Two new clones, pinned with the sticky `pin-table.py` (run with `DLP_CLONES` pointing at a view of `~/repos` that excludes sibling agents' fresh `delta`, `f3` and `ducklake` clones, so this commit adds only its own rows): `lotus-data/lotus` at `136ae4f` (1.2.4) and `mitdbg/palimpzest` at `807ed30` (1.5.3; Abacus is its optimizer, `README.md:55`, `optimization.mdx:22`). Every anchor checked with `pinned-source.py`; all 108 quoted snippet lines diffed against the pinned files, 0 mismatches. Findings in LOTUS at the pin: `CascadeArgs` defaults are γ = 0.8, δ = 0.2, 10% sample, not the paper's evaluation settings (`types.py:164-167`); importance sampling draws only from the **first 200 entries** it is handed, with replacement (`cascade_utils.py:20-26`; a numpy replication of lines 16–26 for N = 10,000 drew 1,000 indices, max 199, 194 distinct), and `sem_filter` uses them as row positions (`sem_filter.py:510`) with caching off by default (`settings.py:24`); the recall correction divides per-side means (`cascade_utils.py:120`) — worked to give 0.953 or 0.971 for the same 84/93 recall depending on the split; precision candidates share the full δ (`:133`), so the code's failure budget sums to 2δ; the join optimizer compares plans on band size only (`sem_join.py:533`) though it pays both plans' samples and the map pass. In Palimpzest: cost = per-record cost × input cardinality with selectivity propagated (`cost_model.py:252, 260`) — the predicate-ordering effect of lane 1a, not Equation 1's flat sum; join quality = op quality × the *mean* of its inputs (`models.py:965`), not the product; the bandit adds selectivity as a fourth metric (`mab_execution_strategy.py:473, 544`).
 
 **Gates.** `./verify.sh 50` PASS; `check-reading-depth.py --check --all` 247/247; `mdbook build` + `check-book-links.py` 6,021 internal links, 0 dead; `check-mermaid.js` 3 blocks (topic 50 + PLAN), 0 errors; `RUSTFLAGS="-D warnings" cargo build --release` clean; `cargo test --release`: 12 provided tests pass, 5 stub tests fail as the specification.
+## 2026-10-26 — topic 49 — Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage
+
+Topic 12 (encodings) and topic 28 (object stores) both ended on "Newer work"
+items — F3 and LakeVilla — pointing at a layer the curriculum had not built:
+the table format. Topic 49 builds it. Branch `topic/49-table-formats` from
+`audit/2026-10-refresh`.
+
+**Lane 1, provided** (`table_bench`; Apple M3 Pro; counts seeded and exact,
+timings local at load average 7.7–14.5). 1,000 one-file commits, 100 per day
+partition, into an Iceberg-shaped tree and a Delta-shaped log on a metered
+in-memory object store (PUT, put-if-absent, CAS, GET, LIST paged at 1,000
+keys, dependent rounds).
+
+- Planning the latest snapshot after 10 / 100 / 1,000 commits: Iceberg fast
+  append 13 / 103 / 1,003 GETs (1,373,885 B at 1,000); Iceberg merge append
+  (Java's default, min-count-to-merge 100) 13 / 4 / 13; Delta without
+  checkpoints 11 / 101 / 1,001; Delta checkpointed every 10: 11 / 11 / 11
+  (399,735 B). Rounds 4 (Iceberg) vs 3 (Delta) at every size.
+- One-day query at 1,000: fast append 103 GETs (900 manifests pruned by
+  partition summaries), merge append 4, Delta 11 — the same 399,735 B as a
+  full scan. Time travel to v500: Iceberg 503, Delta 500 / 10.
+- Metadata written by the 1,000 commits: Iceberg fast append 398,749,323 B
+  (195,826,990 table metadata + 202,285,853 manifest lists + 587,480 manifests
+  + 49,000 pointer), merge append 219,263,669, Delta 522,593 without
+  checkpoints and 20,307,084 with. 500,500 entries per rewritten kind →
+  391.3 B per snapshot entry, 404.2 B per manifest-list entry; Delta's 99
+  checkpoints write 49,599 adds at 398.9 B.
+- After maintenance: Iceberg rewrite manifests 4 GETs (514,082 B after
+  expiring to 1 snapshot — and time travel to v500 is gone); Delta fresh
+  checkpoint 2 GETs + 1 LIST. Local CPU to plan: Iceberg 6,114 µs, Delta every
+  10 1,949 µs.
+- Lane 1c, Parquet footer (parquet 59.1.0 = the arrow-rs pin's version): 100
+  / 1,000 / 10,000 / 50,000 float columns → 10,843 / 113,461 / 1,157,462 /
+  6,027,910 B (108.4 → 120.6 B/column); full decode 36 / 353 / 3,828 / 19,484
+  µs; skipping statistics for all but 10 columns 41 / 355 / 3,868 / 20,037 —
+  **not faster**; cached schema 23 / 231 / 2,436 / 12,768.
+
+**Lane 2 (stub):** concurrent writers on put-if-absent. Reference, 25 ops per
+writer: conflicts per commit 0.00 / 0.52 / 1.07 / 2.04 / 3.29 at 1 / 2 / 4 / 8
+/ 16 appenders with zero aborts; 2 compactors 10 committed, 4 aborted, 36
+skipped; 4/2/2 mixed 160 committed, 272 conflicts, 26 aborted. Six stub tests,
+run green against the reference before stubbing; the audit (no double
+remove, contiguous versions) is provided.
+
+**Lane 3 (stub):** checkpoint policy, cost = bytes + 250,000 per request (5 ms
+× 50 MB/s, Delta VLDB'20 §2.3 low ends), 600 commits, random seeded reads.
+Every-10 219.3 / 434.7 / 2,577.8 M at 0.02 / 0.2 / 2 reads per commit; best
+fixed 215.7 (k=20) / 393.4 (k=5) / 1,530.0 (k=2); **ski rental (provided) is
+the negative result**, 305.3 at 0.02 (1.42× best) because rent arrives in
+lumps; EOQ reference 221.5 / 388.0 / 1,530.0. A first version with evenly
+spaced reads let fixed intervals alias with the reads (k=50 "won"); reads were
+made random.
+
+**Six guides.** Specs (Iceberg @ 47677ab, v1–v3 adopted, v4 in development;
+Delta PROTOCOL.md @ a7d0822; DuckLake 1.1 @ ducklake-web 42237d5): the spec's
+"O(1) remote calls" goal fails for fast append until manifests are merged;
+DuckLake manifesto claims (sub-ms inlined writes, thousands of tx/s, millions
+of snapshots) labelled unmeasured. iceberg-rust @ 26356f5: fast append only;
+every append's default duplicate check reads every live manifest (499,500
+GETs over lane 1 by arithmetic, not charged by the lane); a retry rewrites
+manifest and manifest list; defaults 4 retries / 100 ms / ×2. delta-rs @
+26ea54f: default checkpoint interval **100**, not the paper's 10; the
+DynamoDB S3 lock is gone in favour of conditional put; the conflict checker
+skips `dataChange: false` removes, so two concurrent compactions of a file can
+both commit (code reading, not run — a notes.md open question). LakeVilla:
+Table 4 verified (LV 2.81 / 21.92%, LV[Write] 2.79 / 29.42% against the
+prose's "ca. 20%"). F3: Fig. 15 annotates 10.0–29.2% (max on log) against the
+prose's "9.6% … up to 25% on classic"; Fig. 9 shows ≈3–6× against "an order of
+magnitude"; Fig. 13 shows 52.0% for zstd strings beyond the intro's 10–30%.
+Parquet footer @ arrow-rs fed7862 (byte-identical to crates.io 59.1.0): skip
+still walks every field; the policy costs a `HashSet` lookup per column.
+
+New clones pinned with the sticky pin table: `iceberg`, `iceberg-rust`,
+`delta`, `delta-rs`, `f3`, `ducklake`, `ducklake-web`.
+
+Plumbing: PLAN.md §49 + map node, FINDINGS row, verify.sh lane, PROGRESS
+status + M49, SUMMARY entries, papers.md, topic count 46 → 47, crate count
+47 → 48.
+
+## 2026-10-26 — topic 48 — Memory Tiering: CXL, Disaggregated Memory & Placement
+
+No topic priced the memory tier behind DRAM, and an in-memory graph engine hits
+that wall first. This machine has no CXL and no NUMA, so the topic measures the
+mechanism every tiering policy depends on at the tier boundary it does have —
+cache in front of DRAM — and quotes the papers' CXL numbers with sections. A
+latency-injected "far tier" was rejected: it would measure the spin loop.
+
+**Lane 1, provided (Apple M3 Pro, load average 7.21 — sibling benchmarks were
+running all session; no run was possible below 7).** Lane 1a, dependent-load
+ladder (Sattolo permutation, median of 5): 1.18 ns at 16 KiB, 4.34 at 256 KiB,
+8.85 at 4 MiB, 14.95 at 8 MiB, 44.02 at 16 MiB, 90.03 at 32 MiB, 116.29 at
+512 MiB. Lane 1b: 1 GiB of 64 B objects, 90% of accesses to a hot set, the same
+seeded ids over a packed and a scattered layout (checksums agree on every row),
+timed in alternation; loop floor 7.96 ns, all-cold 129.28 ns. ns/access
+packed → scattered: 0.1% hot 26.98 → 37.03 (1.37×); 0.5% 37.19 → 86.12
+(2.35×); 1% 60.79 → 110.73 (1.76×); 5% 114.96 → 126.76 (1.07×). Exact counts,
+1% hot set: 90% of accesses on 655 16 KiB pages packed vs 55,806 scattered
+(hot-page utilization 100.0% vs 3.4%); at 4 KiB, 2,619 vs 149,206 pages (10.2
+vs 582.8 MiB); scattered hot set touches 65,536 of 65,536 16 KiB pages. Four
+runs' scattered/packed spread: 0.1% 1.37–1.87×, 0.5% 1.87–2.82×, 1% 1.37–2.19×,
+5% 0.93–1.07× (plus one 2.01× at load 10.95 that the sanity check flagged —
+223.6 ns against a 111.3 ns DRAM rung). The 8 and 16 MiB rungs moved from
+9.76/17.28 to 58.90/105.39 ns between runs: the shared L2's effective size is
+whatever other processes leave.
+
+**Lane 2 (stub, counted):** learn a layout from one window. Reference
+(frequency packing): 655 pages for 90% (oracle 655, scattered 55,800); after
+half the hot set drifts, scattered 47,467, oracle 47,561, learned 46,506.
+**Lane 3 (stub, MODEL, SIDLE Fig. 1(c) prices 111.2 / 276.9 ns, 189 ns per
+4 KiB page moved):** first touch 93.1% / 30.5% fast hits (packed / scattered),
+122.6 / 226.4 ns; promote-on-touch 134.1 / 467.7 ns; oracle static 120.4 /
+213.8 ns; reference TPP 96.9% / 34.4% hits, 124.0 / 293.0 ns — the model's
+negative result: TPP's migrations cost more than its hits save at these
+prices, and hysteresis cuts promotions 3.8× (681,004 vs 2,569,245). Eight stub
+tests were green against the references before stubbing; 10 provided tests
+pass.
+
+**Papers, verified.** Hash Joins Meet CXL (CIDR'26): 30.01 / 20.95 / 47.50
+GB/s, 3 : 2 (§4.1); Eq. 1 checked; Table 1 PHJ x* reproduces (0.5532 vs
+0.5528) but g does not quite (1.1665 vs 1.1703); **NPHJ does not reproduce**
+(x* 0.4789 vs 0.5104 from its own k, m); measured gains (22.20%, 3.59% runtime
+= 1.285×, 1.037×) exceed the model's stated upper bound. TPP (ASPLOS'23):
+Figure 2 80–140 / 170–250 ns; 55–80% idle (§2); Table 1 checked — the
+abstract's "18%" is default Linux's largest loss (Cache2 1:4 at 82.0%), "5–17%"
+are percentage points, and performance was measured on dual-socket servers
+emulating CXL (§6). SIDLE (VLDB'26): Figure 1(c) gives 2.49× latency and 65.6%
+bandwidth where the text says "~2×" and "~60%"; 82/85% hottest-node share
+(Figure 5); 71% / 81% (abstract); genuine CXL 1.1. OBASE (OSDI'26): Bravo 3.2% of
+bytes / 91.8% of pages; 16.3 GiB @ 21% → 6.33 GiB @ 57% (3.42 vs 3.61 GiB used
+— consistent); TPP 1.65 → 1.85× and 1.25 → 1.45×; slow tier is Optane PMem, not
+CXL; graphs out of scope (§3.2). Quoted only: Weisgut et al. (VLDB'25 §4.4,
+520 ns FPGA CXL random reads), SHARD (VLDB'26 §1, 2–3 µs RDMA), MAC (OSDI'26:
+2.4×, 24%/40% metadata, 98%). Declarative Memory Services (CIDR'26) skimmed: a
+vision paper with no numbers to check.
+
+**Code read:** `fukien/hashjoins-meet-cxl` at `0aeea0d` (new clone, pinned with
+the sticky pin-table). Placement is `mmap` + `mbind` (`MPOL_BIND`,
+`MPOL_WEIGHTED_INTERLEAVE`) with system-wide sysfs weights; the scripts' ratio
+is 10 : 7, not 3 : 2; **the paper's partial-move strategy is not in the
+release** (`hc_join` called by the scripts, never built; `phj.h:362` commented
+out; `common.c:5` fraction globals unused); every strategy times a full copy,
+in-CXL included; `memcpy_tps.c` copies 8 GiB under a "4 GB" comment and prints
+GiB/s as GB/s; the `algos[]` lookup has no sentinel.
+
+Five guides (hash-join paper, its code, TPP, SIDLE, OBASE). Plumbing: PLAN §48 +
+map node, FINDINGS row, verify.sh lane, PROGRESS + M48, SUMMARY, papers.md,
+topic count 46 → 47, crate count 47 → 48. Gates: `./verify.sh 48` PASS;
+`check-reading-depth.py --check --all` 246/246; mermaid 7 blocks 0 errors;
+book links 0 dead (5,998 checked); `-D warnings` build clean.
 ## 2026-10-26 — topic 47 — Semi-join Reduction in Practice: Yannakakis, Predicate Transfer & Bitmap Filters
 
 Built from topic 10's "Newer work" items (RPT+, SQL Server bitmaps, the IN
@@ -193,155 +265,83 @@ checked with `pinned-source.py check`.
 Plumbing: PLAN.md §47 + map node, FINDINGS row, verify.sh lane, PROGRESS
 status + M47, SUMMARY entries, papers.md, topic counts 46 → 47, crate counts
 47 → 48, capstone milestone range.
-## 2026-10-26 — topic 48 — Memory Tiering: CXL, Disaggregated Memory & Placement
+## 2026-10-26 — topic 46 — Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning
 
-No topic priced the memory tier behind DRAM, and an in-memory graph engine hits
-that wall first. This machine has no CXL and no NUMA, so the topic measures the
-mechanism every tiering policy depends on at the tier boundary it does have —
-cache in front of DRAM — and quotes the papers' CXL numbers with sections. A
-latency-injected "far tier" was rejected: it would measure the spin loop.
+The deep version of what topics 10, 11 and 13 carried as one-paragraph
+"Newer work" notes: graph patterns inside relational engines, the blow-up that
+flat joins pay for them, and the 2026 work that removes it.
 
-**Lane 1, provided (Apple M3 Pro, load average 7.21 — sibling benchmarks were
-running all session; no run was possible below 7).** Lane 1a, dependent-load
-ladder (Sattolo permutation, median of 5): 1.18 ns at 16 KiB, 4.34 at 256 KiB,
-8.85 at 4 MiB, 14.95 at 8 MiB, 44.02 at 16 MiB, 90.03 at 32 MiB, 116.29 at
-512 MiB. Lane 1b: 1 GiB of 64 B objects, 90% of accesses to a hot set, the same
-seeded ids over a packed and a scattered layout (checksums agree on every row),
-timed in alternation; loop floor 7.96 ns, all-cold 129.28 ns. ns/access
-packed → scattered: 0.1% hot 26.98 → 37.03 (1.37×); 0.5% 37.19 → 86.12
-(2.35×); 1% 60.79 → 110.73 (1.76×); 5% 114.96 → 126.76 (1.07×). Exact counts,
-1% hot set: 90% of accesses on 655 16 KiB pages packed vs 55,806 scattered
-(hot-page utilization 100.0% vs 3.4%); at 4 KiB, 2,619 vs 149,206 pages (10.2
-vs 582.8 MiB); scattered hot set touches 65,536 of 65,536 16 KiB pages. Four
-runs' scattered/packed spread: 0.1% 1.37–1.87×, 0.5% 1.87–2.82×, 1% 1.37–2.19×,
-5% 0.93–1.07× (plus one 2.01× at load 10.95 that the sanity check flagged —
-223.6 ns against a 111.3 ns DRAM rung). The 8 and 16 MiB rungs moved from
-9.76/17.28 to 58.90/105.39 ns between runs: the shared L2's effective size is
-whatever other processes leave.
+**Lane 1, provided (Apple M3 Pro).** Seeded integer-only power-law generator
+(SplitMix64; both endpoints copied from earlier endpoints 70% of the time;
+sorted + deduplicated, so counts are bit-identical everywhere). 2-hop and 3-hop
+path patterns as left-deep pipelined hash joins (tuples produced), CSR
+expansion, and factorized size from degrees:
 
-**Lane 2 (stub, counted):** learn a layout from one window. Reference
-(frequency packing): 655 pages for 90% (oracle 655, scattered 55,800); after
-half the hot set drifts, scattered 47,467, oracle 47,561, learned 46,506.
-**Lane 3 (stub, MODEL, SIDLE Fig. 1(c) prices 111.2 / 276.9 ns, 189 ns per
-4 KiB page moved):** first touch 93.1% / 30.5% fast hits (packed / scattered),
-122.6 / 226.4 ns; promote-on-touch 134.1 / 467.7 ns; oracle static 120.4 /
-213.8 ns; reference TPP 96.9% / 34.4% hits, 124.0 / 293.0 ns — the model's
-negative result: TPP's migrations cost more than its hits save at these
-prices, and hysteresis cuts promotions 3.8× (681,004 vs 2,569,245). Eight stub
-tests were green against the references before stubbing; 10 provided tests
-pass.
+- |V| = 10,000 / 77,164 edges: 2-hop 6,665,086 tuples vs 161,624 f-rep values
+  (124×); 3-hop 241,301,569 tuples (958,541,190 values) vs 6,738,545 (142×).
+- |V| = 20,000 / 155,727: 17,759,290 vs 326,298 (163×); 739,497,555
+  (2,940,230,930 values) vs 17,875,125 (164×).
+- |V| = 40,000 / 313,512: **47,900,847 vs 656,622 (219×); 2,272,724,241
+  tuples (9,042,996,117 values) vs 47,997,149 (188×)** — the headline.
+- Uniform control (0% preferential), |V| = 40,000 / 319,962 edges, max out 20:
+  2,560,772 vs 679,805 (11×); 23,058,939 vs 3,240,016 (28×). Skew is the premise.
+- FFX's Fig. 1a reproduced: 13 tuples, 39 values, 22 over T1, 15 over T2.
+- Timings at load {4.28 4.07 4.32}, best of 3: 3-hop at 40K hash join 624.2 ms,
+  CSR 464.3 ms (1.30–1.35× in every row, same tuple count), degree-product count
+  0.45 ms; 0.21–0.35 ns per produced tuple (a lower bound: the plan writes
+  nothing). Re-run at load {12.47 8.19 8.18}: up to 2.3× slower, counts identical.
 
-**Papers, verified.** Hash Joins Meet CXL (CIDR'26): 30.01 / 20.95 / 47.50
-GB/s, 3 : 2 (§4.1); Eq. 1 checked; Table 1 PHJ x* reproduces (0.5532 vs
-0.5528) but g does not quite (1.1665 vs 1.1703); **NPHJ does not reproduce**
-(x* 0.4789 vs 0.5104 from its own k, m); measured gains (22.20%, 3.59% runtime
-= 1.285×, 1.037×) exceed the model's stated upper bound. TPP (ASPLOS'23):
-Figure 2 80–140 / 170–250 ns; 55–80% idle (§2); Table 1 checked — the
-abstract's "18%" is default Linux's largest loss (Cache2 1:4 at 82.0%), "5–17%"
-are percentage points, and performance was measured on dual-socket servers
-emulating CXL (§6). SIDLE (VLDB'26): Figure 1(c) gives 2.49× latency and 65.6%
-bandwidth where the text says "~2×" and "~60%"; 82/85% hottest-node share
-(Figure 5); 71% / 81% (abstract); genuine CXL 1.1. OBASE (OSDI'26): Bravo 3.2% of
-bytes / 91.8% of pages; 16.3 GiB @ 21% → 6.33 GiB @ 57% (3.42 vs 3.61 GiB used
-— consistent); TPP 1.65 → 1.85× and 1.25 → 1.45×; slow tier is Optane PMem, not
-CXL; graphs out of scope (§3.2). Quoted only: Weisgut et al. (VLDB'25 §4.4,
-520 ns FPGA CXL random reads), SHARD (VLDB'26 §1, 2–3 µs RDMA), MAC (OSDI'26:
-2.4×, 24%/40% metadata, 98%). Declarative Memory Services (CIDR'26) skimmed: a
-vision paper with no numbers to check.
+**Lane 2 (stub): factorized join operator** on FFX-style packed offset vectors
+— provided 2-hop build (656,622 values, 4.2 ms); stubbed bottom-insert
+`extend`, `count`, `flatten`, `retain_d` with cascade. Reference (written, run,
+removed): 47,997,149 values = closed form in 20.7 ms; count 2,224,823,394 in
+0.044 ms; `retain_d(d % 8 == 0)` → 6,632,319 values, 286,772,642 tuples in
+26.0 ms. Build + count ≈ 25 ms vs 624.2 ms flat.
 
-**Code read:** `fukien/hashjoins-meet-cxl` at `0aeea0d` (new clone, pinned with
-the sticky pin-table). Placement is `mmap` + `mbind` (`MPOL_BIND`,
-`MPOL_WEIGHTED_INTERLEAVE`) with system-wide sysfs weights; the scripts' ratio
-is 10 : 7, not 3 : 2; **the paper's partial-move strategy is not in the
-release** (`hc_join` called by the scripts, never built; `phj.h:362` commented
-out; `common.c:5` fraction globals unused); every strategy times a full copy,
-in-CXL included; `memcpy_tps.c` copies 8 GiB under a "4 GB" comment and prints
-GiB/s as GB/s; the `algos[]` lookup has no sentinel.
+**Lane 3: RPQ `a·b*`** from 257 sources (78,165 a-edges, 235,347 b-edges).
+Provided semi-naive `WITH RECURSIVE … UNION`: 6,536,711 pairs, 10 rounds,
+40,832,336 tuples derived, 675.9 ms. Walks vs pairs: k=4 6,679,113,406 vs
+5,845,226 (1,142.7×); k=8 7.4×10⁹×. Stub: product-automaton BFS. Reference:
+same pairs, 6,536,968 states, **40,832,336 edges scanned — exactly the
+semi-naive derived count** (set semantics already makes the recursion a BFS;
+the difference is cost per step, 134.2 ms, 5.0×).
 
-Five guides (hash-join paper, its code, TPP, SIDLE, OBASE). Plumbing: PLAN §48 +
-map node, FINDINGS row, verify.sh lane, PROGRESS + M48, SUMMARY, papers.md,
-topic count 46 → 47, crate count 47 → 48. Gates: `./verify.sh 48` PASS;
-`check-reading-depth.py --check --all` 246/246; mermaid 7 blocks 0 errors;
-book links 0 dead (5,998 checked); `-D warnings` build clean.
-## 2026-10-26 — topic 49 — Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage
+**Five guides; claims verified and the ones that did not hold.**
+- Lehner & Neumann (VLDB'26): §2.2's 62.5% (6/16), §4.5's count formula on
+  Fig. 3 (10 tuples), §5.1's ID example, §6.1 break-evens (10/12/36 duplicates,
+  BI 1.9× TI), §6.2 (−15% all acyclic, +6.9% >10 ms, +52% >100 ms, cyclic −32%,
+  vs Umbra −58%), §6.4 (18× parallel, BI in 49% of queries). **Not
+  reconstructable:** the abstract's "over 25×" (only on Figure 15's log axis)
+  and "over 19% of CE queries" (19% of 2,557 = 486 matches no §6.2 count).
+- FFX (SIGMOD'26): §2.2.1's 13/39/22/15 reproduced in code; Fig. 4 offsets;
+  §7.2 1,883 of 1,951 plans (printed 96.53%/3.47%, computed 96.51%/3.49%).
+  **Table 4 prose mismatches:** caption says seconds, values are ms; "up to
+  108.4×" fewer calls vs 114.13× in the table; "1.35–3.59×" cycles mixes rows
+  and omits 8.14×. LSQB comparisons use hand-picked orders (§7.3.3).
+- CRPQ planning (VLDB'26): Table 5's "average speedup" 2.0833 / 1.6833 is the
+  ratio of average times (5.5544/2.6662, 5.3256/3.1638); timeouts 186 → 60 on
+  WDBench (−67.7%), unchanged 10 → 10 on LDBC SNB. Eqs. 37, 38, 42 worked.
+- DuckPGQ (CIDR'23 + `cwida/duckpgq-extension` @ `29ca668`, new clone, pinned):
+  `MATCH` → key equalities (`match.cpp:486–495`); CSR by atomic counting sort;
+  512-lane bitset BFS; a bounded quantifier compiles to
+  `iterativelength(...) BETWEEN l AND u` — a filter on *shortest* distance,
+  one row per pair (read from code, not run); the October 2026
+  `FactorizedJoinOptimizer` (degree-product `count(*)`, two-sided n:m test).
+  TurboLynx Table 4: DuckPGQ 15,905 ms vs DuckDB 3,467 ms on LDBC SF100 (same
+  84-query denominator, 4.6×). **TurboLynx Table 4's Umbra row does not
+  check:** printed 7.74× / 0.58× vs ms quotients 27.6 / 9.26 (DBpedia agrees);
+  DuckPGQ SF100 printed 183.9 vs 189.3; Kùzu DBpedia 18.88 vs 17.88. Topic 13's
+  README quotes the Umbra ratios — left as is, flagged here.
+- PostgreSQL SQL/PGQ at `2f094e7ac69` (reverted `b1f106c80cb` /
+  `2b9e1aff4d3`; in no release), read with `pinned-source.py --ref`: one join
+  query per element-table combination (product over factors — the cause of
+  follow-ups `2ff289d0393` stack depth and `a82e33a83d7` interruptibility),
+  `UNION ALL` (`:728`), quantifiers refused (`parse_graphtable.c:233–236`).
 
-Topic 12 (encodings) and topic 28 (object stores) both ended on "Newer work"
-items — F3 and LakeVilla — pointing at a layer the curriculum had not built:
-the table format. Topic 49 builds it. Branch `topic/49-table-formats` from
-`audit/2026-10-refresh`.
-
-**Lane 1, provided** (`table_bench`; Apple M3 Pro; counts seeded and exact,
-timings local at load average 7.7–14.5). 1,000 one-file commits, 100 per day
-partition, into an Iceberg-shaped tree and a Delta-shaped log on a metered
-in-memory object store (PUT, put-if-absent, CAS, GET, LIST paged at 1,000
-keys, dependent rounds).
-
-- Planning the latest snapshot after 10 / 100 / 1,000 commits: Iceberg fast
-  append 13 / 103 / 1,003 GETs (1,373,885 B at 1,000); Iceberg merge append
-  (Java's default, min-count-to-merge 100) 13 / 4 / 13; Delta without
-  checkpoints 11 / 101 / 1,001; Delta checkpointed every 10: 11 / 11 / 11
-  (399,735 B). Rounds 4 (Iceberg) vs 3 (Delta) at every size.
-- One-day query at 1,000: fast append 103 GETs (900 manifests pruned by
-  partition summaries), merge append 4, Delta 11 — the same 399,735 B as a
-  full scan. Time travel to v500: Iceberg 503, Delta 500 / 10.
-- Metadata written by the 1,000 commits: Iceberg fast append 398,749,323 B
-  (195,826,990 table metadata + 202,285,853 manifest lists + 587,480 manifests
-  + 49,000 pointer), merge append 219,263,669, Delta 522,593 without
-  checkpoints and 20,307,084 with. 500,500 entries per rewritten kind →
-  391.3 B per snapshot entry, 404.2 B per manifest-list entry; Delta's 99
-  checkpoints write 49,599 adds at 398.9 B.
-- After maintenance: Iceberg rewrite manifests 4 GETs (514,082 B after
-  expiring to 1 snapshot — and time travel to v500 is gone); Delta fresh
-  checkpoint 2 GETs + 1 LIST. Local CPU to plan: Iceberg 6,114 µs, Delta every
-  10 1,949 µs.
-- Lane 1c, Parquet footer (parquet 59.1.0 = the arrow-rs pin's version): 100
-  / 1,000 / 10,000 / 50,000 float columns → 10,843 / 113,461 / 1,157,462 /
-  6,027,910 B (108.4 → 120.6 B/column); full decode 36 / 353 / 3,828 / 19,484
-  µs; skipping statistics for all but 10 columns 41 / 355 / 3,868 / 20,037 —
-  **not faster**; cached schema 23 / 231 / 2,436 / 12,768.
-
-**Lane 2 (stub):** concurrent writers on put-if-absent. Reference, 25 ops per
-writer: conflicts per commit 0.00 / 0.52 / 1.07 / 2.04 / 3.29 at 1 / 2 / 4 / 8
-/ 16 appenders with zero aborts; 2 compactors 10 committed, 4 aborted, 36
-skipped; 4/2/2 mixed 160 committed, 272 conflicts, 26 aborted. Six stub tests,
-run green against the reference before stubbing; the audit (no double
-remove, contiguous versions) is provided.
-
-**Lane 3 (stub):** checkpoint policy, cost = bytes + 250,000 per request (5 ms
-× 50 MB/s, Delta VLDB'20 §2.3 low ends), 600 commits, random seeded reads.
-Every-10 219.3 / 434.7 / 2,577.8 M at 0.02 / 0.2 / 2 reads per commit; best
-fixed 215.7 (k=20) / 393.4 (k=5) / 1,530.0 (k=2); **ski rental (provided) is
-the negative result**, 305.3 at 0.02 (1.42× best) because rent arrives in
-lumps; EOQ reference 221.5 / 388.0 / 1,530.0. A first version with evenly
-spaced reads let fixed intervals alias with the reads (k=50 "won"); reads were
-made random.
-
-**Six guides.** Specs (Iceberg @ 47677ab, v1–v3 adopted, v4 in development;
-Delta PROTOCOL.md @ a7d0822; DuckLake 1.1 @ ducklake-web 42237d5): the spec's
-"O(1) remote calls" goal fails for fast append until manifests are merged;
-DuckLake manifesto claims (sub-ms inlined writes, thousands of tx/s, millions
-of snapshots) labelled unmeasured. iceberg-rust @ 26356f5: fast append only;
-every append's default duplicate check reads every live manifest (499,500
-GETs over lane 1 by arithmetic, not charged by the lane); a retry rewrites
-manifest and manifest list; defaults 4 retries / 100 ms / ×2. delta-rs @
-26ea54f: default checkpoint interval **100**, not the paper's 10; the
-DynamoDB S3 lock is gone in favour of conditional put; the conflict checker
-skips `dataChange: false` removes, so two concurrent compactions of a file can
-both commit (code reading, not run — a notes.md open question). LakeVilla:
-Table 4 verified (LV 2.81 / 21.92%, LV[Write] 2.79 / 29.42% against the
-prose's "ca. 20%"). F3: Fig. 15 annotates 10.0–29.2% (max on log) against the
-prose's "9.6% … up to 25% on classic"; Fig. 9 shows ≈3–6× against "an order of
-magnitude"; Fig. 13 shows 52.0% for zstd strings beyond the intro's 10–30%.
-Parquet footer @ arrow-rs fed7862 (byte-identical to crates.io 59.1.0): skip
-still walks every field; the policy costs a `HashSet` lookup per column.
-
-New clones pinned with the sticky pin table: `iceberg`, `iceberg-rust`,
-`delta`, `delta-rs`, `f3`, `ducklake`, `ducklake-web`.
-
-Plumbing: PLAN.md §49 + map node, FINDINGS row, verify.sh lane, PROGRESS
-status + M49, SUMMARY entries, papers.md, topic count 46 → 47, crate count
-47 → 48.
-
+Plumbing: PLAN.md §46 + map node, FINDINGS row, verify.sh lane, PROGRESS status
++ M46, SUMMARY entries, papers.md, codebases.md row + pin (pin table regenerated
+over the already-pinned clones plus duckpgq-extension only, so sibling agents'
+new clones were not swept in), topic counts 46 → 47, crate counts 47 → 48.
 ## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
 
 A review of the whole repo against today's upstreams and literature, three
