@@ -4,7 +4,7 @@ Two different things get tracked here, and conflating them is misleading:
 
 - **Package** — does `topics/NN-name/` exist and hold up? That means a study
   guide, four to seven reading guides, `notes.md`, and an experiments crate
-  whose provided lane runs and whose numbers are recorded. All 45 are built;
+  whose provided lane runs and whose numbers are recorded. All 46 are built;
   `./verify.sh` re-derives every one of their measured lanes.
 - **Studied** — have *I* actually worked through the material and the two
   exercise lanes? That is a much smaller number, and it is the honest one.
@@ -61,6 +61,7 @@ is done.
 | 42 | Recommendations & Social Graphs (graph use case 5/6) | done | todo |  |
 | 43 | Network & IT-Ops Dependency Graphs (graph use case 6/6) | done | todo |  |
 | 44 | E-graphs as a Database: Relational E-matching & egglog | done | todo |  |
+| 45 | Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -111,6 +112,7 @@ is done.
 | M42 real-time recommendations (GraphJet-style temporal index segments + doubling edge pools, Pixie random-walk procedure with sub-linear step allocation and early stopping, TAO-shaped association-list API) | 42 | todo |
 | M43 observability path (trace ingest as an incrementally-maintained dependency graph with sketched edge weights, walk + Ferret localization procedures over the CSR, happened-before join operator with Pivot Tracing pushdown) | 43 | todo |
 | M44 relational rewrite stage (e-graph planner pass whose patterns compile to conjunctive queries and run through generic join, a timestamped e-node table driving a semi-naive saturation loop, and one cyclic rewrite pattern measured against a binary-join plan) | 44 | todo |
+| M45 async page-read path for the storage backend (an `IoBackend` trait under the M6 buffer pool — sync `pread`, worker pool, io_uring on Linux — chosen at startup; a read stream whose look-ahead doubles on I/O waits; the two cost models predicted before measuring; out-of-place writes with a total-WAF counter) | 45 | todo |
 
 ## Session log
 

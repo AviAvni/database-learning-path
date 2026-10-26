@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-45 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+46 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -43,6 +43,8 @@ flowchart TD
     end
     subgraph HW["Hardware"]
         T17["17 SIMD"] --> T18["18 GPU"]
+        T45["45 async I/O<br/>& SSDs"]
+        T45["45 async I/O<br/>& modern SSDs"]
     end
     subgraph DIST["Distributed"]
         T15["15 replication/Raft"] --> T29["29 distributed txns"]
@@ -73,9 +75,11 @@ flowchart TD
     FOUNDATION --> CORRECT
     FOUNDATION --> STREAM
     FOUNDATION --> PROD
+    T6 --> T45
     GRAPH --> USES
     QUERY --> T22
     GRAPH --> T22
+    T6 --> T45
 ```
 
 ---
@@ -549,6 +553,18 @@ flowchart TD
 - **Papers:** Zhang, Wang, Willsey & Tatlock, "Relational E-matching" (POPL'22 — Figure 2, §2.1's constraint taxonomy, §3.1–3.2, §3.4's Theorems 9 and 10, Table 1 including its `Worst` column); Zhang, Wang, Flatt, Cao, Zucker, Rosenthal, Tatlock & Willsey, "Better Together: Unifying Datalog and Equality Saturation" (PLDI'23 — §3's language tour, §4.2's two operators and footnote 4, §4.3's semi-naive, §5.3's 3.34×/9.27× attribution, §6's two case studies); Wang, Willsey & Suciu, "Free Join: Unifying Worst-Case Optimal and Traditional Joins" (SIGMOD'23 — Figure 1's design space, §3's GHT and plan language, §4.2's COLT, §5's JOB/LSQB evaluation); revisit "egg: Fast and Extensible Equality Saturation" (POPL'21) from topic 21.
 - **Build & bench:** lane 1 provided — a minimal e-graph (union-find, hashcons, rebuild to fixpoint) whose internals are visible enough to be walked *and* read as tables, egg's `Bind`/`Compare`/`Scan` VM as the backtracking baseline (with the op index, so the comparison is honest), Figure 8's unnesting, trie indexes, a most-constrained-first variable ordering and generic join — measured on both a non-linear and a linear pattern so the negative result is a column rather than a caveat; implement **semi-naive evaluation** (contracts: the delta rules' union, deduplicated, equals `matches(after) − matches(before)` as sets; 8 answers from a 24-tuple delta; probes at least 10× below the naive re-derivation) and **a left-deep binary-join plan for the triangle multi-pattern** (contracts: same substitution set as generic join; the largest materialised intermediate exceeds 4× the output, and grows as `E²/V` while the answer stays at `(E/V)³`), then measure both against the provided columns.
 - **Capstone M44:** the rewrite stage of the planner, priced — replace the capstone's hand-ordered rewrite pass with an e-graph stage whose patterns are matched **relationally** rather than by walking, and report both numbers (plan cost against the hand-ordered pass, match time against a backtracking matcher); timestamp the e-node table and run the saturation loop semi-naively, measuring iterations-to-saturation and total probes against the naive loop on the same rule set; and put one **cyclic** rewrite pattern in the rule set with the binary-join plan measured next to generic join, so the AGM bound is a column rather than a claim.
+
+---
+
+## 45. Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help
+
+**Why:** io_uring had been name-dropped in topics 5, 6, 7 and 19 without ever being priced, and PostgreSQL 18 shipped an asynchronous I/O subsystem (`io_method`). Two VLDB'26 papers supply the measured guidance: **the interface is not the win**. Jasny et al. drop io_uring into a buffer manager and get **1.06×** over libaio; redesign the buffer manager around batching and asynchrony and it is **2.05×** (§1, Figure 1), and a synchronous engine runs at **16.5 k tx/s through POSIX and through io_uring alike** (§3.3). Lane 1 reproduces the shape on a laptop with nothing but `pread`: random 4 KiB reads from a 1 GiB file written and read around the page cache go from **13,810 IOPS at queue depth 1 to 248,363 at 64 — 18× through the same system call**, with Little's law predicting every row once it is fed the measured latency. The write side is a separate problem with a separate fix: Lee, Ziegler & Leis show that an engine's flash writes are **DB WAF × SSD WAF**, that in-place engines pay 2.00 for a doublewrite buffer and inherit the SSD's factor (2.36 on their PM9A3, Table 1), and that only an out-of-place engine can drive the SSD's factor to 1 — after first making it worse.
+
+- **Concepts:** latency, queue depth, IOPS and **Little's law** (throughput = in-flight ÷ latency) and why every one-I/O-per-thread design is capped at 1/latency; the io_uring paper's **two cost models** — latency-bound `1/(fault rate × latency)` and CPU-bound `clock/(c_tx + fault rate × c_io)` — worked on its Table 1 and on this machine's QD-1 latency; **per-call vs per-item syscall cost** (lane 1c: ≈424 ns per call + 188 ns per cached 4 KiB page) and what batching can and cannot amortise; **batch barriers** (POSIX AIO's `lio_listio(LIO_WAIT)` at batch 16 reaches half the throughput of 16 blocking threads, because a batch ends with its slowest read — the paper's Table 2 in miniature) and **adaptive batching**; io_uring's **SQ/CQ rings**, SQEs/CQEs, publish-by-release-store, `io_uring_enter` as a per-batch rather than per-I/O crossing, and completion reaping with no syscall; the three **execution paths** (inline, poll, io-wq fallback at +7.3 µs) and **task_work** placement (default IPIs, COOP_TASKRUN, DEFER_TASKRUN + SINGLE_ISSUER); tuning — registered buffers, NVMe passthrough, IOPOLL, SQPOLL (216.6 → 237.8 → 300.5 → 376.4 → 546.5 k tx/s, Figure 5); **flash mechanics** — pages vs erase blocks, the FTL, over-provisioning, greedy GC and the identity **WAF = 1/(1 − v)** for victim valid ratio v; **total WAF = DB WAF × SSD WAF**; doublewrite buffers; **out-of-place writes** with zones, a PID→offset map and DB GC; aligning zones to the SSD's GC unit, **multiplexing** of concurrently open zones, **deathtime grouping**, NoWA, ZNS and FDP; **xNVMe** as one command-centric API over psync, POSIX aio, libaio, io_uring, io_uring_cmd and SPDK, and the **page cache** as the reason most analytical queries see no difference.
+- **Read code:** `postgres/postgres` `src/backend/storage/aio/` — `README.md` entire (why AIO, why and why not direct I/O, the deadlock argument, handles/callbacks/targets/wait references), `aio.h:41-42` (worker is the default), `aio_internal.h:30` (`PGAIO_SUBMIT_BATCH_SIZE` 32), `aio.c:1060-1158` (batch mode), `method_io_uring.c:367` (rings created with no setup flags), `:601-613` (waiting in another backend's ring), `:688-740` (`pgaio_uring_should_use_async` — deliberate io-wq offload for buffered reads), `method_worker.c:490-524`, `read_stream.c:1229-1237` and `:455-480` (look-ahead doubles on waits, decays on hits); `tokio-rs/io-uring` — `src/squeue.rs:334-379` (push, publish on drop), `src/submit.rs:171-217` (`submit_and_wait` and the SQPOLL early return), `src/cqueue.rs:274-301` (reaping), `src/lib.rs:418-464` (COOP/DEFER_TASKRUN, SINGLE_ISSUER), `src/opcode.rs:253-294` (`ReadFixed`).
+- **Papers:** Jasny, El-Hindi, Ziegler, Leis & Binnig, "High-Performance DBMSs with io_uring: When and How to Use It" (VLDB'26 — Figure 1, §2.1–2.2, §3.3's models and Table 1, Figure 5, Table 2, §3.6, §5.1's four guidelines, §5.2's PostgreSQL case study: 11–15%, the abstract's 14% being the top of that range); Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26 — Figure 1, §2, §4.1–4.2, §5.3–5.5, Table 1, §7.4, §7.6, §10.1); Houlborg, Tietgen, Lund, Weisgut, Rabl, González, Shah & Tözün, "Flexible I/O for Database Management Systems with xNVMe" (CIDR'26 — §2, §3.1, §4.2, §5); background: Haas & Leis, "What Modern NVMe Storage Can Do, And How To Exploit It" (VLDB'23); revisit "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR'22) and vmcache (SIGMOD'23) from topic 6.
+- **Build & bench:** lane 1 provided — a 1 GiB seeded file written and read around the page cache (`F_NOCACHE`/`F_RDAHEAD 0` on macOS, `O_DIRECT` on Linux), random 4 KiB reads at queue depth 1–64 bought with threads with a Little's-law prediction per row, POSIX AIO `lio_listio` batches with a max-of-b barrier prediction, warm-cache syscall cost per page at 1–64 pages per call, and three sanity checks (cold-read floor, the device's own sequential ceiling, checksums across read paths); implement **io_uring reads with batched submission** (Linux; contracts: same bytes as `pread`; at most `n/batch + qd + 1` `io_uring_enter` calls; batch 16 needs under a quarter of batch 1's enters) and measure against lane 1a at equal queue depth; implement an **out-of-place engine** on the provided simulated FTL (contracts: SSD WAF = 1.00 for one erase-block-aligned zone; > 1.5 for half-block zones; DB WAF = 1/(1 − v) within 3%; total WAF below the in-place engine's 8.25 at 90% fill) and fill lane 3's table.
+- **Capstone M45:** an async page-read path for the storage backend — an `IoBackend` trait under the M6 buffer pool with synchronous, worker-pool and io_uring implementations chosen at startup; a read stream for scans whose look-ahead doubles on I/O waits and decays on hits, measured at look-ahead 1/8/32 against lane 1a; the two cost models predicted before measuring; and out-of-place writes behind the same trait with a total-WAF counter at both layers.
 
 ---
 

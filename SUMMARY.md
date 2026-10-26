@@ -335,6 +335,13 @@
   - [Reading egglog: the e-graph that is a database engine](topics/44-egraphs-egglog/reading-egglog-source.md)
   - [Free Join: the plan space that contains both hash join and generic join](topics/44-egraphs-egglog/reading-free-join.md)
   - [Topic 44 notes — e-graphs as a database](topics/44-egraphs-egglog/notes.md)
+- [Topic 45 — Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help](topics/45-async-io/README.md)
+  - [io_uring in a DBMS: the interface is not the win](topics/45-async-io/reading-iouring-vldb26.md)
+  - [How to Write to SSDs: total WAF is DB WAF times SSD WAF](topics/45-async-io/reading-how-to-write-to-ssds.md)
+  - [xNVMe: one API over every I/O path, and the page cache it bypasses](topics/45-async-io/reading-xnvme.md)
+  - [PostgreSQL's AIO: handles, methods, and a read-ahead that doubles](topics/45-async-io/reading-postgres-aio.md)
+  - [tokio-rs/io-uring: two rings, four atomics, one syscall](topics/45-async-io/reading-io-uring-crate.md)
+  - [Topic 45 notes — async I/O & modern SSDs](topics/45-async-io/notes.md)
 
 ---
 
