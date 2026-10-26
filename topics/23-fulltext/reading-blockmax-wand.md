@@ -68,9 +68,8 @@ So t0's *entire* contribution to any doc is at most 0.0025 — once
 doc containing only t0 can ever win*, and its 99,888 postings become
 skippable in principle. The magic word is **safe**: WAND returns the
 EXACT top-k, not an approximation — correctness needs only that the
-bounds are true, not tight. (This is why the "idf ≈ 0.7 vs 9" that
-an earlier draft of this guide quoted was not just imprecise but
-understated the effect: t0's ceiling is ~0.0025, not ~1.5.)
+bounds are true, not tight. (Quoting idfs — "≈ 0.7 vs 9" — understates the effect: what the
+bound uses is the ceiling, and t0's is ~0.0025, not ~1.5.)
 
 ### Step 3 — the pivot: turning bounds into a jump target
 

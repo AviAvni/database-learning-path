@@ -13,9 +13,8 @@ design input for the M36 capstone, where a sharded Rust graph engine must decide
 do with high-degree vertices. Read it as a sharding paper first, computation second.
 
 Every theorem, figure and table cited below is from the OSDI 2012 paper as text-extracted
-this session; the numbers were checked against it, and where the earlier draft of this
-guide had attached power-law exponents to the paper's real-world graphs that the paper
-does not state, that has been corrected (Step 9).
+and every number was checked against it. The paper attaches no power-law exponents to its
+real-world graphs; Step 9 is careful about which α belongs to which table.
 
 ## The problem in one sentence
 
@@ -287,8 +286,7 @@ For the M36 capstone (sharding a Rust graph engine) the transferable decisions a
   the random-placement baseline, computable from the degree sequence alone (exercise 5 in
   the experiments does exactly this).
 
-Table 1 is the scale anchor, and it is two separate tables — do not merge them, as an
-earlier draft of this guide did. Table 1(a) lists **real-world graphs by size only**; the
+Table 1 is the scale anchor, and it is two separate tables — do not merge them. Table 1(a) lists **real-world graphs by size only**; the
 paper attaches **no per-graph α** to them:
 
 | Real-world graph (Table 1a) | \|V\| | \|E\| |

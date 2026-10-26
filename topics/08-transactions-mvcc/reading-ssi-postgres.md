@@ -17,7 +17,7 @@ adjacent rw-antidependencies — is **Fekete et al.**, cited as [10] and stated 
 Theorem 1 in §3.2. The *algorithm* that exploits it, SSI, is **Cahill, Röhm and
 Fekete** (SIGMOD 2008), cited as [7] in §3.3. The *commit-ordering refinement* is
 from **Cahill's thesis** [6], §3.3.1. Calling the whole bundle "Cahill's theorem"
-(as the previous version of this guide did) collapses three separate results.
+collapses three separate results.
 
 Line numbers below are `postgres/postgres@701f021`, checked with
 `python3 tools/pinned-source.py`. Section numbers are from the arXiv version of

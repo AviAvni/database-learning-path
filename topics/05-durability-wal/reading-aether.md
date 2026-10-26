@@ -4,8 +4,7 @@ On a multicore, the log is ONE shared object every transaction must append to
 and flush — so how does it not become the bottleneck? Aether's answer is four
 independent fixes that compose, and two of them are the ancestors of how
 postgres inserts WAL today. Before the paper, this chapter builds the four
-bottlenecks one at a time — in the authors' own lettering, which is not the one
-this chapter used to give — and then each fix in order of increasing cleverness,
+bottlenecks one at a time — in the authors' own lettering — and then each fix in order of increasing cleverness,
 ending with the measurement that says which one actually mattered.
 
 Every claim below was checked against the paper as published: **Ryan Johnson,
@@ -205,8 +204,7 @@ The catch is condition 1 read carefully: it only covers effects that escape
 through *the log*. A read-only transaction writes no commit record, so it has no
 place in the total order and can leak unflushed state to a user.
 
-**Why nobody shipped it.** The paper's own answer (§3.1) is better than the
-vague one this chapter used to give: "modern database engines do not implement
+**Why nobody shipped it.** The paper gives its own answer (§3.1): "modern database engines do not implement
 ELR and to our knowledge this is the first paper to analyze empirically ELR's
 performance. We hypothesize that this is largely due to the effectiveness of
 asynchronous commit, which obviates ELR and which nearly all major systems do
