@@ -22,8 +22,8 @@ numbers they occupy in `tsdb/chunkenc/xor.go` at that commit.
 A metrics **sample** — one metric's (timestamp, value) reading — is 16 raw
 bytes (an 8-byte integer timestamp and an 8-byte f64 value), and the obvious
 codec (delta+varint timestamps, raw values) only gets to **11.00 B/sample**
-(our `baseline.rs`, [measured](../../FINDINGS.md) — topic 30) because the
-untouched 8-byte value dominates; Gorilla lands at **1.37 bytes per point**
+(our `baseline.rs`, [measured](../../FINDINGS.md) — topic 30) when the value
+column rides raw, because the untouched 8-byte value dominates; Gorilla lands at **1.37 bytes per point**
 on Facebook's production data, which the value half either compresses to a
 single bit or barely touches, depending entirely on how predictable the
 values are.
@@ -42,13 +42,17 @@ standard first move on the timestamps is **delta encoding** — store the
 difference from the previous timestamp instead of the absolute value (`10`
 instead of `1721000000010`) — followed by a **varint** (a variable-length
 integer that spends one byte on small numbers instead of a fixed eight).
-That crushes the timestamp column to two or three bytes but leaves each
-value at eight: our `baseline.rs` measures a flat **11.00 B/sample for all
-four value shapes** — constant, gauge, counter, and random alike.
+That crushes the timestamp column to three bytes (measured: **3.00 B** for
+every shape) but leaves each value at eight: with the values raw our
+`baseline.rs` measures a flat **11.00 B/sample for all four value shapes** —
+constant, gauge, counter, and random alike.
 
 That flatness is the whole point. A series whose value never changes
-compresses exactly as well as uniform random noise, because delta+varint
-only ever touched the *timestamp*; the f64 was copied through untouched. An
+compresses exactly as well as uniform random noise when the value column is
+not compressed at all; delta+varint only ever touched the *timestamp*, and the
+f64 was copied through untouched. (Even a byte-aligned XOR on the values, the
+provided `delta_xor_encode`, only separates the shapes from 0.50 B for a
+constant to 7.48 B for random; the bit-level machinery below is what is left.) An
 f64 does not respond to a varint — a small *change* in value (42.0 → 42.1)
 is not a small *integer*, it is a different 64-bit pattern with different
 low mantissa bits. Any real progress has to attack the value bits directly,
@@ -373,9 +377,11 @@ ranges and chunks are capped at ~120 samples.
    fast counter than on a noisy gauge of similar magnitude — and what do
    delta-encoding-the-*value* schemes (VictoriaMetrics `nearest_delta2`,
    reading-victoriametrics-influx.md) exploit that XOR can't?
-5. Your `random_values_hit_the_entropy_floor` test demands >8 B/sample.
-   Where exactly do the extra ~1.6 bytes over raw come from? Count the
-   control bits.
+5. The reference solution of `random_values_hit_the_entropy_floor` measures
+   **7.37 B/value** (59 bits) on uniform random doubles, *below* the 8-byte raw
+   value, and the f64-arithmetic gauge 8.07 B (64.5 bits). Where do the bits
+   go in each, and why is the random series *cheaper* than the walk? (Hint:
+   count the window branches in notes.md's reference numbers.)
 6. M30 mapping: property history in FalkorDB is (entity, property, ts) →
    value where values are often strings/ids, not floats. Which half of
    Gorilla survives (dod timestamps) and what replaces XOR for non-numeric
@@ -429,14 +435,19 @@ Answer each before unfolding it.
   Constant series, steady scrape: every sample is `dod = 0` (1 bit) + `xor =
   0` (1 bit) = 2 bits, so after the header amortises, **~0.25 B/sample** —
   three orders below the 11.00 baseline. Random values, steady scrape: the
-  timestamp is still ~1 bit, but the value takes the `11` branch every time —
-  `1 + 1 + 5 + 6 = 13` control bits plus ~64 meaningful bits ≈ 77 bits ≈
-  **~9.6 B/sample**, *above* the 8-byte raw value.
+  timestamp is still ~1 bit, and a full-entropy mantissa cannot be predicted.
+  A first reading says every value takes the `11` branch: `1 + 1 + 5 + 6 = 13`
+  control bits plus ~64 meaningful bits ≈ 77 bits ≈ 9.6 B/sample, *above* the
+  8-byte raw value. **The measured encoder does not do that**: the reference
+  solution opens 4 windows in 1,000,000 random values and reuses the first wide
+  one for the rest, so each value costs `1 + 1` flag bits plus the ~57-bit
+  window — **59.00 bits = 7.37 B/value**, *below* raw because sign and top
+  exponent bits are still shared.
 
   The baseline reads 11.00 for both because delta+varint only ever
   compressed the timestamp; the value shape was invisible to it. Gorilla
   makes the value shape decide everything — the spread from constant to
-  random goes from zero (baseline) to enormous (~0.25 vs ~9.6 B/sample). If
+  random goes from zero (baseline) to enormous (~0.25 B/sample against 7.4-8.8 B/sample for random values and an f64-arithmetic gauge). If
   your encoder does not show that spread, it is not exploiting the shape.
 
   </details>
@@ -463,7 +474,7 @@ Answer each before unfolding it.
 Gorilla splits a sample into two independently-predictable halves and gives
 each the cheapest possible encoding of "no change": one bit. On regular
 metrics that is 1.37 bytes per point, a 12× win over raw and ~8× over this
-repo's delta+varint baseline. On noise it is honestly worse than raw. For the
+repo's delta+varint baseline. On noise it saves only the shared exponent bits (7.37 B/value on uniform random doubles, 8.07 on an f64-arithmetic walk, and on decimal-origin values it is worse than a byte-aligned XOR — reading-alp-chimp.md Step 7). For the
 capstone (M30): the dod timestamp half generalises to any monotone-ish
 column; the XOR value half is float-specific and gives way to
 dictionary/RLE for the string and id payloads a graph's property history

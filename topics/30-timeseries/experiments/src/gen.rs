@@ -29,6 +29,17 @@ pub fn gauge_values(n: usize, seed: u64) -> Vec<f64> {
         .collect()
 }
 
+/// Decimal-origin gauge: the same bounded random walk, but every sample is
+/// rounded to `dp` decimal places the way a price feed, a thermometer or a
+/// CSV column delivers it. `round(v * 10^dp) / 10^dp` is a correctly
+/// rounded division of an exactly representable integer, so each sample is
+/// the double nearest to a short decimal — the "born as a decimal" property
+/// ALP exploits and the raw random walk above does not have.
+pub fn decimal_gauge_values(n: usize, seed: u64, dp: u32) -> Vec<f64> {
+    let scale = 10f64.powi(dp as i32);
+    gauge_values(n, seed).into_iter().map(|v| (v * scale).round() / scale).collect()
+}
+
 /// Counter: monotonically increasing, integer-valued steps, occasional
 /// reset to 0 (process restart) — the most common metric type in practice.
 pub fn counter_values(n: usize, seed: u64) -> Vec<f64> {

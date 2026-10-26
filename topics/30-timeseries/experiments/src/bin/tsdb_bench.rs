@@ -1,14 +1,17 @@
 //! tsdb_bench — compression ratios, decode throughput, the OOO tax, and
 //! tag-index selectivity.
 //!
-//! Lane 1 (provided): raw vs delta+varint baselines — what the clever
-//!   codec has to beat, measured.
+//! Lane 1 (provided): raw vs delta+varint timestamps, raw vs XOR-bytes
+//!   values — what the clever codec has to beat, measured.
+//! Lane F (provided): ALP-style decimal-to-integer vs XOR float codecs on
+//!   decimal-origin vs arithmetic-origin vs random doubles.
 //! Lane 2 (stub): Gorilla bytes/sample per workload shape + decode Msamples/s.
 //! Lane 3 (stub): out-of-order ingestion sweep — the disorder tax priced.
 //! Lane 4 (stub): tag index build + selector latency at 100K series.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Instant;
+use timeseries_experiments::alp::*;
 use timeseries_experiments::baseline::*;
 use timeseries_experiments::gen::*;
 use timeseries_experiments::gorilla;
@@ -33,15 +36,28 @@ fn main() {
     ];
 
     // ---- Lane 1 (provided): baselines ---------------------------------
+    // Both columns of the sample are encoded: timestamps as zigzag-varint
+    // deltas, values either raw (8 B) or XOR-with-previous with leading zero
+    // bytes dropped. The split is printed because the shapes only differ in
+    // the value column.
     println!("-- baselines (provided): raw = 16.00 B/sample --");
+    let mut ts_buf = Vec::new();
+    encode_timestamps(&mut ts_buf, &ts);
+    let ts_bps = ts_buf.len() as f64 / N as f64;
+    println!("timestamps (all shapes): delta+varint {ts_bps:.2} B/sample");
     for (name, vs) in &shapes {
-        let buf = delta_varint_encode(&ts, vs);
+        let raw_buf = delta_varint_encode(&ts, vs);
+        let buf = delta_xor_encode(&ts, vs);
         let t0 = Instant::now();
-        let (t2, _) = delta_varint_decode(&buf);
+        let (t2, v2) = delta_xor_decode(&buf);
         let dt = t0.elapsed();
         assert_eq!(t2.len(), N);
+        assert!(v2.iter().zip(vs).all(|(a, b)| a.to_bits() == b.to_bits()));
         println!(
-            "{name:>9}: delta+varint {:.2} B/sample | decode {:.0} Msamples/s",
+            "{name:>9}: values raw {:.2} | values xor-bytes {:.2} B | total raw-values {:.2} / xor-bytes {:.2} B/sample | decode {:.0} Msamples/s",
+            (raw_buf.len() - ts_buf.len()) as f64 / N as f64,
+            (buf.len() - ts_buf.len()) as f64 / N as f64,
+            raw_buf.len() as f64 / N as f64,
             buf.len() as f64 / N as f64,
             N as f64 / dt.as_secs_f64() / 1e6
         );
@@ -70,6 +86,56 @@ fn main() {
     }));
     if r.is_err() {
         println!("gorilla lane: [stub — implement gorilla.rs]");
+    }
+    println!();
+
+    // ---- Lane F (provided): decimal-to-integer vs XOR float codecs -----
+    // Value stream only, B/value (raw = 8.00). Gorilla column is the stub's
+    // total minus the 1 bit/sample its timestamps cost when perfectly regular.
+    println!("-- float value codecs (provided; gorilla column is the stub) --");
+    let regular = scrape_timestamps(N, 1_700_000_000_000, 10_000, 0, 1);
+    let fshapes: Vec<(&str, Vec<f64>)> = vec![
+        ("decimal 2dp", decimal_gauge_values(N, 11, 2)),
+        ("decimal 6dp", decimal_gauge_values(N, 11, 6)),
+        ("counter", counter_values(N, 2)),
+        ("constant", constant_values(N)),
+        ("walk (f64 arith)", gauge_values(N, 1)),
+        ("random doubles", random_values(N, 3)),
+    ];
+    println!(
+        "{:>17} {:>9} {:>9} {:>9} | {:>6} {:>5} {:>8} {:>9} | {:>11} {:>11}",
+        "shape", "xor-bytes", "gorilla", "ALP", "exc%", "bits", "raw-vecs", "modal e,f", "xor dec M/s", "ALP dec M/s"
+    );
+    for (name, vs) in &fshapes {
+        let xb = xor_bytes_encode(vs);
+        let t0 = Instant::now();
+        let back = xor_bytes_decode(&xb, N);
+        let xdec = t0.elapsed();
+        assert!(back.iter().zip(vs).all(|(a, b)| a.to_bits() == b.to_bits()));
+        let col = alp_encode(vs);
+        let t0 = Instant::now();
+        let back = alp_decode(&col);
+        let adec = t0.elapsed();
+        assert!(back.iter().zip(vs).all(|(a, b)| a.to_bits() == b.to_bits()));
+        let g = catch_unwind(AssertUnwindSafe(|| gorilla::encode_all(&regular, vs).bytes.len()));
+        let gcol = match g {
+            Ok(len) => format!("{:.2}", (len as f64 - N as f64 / 8.0) / N as f64),
+            Err(_) => "[stub]".to_string(),
+        };
+        let ef = col.modal_ef().map(|((e, f), _)| format!("{e},{f}")).unwrap_or("-".into());
+        println!(
+            "{name:>17} {:>9.2} {:>9} {:>9.2} | {:>5.1}% {:>5.1} {:>4}/{:<3} {:>9} | {:>11.0} {:>11.0}",
+            xb.len() as f64 / N as f64,
+            gcol,
+            col.bytes() as f64 / N as f64,
+            100.0 * col.exceptions() as f64 / N as f64,
+            col.mean_bit_width(),
+            col.raw_vectors(),
+            col.vectors.len(),
+            ef,
+            N as f64 / xdec.as_secs_f64() / 1e6,
+            N as f64 / adec.as_secs_f64() / 1e6
+        );
     }
     println!();
 
