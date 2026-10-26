@@ -69,6 +69,33 @@ traversals as linear algebra: **BFS frontier expansion = SpMV**
 A², triangles = A ⊙ A²**. One engine (the semiring kernels) serves
 every traversal.
 
+The three spellings differ in *memory access*, not in the set of edges they
+touch. Expanding one hop from a frontier `x`, with the visited set `seen`:
+
+```mermaid
+flowchart LR
+  subgraph AL["adjacency list: Vec of Vec"]
+    direction TB
+    a1["adj[v]: Vec header load (miss 1)"] --> a2["heap buffer of v's neighbours (miss 2)"] --> a3["for each n: probe seen[n]"]
+  end
+  subgraph CSR["CSR: offsets + targets"]
+    direction TB
+    c1["offsets[v], offsets[v+1] (one line)"] --> c2["targets[lo..hi] streams (one slice)"] --> c3["for each n: probe seen[n]"]
+  end
+  subgraph MV["masked SpMV: y = x.A masked by not seen"]
+    direction TB
+    m1["x: frontier list (reused buffer)"] --> m2["same CSR row walk per i in x"] --> m3["seen[n] test-and-set; push n into y"] --> m4["y becomes next hop's x"]
+  end
+  AL -. "same edges scanned" .- CSR
+  CSR -. "plus a materialised frontier" .- MV
+```
+
+Per hop all three scan exactly `sum of deg(v) for v in the frontier` edges; what
+changes is how many dependent cache misses precede each row's data (two for the
+adjacency list, one for CSR) and whether the next frontier is written out as a
+vector (masked SpMV) or consumed inline. The supernode blow-up lives in the
+frontier size, which no layout changes.
+
 ## 2. The four architectures
 
 | | neo4j | memgraph | kuzu | FalkorDB |
@@ -138,7 +165,8 @@ The `kuzudb/kuzu` repository is archived (read-only); its last commit,
 reads. The community continuation is
 [LadybugDB](https://github.com/LadybugDB/ladybug) ("formerly known as
 Kuzu"); its history diverges before that commit, so read the code there,
-not in the fork.
+not in the fork. A second fork, [RyuGraph](https://github.com/predictable-labs/ryugraph)
+(Predictable Labs), was created 2025-10-13.
 
 Cyclic patterns are one half of a real query; the other is the
 variable-length path. A Cypher/GQL pattern mixes fixed edges (subgraph

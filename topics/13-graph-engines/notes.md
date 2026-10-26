@@ -72,6 +72,118 @@ edges, max degree 6565, p50 degree 11.
 
 Surprises / dead ends:
 
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. A reference solution of the two stubs
+(counting-sort CSR; two masked SpMVs with reusable frontier buffers) run on
+the same seeded graph and sources as the provided lane, with an edge counter
+added (measured 2026-10-26, Apple M3 Pro, quiet machine, three repetitions
+each, median shown; the adjacency-list oracle was re-measured in the same run
+and sits below the 2026-07-28 baseline above because the machine was idle):
+
+| impl | random (10 000 src) ns/query | supernodes (top-100) ns/query | checksum (random / super) |
+|---|---|---|---|
+| adj_list (oracle, same run) | 3 029 | 296 180 | 10 220 457 / 7 890 665 |
+| CSR | **2 503** | **247 659** | 10 220 457 / 7 890 665 |
+| masked SpMV over the CSR | 2 628 | 267 001 | 10 220 457 / 7 890 665 |
+
+Build: adjacency list 0.12 s, CSR 0.05 s (counting sort, no per-node
+allocation). Per-query structure (deterministic):
+
+| | random | supernodes | ratio |
+|---|---|---|---|
+| rows opened (src + frontier-1 nodes) | 17 | 1 624 | 95× |
+| **edges scanned** (deg(src) + Σ deg over frontier 1) | 1 042 | 89 034 | **85.4×** |
+| distinct nodes reached | 1 022 | 78 907 | 77.2× |
+| model bytes touched* | 12 560 | 1 040 888 | 82.9× |
+
+\* 4 B target + 4 B `seen` probe per edge scanned, 8 B of offsets per row,
+4 B per reached node. This is arithmetic on the counters, not a hardware
+measurement; at 247 659 ns for 1.04 MB it is about 4 GB/s, far under the
+machine's bandwidth, so the lane is latency-bound (random `seen` probes), not
+bandwidth-bound.
+
+Throughput over edges scanned (Medges/s): CSR 416 random / 360 supernodes;
+masked SpMV 396 / 333; adjacency list 344 / 301.
+
+What the numbers say:
+
+- **CSR removes a constant, not the tail.** It is **1.21×** faster than the
+  adjacency list from random sources and **1.20×** from supernodes — the cost
+  of the one extra dependent miss per row (the `Vec` header) that the flat
+  layout avoids. The supernode/random ratio barely moves: adj_list **97.8×**,
+  CSR **98.9×**, masked SpMV **101.6×**.
+- **The 101× is 85× more edges plus 1.16× more time per edge.** Edges scanned
+  grow 85.4×; CSR's ns per edge goes 2.40 → 2.78 (1.16×). The extra per-edge
+  cost is plausibly the `seen` probes missing cache once the frontier holds 1 623 nodes (not isolated here).
+- **The README's 1.31× residual is mostly extra edges, not cache.** Per
+  reached node the oracle costs 2.96 ns (random) and 3.75 ns (supernodes),
+  1.26×. Edges scanned per reached node are 1.02 and 1.13 — 1.11× of the
+  residual is re-walked overlap (an edge into an already-seen node), and the
+  remaining ~1.14× is the cache effect above.
+- **Masked SpMV is 5–8% slower than CSR**, the price of writing the frontier
+  out as a vector (1 623 entries, ~6.5 KB on a supernode) and reading it
+  back. The algebra buys uniformity (every hop is the same kernel, masking is
+  the dedup), not speed, on one query. Its win is on batched frontiers, where
+  one kernel call serves many sources — not measured here.
+- **Per-query work is bounded by the frontier.** The added stub test
+  `spmv_touches_only_the_frontiers_targets` checks that a hop stamps `seen`
+  only at targets of the frontier's rows and that output ≤ Σ degrees of the
+  frontier. It cannot count reads, so a full-scan implementation that never
+  writes would pass; the edge counter above is the read-side check.
+
+### C FalkorDB on the same graph
+
+Same graph (1 M nodes, 15 998 310 directed edges, loaded with
+`falkordb-bulk-insert` 1.0.6 from CSVs written by the same generator; node
+ids equal CSV row order, verified with `id(n) = n.id` on a 5-node graph; each
+node carries one extra `id` property), same 10 000 random and 100 supernode
+sources, query
+
+```
+MATCH (a)-[*1..2]->(b) WHERE id(a)=<src> AND id(b)<><src> RETURN count(DISTINCT b)
+```
+
+(`id(b)<>src` because a variable-length path may return to its start; the
+Rust lane excludes the source). Plan: `NodeByIdSeek` → `Conditional Variable
+Length Traverse` → `Filter` → `Aggregate`. **Every one of the 10 100 per-source
+counts equals the Rust oracle's** (checksums 10 220 457 and 7 890 665).
+
+Engine: `~/repos/FalkorDB/bin/macos-arm64v8-release/falkordb.so` (built
+2026-07-24; `MODULE LIST` reports `ver 999999`, a dev build that cannot be
+traced to a commit — the repo's `main` was at `25babfe4f` when this ran),
+redis-server 8.6.2, `THREAD_COUNT 11`, Python client `FalkorDB` 1.8.1, port
+6391, one query at a time through the bench lock. `capstone/BASELINES.md`
+pins the v4.22.2 build instead; its module is not on this machine.
+
+| | random | supernodes |
+|---|---|---|
+| FalkorDB server-side time, median / mean | 183 µs / 324 µs | 14.9 ms / 19.2–21.2 ms |
+| FalkorDB wall time through the client, median | 419 µs | 14.9–15.8 ms |
+| Rust CSR, ns/query (above) | 2.5 µs | 248 µs |
+| FalkorDB ÷ Rust CSR (server median) | 73× | 60× |
+
+`RETURN 1` through the same client costs 214 µs, so the client floor is half
+of the random-source wall time and none of it is the traversal. Server-side,
+the supernode/random ratio is **81×** at the median (the Rust lanes show
+~99×): a fixed per-query cost (parse, plan-cache lookup, result set)
+compresses it. The supernode query scans 89 034 edges in 14.9 ms, about
+6 M edges/s against CSR's 360 M — most plausibly the generality of the query
+pipeline and variable-length path semantics rather than memory
+layout (not profiled). The tail (mean 19–21 ms against median 14.9 ms at the supernodes) is
+wider than the Rust lane's.
+
+Method caveat: single-run per cell group, closed loop, a Python client; this
+is a service time, not a latency under load.
+
+### Sharper FINDINGS row (proposed)
+
+> The same two-hop query is **~98× slower** from supernodes than from random
+> nodes on every layout — adjacency list, CSR and masked SpMV — because it
+> scans **85× more edges** (89 034 against 1 042) at 1.16× the cost per edge;
+> CSR buys a flat 1.2× and does not touch the tail. C FalkorDB returns the
+> same counts at 183 µs / 14.9 ms.
+
 ## Questions from the reading guides
 
 ### GraphBLAS + Delta_Matrix (reading-graphblas-internals.md)
