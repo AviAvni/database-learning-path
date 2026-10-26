@@ -263,6 +263,84 @@ map node, FINDINGS row, verify.sh lane, PROGRESS + M48, SUMMARY, papers.md,
 topic count 46 → 47, crate count 47 → 48. Gates: `./verify.sh 48` PASS;
 `check-reading-depth.py --check --all` 246/246; mermaid 7 blocks 0 errors;
 book links 0 dead (5,998 checked); `-D warnings` build clean.
+## 2026-10-26 — topic 49 — Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage
+
+Topic 12 (encodings) and topic 28 (object stores) both ended on "Newer work"
+items — F3 and LakeVilla — pointing at a layer the curriculum had not built:
+the table format. Topic 49 builds it. Branch `topic/49-table-formats` from
+`audit/2026-10-refresh`.
+
+**Lane 1, provided** (`table_bench`; Apple M3 Pro; counts seeded and exact,
+timings local at load average 7.7–14.5). 1,000 one-file commits, 100 per day
+partition, into an Iceberg-shaped tree and a Delta-shaped log on a metered
+in-memory object store (PUT, put-if-absent, CAS, GET, LIST paged at 1,000
+keys, dependent rounds).
+
+- Planning the latest snapshot after 10 / 100 / 1,000 commits: Iceberg fast
+  append 13 / 103 / 1,003 GETs (1,373,885 B at 1,000); Iceberg merge append
+  (Java's default, min-count-to-merge 100) 13 / 4 / 13; Delta without
+  checkpoints 11 / 101 / 1,001; Delta checkpointed every 10: 11 / 11 / 11
+  (399,735 B). Rounds 4 (Iceberg) vs 3 (Delta) at every size.
+- One-day query at 1,000: fast append 103 GETs (900 manifests pruned by
+  partition summaries), merge append 4, Delta 11 — the same 399,735 B as a
+  full scan. Time travel to v500: Iceberg 503, Delta 500 / 10.
+- Metadata written by the 1,000 commits: Iceberg fast append 398,749,323 B
+  (195,826,990 table metadata + 202,285,853 manifest lists + 587,480 manifests
+  + 49,000 pointer), merge append 219,263,669, Delta 522,593 without
+  checkpoints and 20,307,084 with. 500,500 entries per rewritten kind →
+  391.3 B per snapshot entry, 404.2 B per manifest-list entry; Delta's 99
+  checkpoints write 49,599 adds at 398.9 B.
+- After maintenance: Iceberg rewrite manifests 4 GETs (514,082 B after
+  expiring to 1 snapshot — and time travel to v500 is gone); Delta fresh
+  checkpoint 2 GETs + 1 LIST. Local CPU to plan: Iceberg 6,114 µs, Delta every
+  10 1,949 µs.
+- Lane 1c, Parquet footer (parquet 59.1.0 = the arrow-rs pin's version): 100
+  / 1,000 / 10,000 / 50,000 float columns → 10,843 / 113,461 / 1,157,462 /
+  6,027,910 B (108.4 → 120.6 B/column); full decode 36 / 353 / 3,828 / 19,484
+  µs; skipping statistics for all but 10 columns 41 / 355 / 3,868 / 20,037 —
+  **not faster**; cached schema 23 / 231 / 2,436 / 12,768.
+
+**Lane 2 (stub):** concurrent writers on put-if-absent. Reference, 25 ops per
+writer: conflicts per commit 0.00 / 0.52 / 1.07 / 2.04 / 3.29 at 1 / 2 / 4 / 8
+/ 16 appenders with zero aborts; 2 compactors 10 committed, 4 aborted, 36
+skipped; 4/2/2 mixed 160 committed, 272 conflicts, 26 aborted. Six stub tests,
+run green against the reference before stubbing; the audit (no double
+remove, contiguous versions) is provided.
+
+**Lane 3 (stub):** checkpoint policy, cost = bytes + 250,000 per request (5 ms
+× 50 MB/s, Delta VLDB'20 §2.3 low ends), 600 commits, random seeded reads.
+Every-10 219.3 / 434.7 / 2,577.8 M at 0.02 / 0.2 / 2 reads per commit; best
+fixed 215.7 (k=20) / 393.4 (k=5) / 1,530.0 (k=2); **ski rental (provided) is
+the negative result**, 305.3 at 0.02 (1.42× best) because rent arrives in
+lumps; EOQ reference 221.5 / 388.0 / 1,530.0. A first version with evenly
+spaced reads let fixed intervals alias with the reads (k=50 "won"); reads were
+made random.
+
+**Six guides.** Specs (Iceberg @ 47677ab, v1–v3 adopted, v4 in development;
+Delta PROTOCOL.md @ a7d0822; DuckLake 1.1 @ ducklake-web 42237d5): the spec's
+"O(1) remote calls" goal fails for fast append until manifests are merged;
+DuckLake manifesto claims (sub-ms inlined writes, thousands of tx/s, millions
+of snapshots) labelled unmeasured. iceberg-rust @ 26356f5: fast append only;
+every append's default duplicate check reads every live manifest (499,500
+GETs over lane 1 by arithmetic, not charged by the lane); a retry rewrites
+manifest and manifest list; defaults 4 retries / 100 ms / ×2. delta-rs @
+26ea54f: default checkpoint interval **100**, not the paper's 10; the
+DynamoDB S3 lock is gone in favour of conditional put; the conflict checker
+skips `dataChange: false` removes, so two concurrent compactions of a file can
+both commit (code reading, not run — a notes.md open question). LakeVilla:
+Table 4 verified (LV 2.81 / 21.92%, LV[Write] 2.79 / 29.42% against the
+prose's "ca. 20%"). F3: Fig. 15 annotates 10.0–29.2% (max on log) against the
+prose's "9.6% … up to 25% on classic"; Fig. 9 shows ≈3–6× against "an order of
+magnitude"; Fig. 13 shows 52.0% for zstd strings beyond the intro's 10–30%.
+Parquet footer @ arrow-rs fed7862 (byte-identical to crates.io 59.1.0): skip
+still walks every field; the policy costs a `HashSet` lookup per column.
+
+New clones pinned with the sticky pin table: `iceberg`, `iceberg-rust`,
+`delta`, `delta-rs`, `f3`, `ducklake`, `ducklake-web`.
+
+Plumbing: PLAN.md §49 + map node, FINDINGS row, verify.sh lane, PROGRESS
+status + M49, SUMMARY entries, papers.md, topic count 46 → 47, crate count
+47 → 48.
 
 ## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
 

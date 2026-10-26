@@ -100,6 +100,7 @@ BENCHES=(
   "50-llm-query-processing:semop_bench:most calls, least money — semantic predicates priced (simulated)"
   "47-semijoin-reduction:semijoin_bench:3,020,210 vs 60,504 tuples — a bad join order made harmless"
   "48-memory-tiering:tier_bench:same accesses, hot set packed vs scattered — the tier boundary this machine has"
+  "49-table-formats:table_bench:1,000 small commits — 1,003 metadata GETs vs 11, and 399 MB written"
 )
 
 # topic dir : criterion bench : what it measures   (--criterion only: minutes each)

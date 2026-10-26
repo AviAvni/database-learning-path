@@ -372,6 +372,14 @@
   - [SIDLE: place tree nodes, not pages](topics/48-memory-tiering/reading-sidle.md)
   - [OBASE: tiering fails at the layout, not at the policy](topics/48-memory-tiering/reading-obase.md)
   - [Topic 48 notes — memory tiering](topics/48-memory-tiering/notes.md)
+- [Topic 49 — Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage](topics/49-table-formats/README.md)
+  - [Iceberg, Delta and DuckLake: three ways to name the files that are a table](topics/49-table-formats/reading-table-specs.md)
+  - [iceberg-rust: a fast append is four writes and a compare-and-swap](topics/49-table-formats/reading-iceberg-rust.md)
+  - [delta-rs: a log you list, replay and race for](topics/49-table-formats/reading-delta-rs.md)
+  - [LakeVilla: multi-table transactions with nothing but conditional writes](topics/49-table-formats/reading-lakevilla.md)
+  - [F3: a file format that ships its own decoders](topics/49-table-formats/reading-f3.md)
+  - [The Parquet footer: why finding 10 columns means walking all of them](topics/49-table-formats/reading-parquet-footer.md)
+  - [Topic 49 notes — open file & table formats](topics/49-table-formats/notes.md)
 
 ---
 

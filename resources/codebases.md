@@ -66,6 +66,10 @@ Clone the ones in active use to `~/repos/`.
 | [automerge/automerge](https://github.com/automerge/automerge) | Rust | CRDT engine — state/op-based, columnar op storage (topic 31) |
 | [loro-dev/loro](https://github.com/loro-dev/loro) | Rust | fast modern CRDT engine, great perf blog posts (topic 31) |
 | [graphistry/pygraphistry](https://github.com/graphistry/pygraphistry) | Python | GPU graph ETL/analytics on RAPIDS cuDF/cuGraph, GFQL query layer — production analog to Gunrock's research code (topics 18, 24) |
+| [apache/iceberg-rust](https://github.com/apache/iceberg-rust) | Rust | Iceberg table format: fast append, manifest lists, commit retry (topic 49) |
+| [delta-io/delta-rs](https://github.com/delta-io/delta-rs) | Rust | Delta log: put-if-absent commits, conflict checker, checkpoints (topic 49) |
+| [future-file-format/f3](https://github.com/future-file-format/f3) | Rust | F3: per-column FlatBuffer metadata, embedded Wasm decoders (topic 49) |
+| [duckdb/ducklake](https://github.com/duckdb/ducklake) | C++ | DuckLake: table metadata as SQL tables in a catalog database (topic 49) |
 
 ## What the `file:line` anchors were read against
 
@@ -114,6 +118,7 @@ are worth fetching first.
 | `memgraph` | `8f87f6a` | 2026-07-09 | 95 | [https://github.com/memgraph/memgraph](https://github.com/memgraph/memgraph) |
 | `LAGraph` | `e2539e2` | 2025-09-08 | 91 | [https://github.com/GraphBLAS/LAGraph](https://github.com/GraphBLAS/LAGraph) |
 | `lsm-tree` | `8526dd3` | 2026-07-05 | 85 | [https://github.com/fjall-rs/lsm-tree](https://github.com/fjall-rs/lsm-tree) |
+| `f3` | `bd92506` | 2025-11-03 | 80 | [https://github.com/future-file-format/f3](https://github.com/future-file-format/f3) |
 | `egglog` | `e264c37a` | 2026-08-25 | 76 | [https://github.com/egraphs-good/egglog](https://github.com/egraphs-good/egglog) |
 | `lmdb` | `704dc70` | 2026-06-24 | 73 | [https://github.com/LMDB/lmdb](https://github.com/LMDB/lmdb) |
 | `raft-rs` | `ad13f3d` | 2026-05-13 | 69 | [https://github.com/tikv/raft-rs](https://github.com/tikv/raft-rs) |
@@ -126,6 +131,7 @@ are worth fetching first.
 | `memchr` | `5fdb40c` | 2026-07-07 | 53 | [https://github.com/BurntSushi/memchr](https://github.com/BurntSushi/memchr) |
 | `tikv` | `eb8dd65` | 2026-07-09 | 53 | [https://github.com/tikv/tikv](https://github.com/tikv/tikv) |
 | `hypothesis` | `49a797bdf` | 2026-08-25 | 51 | [https://github.com/HypothesisWorks/hypothesis](https://github.com/HypothesisWorks/hypothesis) |
+| `ducklake` | `947c849` | 2026-10-24 | 49 | [https://github.com/duckdb/ducklake](https://github.com/duckdb/ducklake) |
 | `go-ycsb` | `f030f99` | 2025-12-31 | 49 | [https://github.com/pingcap/go-ycsb](https://github.com/pingcap/go-ycsb) |
 | `tantivy` | `7152d53` | 2026-07-10 | 49 | [https://github.com/quickwit-oss/tantivy](https://github.com/quickwit-oss/tantivy) |
 | `BlockSci` | `14ccc93` | 2020-11-13 | 48 | [https://github.com/citp/BlockSci](https://github.com/citp/BlockSci) |
@@ -136,7 +142,6 @@ are worth fetching first.
 | `rayon` | `6d9e94b` | 2026-06-27 | 41 | [https://github.com/rayon-rs/rayon](https://github.com/rayon-rs/rayon) |
 | `benchbase` | `33c0047` | 2025-12-13 | 40 | [https://github.com/cmu-db/benchbase](https://github.com/cmu-db/benchbase) |
 | `ALEX` | `4370da6` | 2024-03-12 | 39 | [https://github.com/microsoft/ALEX](https://github.com/microsoft/ALEX) |
-| `slatedb` | `323ed1b` | 2026-07-10 | 39 | [https://github.com/slatedb/slatedb](https://github.com/slatedb/slatedb) |
 | `tidesdb` | `810507a` | 2026-07-10 | 39 | [https://github.com/tidesdb/tidesdb](https://github.com/tidesdb/tidesdb) |
 | `cudf` | `2f082a7` | 2026-07-10 | 38 | [https://github.com/rapidsai/cudf](https://github.com/rapidsai/cudf) |
 | `gunrock` | `748f79e` | 2026-02-09 | 36 | [https://github.com/gunrock/gunrock](https://github.com/gunrock/gunrock) |
@@ -150,6 +155,7 @@ are worth fetching first.
 | `foundationdb` | `4c775a9` | 2026-07-10 | 28 | [https://github.com/apple/foundationdb](https://github.com/apple/foundationdb) |
 | `simdjson` | `c783809` | 2026-07-10 | 28 | [https://github.com/simdjson/simdjson](https://github.com/simdjson/simdjson) |
 | `tidb` | `b94006d` | 2026-07-10 | 28 | [https://github.com/pingcap/tidb](https://github.com/pingcap/tidb) |
+| `iceberg-rust` | `26356f5` | 2026-10-26 | 27 | [https://github.com/apache/iceberg-rust](https://github.com/apache/iceberg-rust) |
 | `splink` | `04189f5` | 2026-07-23 | 27 | [https://github.com/moj-analytical-services/splink](https://github.com/moj-analytical-services/splink) |
 | `quickwit` | `a5ad540` | 2026-07-08 | 26 | [https://github.com/quickwit-oss/quickwit](https://github.com/quickwit-oss/quickwit) |
 | `risingwave` | `119de0a` | 2026-07-10 | 25 | [https://github.com/risingwavelabs/risingwave](https://github.com/risingwavelabs/risingwave) |
@@ -166,7 +172,6 @@ are worth fetching first.
 | `VictoriaMetrics` | `c1e39b2` | 2026-07-10 | 15 | [https://github.com/VictoriaMetrics/VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) |
 | `automerge` | `c39339d` | 2026-07-10 | 14 | [https://github.com/automerge/automerge](https://github.com/automerge/automerge) |
 | `GraphRAG-SDK` | `f42ab3d` | 2026-04-12 | 14 | [https://github.com/FalkorDB/GraphRAG-SDK](https://github.com/FalkorDB/GraphRAG-SDK) |
-| `arrow-rs` | `fed7862` | 2026-07-10 | 13 | [https://github.com/apache/arrow-rs](https://github.com/apache/arrow-rs) |
 | `bloodhound` | `1968388` | 2026-07-24 | 13 | [https://github.com/SpecterOps/BloodHound](https://github.com/SpecterOps/BloodHound) |
 | `feldera` | `bb49055` | 2026-07-10 | 13 | [https://github.com/feldera/feldera](https://github.com/feldera/feldera) |
 | `RedisBloom` | `ab734fa` | 2026-07-05 | 9 | [https://github.com/RedisBloom/RedisBloom](https://github.com/RedisBloom/RedisBloom) |
