@@ -7,7 +7,8 @@ collection cannot be wrong in a way you can detect, and every row below can.
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
 Pro (5P + 6E, 36 GB)** on 2026-07-28, except rows 17, 18, 20, 22 and 25
 (2026-07-10, the runs those topics' notes and guides compute against), row 44 (2026-08-26), and rows
-27, 32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
+27, 32, 42 and 45–50 (2026-10-26; row 50 is a seeded simulation whose figures
+do not depend on the machine). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.
@@ -63,6 +64,11 @@ instead.
 | 43 | [Ops Dependency Graphs](topics/43-ops-dependency-graphs/README.md) | One gray failure: **34 of 55 services alert** and the broken one is not among them — it ranks 35th by failure count, 41st by error rate, at exactly the baseline. | `./verify.sh 43` |
 | 44 | [E-graphs as a Database](topics/44-egraphs-egglog/README.md) | `f(a, g(a))` has **N matches** and costs a backtracking matcher **N²+N+1** units of work; generic join does **5N**. At N=1600: 2,561,601 against 8,000, a measured **21.7×**. Make the pattern linear and generic join is **1.8× slower** — the win is avoided waste, not speed. | `./verify.sh 44` |
 | 45 | [Async I/O & Modern SSDs](topics/45-async-io/README.md) | Random 4 KiB reads around the page cache: **13,810 IOPS at queue depth 1, 248,363 at 64** — **18×** through the same `pread`, Little's law predicting each row. Batch 16 reads into one `lio_listio` and you get **half** of what 16 threads get: the batch waits for its slowest read. | `./verify.sh 45` |
+| 46 | [Graph Queries on Relational Engines](topics/46-relational-graph/README.md) | A 3-hop pattern over 313,512 power-law edges: flat binary joins build **2,272,724,241 tuples** (9.04B values); the factorized result holds **47,997,149 values — 188× less**. CSR expansion is 1.3× faster per tuple but enumerates the **same** 2.27B; with no hubs the gap is 28×. | `./verify.sh 46` |
+| 47 | [Semi-join Reduction in Practice](topics/47-semijoin-reduction/README.md) | One three-hop pattern, one 20,210-row answer: the bad join order emits **3,020,210** intermediate tuples, the good one **23,246** (**130×**). After a full Yannakakis semi-join reduction (1.07 × N hash ops) the bad order emits **60,504** and no join exceeds the output — the gap falls to **2.62×**. On a good order the reduction is pure overhead. | `./verify.sh 47` |
+| 48 | [Memory Tiering: CXL & Placement](topics/48-memory-tiering/README.md) | Same 1 GiB, same seeded accesses, 90% to a 1% hot set: **655 16 KiB pages serve 90% of accesses when the hot set is packed, 55,806 when it is scattered** — and scattered costs **1.4–2.4×** the time for 0.1–1% hot sets, **~1×** at 5% where neither fits the cache. No CXL here: the papers' CXL numbers are quoted, and a MODEL prices them. | `./verify.sh 48` |
+| 49 | [Open File & Table Formats](topics/49-table-formats/README.md) | 1,000 one-file commits: planning the latest snapshot reads **1,003 metadata objects** in an Iceberg fast-append tree and **11** in a Delta log checkpointed every 10 — and the Iceberg commits wrote **399 MB** of metadata for 1,000 files (**763×** the log), quadratic because every root file names every snapshot. A Parquet footer for 10 of 50,000 columns is **6 MB**, decoded whole; skipping the other columns' statistics saves nothing. | `./verify.sh 49` |
+| 50 | [LLM-Era Query Processing](topics/50-llm-query-processing/README.md) | A two-predicate semantic filter over 10,000 rows (simulated models, no LLM): ordering by selectivity makes the **fewest** oracle calls (11,235) and costs **$21.23**; rank order (s − 1)/c makes 13,490 *including* its 400-call sample and costs **$16.78** — calls are the wrong cost model. The 97%-accurate oracle's own answer scores **F1 0.835** against truth, and a cascade's savings measured against that oracle **vanish** once the proxy is more accurate than it. | `./verify.sh 50` |
 
 ## How to read this table
 

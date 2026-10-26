@@ -1,0 +1,12 @@
+[package]
+name = "memory-tiering-experiments"
+version = "0.1.0"
+edition = "2021"
+
+# No dependencies on purpose: the generator is a hand-written SplitMix64 so the
+# access stream is the same on every machine and every toolchain, and the
+# timing loop has nothing in it that the reader cannot see.
+[dependencies]
+
+[profile.release]
+debug = true

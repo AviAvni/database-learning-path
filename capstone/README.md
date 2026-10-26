@@ -46,7 +46,7 @@ flowchart TD
 
 ## Milestone map
 
-Milestones M0–M45 map 1:1 to curriculum topics 0–45 in `PLAN.md`; each topic's
+Milestones M0–M50 map 1:1 to curriculum topics 0–50 in `PLAN.md`; each topic's
 "Capstone milestone" line defines the scope. Status lives in `PROGRESS.md`.
 
 M0–M31 build the engine itself, in the spine below. M32–M43 attach the later

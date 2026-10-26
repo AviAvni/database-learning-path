@@ -45,7 +45,11 @@ Everything below is either linked from a topic README or listed here:
 - HTAP: "TiDB" VLDB'20 · "F1 Lightning" VLDB'20 (→ topic 32)
 - Learned indexes: Kraska "The Case for Learned Index Structures" SIGMOD'18 → PGM → ALEX (→ topic 26)
 - Graph query languages: "Graph Pattern Matching in GQL and SQL/PGQ" SIGMOD'22 · "G-CORE" SIGMOD'18 (→ topic 13)
+- Graph queries on relational engines: ten Wolde et al. "DuckPGQ: Efficient Property Graph Queries in an analytical RDBMS" CIDR'23 · Lehner & Neumann "The Data World Is Not Flat" VLDB'26 · Yasser, Dorbani & Mhedhbi "Factorized and Vectorized Execution" SIGMOD'26 · Pang et al. "A Unified Query Planning Framework for Conjunctive Regular Path Queries" VLDB'26 (→ topic 46)
+- LLM-era query processing: Patel et al. "Semantic Operators" (LOTUS) arXiv 2407.11418 / PVLDB'25 · Russo et al. "Abacus: A Cost-Based Optimizer for Semantic Operator Systems" VLDB'26 · Lao et al. "SemBench" VLDB'26 · Jin et al. "Text-to-SQL Benchmarks are Broken" CIDR'26 · Liu et al. "Supporting Our AI Overlords: Redesigning Data Systems to be Agent-First" CIDR'26 · Liu, Wang, Wu et al. "Can Large Language Models be a Cardinality Estimator?" arXiv 2603.28080 (→ topic 50)
 - Storage I/O & SSDs: Haas & Leis "What Modern NVMe Storage Can Do, And How To Exploit It" VLDB'23 · Jasny et al. "High-Performance DBMSs with io_uring: When and How to Use It" VLDB'26 · Lee, Ziegler & Leis "How to Write to SSDs" VLDB'26 · Houlborg, Tietgen et al. "Flexible I/O for Database Management Systems with xNVMe" CIDR'26 (→ topic 45)
+- Memory tiering & CXL: Maruf et al. "TPP: Transparent Page Placement for CXL-Enabled Tiered-Memory" ASPLOS'23 · Weisgut et al. "CXL Memory Performance for In-Memory Data Processing" VLDB'25 · Huang, Lu & Tan "Hash Joins Meet CXL: A Fresh Look" CIDR'26 · Castrillon et al. "Declarative Memory Services" CIDR'26 · Zhao et al. "SIDLE: Tree-structure Aware Indexes for CXL-based Heterogeneous Memory" VLDB'26 · Zha et al. "SHARD: A Scalable and Resize-optimized Hash Index on Disaggregated Memory" VLDB'26 · Banakar et al. "OBASE: Object-Based Address-Space Engineering to Improve Memory Tiering" OSDI'26 · Lee et al. "MAC: Metadata Acceleration … with CXL DRAM" OSDI'26 (→ topic 48)
+- Table formats & object-store transactions: Armbrust et al. "Delta Lake: High-Performance ACID Table Storage over Cloud Object Stores" VLDB'20 · Armbrust, Ghodsi, Xin & Zaharia "Lakehouse" CIDR'21 · Zeng et al. "F3: The Open-Source Data File Format for the Future" (Proc. ACM Manag. Data 3(4), 2025) · Götz, Ritter, El-Hindi & Giceva "Interoperable ACID Transactions for Open Table Formats" (LakeVilla) VLDB'26 · Iceberg table spec, Delta protocol, DuckLake spec 1.1 (→ topic 49)
 
 ## 2025–2026 papers (each read in full)
 
@@ -79,8 +83,14 @@ Interesting recent arXiv finds go here with a one-line why. Search these when st
 - Queries that pay off: "learned index", "LSM compaction", "vector search filtering", "cardinality estimation deep learning", "worst-case optimal join"
 
 <!-- append finds below -->
+- arXiv:2505.14661 — Russo et al., Abacus (VLDB'26): Pareto-Cascades + UCB bandit over ~3,000 physical semantic operators; 10.8× cheaper / 3.4× faster derive from Table 2, §4.3's prose numbers do not. Topic 50.
+- arXiv:2511.01716 — Lao et al., SemBench (VLDB'26): 55 semantic queries, 4 engines; LIMIT handling alone spreads cost >100×. Topic 50.
+- Semi-join reduction (→ topic 47): Yang, Zhao, Yu & Koutris "Predicate Transfer" CIDR'24 · Qiao, Boncz & Zhang "Robust Predicate Transfer with Dynamic Execution" VLDB'26 · Zhao et al. "I Can't Believe It's Not Yannakakis" CIDR'26 · Birler & Neumann "On the Vexing Difficulty of Evaluating IN Predicates" CIDR'26 · Yannakakis "Algorithms for Acyclic Database Schemes" VLDB'81 (not obtainable online; 403 from the VLDB archive).
 - arXiv:2512.04859 — Jasny, El-Hindi, Ziegler, Leis & Binnig, io_uring in DBMSs (VLDB'26): naive swap 1.06×, redesign 2.05×, PostgreSQL +11–15%. Topic 45.
 - arXiv:2603.09927 — Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26): total WAF = DB WAF × SSD WAF; out-of-place + NoWA reaches SSD WAF 1 on commodity SSDs. Topic 45.
+- arXiv:2609.09002 — Yasser, Dorbani & Mhedhbi, "Factorized and Vectorized Execution" (SIGMOD'26): packed factorized vectors + cascade update; packed beats list-based on 1,883 of 1,951 plans. Topic 46.
+- arXiv:2603.00378 — Banakar et al., OBASE (OSDI'26): hot and cold objects share pages; reorganising the address space gives TPP the same throughput with half the DRAM (on an Optane stand-in for CXL). Topic 48.
+- arXiv:2206.02878 — Maruf et al., TPP (ASPLOS'23): the Linux memory-tiering policy; its Table 1 percentages are points, measured on a two-socket CXL stand-in. Topic 48.
 
 ## Blogs & talks worth following
 
