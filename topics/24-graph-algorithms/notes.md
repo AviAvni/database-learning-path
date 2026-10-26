@@ -62,6 +62,47 @@ Surprises / dead ends:
   "skip the giant component" trick still applies — 71% of vertices
   are in it.
 
+## C FalkorDB on the same graphs
+
+The same two graphs (RMAT scale 16 and uniform, seeds 42/43, n = 65 536, m =
+1 819 338 and 2 096 564 directed edges after symmetrise+dedup) dumped from
+`graph.rs` and loaded into C FalkorDB with `falkordb-bulk-insert` 1.0.6
+(`:N` nodes with an `id` property, `:E` edges; the bulk-loaded edge counts
+match). Engine: `~/repos/FalkorDB/bin/macos-arm64v8-release/falkordb.so`,
+built 2026-07-24, `MODULE LIST` `ver 999999` (a dev build that cannot be
+traced to a commit; the repo's `main` was `25babfe4f` at run time),
+redis-server 8.6.2, port 6391, Python client `FalkorDB` 1.8.1, through the
+bench lock, measured 2026-10-26 on the Apple M3 Pro. The Rust column is the
+provided `algo_bench` run in the same session (it differs a little from the
+2026-07-10 baseline above).
+
+| kernel | Rust (provided lane) | C FalkorDB, server-side | what FalkorDB ran |
+|---|---|---|---|
+| PageRank, rmat | 11.1 ms (8 iters) | 16.7 ms median of 5 | `CALL algo.pageRank('N','E') YIELD node, score RETURN count(*)` (65 536 rows) |
+| PageRank, uniform | 8.1 ms (6 iters) | 15.3 ms | same |
+| components, rmat | 4.2 ms (union-find) | 18.5 ms | `CALL algo.WCC() YIELD node, componentId RETURN count(DISTINCT componentId)` → **18 844**, equal to the Rust count |
+| components, uniform | — | 16.7 ms | → 1 |
+| triangles, rmat | 383.8 ms | **31 097 ms** (1 run) | `MATCH (a)-[:E]->(b)-[:E]->(c)-[:E]->(a) WHERE id(a)<id(b) AND id(b)<id(c) RETURN count(*)` → **15 645 988**, equal |
+| triangles, uniform | 142.1 ms | **3 015 ms** median of 3 | same → **5 428**, equal |
+
+Reading it:
+
+- Triangle counts agree exactly with the Rust oracle on both graphs, so the
+  comparison is of the same computation. The Cypher query is a three-hop
+  pattern with a closing edge and an id-ordering filter, not a masked SpGEMM:
+  FalkorDB has no triangle-count procedure to call here, so this measures what
+  a user would write, **81×** (rmat) and **21×** (uniform) slower than the
+  degree-ordered intersection. It does reproduce the skew story in a second
+  engine: 2 882× more triangles but only **10.3×** more time (31 097 / 3 015
+  ms) in FalkorDB, against **2.7×** (383.8 / 142.1) in Rust.
+- PageRank and WCC are one procedure call each, 1.5× (rmat PageRank) to 4.4×
+  (WCC) over the scalar Rust code. Each FalkorDB call also builds the result
+  rows (65 536), the iteration count and convergence tolerance of
+  `algo.pageRank` were not inspected, and the Rust PageRank counts 8 iterations
+  at ε = 1e-4 — so these are procedure latencies, not a controlled kernel
+  comparison. Do not quote them as an engine-versus-kernel gap.
+- Single-process, closed loop, one run for the rmat triangle query (31 s).
+
 ## Questions from the reading guides
 
 ### GAP (reading-gap.md)

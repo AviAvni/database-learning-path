@@ -85,6 +85,36 @@ mod tests {
         }
     }
 
+    /// Work is bounded by the frontier, not by the graph: a hop touches
+    /// `seen` only at targets of the frontier's rows. A far-away hub (node
+    /// 500, 2000 neighbours) must stay untouched by a query from node 0, and
+    /// the stamped set must be exactly the output, no larger than the sum of
+    /// the frontier's degrees.
+    #[test]
+    fn spmv_touches_only_the_frontiers_targets() {
+        let mut edges: Vec<(u32, u32)> = (1..=100).map(|i| (0, i)).collect();
+        edges.extend((501..=2500).map(|j| (500, j)));
+        let c = crate::csr::Csr::build(3000, &edges);
+        let frontier_work =
+            |x: &[u32]| -> usize { x.iter().map(|&v| c.neighbors(v).len()).sum() };
+
+        let mut seen = new_seen(3000);
+        let mut y = Vec::new();
+        spmv_masked(&c, &[0], &mut y, &mut seen, 1);
+        assert_eq!(y.len(), 100);
+        assert!(y.len() <= frontier_work(&[0]));
+        let stamped = seen.iter().filter(|&&s| s == 1).count();
+        assert_eq!(stamped, y.len(), "stamped entries must be exactly the output");
+        assert!(seen[500..].iter().all(|&s| s == 0), "far hub's targets touched");
+
+        // two hops from 0: f1 = 100 leaves with no out-edges, so f2 is empty
+        let (mut f1, mut f2) = (Vec::new(), Vec::new());
+        let mut seen = new_seen(3000);
+        assert_eq!(two_hop(&c, 0, &mut seen, 1, &mut f1, &mut f2), 100);
+        assert!(f2.is_empty());
+        assert!(f1.len() + f2.len() <= 1 + frontier_work(&[0]) + frontier_work(&f1));
+    }
+
     #[test]
     fn frontiers_hold_the_actual_levels() {
         // 0->1, 1->2, 2->3: from 0, f1={1}, f2={2}

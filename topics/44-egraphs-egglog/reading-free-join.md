@@ -293,6 +293,37 @@ winning back the constants — with lazy indexes, column layout and
 vectorized execution, the same three things every analytical engine in
 topics 11 and 12 is made of.
 
+**A follow-up that changes one axis of the design space.** Kaboli,
+Mascolo and Shaikhha, *A Unified Architecture for Efficient Binary and
+Worst-Case Optimal Join Processing* (arXiv:2505.19918, v1 May 2025),
+keep Free Join's plan language and, as their §3.1 says, take their plans
+from the same Free Join planner, but change the *execution* — and name
+the thing Step 3's GHT hides. Free Join supports hash-based generic join
+only; they compile Free Join plans through an intermediate language
+(SDQL, "functional collection programming using semi-ring
+dictionaries") into C++ and support a **sort-based** variant too:
+instead of a hash trie per relation, a sorted array in which each key
+maps to a range (first and last offset) of its occurrences, probed by
+binary search. A **hybrid** (§4.3, §5.4) uses sorted dictionaries for
+base relations that are already sorted and hash tables for intermediate
+results, because "even when input data is sorted, there is no guarantee
+that intermediate results will remain sorted" and sorting them is the
+overhead. Their reported numbers (§5.2.1, JOB, single-threaded,
+in-memory): geometric-mean speedups of 1.49× over Free Join's Generic
+Join and 1.42× over Free Join, maxima 3.14× and 4.78×, **minima 0.71×
+and 0.30×** (a 3.33× slowdown) — the same pattern as Step 8, a modest
+mean with losses stated. On LSQB's cyclic Q2 they report up to 2.49×
+(Generic Join) and 1.50× (Free Join). Two cautions: their system has no
+lazy tries or vectorization (their stated limitation, §6) and still
+wins on average — the paper does not separate how much of that is the
+compiled code and how much the sorted layout, so do not attribute it to
+either; and §2 assumes "selections have been pushed down to the base tables",
+so filter placement inside the join (see
+[topic 13's WCOJ guide, Step 7](../13-graph-engines/reading-wcoj.md))
+is outside what both papers measure. Why it matters here: it is
+evidence that hash-versus-sorted trie layout is an axis independent of
+the plan shape Step 4 defines.
+
 ## How to read the paper (with the concepts in hand)
 
 1. **§1** whole. It is the clearest statement of the dichotomy anywhere,
@@ -439,6 +470,12 @@ Answer each before unfolding it.
   Figures 11–12), §4.3 (vectorized execution, Figure 13), §5
   (evaluation, JOB and LSQB), §5.4 (robustness to bad plans), §6
   (limitations).
+- Amirali Kaboli, Alex Mascolo, Amir Shaikhha, **"A Unified Architecture
+  for Efficient Binary and Worst-Case Optimal Join Processing"**,
+  arXiv:2505.19918 (v1, May 2025). §2 (selections assumed pushed down),
+  §3.1 (plans taken from Free Join), §4.3 (hybrid sorted/hash), §5.2.1
+  (JOB: 1.49×/1.42× geometric mean, 0.71×/0.30× minimum), §5.2.2 (LSQB),
+  §6 (limitations).
 - Hung Q. Ngo et al., **"Worst-case Optimal Join Algorithms"** — the
   generic join this paper takes as the WCOJ representative.
 - Mihalis Yannakakis, **"Algorithms for Acyclic Database Schemes"**,
