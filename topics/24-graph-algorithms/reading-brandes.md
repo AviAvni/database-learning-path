@@ -271,7 +271,8 @@ The stub's failure modes are all boundary conditions of Steps 3–5:
 4. LAGraph batches ns sources into one matrix. What limits ns
    (memory = ns×n FP64 dense rows in `paths`) and where's the sweet
    spot on our 65K-node RMAT?
-5. FalkorDB has `proc_betweenness.c` calling LAGraph. M24: what
+5. FalkorDB's C engine (`master`, 4.x) has `proc_betweenness.c` calling
+   LAGraph. M24: what
    should `CALL algo.betweenness(samples: 32)` return when the graph
    changed under a delta matrix that hasn't been flushed (topic 20's
    wait) — flush first, or compute on the stale main matrix?

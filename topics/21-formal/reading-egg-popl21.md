@@ -518,6 +518,19 @@ Cascades optimizer does. An e-graph *is* a Cascades memo discovered
 independently — with congruence, which Cascades lacks, and without physical
 properties and enforcers, which Cascades has (question 5).
 
+> **Upstream since the pin.** `find_costs` is no longer a sweep-until-stable
+> loop. At the pin it sets `did_something = true` and re-scans *every* class
+> until a full pass changes nothing; after egg PR #367 (`2f31b28`, "Extraction
+> optimization", merged 2026-07-19, not yet in a release — the latest tag is
+> v0.11.0) it seeds a `VecDeque` worklist with every class, and when a class's
+> best cost improves it enqueues only that class's canonical *parents*
+> (`extract.rs:258` upstream). The commit message calls the new version
+> O(V+E); this guide has not measured it. The steps above describe the pinned
+> code, which is what the line numbers point at; the argument holds — it is the
+> same fixpoint over per-class best cost, reached by propagating changes upward
+> instead of re-sweeping, so it is still optimal only for local, tree-shaped
+> cost functions.
+
 ## How to read the paper (with the concepts in hand)
 
 Willsey et al., *egg: Fast and Extensible Equality Saturation*, POPL 2021,

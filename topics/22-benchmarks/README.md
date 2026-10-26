@@ -96,5 +96,7 @@ selectivity* before implementing (topic 17 says: maybe nothing!).
 - [ ] regression tracking across milestones (M0 baselines are the
       floor; every M* run appends, plots trend)
 - [ ] three-way shootout: falkordb-scratch vs falkordb-rs-next-gen
-      vs FalkorDB — same driver, same data, same machine, fair-
+      vs FalkorDB — i.e. the Rust engine (FalkorDB 6.x, `main`; the
+      rs-next-gen repo is archived) vs the C engine (FalkorDB 4.x,
+      `master`) — same driver, same data, same machine, fair-
       benchmarking checklist applied

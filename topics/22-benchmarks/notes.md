@@ -126,8 +126,9 @@ Surprises / dead ends:
       recall/QPS, one command, results as committed data files
 - [ ] regression tracking across milestones (M0 BASELINES.md is the
       floor)
-- [ ] three-way shootout falkordb-scratch / falkordb-rs-next-gen /
-      FalkorDB with the sins checklist applied
+- [ ] three-way shootout falkordb-scratch / FalkorDB 6 (Rust engine,
+      formerly falkordb-rs-next-gen) / FalkorDB 4.x (C engine) with the
+      sins checklist applied
 
 ## Done when
 

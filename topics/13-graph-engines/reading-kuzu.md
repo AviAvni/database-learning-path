@@ -18,6 +18,17 @@ where the two disagree the code wins and the chapter says so. Two
 numbers the previous version of this chapter asserted — the node
 group size, and the shape of the CSR — did not survive the check.
 
+> **Upstream since the pin.** The `kuzudb/kuzu` repository is archived:
+> GitHub reports it read-only, its last push was 2025-10-10, and its README now
+> opens "We are archiving the KuzuDB project here". The pin `89f0263` ("remove
+> logo (#6054)", 2025-10-10) is its final commit, so every anchor below stays
+> valid for good. Development continues in the community project
+> [LadybugDB/ladybug](https://github.com/LadybugDB/ladybug), whose README says
+> "The database was formerly known as Kuzu". It is not a GitHub fork: its
+> history replays Kuzu's commits (rewritten SHAs) up to "Optimize checkpointing
+> updates (#6016)" of 2025-10-01, then renames `kuzu` → `ladybug`, so it does
+> not contain `89f0263` and the line numbers here do not carry over to it.
+
 ## The problem in one sentence
 
 If edges are just rows of a columnar table clustered by source node,

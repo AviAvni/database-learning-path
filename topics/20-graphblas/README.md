@@ -112,6 +112,12 @@ The GraphBLAS trinity, as an *executor* design:
 [`~/repos/FalkorDB/src/graph/delta_matrix/`](https://github.com/FalkorDB/FalkorDB) — the answer to "GrB
 matrices are fast to read, slow to mutate one edge at a time":
 
+(That path is FalkorDB's C engine at the pin `ccb449a9a`. Since
+FalkorDB/FalkorDB#2279 the C engine lives on the `master` branch (4.x) and
+`main` is the Rust engine released as 6.0, so a `main` checkout has no
+`src/graph/` — read the pinned files with
+`python3 tools/pinned-source.py show FalkorDB src/graph/delta_matrix/<file>`.)
+
 ```
  Delta_Matrix = M (settled GrB_Matrix, hypersparse CSR)
               + delta-plus  DP (pending additions)

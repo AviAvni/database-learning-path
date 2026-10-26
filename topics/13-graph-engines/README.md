@@ -83,7 +83,9 @@ The recurring tension: CSR-shaped structures are READ-optimal but hate
 single-edge inserts (shift everything). Every system grows a
 delta/buffer mechanism: kuzu's in-mem CSR buffers, FalkorDB's
 `Delta_Matrix` (additions/deletions matrices over the main one —
-`src/graph/delta_matrix/`), even GraphBLAS's own pending-tuples. It's
+`src/graph/delta_matrix/` in the C engine at the pin `ccb449a9a`; the C engine
+now lives on FalkorDB's `master` branch, `main` being the Rust 6.x engine),
+even GraphBLAS's own pending-tuples. It's
 the LSM idea (topic 4) applied to adjacency: fast structure + small
 mutable overlay + background merge.
 
@@ -108,6 +110,13 @@ for each edge (a,b), intersect N(a) ∩ N(b) for c. Kuzu ships this as an
 GraphBLAS-adjacent insight that set intersection is the whole game.
 FalkorDB's masked `A ⊙ A²` triangle counting is the matrix spelling of
 the same intersection.
+
+The `kuzudb/kuzu` repository is archived (read-only) after its
+last commit on 2025-10-10, which is exactly the pin
+[reading-kuzu.md](reading-kuzu.md) reads, so its anchors do not drift. The
+community continuation is [LadybugDB](https://github.com/LadybugDB/ladybug)
+("formerly known as Kuzu"); its history diverges before the pin, so read the
+code at the pin, not there.
 
 ## 5. LDBC (the referee)
 

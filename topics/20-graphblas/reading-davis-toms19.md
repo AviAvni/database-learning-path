@@ -786,7 +786,9 @@ Answer each before unfolding it.
   `Include/GraphBLAS.h:666` is `GrB_DESC_RSC`. The `Source/mxm/`
   and `Source/convert/` walk is
   [reading-suitesparse-internals.md](reading-suitesparse-internals.md).
-- [FalkorDB](https://github.com/FalkorDB/FalkorDB) at `ccb449a9a` —
+- [FalkorDB](https://github.com/FalkorDB/FalkorDB) at `ccb449a9a` (the C
+  engine, which now continues on the `master` branch as 4.x; `main` is the
+  Rust 6.x engine) —
   `src/graph/delta_matrix/delta_new.c:24-44` pins the sparsity and
   disables the hyper_hash. Read in
   [reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md).

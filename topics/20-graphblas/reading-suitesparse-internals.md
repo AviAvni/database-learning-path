@@ -512,6 +512,16 @@ the header comment are wrong at this pin. The `m/16` rule is stale;
 the `flmax >= cvlen/2` cutoff is undocumented; only the "twice the
 smallest power of 2" sizing survives.
 
+> **Upstream since the pin.** `GB_hash_table_size` is now
+> `GB_hash_table_nitems`, and its local `hash_size` is `hash_nitems`, renamed
+> in GraphBLAS `3f46ad1991` ("first cut at p_mem descriptor", part of the
+> `*_size` → `*_mem` / `*_nitems` renaming; first released in v10.4.0). The
+> steps above describe the pinned code, which is what the line numbers point
+> at; the argument holds unchanged — the function still opens at line 56 and
+> still applies `flmax >= cvlen/2` (`:65`), the `2 << (floor_log2(flmax)+1)`
+> sizing (`:83`) and the `cvlen/12` cutoff (`:94`), token for token apart from
+> the names.
+
 ### Step 7 — dot3: the mask as the outer loop
 
 > **In:** the mask, so far only a filter (Steps 3, 5).

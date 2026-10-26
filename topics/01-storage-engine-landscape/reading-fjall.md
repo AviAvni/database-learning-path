@@ -406,6 +406,14 @@ lifecycle/scheduling. Good layering to steal for the capstone's storage crate.
    no open snapshots does not stall GC forever
    (the comment cites fjall discussion #85).
 
+> **Upstream since the pin.** `src/poison_dart.rs` was renamed to
+> `src/poison.rs` (41 lines), and the bare `Arc<AtomicBool>` type alias became
+> a `PoisonSignal` newtype with an `is_poisoned()` reader, in fjall `3f3443d`
+> ("refactor: poisoning", first released in 3.1.8). The steps above describe
+> the pinned code, which is what the line numbers point at; the guard itself
+> is unchanged — `impl Drop for PoisonDart` still runs
+> `if std::thread::panicking() { … self.poison(); }`, now at `poison.rs:34–41` (upstream `cfcdce3`).
+
 ## Questions to answer while reading
 
 1. The journal lock is taken at `mod.rs:919`, before the memtable insert at

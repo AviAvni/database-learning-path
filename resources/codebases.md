@@ -7,8 +7,8 @@ Clone the ones in active use to `~/repos/`.
 
 | Repo | Best for |
 |------|----------|
-| [FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) | Sparse-matrix graph engine, redis module architecture |
-| [FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) | Rust graph engine rewrite |
+| [FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) | Sparse-matrix graph engine, redis module architecture. Two engines since #2279 (2026-08-02): `main` = the Rust engine (6.x releases); `master` = the C engine (4.x releases). The C anchors in the guides are pinned at `ccb449a9a`, from before the split |
+| [FalkorDB/falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) | Rust graph engine rewrite. *Archived; its code now lives on FalkorDB/FalkorDB `main` (history on the `main-rs` branch)* |
 
 ## From your list
 
@@ -40,7 +40,7 @@ Clone the ones in active use to `~/repos/`.
 | [erikgrinaker/toydb](https://github.com/erikgrinaker/toydb) | Rust | reference for the capstone: raft + MVCC + SQL, written to teach |
 | [apache/datafusion](https://github.com/apache/datafusion) | Rust | Arrow-native query engine — planner + vectorized exec in Rust |
 | [pola-rs/polars](https://github.com/pola-rs/polars) | Rust | vectorized columnar engine: lazy optimizer, streaming exec, SIMD kernels — DuckDB's Rust rival |
-| [kuzudb/kuzu](https://github.com/kuzudb/kuzu) | C++ | columnar graph storage, worst-case optimal joins (topic 13) |
+| [kuzudb/kuzu](https://github.com/kuzudb/kuzu) | C++ | columnar graph storage, worst-case optimal joins (topic 13). *Archived; last commit 2025-10-10 is the pin. Community continuation: [LadybugDB/ladybug](https://github.com/LadybugDB/ladybug) (history diverges before the pin).* |
 | [cberner/redb](https://github.com/cberner/redb) | Rust | clean embedded COW B-tree in Rust |
 | [spacejam/sled](https://github.com/spacejam/sled) | Rust | Bw-tree-inspired engine; read its post-mortems too |
 | [tikv/tikv](https://github.com/tikv/tikv) | Rust | raft-rs, distributed txn (Percolator) — topic 15 |

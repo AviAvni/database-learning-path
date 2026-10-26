@@ -117,7 +117,7 @@ Surprises / dead ends:
 2. gc_marker/unique_id ↔ delta-matrix wait/version:
 3. Codec ladder ↔ Lucene positions/doc-values taxonomy:
 4. Varint vs bitpack bytes/posting at delta≈1; where varint wins:
-5. What to lift verbatim into falkordb-rs-next-gen; what the graph changes:
+5. What to lift verbatim into the Rust engine (FalkorDB 6, formerly falkordb-rs-next-gen); what the graph changes:
 
 ## Cross-topic threads
 

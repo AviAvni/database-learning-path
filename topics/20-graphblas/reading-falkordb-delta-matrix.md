@@ -14,6 +14,16 @@ Every anchor is **FalkorDB at commit `ccb449a9a`**, the pin in
 of the claims in the previous version of this chapter were wrong at
 this commit, and each correction is called out where it lands.
 
+> **FalkorDB's two engines.** The C code quoted here is FalkorDB's C
+> engine. Since FalkorDB/FalkorDB#2279 (merged 2026-08-02) the C engine
+> continues on the `master` branch and its 4.x releases (4.22.2 at the time of
+> writing), while `main` carries the Rust engine — the code formerly developed
+> in the now-archived `falkordb-rs-next-gen`, released as FalkorDB 6.0.0 on
+> 2026-09-29. The pin `ccb449a9a` (2026-07-15) is C-engine history from before
+> the split, so every anchor here stays correct; read it with
+> `python3 tools/pinned-source.py show FalkorDB <path>`, because a checkout of
+> today's `main` no longer has `src/graph/`.
+
 ## The problem in one sentence
 
 Deleting or inserting one edge in a packed sparse matrix means

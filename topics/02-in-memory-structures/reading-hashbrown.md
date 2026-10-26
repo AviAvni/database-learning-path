@@ -230,6 +230,15 @@ Cache-line budget per lookup: one line of control bytes (the group load at
 minimum, plus one dense byte per slot. That is the number the flamegraph could
 not show you.
 
+> **Upstream since the pin.** The backend choice in `src/control/group/mod.rs`
+> is no longer a `cfg_if!` block: hashbrown `4165f9a` (PR #740, merged
+> 2026-07-31, not yet in a release — the latest tag is v0.17.1) replaced it
+> with `cfg_select!`, the same arms written as `predicate => { … }` with a
+> `_ =>` fallback for the generic backend. The steps above describe the pinned
+> code, which is what the line numbers point at; the argument holds unchanged —
+> the same predicates still pick SSE2 (16 tags) on x86 and NEON or the
+> portable `u64` (8 tags) elsewhere.
+
 ### Step 4 — the probe sequence: triangular stride, guaranteed coverage
 
 > **In:** a group load from Step 3 that contained neither the key nor an

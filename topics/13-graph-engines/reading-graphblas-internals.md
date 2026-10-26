@@ -20,6 +20,16 @@ before you trust it. Three claims in the previous version of this
 chapter did not survive that check, and each is called out where it
 used to be.
 
+> **FalkorDB's two engines.** The FalkorDB code quoted here is its C
+> engine. Since FalkorDB/FalkorDB#2279 (merged 2026-08-02) the C engine
+> continues on the `master` branch and its 4.x releases, while `main` carries
+> the Rust engine — the code formerly developed in the now-archived
+> `falkordb-rs-next-gen`, released as FalkorDB 6.0.0 on 2026-09-29. The pin
+> `ccb449a9a` (2026-07-15) is C-engine history from before the split, so every
+> FalkorDB anchor here stays correct; read it with
+> `python3 tools/pinned-source.py show FalkorDB <path>`, because a checkout of
+> today's `main` no longer has `src/graph/`.
+
 ## The problem in one sentence
 
 Answer "who are the neighbors of these 10,000 nodes?" as one streaming

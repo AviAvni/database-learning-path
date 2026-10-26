@@ -172,6 +172,18 @@ keeps exactly the top bit of each lane. On SSE2 `BITMASK_ITER_MASK` is
 `!0` (`sse2.rs:13`) — a no-op, because `PMOVMSKB` already produced one
 bit per lane.
 
+> **Upstream since the pin.** Two changes have landed on hashbrown's
+> `src/control/group/mod.rs`, neither yet in a release (the latest tag is
+> v0.17.1). `4165f9a` (PR #740) replaced the `cfg_if! { if #[cfg(…)] … else
+> if … }` chain with `cfg_select!`, whose arms read `all(…) => { mod sse2; use
+> sse2 as imp; }` with a `_ =>` fallback; and `896f957` ("miri supports SSE
+> and neon nowadays") dropped `not(miri)` from the SSE2 and NEON arms, keeping
+> it only on the LoongArch `lsx` arm. The steps above describe the pinned code,
+> which is what the line numbers point at; the argument holds — the backend is
+> still fixed at compile time by the same target predicates, and the stale
+> "NEON wasn't worth it" comment is still there, now at lines 14-16 of a block
+> that spans 8-48.
+
 ### Step 3 — SWAR: a u64 is an 8-lane vector if you are careful
 
 > **In:** eight control bytes packed in a plain `u64`, and a tag byte.

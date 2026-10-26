@@ -9,6 +9,14 @@ decisions; here you *make* every one — and benchmark it against the real thing
 reference implementation lives at [`~/repos/falkordb-rs-next-gen`](https://github.com/FalkorDB/falkordb-rs-next-gen); every milestone ends
 by comparing your design and numbers against the corresponding module there.
 
+> **Where the reference lives now.** `falkordb-rs-next-gen` is archived
+> (read-only since its last push on 2026-07-29). Its Rust engine was moved into
+> FalkorDB/FalkorDB by #2279 (merged 2026-08-02): `main` there is now the Rust
+> engine, released as FalkorDB 6.0.0 on 2026-09-29, with the full Rust history
+> kept on the `main-rs` branch; the C engine continues on `master` and its 4.x
+> releases. The baselines in `BASELINES.md` were taken against the archived
+> repo; compare future milestones against FalkorDB `main`.
+
 ## Target architecture (mirrors the reference)
 
 ```mermaid
