@@ -42,6 +42,10 @@ flowchart TD
 - Every milestone lands with: tests + a criterion benchmark + a `notes.md` entry
   comparing your approach vs the reference (design and numbers).
 - Correctness bar grows over time: openCypher TCK subset (M16 onward) is the oracle.
+- A milestone is done when its **Accept when** gate in `PROGRESS.md` passes: an
+  oracle the output must equal, and a measured comparison against the topic's lane
+  or against `BASELINES.md`. Where the gate names no threshold, the number is
+  recorded beside the lane's, not judged against one invented in advance.
 - Unsafe allowed where the lesson requires it — with Miri runs.
 
 ## Milestone map
