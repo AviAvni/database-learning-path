@@ -231,9 +231,8 @@ Read it as four events: record the freed pages (4571), write the data pages
 (4583), **barrier one** (4590, `mdb_env_sync0` — a real `fsync`/`msync`, and
 skippable with `MDB_NOSYNC`), then write the meta (4598).
 
-**Barrier two is not a second `fsync`, and the previous edition of this
-chapter said it was.** `mdb_env_write_meta` gets durability from the file
-descriptor instead:
+**Barrier two is not a second `fsync`**, though it is often described as one.
+`mdb_env_write_meta` gets durability from the file descriptor instead:
 
 ```c
 // libraries/liblmdb/mdb.c — inside mdb_env_write_meta, 4918-4937
@@ -338,8 +337,9 @@ reader in a shared lock file — and from then on follows pointers through pages
 that, by Step 2's rule, nobody will ever modify. There are no locks on data
 pages, ever.
 
-`mdb_txn_renew0` (mdb.c:3285) does the setup, and it has two paths. The
-previous edition of this chapter cited only the first:
+`mdb_txn_renew0` (mdb.c:3285) does the setup, and it has two paths — the
+first is the one usually quoted, but the second is the one a normal
+environment runs:
 
 - **No lock table** (`MDB_NOLOCK`, or a read-only env with no `ti`): :3294-3298
   calls `mdb_env_pick_meta` at :3296 and takes `meta->mm_txnid` directly.

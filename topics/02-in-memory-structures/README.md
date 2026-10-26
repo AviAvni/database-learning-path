@@ -105,6 +105,33 @@ step is a dependent miss. It wins on *concurrency + sortedness*, not raw lookup 
 your benchmark will show hashbrown beating it by 5-10x on point lookups. That's fine —
 different RUM position.
 
+That price is why a skiplist is not the end of either road. Where the structure
+is stored long-term rather than flushed, it gets replaced: Redis (`unstable`,
+[#15635](https://github.com/redis/redis/pull/15635)) and Valkey 9.2.0-rc1
+([#4359](https://github.com/valkey-io/valkey/pull/4359)) store large sorted sets
+in a B+ tree whose inner pages keep per-child counts, so `ZRANK` is still a
+descent that sums counts — the skiplist's span trick moved into a structure with
+far fewer dependent loads. Redis keeps `zskiplist` only as scratch space for
+`ZUNION`/`ZINTER`/`ZDIFF`
+([`reading-redis-skiplist.md`](reading-redis-skiplist.md), Step 8).
+
+Where the structure must stay a concurrent memtable, the alternative is to make
+the faster ordered index lock-free. **Arctic** (Ni, Garza, Stinehour, Goppert,
+Friedman, Witchel, "Arctic: A Practical Lock-Free Adaptive Radix Tree", OSDI
+2026, [paper](https://www.usenix.org/conference/osdi26/presentation/ni) ·
+[code (Rust)](https://github.com/nwtnni/arctic)) is a lock-free ART (§3 below)
+that keeps ART's node layout — no extra pointer indirection, nodes updated in
+place rather than copied — using a freezing-based coordination protocol,
+128-bit CAS, and wait-free but non-linearizable range and prefix scans (§1).
+Swapped in for the default concurrent skiplists, it improved throughput by up
+to 1.40× on RocksDB's bulk load (100M random 20-byte keys, WAL off) and up to
+1.12× on Turso's multi-writer insert benchmark (§4.2, Table 3). It is this
+section's skiplist and §3's radix tree in one experiment
+([`reading-rocksdb-memtable.md`](reading-rocksdb-memtable.md),
+[`reading-art-paper.md`](reading-art-paper.md)), and a Rust crate the capstone
+can evaluate wherever it needs a concurrent ordered in-memory index (an LSM
+memtable behind the M1 storage trait).
+
 ## 3. Tries / radix trees — when the key IS the index
 
 ```
@@ -146,9 +173,8 @@ control-byte designs make the *other* 79% (memory stalls) smaller too.
 - **redis `dict.c`** — the incremental rehash machine.
   → chapter: [`reading-redis-dict.md`](reading-redis-dict.md) — redis dict: rehashing
   100M keys without stopping the world
-- **redis `t_zset.c`** — the skiplist behind sorted sets at the pinned 8.6.2
-  (spans + rank queries; upstream has since moved large sets to a B+ tree — the
-  chapter's opening callout has the details).
+- **redis `t_zset.c`** — the skiplist (spans + rank queries) and the B+ tree
+  encoding that now stores large sorted sets, with the same counts.
   → chapter: [`reading-redis-skiplist.md`](reading-redis-skiplist.md) — The redis
   skiplist: spans make rank queries free
 - **hashbrown** — SwissTable in Rust: control bytes, NEON group probing.
@@ -171,34 +197,6 @@ control-byte designs make the *other* 79% (memory stalls) smaller too.
   Step" (CppCon 2017 — the SwissTable talk).
   → chapter: [`reading-swisstable-talk.md`](reading-swisstable-talk.md) — The
   SwissTable design walk: how benchmarks kill hash tables
-
-## Newer work (2025–2026)
-
-- **Arctic: A Practical Lock-Free Adaptive Radix Tree** — Newton Ni, Nicolas
-  Garza, Jenny Stinehour, Michael Goppert, Michal Friedman, Emmett Witchel.
-  OSDI 2026. [paper](https://www.usenix.org/conference/osdi26/presentation/ni)
-  · [code (Rust)](https://github.com/nwtnni/arctic)
-
-  The memtable index has to be ordered (flushes and compactions scan it) and
-  concurrent; skiplists give both but pay in cache misses, and ART is fast but
-  lock-based. Arctic is a lock-free ART that keeps ART's node layout — no extra
-  pointer indirection, nodes updated in place rather than copied — using a
-  freezing-based coordination protocol, 128-bit CAS, and wait-free but
-  non-linearizable range and prefix scans (§1). Swapped in for the default
-  concurrent skiplists, it improved throughput by up to 1.40× on RocksDB's
-  bulk load (100M random 20-byte keys, WAL off) and up to 1.12× on Turso's
-  multi-writer insert benchmark (§4.2, Table 3). It is the §2 skiplist and the
-  §3 radix tree in one experiment
-  ([`reading-rocksdb-memtable.md`](reading-rocksdb-memtable.md),
-  [`reading-art-paper.md`](reading-art-paper.md)), and a Rust crate the
-  capstone can evaluate wherever it needs a concurrent ordered in-memory index
-  (an LSM memtable behind the M1 storage trait).
-- **Sorted sets leave the skiplist (2026).** Redis (unstable,
-  [#15635](https://github.com/redis/redis/pull/15635)) and Valkey 9.2.0-rc1
-  ([#4359](https://github.com/valkey-io/valkey/pull/4359)) both replaced the
-  skiplist behind large sorted sets with a B+ tree that keeps per-child counts
-  so rank stays a descent — see the "Upstream since the pin" callout in
-  [`reading-redis-skiplist.md`](reading-redis-skiplist.md).
 
 ## 7. Experiments (in `experiments/`)
 

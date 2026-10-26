@@ -13,7 +13,7 @@ is, so every claim below is grounded in something you can re-check: the
 [abseil Swiss Tables design notes](https://abseil.io/about/design/swisstables)
 for the design as Google documented it; Google's own
 [sparsehash](https://github.com/sparsehash/sparsehash) at `1dffea3d9` for what
-`dense_hash_map` really did; hashbrown at `d69025b` for the final shape; and
+`dense_hash_map` really did; hashbrown at `00c1756` for the final shape; and
 cppreference for the C++ requirements. Two consequences. First, the
 fleet-wide RAM- and CPU-percentage figures this talk is famous for are **not
 reproduced here** — they are spoken numbers with no retrievable primary
@@ -185,7 +185,7 @@ the moment of invention.
 (`tag.rs:48`) — but its H1 is not 57 bits:
 
 ```rust
-// hashbrown@d69025b — src/raw.rs:58-64
+// hashbrown@00c1756 — src/raw.rs:58-64
     58  /// Primary hash function, used to select the initial bucket to probe from.
     // ... 59-60: #[inline] and a clippy allow ...
     61  fn h1(hash: u64) -> usize {
@@ -195,11 +195,11 @@ the moment of invention.
 ```
 
 It is the whole hash truncated to `usize` and then masked by `bucket_mask`
-(raw.rs:2453), so the index bits and the tag bits *overlap* on a 64-bit
+(raw.rs:2459), so the index bits and the tag bits *overlap* on a 64-bit
 target — harmless, because the index uses low bits and the tag uses high ones,
 but it means "H1 is 57 bits" describes abseil, not hashbrown. Also note that
 hashbrown has no identifier called `h2` at all; the local is `tag_hash`
-(raw.rs:2010). When you hear "H2" in the talk, translate to `Tag::full`.
+(raw.rs:2016). When you hear "H2" in the talk, translate to `Tag::full`.
 
 ### Step 4 — group probing: one instruction filters a whole group
 
@@ -231,7 +231,7 @@ MaskMatch(h2_t hash) const {
 `_mm_cmpeq_epi8` compares 16 bytes lane-wise; `_mm_movemask_epi8` collapses
 the result to a 16-bit integer whose set bits are the candidate lanes. Step 5
 of that list is the tombstone rule, and it is exactly hashbrown's
-`match_empty` stopping condition at `raw.rs:2040`.
+`match_empty` stopping condition at `raw.rs:2046`.
 
 **Sixteen is not a law.** This is the second place the talk and the code
 diverge, and it is the one most retellings get wrong. In hashbrown the group
@@ -239,16 +239,17 @@ is whatever the target provides:
 
 | Backend | Type | `Group::WIDTH` | Selected when |
 |---|---|---|---|
-| SSE2 | `__m128i` (`sse2.rs:20`) | **16** | x86/x86-64 with `sse2` (`mod.rs:17-21`) |
-| NEON | `uint8x8_t` (`neon.rs:16`) | **8** | little-endian aarch64 with `neon` (`mod.rs:24-31`) |
-| LSX | `m128i` (`lsx.rs:17`) | 16 | nightly + loongarch64 + `lsx` (`mod.rs:34-39`) |
-| generic | `u64` (`generic.rs:41`) | **8** on 64-bit | everything else (`mod.rs:42-44`) |
+| SSE2 | `__m128i` (`sse2.rs:19`) | **16** | x86/x86-64 with `sse2` (`mod.rs:17-23`) |
+| NEON | `uint8x8_t` (`neon.rs:15`) | **8** | little-endian aarch64 with `neon` (`mod.rs:24-33`) |
+| LSX | `m128i` (`lsx.rs:16`) | 16 | nightly + loongarch64 + `lsx` (`mod.rs:34-42`) |
+| generic | `u64` (`generic.rs:42`) | **8** on 64-bit | everything else — the `_ =>` arm (`mod.rs:44-47`) |
 
 This repo measures on an Apple M3 Pro, so `Group::WIDTH = 8` here and
-`match_tag` is `vceq_u8` plus a reinterpret (`neon.rs:68-73`) rather than
-`_mm_movemask_epi8` (`sse2.rs:73-86`). A previous version of this chapter
-pointed at `neon.rs:78-90` for the group compare; at `d69025b` that range is
-`match_empty`, and `match_tag` is 68-73.
+`match_tag` is `vceq_u8` plus a reinterpret (`neon.rs:67-72`) rather than
+`_mm_movemask_epi8` (`sse2.rs:72-85`). The rows are tried top to bottom: the
+selector is a `cfg_select!` block (`mod.rs:8-48`), which compiles the first
+arm whose target predicate holds and falls back to `_ =>` — so the order of
+the table *is* the priority order.
 
 The width also sets the false-positive rate, because a group holds
 `WIDTH × load` occupied lanes and each collides with probability 1/128:
@@ -300,9 +301,7 @@ shrinks:
 
 1.75× fewer slots, plus no per-node malloc, for about one cache line per
 lookup. hashbrown encodes the 7/8 in `bucket_mask_to_capacity`
-(`raw.rs:182-191`, with a separate case for tables of 8 buckets or fewer —
-the earlier version of this chapter cited `raw.rs:152`, which is a different
-function at this commit).
+(`raw.rs:182-194`, with a separate case for tables of 8 buckets or fewer).
 
 Deletion is the bill that comes with open addressing. Because the probe stops
 at the first *empty* slot, erasing a slot mid-chain would hide every key
@@ -313,11 +312,11 @@ two refinements the talk predates:
 
 - It writes a tombstone only when it must — `erase` checks whether an `EMPTY`
   is already within a group's reach on either side, and if so writes `EMPTY`
-  and returns the capacity instead (`raw.rs:3279-3284`).
+  and returns the capacity instead (`raw.rs:3285-3290`).
 - When tombstones do choke a table, `reserve_rehash_inner` rewrites it in
   place rather than growing, but only if the live items would fit in *half*
-  the current capacity (`raw.rs:2756-2757`); otherwise it really grows
-  (`raw.rs:2785-2787`).
+  the current capacity (`raw.rs:2762-2763`); otherwise it really grows
+  (`raw.rs:2791-2793`).
 
 Same disease as LSM tombstones from topic 1, same cure: compaction, gated by
 a rule about when it pays.
@@ -343,7 +342,7 @@ goes to hash tables — are spoken claims with no retrievable primary source,
 which is why they appear nowhere above. Everything else here survived being
 checked: the C++ requirements against cppreference, the 50% cap and its
 probe table against sparsehash's own header, H1/H2 against Google's design
-notes, and every width and line number against hashbrown at `d69025b`. Write
+notes, and every width and line number against hashbrown at `00c1756`. Write
 the spoken numbers into notes.md with a timestamp, mark them unverified, and
 treat that as the exercise.
 
@@ -358,22 +357,22 @@ something you can open:
 | "the standard basically mandates chaining" | 1 | cppreference `unordered_map` → Iterator invalidation, and `local_iterator` |
 | `dense_hash_map`, `set_empty_key`, 50% load | 2 | `densehashtable.h:390`, `:496`, `:1309-1316`, and the probe table at `:77-84` |
 | the metadata byte slide (1 control bit + 7 hash bits) | 3 | `tag.rs:9-49`; the abseil design notes' H1/H2 diagram |
-| the `_mm_movemask_epi8` slide | 4 | `sse2.rs:73-86` beside `neon.rs:68-73` |
-| load factor and tombstone discussion | 5 | `raw.rs:182-191`, `raw.rs:2756-2757`, `raw.rs:3279` |
+| the `_mm_movemask_epi8` slide | 4 | `sse2.rs:72-85` beside `neon.rs:67-72` |
+| load factor and tombstone discussion | 5 | `raw.rs:182-194`, `raw.rs:2762-2763`, `raw.rs:3285` |
 | any fleet-wide percentage | 6 | your notes — record it with a timestamp, marked unverified |
 
 Suggested route: read the [abseil design notes](https://abseil.io/about/design/swisstables)
 first (ten minutes, and it is the written form of Steps 3-4), then watch, then
 re-open [`reading-hashbrown.md`](reading-hashbrown.md) Step 3 and check the
-talk's account against `find_inner` at `raw.rs:2009-2046`. The talk is
+talk's account against `find_inner` at `raw.rs:2015-2052`. The talk is
 `std::unordered_map` → `dense_hash_map` → metadata → SIMD; the code is that
 same walk with eight more years of tombstone bookkeeping bolted on.
 
 **Contrast case.** Watch how differently redis solves the same growth problem.
 SwissTable's answer to "the table is full" is to stop the world and rebuild
-(`raw.rs:2785`), which this repo measured as a **58.4 ms** worst-case insert
+(`raw.rs:2791`), which this repo measured as a **58.4 ms** worst-case insert
 ([FINDINGS.md](../../FINDINGS.md) row 2). Redis instead keeps two tables and
-migrates one bucket per operation (`dict.c:405-434`), trading a permanently
+migrates one bucket per operation (`dict.c:406-437`), trading a permanently
 slower lookup for the absence of that spike — see
 [`reading-redis-dict.md`](reading-redis-dict.md). Neither is wrong; they are
 answers to different questions about the p99.
@@ -383,8 +382,8 @@ answers to different questions about the p99.
 1. Google could not ship this as `std::unordered_map` because of the three
    requirements in Step 1. Which redis `dict` features would SwissTable
    similarly break? (Incremental rehash needs stable *entries*? Check — redis
-   moves entries between tables anyway, `dict.c:336-377`; the real conflict is
-   `dictScan`'s bucket cursor, `dict.c:1424-1445`.)
+   moves entries between tables anyway, `dict.c:337-378`; the real conflict is
+   `dictScan`'s bucket cursor, `dict.c:1458-1541`.)
 2. Estimate bytes per entry for a u64→u64 map: chaining with malloc'd nodes
    versus SwissTable at 7/8. Show the arithmetic — bucket array, node size,
    allocator rounding, control bytes, empty-slot slack. Then compare against
@@ -503,7 +502,7 @@ Answer each before unfolding it.
   `1dffea3d9`); the H1/57-bit, H2/7-bit split, the one-byte-per-entry
   overhead, the `MaskMatch` code and the "deleted does not cease probing" rule
   (abseil's published design notes); every width, constant and line number
-  (hashbrown at `d69025b`); the ~100 ns dependent miss and the 58.4 ms insert
+  (hashbrown at `00c1756`); the ~100 ns dependent miss and the 58.4 ms insert
   spike ([FINDINGS.md](../../FINDINGS.md) rows 0 and 2).
 
   Not re-openable, and therefore absent: the fleet-wide RAM and CPU
@@ -539,14 +538,14 @@ Answer each before unfolding it.
 | " | 390, 496 | `set_deleted_key`, `set_empty_key` — the two donated sentinels |
 | " | 648-653 | the probe loop, stopping at the first empty slot |
 | " | 1309-1316 | "Knuth says .8 … we go with .5", `HT_OCCUPANCY_PCT = 50` |
-| hashbrown `d69025b` `src/control/tag.rs` | 9-49 | the metadata byte, as shipped |
-| " `src/control/group/mod.rs` | 8-46 | which group width your target gets |
-| " `src/control/group/sse2.rs` | 20, 73-86 | 16-wide, `_mm_movemask_epi8` |
-| " `src/control/group/neon.rs` | 16, 68-73 | 8-wide, `vceq_u8` — this repo's machine |
+| hashbrown `00c1756` `src/control/tag.rs` | 9-49 | the metadata byte, as shipped |
+| " `src/control/group/mod.rs` | 8-48 | which group width your target gets |
+| " `src/control/group/sse2.rs` | 19, 72-85 | 16-wide, `_mm_movemask_epi8` |
+| " `src/control/group/neon.rs` | 15, 67-72 | 8-wide, `vceq_u8` — this repo's machine |
 | " `src/raw.rs` | 58-64 | `h1` — the whole hash, not abseil's 57 bits |
-| " `src/raw.rs` | 182-191 | `bucket_mask_to_capacity` — the 7/8 rule |
-| " `src/raw.rs` | 2009-2046 | `find_inner` — the design walk's destination |
-| " `src/raw.rs` | 2756-2757, 3279 | tombstone policy: rehash-in-place, and when not to write one |
+| " `src/raw.rs` | 182-194 | `bucket_mask_to_capacity` — the 7/8 rule |
+| " `src/raw.rs` | 2015-2052 | `find_inner` — the design walk's destination |
+| " `src/raw.rs` | 2762-2763, 3285 | tombstone policy: rehash-in-place, and when not to write one |
 
 **Measured in this repo**
 - [FINDINGS.md](../../FINDINGS.md) row 0 — the ~1 / 5 / 100 ns cache ladder

@@ -10,12 +10,12 @@ invariants that fix it — one step at a time. Everything in turso's
 every real engine actually shipped.
 
 Every section reference below was checked against the PDF of *ACM Computing
-Surveys* Vol. 11, No. 2 (June 1979), pp. 121–137. **The previous version of
-this chapter had the section map wrong** in two places: insertion and deletion
-are taught in §1 (under the subheads "Balancing", "Insertion", "Deletion"),
-not §2 — §2 is the *cost* analysis — and VSAM is §5, not §4, because §4 is the
-multiuser chapter. The corrected reading order is below. Code anchors are
-turso at `dd775bc`, the commit this repo's pin table records.
+Surveys* Vol. 11, No. 2 (June 1979), pp. 121–137. Two parts of the section
+map are easy to get wrong: insertion and deletion are taught in §1 (under the
+subheads "Balancing", "Insertion", "Deletion"), not §2 — §2 is the *cost*
+analysis — and VSAM is §5, not §4, because §4 is the multiuser chapter. The
+reading order below follows the paper's real map. Code anchors are turso at
+`a820079e8` (v0.9.0-pre.1), the commit this repo's pin table records.
 
 ## The problem in one sentence
 
@@ -51,10 +51,9 @@ Read that carefully, because it is doing two things. It declares the **cost
 model** — the thing you count when you compare two algorithms — to be block
 accesses rather than comparisons, and it justifies the swap by an *empirical*
 claim about the hardware, not a mathematical one. Comer never prints a
-millisecond figure anywhere in the paper; a previous version of this chapter
-attributed "~30 ms per access, so 600 ms per lookup" to him, and that number is
-not his. The honest form of the claim is his: accesses dominate, so count
-accesses.
+millisecond figure anywhere in the paper — a "~30 ms per access, so 600 ms per
+lookup" line often attributed to him is not his. The honest form of the claim
+is his: accesses dominate, so count accesses.
 
 Comer does list what the model deliberately ignores, and it is worth having the
 list: "other less important costs include the time to process data once it has
@@ -302,19 +301,19 @@ turso's `balance_non_root` is that idea, and the number of siblings it will
 consider is a named constant:
 
 ```rust
-// core/storage/btree.rs at turso dd775bc — the constant at 136, and the two
-// lines of balance_non_root (2995) that consume it. Elided between them:
-// 137-2994, the page/cell format, the cursor and the seek machinery.
-   136  pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
-// ... 137-2994: page layout, cursor, seek ...
-  2995      fn balance_non_root(&mut self) -> Result<IOResult<()>> {
-// ... 2996-3073: state machine, parent bookkeeping, assertions ...
-  3074                      let mut pages_to_balance: [Option<PinGuard>; MAX_SIBLING_PAGES_TO_BALANCE] =
-  3075                          [const { None }; MAX_SIBLING_PAGES_TO_BALANCE];
+// core/storage/btree.rs at turso a820079e8 — the constant at 160, and the two
+// lines of balance_non_root (3494) that consume it. Elided between them:
+// 161-3493, the page/cell format, the cursor and the seek machinery.
+   160  pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
+// ... 161-3493: page layout, cursor, seek ...
+  3494      fn balance_non_root(&mut self) -> IOResultOr<()> {
+// ... 3495-3572: state machine, parent bookkeeping, assertions ...
+  3573                      let mut pages_to_balance: [Option<PinGuard>; MAX_SIBLING_PAGES_TO_BALANCE] =
+  3574                          [const { None }; MAX_SIBLING_PAGES_TO_BALANCE];
 ```
 
-The line that carries the argument is **136**: the redistribution window is
-three pages wide, fixed at compile time. Line 3074 is where that width becomes
+The line that carries the argument is **160**: the redistribution window is
+three pages wide, fixed at compile time. Line 3573 is where that width becomes
 the actual array of pages the balance operates on. A wider window would pack
 pages fuller (Step 4's utilization rises toward Step 6's B\*-tree bound) at the
 cost of reading more siblings per split — the same tradeoff Comer describes in
@@ -395,8 +394,8 @@ this function is *exactly* its iteration count:
 
 ```rust
 // ILLUSTRATION — not quoted from any engine. The real descent this sketches is
-// turso's cursor seek in core/storage/btree.rs:2995 (the balance path) and the
-// page/cell accessors above it; the height arithmetic in the comment is Step 3's.
+// turso's cursor descent, BTreeCursor::move_to in core/storage/btree.rs:2989
+// (dispatching to tablebtree_move_to at :1950), and the page/cell accessors; the height arithmetic in the comment is Step 3's.
 fn lookup(pager: &Pager, root: PageId, key: u64) -> Option<Value> {
     let mut page = pager.read(root);                 // each read: 1 potential IO
     loop {
@@ -436,8 +435,8 @@ questions and Comer's model has no term for the second.
 
 ## How to read the paper (with the concepts in hand)
 
-~15 pages, 2 h. The order below is the corrected one — §4 is concurrency, not
-applications.
+~15 pages, 2 h. The order below follows the paper's real section map — §4 is
+concurrency, not applications.
 
 1. **Introduction, *Operations on a File*** — Step 1. The four operations
    (`insert`, `delete`, `find`, `next`), and the two sentences that declare
@@ -447,8 +446,8 @@ applications.
    Steps 2, 4 and 5 in Comer's words: the generalization from the binary search
    tree (Figures 2 and 3), the order-d definition, and the split/merge
    algorithms. Map to turso as you read: `balance_non_root`
-   (`core/storage/btree.rs:2995`) with `MAX_SIBLING_PAGES_TO_BALANCE = 3`
-   (`:136`) is §3's "redistribute before splitting" refinement, implemented.
+   (`core/storage/btree.rs:3494`) with `MAX_SIBLING_PAGES_TO_BALANCE = 3`
+   (`:160`) is §3's "redistribute before splitting" refinement, implemented.
 3. **§2 The Cost of Operations** (*Retrieval Costs*, *Insertion and Deletion
    Costs*, *Sequential Processing*) — Step 3's height bound and **Table I**, the
    single most quotable artifact in the paper. Read *Sequential Processing*
@@ -478,7 +477,7 @@ applications.
 3. Comer's §3 describes redistribution-before-split as a way to "delay
    splitting and eliminate the associated overhead", and Knuth's B\*-tree as
    the 2/3-full version of it. Read turso's `balance_non_root`
-   (`core/storage/btree.rs:2995`) and decide: is turso B+, B\*, or a hybrid?
+   (`core/storage/btree.rs:3494`) and decide: is turso B+, B\*, or a hybrid?
    Name the line that decides it.
 4. Comer's B-trees assume one page write is atomic. It is not — a **torn
    write** is a page that hit the disk half-updated after a crash. Which later
@@ -594,8 +593,8 @@ Answer each before unfolding it.
   The bar for question 3, since it is the one with a checkable answer in code:
   turso is a B+-tree with the redistribution refinement, not a B\*-tree. The
   deciding evidence is `MAX_SIBLING_PAGES_TO_BALANCE = 3`
-  (`core/storage/btree.rs:136`, turso `dd775bc`) consumed at
-  `core/storage/btree.rs:3074` — a fixed three-page redistribution window, which
+  (`core/storage/btree.rs:160`, turso `a820079e8`) consumed at
+  `core/storage/btree.rs:3573` — a fixed three-page redistribution window, which
   is §3's "distribute into a neighbouring node" rather than Knuth's 2-into-3
   split with its 66% floor. An answer that says "B\*, because it redistributes"
   has confused the mechanism with the guarantee: B\* is defined by the
@@ -625,9 +624,9 @@ Answer each before unfolding it.
 | §3, *2-3 Trees and Theoretical Results* | Yao's result: "the expected storage utilization is ln 2 [≈] 69%" |
 
 **Code**
-- [turso](https://github.com/tursodatabase/turso) at `dd775bc` —
-  `core/storage/btree.rs:136` (`MAX_SIBLING_PAGES_TO_BALANCE = 3`) and
-  `core/storage/btree.rs:2995` (`balance_non_root`), the living counterpart;
+- [turso](https://github.com/tursodatabase/turso) at `a820079e8` —
+  `core/storage/btree.rs:160` (`MAX_SIBLING_PAGES_TO_BALANCE = 3`) and
+  `core/storage/btree.rs:3494` (`balance_non_root`), the living counterpart;
   walked in [reading-turso-btree.md](reading-turso-btree.md).
 
 **This repo's measurements cited above**

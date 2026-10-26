@@ -8,15 +8,16 @@ group of candidates before a single key byte is touched. This chapter builds
 that idea step by step — open addressing, the control byte, group probing, the
 probe sequence, tombstones — then maps each step onto the source.
 
-Every anchor below is hashbrown **0.17.1** (`Cargo.toml:3`), the commit
-`d69025b` this repo pins, quoted with the line numbers the code occupies in
-that version. One warning before you start, because it changes half the
-numbers people quote about SwissTable: **the group width is a property of the
-target, not of the design.** `Group` is `__m128i` on x86 with SSE2 —
-16 tags — and `uint8x8_t` on aarch64 NEON or a bare `u64` in the portable
-fallback — **8 tags** (`src/control/group/sse2.rs:20`,
-`src/control/group/neon.rs:16`, `src/control/group/generic.rs:41`, selected by
-the `cfg_if` at `src/control/group/mod.rs:8-46`). This repo measures on an
+Every anchor below is hashbrown `master` at commit `00c1756` (2026-10-25), the
+revision this repo pins — `Cargo.toml:3` still declares version 0.17.1 —
+quoted with the line numbers the code occupies at that commit. One warning
+before you start, because it changes half the numbers people quote about
+SwissTable: **the group width is a property of the target, not of the
+design.** `Group` is `__m128i` on x86 with SSE2 — 16 tags — and `uint8x8_t`
+on aarch64 NEON or a bare `u64` in the portable fallback — **8 tags**
+(`src/control/group/sse2.rs:19`, `src/control/group/neon.rs:15`,
+`src/control/group/generic.rs:42`, selected by the `cfg_select!` at
+`src/control/group/mod.rs:8-48`). This repo measures on an
 Apple M3 Pro, so every figure below that depends on width is given for
 `Group::WIDTH = 8` first, with the SSE2 value alongside.
 
@@ -127,29 +128,29 @@ abseil/CppCon vocabulary calls the index bits **h1** and the tag bits **h2**;
 hashbrown keeps `h1` (`src/raw.rs:61-64`, and it is simply `hash as usize` —
 the *whole* hash truncated, then masked by `bucket_mask`, so effectively the
 low bits) but has no `h2`: the tag constructor is `Tag::full` and the local is
-called `tag_hash` (raw.rs:2010). Second, the two arrays are not two
+called `tag_hash` (raw.rs:2016). Second, the two arrays are not two
 allocations. `RawTableInner` holds one pointer:
 
 ```rust
-// src/raw.rs — RawTableInner, 566-580
-   566  struct RawTableInner {
-   567      // Mask to get an index from a hash value. The value is one less than the
-   568      // number of buckets in the table.
-   569      bucket_mask: usize,
-   570
-   571      // [Padding], T_n, ..., T1, T0, C0, C1, ...
-   572      //                              ^ points here
-   573      ctrl: NonNull<u8>,
-   574
-   575      // Number of elements that can be inserted before we need to grow the table
-   576      growth_left: usize,
+// src/raw.rs — RawTableInner, 569-583
+   569  struct RawTableInner {
+   570      // Mask to get an index from a hash value. The value is one less than the
+   571      // number of buckets in the table.
+   572      bucket_mask: usize,
+   573
+   574      // [Padding], T_n, ..., T1, T0, C0, C1, ...
+   575      //                              ^ points here
+   576      ctrl: NonNull<u8>,
    577
-   578      // Number of elements in the table, only really used by len()
-   579      items: usize,
-   580  }
+   578      // Number of elements that can be inserted before we need to grow the table
+   579      growth_left: usize,
+   580
+   581      // Number of elements in the table, only really used by len()
+   582      items: usize,
+   583  }
 ```
 
-The comment on lines 571-572 is the layout: slots grow *downward* from the
+The comment on lines 574-575 is the layout: slots grow *downward* from the
 `ctrl` pointer (T0 immediately before C0) and control bytes upward, one
 allocation, one pointer. So the "dense filter, fat payload" split of README §4
 is a split in addressing, not in allocation: the filter array is 1 byte per
@@ -168,46 +169,46 @@ against a whole **group** of adjacent tags at once, producing a bitmask of
 candidate lanes. This is the entire lookup:
 
 ```rust
-// src/raw.rs — find_inner, 2009-2046 (safety comments elided)
-  2009      unsafe fn find_inner(&self, hash: u64, eq: &mut dyn FnMut(usize) -> bool) -> Option<usize> {
-  2010          let tag_hash = Tag::full(hash);
-  2011          let mut probe_seq = self.probe_seq(hash);
-  2012
-  2013          loop {
-  // ... 2014-2027: SAFETY comment — pos is masked, and the trailing group is
+// src/raw.rs — find_inner, 2015-2052 (safety comments elided)
+  2015      unsafe fn find_inner(&self, hash: u64, eq: &mut dyn FnMut(usize) -> bool) -> Option<usize> {
+  2016          let tag_hash = Tag::full(hash);
+  2017          let mut probe_seq = self.probe_seq(hash);
+  2018
+  2019          loop {
+  // ... 2020-2033: SAFETY comment — pos is masked, and the trailing group is
   //                always readable because of Step 6's extra Group::WIDTH bytes ...
-  2028              let group = unsafe { Group::load(self.ctrl(probe_seq.pos)) };
-  2029
-  2030              for bit in group.match_tag(tag_hash) {
-  // ... 2031-2032: comment: the & is a modulo, buckets being a power of two ...
-  2033                  let index = (probe_seq.pos + bit) & self.bucket_mask;
-  2034
-  2035                  if likely(eq(index)) {
-  2036                      return Some(index);
-  2037                  }
-  2038              }
-  2039
-  2040              if likely(group.match_empty().any_bit_set()) {
-  2041                  return None;
-  2042              }
-  2043
-  2044              probe_seq.move_next(self.bucket_mask);
-  2045          }
-  2046      }
+  2034              let group = unsafe { Group::load(self.ctrl(probe_seq.pos)) };
+  2035
+  2036              for bit in group.match_tag(tag_hash) {
+  // ... 2037-2038: comment: the & is a modulo, buckets being a power of two ...
+  2039                  let index = (probe_seq.pos + bit) & self.bucket_mask;
+  2040
+  2041                  if likely(eq(index)) {
+  2042                      return Some(index);
+  2043                  }
+  2044              }
+  2045
+  2046              if likely(group.match_empty().any_bit_set()) {
+  2047                  return None;
+  2048              }
+  2049
+  2050              probe_seq.move_next(self.bucket_mask);
+  2051          }
+  2052      }
 ```
 
-Four lines carry it. **2028** loads one group of control bytes — 8 bytes on
-this machine, 16 under SSE2 — with a single unaligned vector load. **2030**
+Four lines carry it. **2034** loads one group of control bytes — 8 bytes on
+this machine, 16 under SSE2 — with a single unaligned vector load. **2036**
 compares all of them against the wanted tag in one instruction and iterates
 only the lanes that matched: on aarch64 that is `vceq_u8` against a splatted
-tag plus a reinterpret to a `u64` bitmask (`neon.rs:68-73`); on x86 it is
-`_mm_cmpeq_epi8` followed by `_mm_movemask_epi8` (`sse2.rs:73-86`). **2035**
+tag plus a reinterpret to a `u64` bitmask (`neon.rs:67-72`); on x86 it is
+`_mm_cmpeq_epi8` followed by `_mm_movemask_epi8` (`sse2.rs:72-85`). **2041**
 is the only place a real key is compared, and it runs only for lanes that
-already matched seven hash bits. **2040** is the stopping rule and the subject
+already matched seven hash bits. **2046** is the stopping rule and the subject
 of Step 5: an `EMPTY` anywhere in the group means the key cannot be further
 along, so the search ends; a `DELETED` does *not* stop it.
 
-Now the false-positive rate, which is what earns line 2035 its rarity. A tag
+Now the false-positive rate, which is what earns line 2041 its rarity. A tag
 collision needs 7 bits to agree, probability 2⁻⁷ = 1/128 per occupied lane, so
 per group load, with the table at its 7/8 limit:
 
@@ -221,23 +222,58 @@ Group::WIDTH = 16 (SSE2)
     E[wasted key compares per group] = 14 / 128 = 0.109  →  10.9%
 ```
 
-The earlier version of this chapter quoted the 16-wide figure ("~12% of the
-time") without saying which backend it belonged to; on aarch64 it is half
-that, because the group is half as wide.
+A single false-positive rate quoted for "SwissTable" is always one of these
+two rows; on aarch64 it is the smaller, because the group is half as wide.
 
 Cache-line budget per lookup: one line of control bytes (the group load at
-2028) plus one line of slot data (the key compare at 2035) — the theoretical
+2034) plus one line of slot data (the key compare at 2041) — the theoretical
 minimum, plus one dense byte per slot. That is the number the flamegraph could
 not show you.
 
-> **Upstream since the pin.** The backend choice in `src/control/group/mod.rs`
-> is no longer a `cfg_if!` block: hashbrown `4165f9a` (PR #740, merged
-> 2026-07-31, not yet in a release — the latest tag is v0.17.1) replaced it
-> with `cfg_select!`, the same arms written as `predicate => { … }` with a
-> `_ =>` fallback for the generic backend. The steps above describe the pinned
-> code, which is what the line numbers point at; the argument holds unchanged —
-> the same predicates still pick SSE2 (16 tags) on x86 and NEON or the
-> portable `u64` (8 tags) elsewhere.
+Which `Group` — and therefore which `WIDTH` — your build gets is decided once,
+at compile time, by a **`cfg_select!`** block: a macro that takes a list of
+`predicate => { items }` arms, compiles the items of the *first* arm whose
+`cfg` predicate is true, and falls back to the `_ =>` arm when none is.
+
+```rust
+// src/control/group/mod.rs — the backend choice, 8-48
+     8  cfg_select! {
+    // ... 9-16: comments: why not AVX, and why NEON was once judged not worth it ...
+    17      all(
+    18          target_feature = "sse2",
+    19          any(target_arch = "x86", target_arch = "x86_64"),
+    20      ) => {
+    21          mod sse2;
+    22          use sse2 as imp;
+    23      }
+    24      all(
+    25          target_arch = "aarch64",
+    26          target_feature = "neon",
+    // ... 27-28: comment: NEON intrinsics are broken on big-endian ...
+    29          target_endian = "little",
+    30      ) => {
+    31          mod neon;
+    32          use neon as imp;
+    33      }
+    // ... 34-42: the nightly-only LoongArch `lsx` arm ...
+    43
+    44      _ => {
+    45          mod generic;
+    46          use generic as imp;
+    47      }
+    48  }
+```
+
+Read it top to bottom, because order is the semantics: an x86 build with SSE2
+stops at the first arm (16 tags); this repo's little-endian aarch64 build
+stops at the second (8 tags); anything else lands on line 44, the portable
+`u64` word (8 tags on a 64-bit target). hashbrown supports compilers older
+than the one that ships `cfg_select!` in `core` (`rust-version = "1.85.0"`,
+`Cargo.toml:14`), so `src/macros.rs:9-27` defines a fallback with the same
+meaning — and lines 20 and 23 of that file show exactly how "first match
+wins" is achieved: each arm's items are emitted under `#[cfg(pred)]` and the
+remaining arms under `#[cfg(not(pred))]`, so a later arm can only compile if
+every earlier predicate was false.
 
 ### Step 4 — the probe sequence: triangular stride, guaranteed coverage
 
@@ -275,7 +311,7 @@ new stride to the position — so after k steps the probe sits at
 ```
 pos_k = h1 + WIDTH × (1 + 2 + … + k)  =  h1 + WIDTH × k(k+1)/2   (mod m)
 
-  symbols:  h1 = the starting slot (raw.rs:2453, h1(hash) & bucket_mask)
+  symbols:  h1 = the starting slot (raw.rs:2459, h1(hash) & bucket_mask)
             WIDTH = Group::WIDTH (8 here, 16 on SSE2)
             k = number of move_next calls        m = number of slots
 ```
@@ -284,7 +320,7 @@ Those are the **triangular numbers** scaled by the group width, and the
 comment at raw.rs:66-74 links Fabian Giesen's proof that triangular numbers
 mod 2ⁿ hit every residue exactly once — so with m a power of two the sequence
 visits every group exactly once, never cycles early, and never misses a slot.
-`probe_seq` starts it at `stride: 0` (raw.rs:2449-2456), so the first
+`probe_seq` starts it at `stride: 0` (raw.rs:2455-2462), so the first
 `move_next` jumps a single group and the walk begins as a linear scan.
 
 Now put Step 1's arithmetic together with Step 3's group width, which is the
@@ -315,7 +351,7 @@ SIMD paid for; it is the thing the SIMD *bought*.
 > **Out:** the erase rule, the condition under which a tombstone is *not*
 > written, and the cleanup path a churn-heavy table triggers.
 
-Open-addressing deletion cannot simply mark a slot `EMPTY`: line 2040 stops
+Open-addressing deletion cannot simply mark a slot `EMPTY`: line 2046 stops
 every probe at an `EMPTY`, so erasing a slot in the middle of a probe chain
 would make keys *beyond* it unfindable. The classic fix is a **tombstone** — a
 marker meaning "occupied once, empty now; keep probing" — which is what
@@ -325,60 +361,61 @@ hashbrown is more careful than the classic fix, and this is the part most
 retellings get wrong:
 
 ```rust
-// src/raw.rs — inside RawTableInner::erase, 3232-3241 and 3279-3289
-  3232          let index_before = index.wrapping_sub(Group::WIDTH) & self.bucket_mask;
-  // ... 3233-3235: SAFETY ...
-  3236          let (empty_before, empty_after) = unsafe {
-  3237              (
-  3238                  Group::load(self.ctrl(index_before)).match_empty(),
-  3239                  Group::load(self.ctrl(index)).match_empty(),
-  3240              )
-  3241          };
-  // ... 3243-3278: the long comment deriving the rule below — read it ...
-  3279          let ctrl = if empty_before.leading_zeros() + empty_after.trailing_zeros() >= Group::WIDTH {
-  3280              Tag::DELETED
-  3281          } else {
-  3282              self.growth_left += 1;
-  3283              Tag::EMPTY
-  3284          };
-  // ... 3285-3286: SAFETY ...
-  3287          self.set_ctrl(index, ctrl);
-  3288          }
-  3289          self.items -= 1;
+// src/raw.rs — inside RawTableInner::erase, 3238-3247 and 3285-3295
+  3238          let index_before = index.wrapping_sub(Group::WIDTH) & self.bucket_mask;
+  // ... 3239-3241: SAFETY ...
+  3242          let (empty_before, empty_after) = unsafe {
+  3243              (
+  3244                  Group::load(self.ctrl(index_before)).match_empty(),
+  3245                  Group::load(self.ctrl(index)).match_empty(),
+  3246              )
+  3247          };
+  // ... 3248-3284: the long comment deriving the rule below — read it ...
+  3285          let ctrl = if empty_before.leading_zeros() + empty_after.trailing_zeros() >= Group::WIDTH {
+  3286              Tag::DELETED
+  3287          } else {
+  3288              self.growth_left += 1;
+  3289              Tag::EMPTY
+  3290          };
+  // ... 3291: SAFETY ...
+  3292          unsafe {
+  3293              self.set_ctrl(index, ctrl);
+  3294          }
+  3295          self.items -= 1;
 ```
 
-Line 3279 is the rule: a tombstone is written **only** when the erased slot
+Line 3285 is the rule: a tombstone is written **only** when the erased slot
 sits inside an unbroken window of `Group::WIDTH` occupied-or-deleted slots. If
 any `EMPTY` is within a group's reach on either side, a probe would have
-stopped there anyway, so line 3283 writes `EMPTY` instead and line 3282 gives
-the capacity back. The consequence the comment spells out at 3273-3275: a
+stopped there anyway, so line 3289 writes `EMPTY` instead and line 3288 gives
+the capacity back. The consequence the comment spells out at 3279-3281: a
 table with fewer buckets than the group width can never contain a tombstone at
 all, because `index_before == index` there.
 
-Insertion knows about tombstones too. `find_insert_index` (raw.rs:1952-1984)
+Insertion knows about tombstones too. `find_insert_index` (raw.rs:1958-1990)
 takes the first empty-*or*-deleted lane in a group (`match_empty_or_deleted`,
-via `find_insert_index_in_group` at raw.rs:1749-1759), and the accounting is
+via `find_insert_index_in_group` at raw.rs:1755-1765), and the accounting is
 the subtle bit:
 
 ```rust
-// src/raw.rs — inside RawTable::insert, 1031-1043
-  1031              let mut index = self.table.find_insert_index(hash);
-  1032
-  1033              // We can avoid growing the table once we have reached our load factor if we are replacing
-  1034              // a tombstone. This works since the number of EMPTY slots does not change in this case.
-  // ... 1035-1036: SAFETY ...
-  1037              let old_ctrl = *self.table.ctrl(index);
-  1038              if unlikely(self.table.growth_left == 0 && old_ctrl.special_is_empty()) {
-  1039                  self.reserve(1, hasher);
-  // ... 1040-1041: SAFETY ...
-  1042                  index = self.table.find_insert_index(hash);
-  1043              }
+// src/raw.rs — inside RawTable::insert, 1034-1046
+  1034              let mut index = self.table.find_insert_index(hash);
+  1035
+  1036              // We can avoid growing the table once we have reached our load factor if we are replacing
+  1037              // a tombstone. This works since the number of EMPTY slots does not change in this case.
+  // ... 1038-1039: SAFETY ...
+  1040              let old_ctrl = *self.table.ctrl(index);
+  1041              if unlikely(self.table.growth_left == 0 && old_ctrl.special_is_empty()) {
+  1042                  self.reserve(1, hasher);
+  // ... 1043-1044: SAFETY ...
+  1045                  index = self.table.find_insert_index(hash);
+  1046              }
 ```
 
-Line 1038 reads: grow only if we are out of headroom **and** the slot we are
+Line 1041 reads: grow only if we are out of headroom **and** the slot we are
 about to fill was genuinely `EMPTY`. Overwriting a `DELETED` slot costs no
 capacity — `record_item_insert_at` decrements `growth_left` only for a slot
-that `special_is_empty()` (raw.rs:2459-2460) — because Step 3's stopping rule
+that `special_is_empty()` (raw.rs:2465-2466) — because Step 3's stopping rule
 depends on the count of `EMPTY` slots, not on the count of free ones, and that
 count is unchanged.
 
@@ -387,30 +424,30 @@ holding far fewer live items than its capacity. The cure is
 `reserve_rehash_inner`:
 
 ```rust
-// src/raw.rs — inside reserve_rehash_inner, 2756-2757 and 2770-2792
-  2756          let full_capacity = bucket_mask_to_capacity(self.bucket_mask);
-  2757          if new_items <= full_capacity / 2 {
-  // ... 2758-2769: comment and SAFETY ...
-  2770              unsafe {
-  2771                  self.rehash_in_place(hasher, layout.size, drop);
-  2772              }
-  2773              Ok(())
-  2774          } else {
-  // ... 2775-2783: "conservatively resize to at least the next size up" ...
-  2784              unsafe {
-  2785                  self.resize_inner(
-  2786                      alloc,
-  2787                      usize::max(new_items, full_capacity + 1),
-  // ... 2788-2791: hasher, fallibility, layout ...
-  2792                  )
+// src/raw.rs — inside reserve_rehash_inner, 2762-2763 and 2776-2797
+  2762          let full_capacity = bucket_mask_to_capacity(self.bucket_mask);
+  2763          if new_items <= full_capacity / 2 {
+  // ... 2764-2775: comment and SAFETY ...
+  2776              unsafe {
+  2777                  self.rehash_in_place(hasher, layout.size, drop);
+  2778              }
+  2779              Ok(())
+  2780          } else {
+  // ... 2781-2789: "conservatively resize to at least the next size up", SAFETY ...
+  2790              unsafe {
+  2791                  self.resize_inner(
+  2792                      alloc,
+  2793                      usize::max(new_items, full_capacity + 1),
+  // ... 2794-2796: hasher, fallibility, layout ...
+  2797                  )
 ```
 
-Line 2757 is the decision, and it is a *half*, not a threshold on tombstone
+Line 2763 is the decision, and it is a *half*, not a threshold on tombstone
 count: if the live items would still fit in half the current capacity, the
-table is rewritten in place (2771) — `rehash_in_place` (raw.rs:2985) first
+table is rewritten in place (2777) — `rehash_in_place` (raw.rs:2991) first
 converts every FULL tag to DELETED and every DELETED to EMPTY
-(raw.rs:2048-2054) and then re-seats each live entry — and no memory is
-allocated. Otherwise it really grows (2785-2792). Same disease as LSM
+(raw.rs:2054-2060) and then re-seats each live entry — and no memory is
+allocated. Otherwise it really grows (2791-2797). Same disease as LSM
 tombstones (topic 1), same cure: rewrite/compact, with a rule for when the
 rewrite is worth it.
 
@@ -424,27 +461,27 @@ rewrite is worth it.
 The load factor is one function, and it has two cases:
 
 ```rust
-// src/raw.rs — bucket_mask_to_capacity, 182-191
+// src/raw.rs — bucket_mask_to_capacity, 182-194
    182  fn bucket_mask_to_capacity(bucket_mask: usize) -> usize {
    183      if bucket_mask < 8 {
    184          // For tables with 1/2/4/8 buckets, we always reserve one empty slot.
    185          // Keep in mind that the bucket mask is one less than the bucket count.
    186          bucket_mask
    187      } else {
-   188          // For larger tables we reserve 12.5% of the slots as empty.
-   189          ((bucket_mask + 1) / 8) * 7
-   190      }
-   191  }
+   // ... 188-190: debug_assert that bucket_mask + 1 cannot overflow ...
+   191          // For larger tables we reserve 12.5% of the slots as empty.
+   192          ((bucket_mask + 1) / 8) * 7
+   193      }
+   194  }
 ```
 
-Line 189 is the famous 7/8 = 87.5%; line 186 is the case the slogan omits.
+Line 192 is the famous 7/8 = 87.5%; line 186 is the case the slogan omits.
 For 1, 2, 4 or 8 buckets the capacity is `bucket_mask` = buckets − 1, so a
 4-bucket table holds 3 entries (75%) and an 8-bucket table holds 7 (87.5%,
 which happens to agree). One empty slot must always exist or Step 3's `loop`
-at 2013 would never terminate — that is also why `RawTable::new` describes
+at 2019 would never terminate — that is also why `RawTable::new` describes
 itself as a table with "exactly 1 bucket" whose data pointer may dangle
-(raw.rs:585-587). The old anchor for this function in this chapter was
-`raw.rs:152-156`; at `d69025b` it is 182-191.
+(raw.rs:588-590).
 
 Compare the overheads at 7/8, per *entry* rather than per slot, since 1/8 of
 the slots are empty:
@@ -467,21 +504,21 @@ chaining, same map:  8 B bucket-array pointer (at α = 1.0)
 The trailing mirror is the other trick, and it is one line:
 
 ```rust
-// src/raw.rs — inside TableLayout::calculate_layout_for, 216-223
-   216      fn calculate_layout_for(self, buckets: usize) -> Option<(Layout, usize)> {
-   217          debug_assert!(buckets.is_power_of_two());
-   218
-   219          let TableLayout { size, ctrl_align } = self;
-   // ... 220-222: ctrl_offset — round the slot region up to ctrl_align ...
-   223          let len = ctrl_offset.checked_add(buckets + Group::WIDTH)?;
+// src/raw.rs — inside TableLayout::calculate_layout_for, 219-226
+   219      fn calculate_layout_for(self, buckets: usize) -> Option<(Layout, usize)> {
+   220          debug_assert!(buckets.is_power_of_two());
+   221
+   222          let TableLayout { size, ctrl_align } = self;
+   // ... 223-225: ctrl_offset — round the slot region up to ctrl_align ...
+   226          let len = ctrl_offset.checked_add(buckets + Group::WIDTH)?;
 ```
 
-Line 223 allocates `buckets + Group::WIDTH` control bytes rather than
-`buckets`, and the tail replicates the head, so the group load at raw.rs:2028
+Line 226 allocates `buckets + Group::WIDTH` control bytes rather than
+`buckets`, and the tail replicates the head, so the group load at raw.rs:2034
 starting on the last bucket reads real bytes instead of running off the
 allocation. Branchless boundary handling, paid for in 8 bytes here and 16
-under SSE2 — and line 217 is the `is_power_of_two` assertion that Step 4's
-coverage proof and the `& bucket_mask` at 2033 both rest on.
+under SSE2 — and line 220 is the `is_power_of_two` assertion that Step 4's
+coverage proof and the `& bucket_mask` at 2039 both rest on.
 
 ### Step 7 — naming what stalled in your topic 0 flamegraph
 
@@ -499,9 +536,9 @@ Now you can name the parts:
   into: `h1` (raw.rs:61) for the starting position and `Tag::full`
   (tag.rs:35-49) for the tag. Rust's default hasher is SipHash-1-3, chosen for
   HashDoS resistance, and it is pure overhead on a u64 key you control.
-- The first guaranteed miss is the **control-byte load** at raw.rs:2028, on a
+- The first guaranteed miss is the **control-byte load** at raw.rs:2034, on a
   dense array of one byte per slot.
-- The second is the **slot touch** inside `eq(index)` at raw.rs:2035, and
+- The second is the **slot touch** inside `eq(index)` at raw.rs:2041, and
   Step 3's tag filtering exists precisely so that a *third* line is rarely
   needed: 5.5% of the time at `WIDTH = 8`.
 
@@ -519,49 +556,49 @@ chained table's second miss cannot start until its first has landed.
 |------|-------|------|
 | `h1` — the starting position, low bits | `src/raw.rs:58-64` | 2 |
 | `ProbeSeq` and `move_next` (triangular) | `src/raw.rs:66-93` | 4 |
-| `bucket_mask_to_capacity` — 7/8, and the small-table case | `src/raw.rs:182-191` | 6 |
-| Trailing mirror: `buckets + Group::WIDTH` ctrl bytes | `src/raw.rs:216-223` | 6 |
-| `RawTable` | `src/raw.rs:556-562` | 1 |
-| `RawTableInner` + the one-allocation layout comment | `src/raw.rs:564-580` | 2 |
-| `insert` — the tombstone/`growth_left` rule | `src/raw.rs:1031-1043` | 5 |
-| `find_insert_index_in_group` — `match_empty_or_deleted` | `src/raw.rs:1749-1759` | 5 |
-| `find_insert_index` — the insert-side probe loop | `src/raw.rs:1952-1984` | 5 |
-| **`find_inner` — the lookup, all of it** | `src/raw.rs:2009-2046` | 3 |
-| `rehash_in_place`'s tag conversion (FULL→DELETED→EMPTY) | `src/raw.rs:2048-2054`, `2985` | 5 |
-| `probe_seq` — where `stride` starts at 0 | `src/raw.rs:2449-2456` | 4 |
-| `record_item_insert_at` — `growth_left` only for EMPTY | `src/raw.rs:2459-2460` | 5 |
-| `reserve_rehash_inner` — in-place if `items ≤ capacity/2` | `src/raw.rs:2740-2793` | 5 |
-| `erase` — DELETED only inside a full group window | `src/raw.rs:3225-3290` | 5 |
+| `bucket_mask_to_capacity` — 7/8, and the small-table case | `src/raw.rs:182-194` | 6 |
+| Trailing mirror: `buckets + Group::WIDTH` ctrl bytes | `src/raw.rs:219-226` | 6 |
+| `RawTable` | `src/raw.rs:559-565` | 1 |
+| `RawTableInner` + the one-allocation layout comment | `src/raw.rs:567-583` | 2 |
+| `insert` — the tombstone/`growth_left` rule | `src/raw.rs:1034-1046` | 5 |
+| `find_insert_index_in_group` — `match_empty_or_deleted` | `src/raw.rs:1755-1765` | 5 |
+| `find_insert_index` — the insert-side probe loop | `src/raw.rs:1958-1990` | 5 |
+| **`find_inner` — the lookup, all of it** | `src/raw.rs:2015-2052` | 3 |
+| `rehash_in_place`'s tag conversion (FULL→DELETED→EMPTY) | `src/raw.rs:2054-2060`, `2991` | 5 |
+| `probe_seq` — where `stride` starts at 0 | `src/raw.rs:2455-2462` | 4 |
+| `record_item_insert_at` — `growth_left` only for EMPTY | `src/raw.rs:2465-2466` | 5 |
+| `reserve_rehash_inner` — in-place if `items ≤ capacity/2` | `src/raw.rs:2746-2800` | 5 |
+| `erase` — DELETED only inside a full group window | `src/raw.rs:3231-3296` | 5 |
 | Tag constants + top-7-bit extraction | `src/control/tag.rs:9-49` | 2 |
-| Group backend selection (SSE2 / NEON / LSX / generic) | `src/control/group/mod.rs:8-46` | 3 |
-| SSE2 group: `__m128i`, 16 wide, `_mm_movemask_epi8` | `src/control/group/sse2.rs:20`, `73-86` | 3 |
-| **NEON group (this repo's machine): `uint8x8_t`, 8 wide** | `src/control/group/neon.rs:16`, `68-73` | 3 |
-| Generic group: `u64`, 8 wide on 64-bit | `src/control/group/generic.rs:8-21`, `41` | 3 |
+| Group backend selection (SSE2 / NEON / LSX / generic) | `src/control/group/mod.rs:8-48` | 3 |
+| SSE2 group: `__m128i`, 16 wide, `_mm_movemask_epi8` | `src/control/group/sse2.rs:19`, `72-85` | 3 |
+| **NEON group (this repo's machine): `uint8x8_t`, 8 wide** | `src/control/group/neon.rs:15`, `67-72` | 3 |
+| Generic group: `u64`, 8 wide on 64-bit | `src/control/group/generic.rs:8-22`, `42` | 3 |
 
 Read in this order:
 
 1. **`tag.rs:9-49`** (Step 2) — the encoding. Ask why `EMPTY` is `0xff` and
    full tags are `0b0xxxxxxx`; the answer is at tag.rs:17 and tag.rs:30 —
    "special" is one sign test, "empty vs deleted" is one low-bit test.
-2. **`group/mod.rs:8-46`** (Step 3) — read the `cfg_if` before either
+2. **`group/mod.rs:8-48`** (Step 3) — read the `cfg_select!` before either
    implementation, so you know which `Group` your build gets. Then
-   `neon.rs:68-73` and `sse2.rs:73-86` side by side: same function, 8 lanes
+   `neon.rs:67-72` and `sse2.rs:72-85` side by side: same function, 8 lanes
    against 16. The stale-sounding comment at mod.rs:14-16 says NEON was not
    worth it — yet lines 24-33 select it; both paths are 8 bytes wide, so the
    choice on aarch64 is between two 8-wide implementations.
-3. **`raw.rs:2009-2046`** (Step 3) — `find_inner`, the lookup in 12 real
+3. **`raw.rs:2015-2052`** (Step 3) — `find_inner`, the lookup in 12 real
    lines. Trace one hit and one miss by hand.
 4. **`raw.rs:66-93`** (Step 4) — `ProbeSeq`; follow the link at line 74 to the
    coverage proof.
-5. **`raw.rs:3225-3290`** (Step 5) — `erase`. The long comment at 3243-3278 is
-   the best explanation of tombstones anywhere in the crate; line 3279 is the
+5. **`raw.rs:3231-3296`** (Step 5) — `erase`. The long comment at 3249-3284 is
+   the best explanation of tombstones anywhere in the crate; line 3285 is the
    rule it derives.
-6. **Aha: `raw.rs:223`** (Step 6) — the whole boundary problem, solved by
+6. **Aha: `raw.rs:226`** (Step 6) — the whole boundary problem, solved by
    allocating `Group::WIDTH` more bytes than there are buckets.
 
 ## Questions to answer in notes.md
 
-1. Why 7/8 rather than redis's 1.0 (dict.c:1653)? Use Step 1's 1/(1−α) and
+1. Why 7/8 rather than redis's 1.0 (dict.c:1679)? Use Step 1's 1/(1−α) and
    Step 4's division: what does α = 15/16 cost in group loads at `WIDTH = 8`,
    and what would it cost on an SSE2 build?
 2. Rust chose SipHash for `HashMap` (HashDoS resistance). After this reading
@@ -569,16 +606,16 @@ Read in this order:
    for the capstone: where FxHash/ahash, where SipHash stays, and what
    property of the *key source* decides it.
 3. What does `DELETED` do to a long-lived table with churn? Trace it through
-   raw.rs:1038 (the growth check), raw.rs:2757 (the in-place threshold) and
-   raw.rs:3279 (when a tombstone is even written) — then relate it to LSM
+   raw.rs:1041 (the growth check), raw.rs:2763 (the in-place threshold) and
+   raw.rs:3285 (when a tombstone is even written) — then relate it to LSM
    tombstones from topic 1.
 4. `erase` writes `EMPTY` rather than `DELETED` whenever an `EMPTY` is within
-   a group's reach (raw.rs:3279). Construct a small table where the same
+   a group's reach (raw.rs:3285). Construct a small table where the same
    deletion writes `DELETED` at `WIDTH = 8` and `EMPTY` at `WIDTH = 16`, and
    say which build ends up doing more work later.
 5. This repo measured hashbrown's insert path at p50 42 ns, max 58.4 ms
    ([FINDINGS.md](../../FINDINGS.md) row 2). Which lines produce the 42 ns,
-   and which produce the 58.4 ms? (Hint: raw.rs:1038 → raw.rs:2785.)
+   and which produce the 58.4 ms? (Hint: raw.rs:1041 → raw.rs:2791.)
 
 ## Takeaway
 
@@ -597,19 +634,19 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   The hash is split once. Its low bits become the starting slot —
-  `h1(hash) & bucket_mask` (raw.rs:61-64, applied at raw.rs:2453) — and its
+  `h1(hash) & bucket_mask` (raw.rs:61-64, applied at raw.rs:2459) — and its
   top 7 bits become the tag, `Tag::full` at tag.rs:47, with the eighth bit
   masked off at tag.rs:48 so the tag is distinguishable from `EMPTY` (0xff)
   and `DELETED` (0x80).
 
   The lookup then loads one *group* of control bytes at that position
-  (raw.rs:2028) — **first cache line**, 8 bytes on NEON or generic, 16 under
+  (raw.rs:2034) — **first cache line**, 8 bytes on NEON or generic, 16 under
   SSE2 — and compares all of them against the tag in one instruction
-  (raw.rs:2030, `vceq_u8` at neon.rs:70 or `_mm_cmpeq_epi8` at sse2.rs:83).
-  Only lanes that matched earn a real key comparison at raw.rs:2035 — **second
+  (raw.rs:2036, `vceq_u8` at neon.rs:69 or `_mm_cmpeq_epi8` at sse2.rs:82).
+  Only lanes that matched earn a real key comparison at raw.rs:2041 — **second
   cache line**, the slot itself, which lives *before* the control pointer in
-  the same allocation (raw.rs:571-572). If the group holds an `EMPTY`
-  (raw.rs:2040) the search returns `None`; otherwise `move_next`
+  the same allocation (raw.rs:574-575). If the group holds an `EMPTY`
+  (raw.rs:2046) the search returns `None`; otherwise `move_next`
   (raw.rs:83-92) jumps one more group width than last time and the loop
   repeats.
 
@@ -620,10 +657,11 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   It is `Group::WIDTH`, which is `mem::size_of::<Group>()`, and `Group` is
-  chosen by the `cfg_if` at `src/control/group/mod.rs:8-46`: `__m128i` = **16
-  bytes** on x86/x86-64 with SSE2 (sse2.rs:20), `uint8x8_t` = **8 bytes** on
-  little-endian aarch64 with NEON (neon.rs:16), and `u64` = **8 bytes** in the
-  portable fallback on any 64-bit target (generic.rs:8-21, 41). This repo's
+  chosen by the first matching arm of the `cfg_select!` at
+  `src/control/group/mod.rs:8-48`: `__m128i` = **16
+  bytes** on x86/x86-64 with SSE2 (sse2.rs:19), `uint8x8_t` = **8 bytes** on
+  little-endian aarch64 with NEON (neon.rs:15), and `u64` = **8 bytes** in the
+  portable fallback on any 64-bit target (generic.rs:8-22, 42). This repo's
   Apple M3 Pro gets 8.
 
   Three things change with the width. The false-positive rate per group scales
@@ -662,19 +700,19 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   `DELETED` (tag.rs:12, `0x80`) exists because the probe's stopping rule is
-  "this group contains an `EMPTY`" (raw.rs:2040). Marking an erased slot
+  "this group contains an `EMPTY`" (raw.rs:2046). Marking an erased slot
   `EMPTY` in the middle of a probe chain would stop searches early and hide
   every key that had been pushed past it, so a tombstone is written instead:
   probes skip it, inserts may reuse it.
 
   hashbrown writes one only when it has to. `erase` loads the group ending at
-  the erased slot and the group starting there (raw.rs:3236-3241), and line
-  3279 writes `DELETED` only if `empty_before.leading_zeros() +
+  the erased slot and the group starting there (raw.rs:3242-3247), and line
+  3285 writes `DELETED` only if `empty_before.leading_zeros() +
   empty_after.trailing_zeros() >= Group::WIDTH` — that is, only when the slot
   is inside an unbroken window of `Group::WIDTH` non-empty slots. Otherwise a
-  probe would have stopped at a nearby `EMPTY` anyway, so line 3283 writes
-  `EMPTY` and line 3282 returns the capacity. A consequence spelled out in the
-  comment at 3273-3275: tables smaller than the group width never hold a
+  probe would have stopped at a nearby `EMPTY` anyway, so line 3289 writes
+  `EMPTY` and line 3288 returns the capacity. A consequence spelled out in the
+  comment at 3279-3281: tables smaller than the group width never hold a
   tombstone at all.
 
   </details>
@@ -684,20 +722,20 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   Filling a tombstone costs no capacity — `record_item_insert_at` decrements
-  `growth_left` only when the old tag `special_is_empty()` (raw.rs:2459-2460),
-  and `insert` checks the same thing before deciding to grow (raw.rs:1038),
+  `growth_left` only when the old tag `special_is_empty()` (raw.rs:2465-2466),
+  and `insert` checks the same thing before deciding to grow (raw.rs:1041),
   because Step 3's stopping rule depends on the number of `EMPTY` slots and
   overwriting a `DELETED` does not change it. So a table that inserts and
   erases repeatedly eventually reaches `growth_left == 0` while holding far
   fewer live items than its capacity.
 
-  `reserve_rehash_inner` then decides at raw.rs:2756-2757: if
+  `reserve_rehash_inner` then decides at raw.rs:2762-2763: if
   `new_items <= full_capacity / 2` — the live entries would still fit in half
-  the current table — it calls `rehash_in_place` (raw.rs:2771), which converts
-  every FULL tag to DELETED and every DELETED to EMPTY (raw.rs:2048-2054) and
+  the current table — it calls `rehash_in_place` (raw.rs:2777), which converts
+  every FULL tag to DELETED and every DELETED to EMPTY (raw.rs:2054-2060) and
   re-seats the live entries without allocating. Otherwise it really grows, to
-  at least `full_capacity + 1` (raw.rs:2785-2787), with the comment at
-  2775-2776 explaining the conservatism: resizing up avoids "churning deletes
+  at least `full_capacity + 1` (raw.rs:2791-2793), with the comment at
+  2781-2782 explaining the conservatism: resizing up avoids "churning deletes
   into frequent rehashes".
 
   </details>
@@ -712,14 +750,14 @@ Answer each before unfolding it.
   yourself it buys only HashDoS resistance you do not need — which is the
   capstone's hash-policy question.
 
-  The remaining ~79% is raw.rs:2009-2046 inlined: the control-byte group load
-  at 2028 (one cache line), the SIMD compare at 2030, and the key touch at
-  2035 (a second cache line). `lookup_shootout` measured 8.8 ns at 1e6 and
+  The remaining ~79% is raw.rs:2015-2052 inlined: the control-byte group load
+  at 2034 (one cache line), the SIMD compare at 2036, and the key touch at
+  2041 (a second cache line). `lookup_shootout` measured 8.8 ns at 1e6 and
   9.3 ns at 1e7 — nearly flat, because the 1024 probes are independent and the
   out-of-order window overlaps their misses, which two-independent-lines-per
   -lookup makes possible and a chain of dependent loads does not. The insert
   side's 58.4 ms max ([FINDINGS.md](../../FINDINGS.md) row 2) comes from the
-  other branch entirely: raw.rs:1038 finding no headroom, then raw.rs:2785
+  other branch entirely: raw.rs:1041 finding no headroom, then raw.rs:2791
   allocating and re-seating the whole table.
 
   </details>
@@ -727,32 +765,32 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [hashbrown](https://github.com/rust-lang/hashbrown) — pinned at **0.17.1** /
-  `d69025b` (version confirmed in `Cargo.toml:3`). `src/raw.rs` is 4627 lines,
+- [hashbrown](https://github.com/rust-lang/hashbrown) — pinned at `master`
+  `00c1756` (`Cargo.toml:3` declares 0.17.1). `src/raw.rs` is 4633 lines,
   most of it SAFETY commentary; the load-bearing parts are listed below.
 
 | File | Lines | What |
 |------|-------|------|
 | `src/raw.rs` | 61-64 | `h1` — the starting position is just the truncated hash |
 | `src/raw.rs` | 66-93 | `ProbeSeq`, the triangular stride, and the link to its proof |
-| `src/raw.rs` | 182-191 | `bucket_mask_to_capacity` — 7/8, plus the small-table case |
-| `src/raw.rs` | 223 | `buckets + Group::WIDTH` control bytes — the trailing mirror |
-| `src/raw.rs` | 566-580 | `RawTableInner` and the one-allocation layout comment |
-| `src/raw.rs` | 1038 | grow only if out of headroom *and* the slot was truly EMPTY |
-| `src/raw.rs` | 1952-1984 | `find_insert_index` — the insert-side probe |
-| `src/raw.rs` | 2009-2046 | `find_inner` — the entire lookup |
-| `src/raw.rs` | 2459-2460 | `growth_left` accounting, tombstones excluded |
-| `src/raw.rs` | 2757 | rehash in place iff the live items fit in half the capacity |
-| `src/raw.rs` | 3279 | write DELETED only inside a full group-width window |
+| `src/raw.rs` | 182-194 | `bucket_mask_to_capacity` — 7/8, plus the small-table case |
+| `src/raw.rs` | 226 | `buckets + Group::WIDTH` control bytes — the trailing mirror |
+| `src/raw.rs` | 569-583 | `RawTableInner` and the one-allocation layout comment |
+| `src/raw.rs` | 1041 | grow only if out of headroom *and* the slot was truly EMPTY |
+| `src/raw.rs` | 1958-1990 | `find_insert_index` — the insert-side probe |
+| `src/raw.rs` | 2015-2052 | `find_inner` — the entire lookup |
+| `src/raw.rs` | 2465-2466 | `growth_left` accounting, tombstones excluded |
+| `src/raw.rs` | 2763 | rehash in place iff the live items fit in half the capacity |
+| `src/raw.rs` | 3285 | write DELETED only inside a full group-width window |
 | `src/control/tag.rs` | 9-49 | EMPTY / DELETED / top-7-bit tags |
-| `src/control/group/mod.rs` | 8-46 | which `Group` your target actually gets |
-| `src/control/group/sse2.rs` | 20, 73-86 | 16-wide group, `_mm_movemask_epi8` |
-| `src/control/group/neon.rs` | 16, 68-73 | 8-wide group, `vceq_u8` |
-| `src/control/group/generic.rs` | 8-21, 41 | 8-wide portable fallback (`u64`) |
+| `src/control/group/mod.rs` | 8-48 | which `Group` your target actually gets |
+| `src/control/group/sse2.rs` | 19, 72-85 | 16-wide group, `_mm_movemask_epi8` |
+| `src/control/group/neon.rs` | 15, 67-72 | 8-wide group, `vceq_u8` |
+| `src/control/group/generic.rs` | 8-22, 42 | 8-wide portable fallback (`u64`) |
 
 **Measured in this repo**
 - [FINDINGS.md](../../FINDINGS.md) row 2 — hashbrown insert p50 42 ns, max
-  58.4 ms; the max is the resize at raw.rs:2785, not the probe loop.
+  58.4 ms; the max is the resize at raw.rs:2791, not the probe loop.
 - [FINDINGS.md](../../FINDINGS.md) row 0 — the ~1 / 5 / 100 ns cache ladder,
   and the 21% SipHash slice of a lookup.
 - [topics/00-performance-toolbox/notes.md](../00-performance-toolbox/notes.md)

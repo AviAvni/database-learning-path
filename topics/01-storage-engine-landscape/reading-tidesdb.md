@@ -12,8 +12,7 @@ what they conceal.
 with `python3 tools/pinned-source.py ref tidesdb`, list the tree with
 `python3 tools/pinned-source.py list tidesdb`, and read any file at that commit
 with `python3 tools/pinned-source.py show tidesdb <path> -r A:B`. Every line
-number below was checked against that commit; several anchors in the previous
-version of this guide were off and are corrected inline. Note the paths all
+number below was checked against that commit. Note the paths all
 carry a `src/` prefix — it is `src/tidesdb.c`, not `tidesdb.c`.
 
 ## The problem in one sentence
@@ -412,7 +411,7 @@ src/tidesdb.c -r A:B` is the fastest way in.
    distribution that makes that run long, and say which of this repo's
    generators would produce it. What does that do to the Step 5 read-amp count?
 5. Compare `src/tidesdb.c:29847–29856` with fjall's
-   `src/keyspace/mod.rs:940–947`. Both rotate a full memtable. List every
+   `src/keyspace/mod.rs:948–955`. Both rotate a full memtable. List every
    guarantee tidesdb states with an explicit `memory_order_*` argument that
    fjall gets from `Arc` and `MutexGuard` — and name one guarantee that is
    *harder* to see in the Rust version because of that.
@@ -432,7 +431,7 @@ Answer each before unfolding it.
 | `PersistMode::{Buffer,SyncData,SyncAll}` | `TDB_SYNC_{NONE,INTERVAL,FULL}`, branched at `src/tidesdb.c:29814` |
 | memtable (skip list inside `lsm-tree`) | `src/skip_list.c`, with a per-thread arena allocator (`:22–42`) |
 | `Keyspace` | column family (`tidesdb_column_family_t`) |
-| rotation (`inner_rotate_memtable`, `mod.rs:727`) | CAS admission at `src/tidesdb.c:29850–29856` |
+| rotation (`inner_rotate_memtable`, `mod.rs:732`) | CAS admission at `src/tidesdb.c:29850–29856` |
 | bloom policy (`options.rs:108`) | `bloom_filter_new(bf, p, n)`, `src/bloom_filter.c:188` |
 | segment / SST | SSTable written by `tidesdb_flush_memtable`, `src/tidesdb.c:24887` |
 | level metadata (inside `lsm-tree`) | `src/manifest.c` |
@@ -491,7 +490,7 @@ freed" is enforced by a comment rather than by `Box`.
 
 Clearer in C: the *ordering* of the durability contract. In fjall the
 write-ahead rule is implied by holding a `MutexGuard` across two method calls
-(`src/keyspace/mod.rs:919–944`); in tidesdb it is three numbered lines you can
+(`src/keyspace/mod.rs:924–952`); in tidesdb it is three numbered lines you can
 point at, and the fsync mode is a visible branch rather than an enum argument
 threaded through a config struct.
 

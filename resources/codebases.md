@@ -92,24 +92,24 @@ are worth fetching first.
 | clone | read at | dated | mentions | origin |
 |---|---|---|---|---|
 | `postgres` | `701f021` | 2026-07-10 | 524 | [https://github.com/postgres/postgres](https://github.com/postgres/postgres) |
-| `redis` | `a176d1225` | 2026-03-24 | 513 | [https://github.com/redis/redis](https://github.com/redis/redis) |
+| `redis` | `e87dda2a4` | 2026-10-26 | 513 | [https://github.com/redis/redis](https://github.com/redis/redis) |
 | `FalkorDB` | `ccb449a9a` | 2026-07-15 | 396 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
-| `duckdb` | `6c0c1a68` | 2026-07-10 | 377 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
-| `rocksdb` | `7c80a5a` | 2026-07-09 | 315 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
+| `duckdb` | `d54cbbe3df` | 2026-10-20 | 377 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
+| `rocksdb` | `ea3136053` | 2026-10-23 | 315 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
 | `neon` | `8f60b04` | 2026-05-25 | 215 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |
 | `sqlite` | `951de30` | 2026-07-09 | 203 | [https://github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) |
-| `GraphBLAS` | `1fd54756ca` | 2026-02-05 | 189 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
+| `GraphBLAS` | `7701390417` | 2026-10-25 | 189 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
 | `qdrant` | `222b2e44a` | 2026-10-21 | 188 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
-| `turso` | `dd775bc` | 2026-07-10 | 174 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
-| `valkey` | `8891441ab` | 2026-05-03 | 171 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
-| `datafusion` | `1e77af8` | 2026-07-10 | 148 | [https://github.com/apache/datafusion](https://github.com/apache/datafusion) |
-| `fjall` | `80cf6bc` | 2026-07-05 | 144 | [https://github.com/fjall-rs/fjall](https://github.com/fjall-rs/fjall) |
-| `egg` | `f94c346` | 2026-04-14 | 136 | [https://github.com/egraphs-good/egg](https://github.com/egraphs-good/egg) |
-| `hashbrown` | `d69025b` | 2026-07-06 | 128 | [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) |
+| `turso` | `a820079e8` | 2026-10-15 | 174 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
+| `valkey` | `668d875ca` | 2026-10-24 | 171 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
+| `datafusion` | `350ca7650` | 2026-10-26 | 148 | [https://github.com/apache/datafusion](https://github.com/apache/datafusion) |
+| `fjall` | `cfcdce3` | 2026-10-25 | 144 | [https://github.com/fjall-rs/fjall](https://github.com/fjall-rs/fjall) |
+| `egg` | `73975c9` | 2026-09-28 | 136 | [https://github.com/egraphs-good/egg](https://github.com/egraphs-good/egg) |
+| `hashbrown` | `00c1756` | 2026-10-25 | 128 | [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) |
 | `leanstore` | `90fcf18` | 2025-09-11 | 112 | [https://github.com/leanstore/leanstore](https://github.com/leanstore/leanstore) |
-| `polars` | `f8bcc3d` | 2026-07-10 | 104 | [https://github.com/pola-rs/polars](https://github.com/pola-rs/polars) |
+| `polars` | `7f902bd3ff` | 2026-10-25 | 104 | [https://github.com/pola-rs/polars](https://github.com/pola-rs/polars) |
 | `z3` | `1d425e5` | 2026-07-09 | 97 | [https://github.com/Z3Prover/z3](https://github.com/Z3Prover/z3) |
-| `clickhouse` | `4d598fb2c` | 2026-07-10 | 95 | [https://github.com/ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse) |
+| `clickhouse` | `c6428eb` | 2026-10-24 | 95 | [https://github.com/ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse) |
 | `memgraph` | `8f87f6a` | 2026-07-09 | 95 | [https://github.com/memgraph/memgraph](https://github.com/memgraph/memgraph) |
 | `LAGraph` | `e2539e2` | 2025-09-08 | 91 | [https://github.com/GraphBLAS/LAGraph](https://github.com/GraphBLAS/LAGraph) |
 | `lsm-tree` | `8526dd3` | 2026-07-05 | 85 | [https://github.com/fjall-rs/lsm-tree](https://github.com/fjall-rs/lsm-tree) |

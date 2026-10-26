@@ -501,9 +501,9 @@ answer for what has to go *inside* them.
 
 ## How to read the paper (with the concepts in hand)
 
-The section numbers in the table below are this edition's; a previous version
-of this chapter cited several of them wrongly (see the note at the end of this
-section). ~45 pages total.
+The section numbers in the table below are the published edition's (several
+are easy to mis-cite — see the note at the end of this section). ~45 pages
+total.
 
 Read now (this topic):
 
@@ -528,15 +528,15 @@ Defer (note where, come back later):
 - **§7.4 Column stores**, **§7.5 large values** (381–390) → topics 12 and,
   for the overflow story, this topic's SQLite chapters
 
-Corrections to the previous edition of this chapter, all verified against the
-PDF's table of contents (pp. 203–402): truncation is **§3.5**, not §3.1–3.3
-(§3.1 is node size, §3.2 interpolation search, §3.3 variable-length records);
-poor man's normalized keys are **§3.6**, not §3.5; node sizes are **§3.1**, not
-§5.1–5.2 (§5.1 is disk-order scans, §5.2 fetching rows); latching is **§4**,
-not §6 (§6 is B-tree utilities); logging and ghost records are **§4**, not §7
-(§7 is advanced key structures); bulk load and index creation are **§6**, not
-§8 (§8 is the two-page conclusion). Only "§3.4 normalized keys" and "§2 basic
-techniques" survived unchanged.
+The survey's section numbers are easy to misremember, because neighbouring
+sections sound alike. Checked against the PDF's table of contents
+(pp. 203–402): truncation is **§3.5** (§3.1 is node size, §3.2 interpolation
+search, §3.3 variable-length records); poor man's normalized keys are
+**§3.6**, right after it, and full normalized keys are §3.4; node sizes are
+**§3.1** (§5.1 is disk-order scans, §5.2 fetching rows); latching, logging and
+ghost records are all **§4** (§6 is B-tree utilities, §7 advanced key
+structures); bulk load and index creation are **§6**; §8 is the two-page
+conclusion; §2 is the basic techniques.
 
 ## Questions to answer in notes.md
 

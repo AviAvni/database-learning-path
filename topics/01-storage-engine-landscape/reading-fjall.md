@@ -3,22 +3,22 @@
 The LSM protagonist of this topic — a codebase small enough that insert-to-SST
 is traceable in an afternoon, and layered well enough to steal from. fjall is
 the *keyspace/journal/scheduling* layer; the actual tree (memtable, SSTs,
-blooms, block index) lives in the external `lsm-tree` crate, pinned at
-`~3.1.6` in `Cargo.toml:29`. Before touching the code, this chapter builds the
+blooms, block index) lives in the external `lsm-tree` crate, required at
+`~3.1.10` in `Cargo.toml:29`. Before touching the code, this chapter builds the
 LSM machine step by step — why writes are buffered, what a memtable and journal
 are, what a flush produces, how a read finds anything, and why compaction and
 tombstones exist. Then it hands you file and line anchors to watch each step
 happen. Reading fjall shows you the LSM *lifecycle*; topic 4 descends into
 `lsm-tree` itself.
 
-**All line numbers below are from `fjall-rs/fjall@80cf6bc`** (crate version
-3.1.6), the commit in this repo's pin table — check with
+**All line numbers below are from `fjall-rs/fjall@cfcdce3`** (crate version
+3.1.13), the commit in this repo's pin table — check with
 `python3 tools/pinned-source.py ref fjall`, and read any file at that commit
 with `python3 tools/pinned-source.py show fjall <path> -r A:B`. One API caveat:
 this topic's own experiment (`experiments/Cargo.toml:7`) pins **fjall 2.x**
-(2.11.2 in the lockfile), where the type now called `Keyspace` was called
-`Partition` and the type now called `Database` was called `Keyspace`. The
-concepts are identical; the names moved in 3.0.
+(2.11.2 in the lockfile), where the type 3.x calls `Keyspace` is named
+`Partition` and the type 3.x calls `Database` is named `Keyspace`. The
+concepts are identical; only the names differ between the major versions.
 
 ## The problem in one sentence
 
@@ -69,7 +69,7 @@ occupies **48.4 MB** (space amp 0.45×) against redb's copy-on-write B-tree at
 > **In:** the decision to buffer writes in RAM.
 > **Out:** the two structures that decision forces (a sorted in-memory map and
 > an append-only log), the ordering rule between them, and fjall's actual
-> `insert` from line 905.
+> `insert` from line 910.
 
 The in-RAM buffer is the **memtable** — an in-memory *sorted* map (fjall's
 `lsm-tree` uses a skip list) that absorbs every write and can be range-scanned
@@ -83,54 +83,78 @@ appended to the journal *before* it enters the memtable — is what makes replay
 correct. Appending is sequential (the fast case from Step 1), so durability
 costs one sequential append, not a random write.
 
-Here is `Keyspace::insert` verbatim, with the doc comment and error paths
-elided:
+Here is `Keyspace::insert` verbatim, with the doc comment and a few
+bookkeeping lines elided:
 
 ```rust
-// src/keyspace/mod.rs at fjall-rs/fjall@80cf6bc — Keyspace::insert, lines 905-950,
-// with the doc comment and two guard clauses (912-914, 921-924) elided.
-905      pub fn insert<K: Into<UserKey>, V: Into<UserValue>>(
-906          &self,
-907          key: K,
-908          value: V,
-909      ) -> crate::Result<()> {
-919          let mut journal_writer = self.supervisor.journal.get_writer();
-926          let seqno = self.supervisor.seqno.next();
-928          journal_writer.write_raw(self.id, &key, &value, lsm_tree::ValueType::Value, seqno)?;
-930          if !self.config.manual_journal_persist {
-931              journal_writer
-932                  .persist(crate::PersistMode::Buffer)
-937                  ?;
-938          }
-940          let (item_size, memtable_size) = self.tree.insert(key, value, seqno);
-942          self.supervisor.snapshot_tracker.publish(seqno);
-944          drop(journal_writer);
-946          self.supervisor.write_buffer_size.allocate(item_size);
-947          self.maintenance(memtable_size);
-949          Ok(())
-950      }
+// src/keyspace/mod.rs at fjall-rs/fjall@cfcdce3 — Keyspace::insert, lines 910-958
+// (doc comment above 910 elided).
+910      pub fn insert<K: Into<UserKey>, V: Into<UserValue>>(
+911          &self,
+912          key: K,
+913          value: V,
+914      ) -> crate::Result<()> {
+   ... 915-923: deleted-keyspace guard, key/value conversion ...
+924          let mut journal_writer = self.supervisor.journal.get_writer()?;
+925
+926          // IMPORTANT: Check the poisoned flag after getting journal mutex, otherwise TOCTOU
+927          if self.is_poisoned.is_poisoned() {
+928              return Err(crate::Error::Poisoned);
+929          }
+930
+931          let seqno = self.supervisor.seqno.next();
+932
+933          journal_writer
+934              .write_raw(self.id, &key, &value, lsm_tree::ValueType::Value, seqno)
+935              .inspect_err(|_| {
+936                  self.is_poisoned.poison();
+937              })?;
+938
+939          if !self.config.manual_journal_persist {
+940              journal_writer
+941                  .persist(crate::PersistMode::Buffer)
+   ... 942-945: on error, log "FATAL" and poison, then `?` ...
+946          }
+947
+948          let (item_size, memtable_size) = self.tree.insert(key, value, seqno);
+949
+950          self.supervisor.snapshot_tracker.publish(seqno);
+951
+952          drop(journal_writer);
+953
+954          self.supervisor.write_buffer_size.allocate(item_size);
+955          self.maintenance(memtable_size);
+956
+957          Ok(())
+958      }
 ```
 
-Five things this function tells you that prose would not:
+Six things this function tells you that prose would not:
 
-1. **Line 919 takes the journal lock before anything else, and line 944 drops it
+1. **Line 924 takes the journal lock before anything else, and line 952 drops it
    only after the memtable insert.** That interval is what guarantees replay
-   order equals apply order. The comment at line 921 explains a second reason —
-   the poison flag must be checked *after* acquiring the mutex, otherwise
-   TOCTOU.
-2. **Line 926: a sequence number is allocated per write.** Seqnos are the spine
+   order equals apply order. The comment at line 926 explains a second reason —
+   the poison flag (line 927) must be checked *after* acquiring the mutex,
+   otherwise **TOCTOU** (time-of-check to time-of-use: the flag could flip
+   between the check and the write it was meant to guard).
+2. **Line 931: a sequence number is allocated per write.** Seqnos are the spine
    of LSM correctness — they are how newest-wins is decided in Step 4 and how
-   GC knows what is safe to drop in Step 5. Line 942 publishes it to the
+   GC knows what is safe to drop in Step 5. Line 950 publishes it to the
    snapshot tracker.
-3. **Line 932's default is `PersistMode::Buffer`, not an fsync.** The enum is at
+3. **Line 941's default is `PersistMode::Buffer`, not an fsync.** The enum is at
    `src/journal/writer.rs:35`: `Buffer` (:41) hands bytes to the OS page cache
    only; `SyncData` (:46) calls `sync_data()` (:226); `SyncAll` (:49) calls
    `sync_all()` (:220). So out of the box fjall survives a *process* crash but
    not a *power* loss — the single biggest write-latency knob in any LSM, and
    the one you must match across engines before comparing them.
-4. **Line 946 is accounting, not backpressure.** `write_buffer_size.allocate`
-   just bumps a counter; the actual throttling is in `maintenance` (line 947).
-5. **Every write is written twice** — once to the journal, later to a segment.
+4. **Line 954 is accounting, not backpressure.** `write_buffer_size.allocate`
+   just bumps a counter; the actual throttling is in `maintenance` (line 955).
+5. **A failed journal write poisons the whole database** (lines 935–937, and
+   the elided 942–945 for `persist`). A journal that may hold a torn record is
+   not something later writes can safely append after, so the first IO error
+   turns every subsequent write into `Error::Poisoned` (line 928) — the same
+   flag the panic guard in "Aha spots" below sets.
+6. **Every write is written twice** — once to the journal, later to a segment.
    That is the first factor of **write amplification**: bytes physically written
    to disk per byte of user data.
 
@@ -205,24 +229,25 @@ the cost of 20 in-memory hash probes.
 In fjall the search itself is two lines:
 
 ```rust
-// src/keyspace/mod.rs at fjall-rs/fjall@80cf6bc — Keyspace::get, lines 623-625.
+// src/keyspace/mod.rs at fjall-rs/fjall@cfcdce3 — Keyspace::get, lines 628-630.
 // SeqNo::MAX means "read the newest version of everything" — a snapshot read
 // would pass its own seqno here instead (topic 8's MVCC preview).
-623      pub fn get<K: AsRef<[u8]>>(&self, key: K) -> crate::Result<Option<lsm_tree::UserValue>> {
-624          Ok(self.tree.get(key, SeqNo::MAX)?)
-625      }
+628      pub fn get<K: AsRef<[u8]>>(&self, key: K) -> crate::Result<Option<lsm_tree::UserValue>> {
+629          Ok(self.tree.get(key, SeqNo::MAX)?)
+630      }
 ```
 
 The whole newest-first/bloom dance lives inside `lsm-tree`. What fjall keeps is
 the *policy*, and its default is the interesting part:
 
 ```rust
-// src/keyspace/options.rs at fjall-rs/fjall@80cf6bc — KeyspaceCreateOptions::default,
-// lines 108-111 and 116. Both policies are ARRAYS indexed by LSM level.
+// src/keyspace/options.rs at fjall-rs/fjall@cfcdce3 — CreateOptions::default
+// (re-exported as KeyspaceCreateOptions), lines 108-111 and 116; 112-115 elided. Both policies are ARRAYS indexed by LSM level.
 108              filter_policy: FilterPolicy::new([
 109                  FilterPolicyEntry::Bloom(BloomConstructionPolicy::FalsePositiveRate(0.0001)),
 110                  FilterPolicyEntry::Bloom(BloomConstructionPolicy::BitsPerKey(10.0)),
 111              ]),
+   ... 112-115: level_count, #[cfg(feature = "lz4")] ...
 116              data_block_compression_policy: CompressionPolicy::new([CompressionType::None, CompressionType::None, CompressionType::Lz4]),
 ```
 
@@ -273,27 +298,33 @@ What happens when ingest outruns compaction is worth reading, because it is
 where "LSM absorbs writes fast" stops being true:
 
 ```rust
-// src/keyspace/mod.rs at fjall-rs/fjall@80cf6bc — the backpressure path,
-// lines 789-816. Called from maintenance() (line 839) on every single insert.
-789      fn check_write_halt(&self) {
-790          while self.tree.l0_run_count() >= 30 {
-791              std::thread::sleep(Duration::from_millis(10));
-792          }
-793      }
-795      pub(crate) fn local_backpressure(&self) -> bool {
-796          let mut throttled = false;
-798          let l0_run_count = self.tree.l0_run_count();
-800          if l0_run_count >= 20 {
-801              perform_write_stall(l0_run_count);
-802              self.check_write_halt();
-803              throttled = true;
-804          }
-806          while self.tree.sealed_memtable_count() >= 4 {
-811              std::thread::sleep(Duration::from_millis(100));
-812              throttled = true;
-813          }
-815          throttled
-816      }
+// src/keyspace/mod.rs at fjall-rs/fjall@cfcdce3 — the backpressure path,
+// lines 794-821. Called from maintenance() (line 844) on every single insert.
+794      fn check_write_halt(&self) {
+795          while self.tree.l0_run_count() >= 30 {
+796              std::thread::sleep(Duration::from_millis(10));
+797          }
+798      }
+799
+800      pub(crate) fn local_backpressure(&self) -> bool {
+801          let mut throttled = false;
+802
+803          let l0_run_count = self.tree.l0_run_count();
+804
+805          if l0_run_count >= 20 {
+806              perform_write_stall(l0_run_count);
+807              self.check_write_halt();
+808              throttled = true;
+809          }
+810
+811          while self.tree.sealed_memtable_count() >= 4 {
+   ... 812-815: log::debug!("Halting writes because we have 4+ sealed memtables ...") ...
+816              std::thread::sleep(Duration::from_millis(100));
+817              throttled = true;
+818          }
+819
+820          throttled
+821      }
 ```
 
 Three thresholds, all hard-coded: **stall at 20 L0 runs**, **halt at 30**, and
@@ -312,7 +343,8 @@ still hold it, and you would have to rewrite that file to remove it. So
 `remove(k)` *writes* a **tombstone**: a marker record meaning "k is deleted",
 carried by the same path as any write — journal → memtable → flush → segment,
 with its own seqno. fjall writes it as `lsm_tree::ValueType::Tombstone`, the
-same call shape as the `ValueType::Value` on line 928 of Step 2. Reads treat a
+same call shape as the `ValueType::Value` on line 934 of Step 2 (`remove`,
+line 989, passes `ValueType::Tombstone` at line 1008). Reads treat a
 tombstone as "found: not present" and stop, because newest-first ordering makes
 it shadow every older version.
 
@@ -336,40 +368,40 @@ surprise.
 ```text
 src/
  ├─ lib.rs                       module map — start here
- ├─ keyspace/mod.rs (1113 lines) insert/get/rotation/backpressure (steps 2-5)
+ ├─ keyspace/mod.rs (1127 lines) insert/get/rotation/backpressure (steps 2-5)
  ├─ keyspace/options.rs          every default in this guide (steps 3-5)
  ├─ journal/writer.rs            WAL writes + PersistMode (step 2)
  ├─ flush/worker.rs (42 lines)   sealed memtable → SST (step 3)
  ├─ compaction/worker.rs         compaction runs (step 5)
  ├─ worker_pool.rs               flume-channel thread pool
  ├─ ingestion.rs                 bulk load, and a seqno-race comment worth reading
- └─ poison_dart.rs (34 lines)    panic guard
+ └─ poison.rs (41 lines)         poison flag + panic guard
 ```
 
 **Steps 2–3 — the write path.** Start at `Keyspace::insert` —
-`src/keyspace/mod.rs:905`. Read the whole function; it *is* the LSM write-path
+`src/keyspace/mod.rs:910`. Read the whole function; it *is* the LSM write-path
 diagram from the README:
 
 ```mermaid
 flowchart LR
-    I["insert()<br/>mod.rs:905"] --> J["journal write_raw<br/>mod.rs:928"]
-    J --> P["journal persist<br/>PersistMode::Buffer<br/>mod.rs:932"]
-    P --> M["tree.insert → memtable<br/>mod.rs:940"]
-    M --> A["maintenance()<br/>mod.rs:947 → 837"]
-    A --> C["check_memtable_rotate<br/>mod.rs:831"]
-    A --> B["local_backpressure<br/>mod.rs:795"]
-    C -- "size > 64 MiB" --> R["request_rotation<br/>mod.rs:818<br/>sends RotateMemtable"]
-    R --> W["worker_pool.rs:141<br/>receives it"]
-    W --> S["inner_rotate_memtable<br/>mod.rs:727<br/>seal + enqueue flush"]
+    I["insert()<br/>mod.rs:910"] --> J["journal write_raw<br/>mod.rs:934"]
+    J --> P["journal persist<br/>PersistMode::Buffer<br/>mod.rs:941"]
+    P --> M["tree.insert → memtable<br/>mod.rs:948"]
+    M --> A["maintenance()<br/>mod.rs:955 → 842"]
+    A --> C["check_memtable_rotate<br/>mod.rs:836"]
+    A --> B["local_backpressure<br/>mod.rs:800"]
+    C -- "size > 64 MiB" --> R["request_rotation<br/>mod.rs:823<br/>sends RotateMemtable"]
+    R --> W["worker_pool.rs:180<br/>receives it"]
+    W --> S["inner_rotate_memtable<br/>mod.rs:732<br/>seal + enqueue flush"]
     S --> F["flush::run<br/>flush/worker.rs:12<br/>memtable → SST"]
 ```
 
 Note the hop through the worker pool: `request_rotation`
-(`mod.rs:818–829`) only *sends* a `WorkerMessage::RotateMemtable`; a pool thread
-receives it at `worker_pool.rs:141–145`, re-takes the journal lock, and calls
+(`mod.rs:823–834`) only *sends* a `WorkerMessage::RotateMemtable`; a pool thread
+receives it in `worker_tick` at `worker_pool.rs:180–184`, re-takes the journal lock, and calls
 `inner_rotate_memtable`. The writing thread never blocks on the seal.
 
-**Step 4 — the read path.** `Keyspace::get` — `src/keyspace/mod.rs:623–625`, a
+**Step 4 — the read path.** `Keyspace::get` — `src/keyspace/mod.rs:628–630`, a
 two-line delegation to `lsm-tree`. Bloom policy at
 `src/keyspace/options.rs:108–111`; its wire encoding at
 `src/keyspace/config/filter.rs:8–44` (the `BitsPerKey`/`FalsePositiveRate`
@@ -382,7 +414,7 @@ variants are serialised there, but *defined* in `crate::config`).
 - Worker: `src/compaction/worker.rs:10` — thin, 60 lines; the real call is
   `tree.compact(strategy, snapshot_tracker.get_seqno_safe_to_gc())` at lines
   34–37.
-- Backpressure: `src/keyspace/mod.rs:789–816`.
+- Backpressure: `src/keyspace/mod.rs:794–821`.
 
 The interesting part is what fjall *doesn't* do: no compaction geometry lives
 here — it delegates policy to `lsm-tree`, keeping fjall pure
@@ -390,41 +422,36 @@ lifecycle/scheduling. Good layering to steal for the capstone's storage crate.
 
 **Aha spots** (worth a detour each):
 
-1. **`poison_dart.rs:27–33`** — a `Drop` guard whose whole body is
-   `if std::thread::panicking() { self.poison(); }`. If a background worker
+1. **`poison.rs:34–41`** — a `Drop` guard on `PoisonDart` whose whole body is
+   `if std::thread::panicking() { … self.poison(); }`. If a background worker
    panics, the database is poisoned and every subsequent `insert` returns
-   `Error::Poisoned` (checked at `mod.rs:922`). Crash *visibly* instead of
-   serving from corrupt state. The entire file is 34 lines.
+   `Error::Poisoned` (checked at `mod.rs:927`). Crash *visibly* instead of
+   serving from corrupt state. The flag itself is the `PoisonSignal` newtype
+   at `poison.rs:8` — an `Arc<AtomicBool>` with `poison()` (a `Release`
+   store) and `is_poisoned()` (an `Acquire` load); the entire file is 41
+   lines.
 2. **`ingestion.rs:36–52`** — an ASCII interleaving diagram in a comment,
    explaining why `finish()` holds the journal lock: without it, a concurrent
    writer that already took seqno 1 could insert *after* the ingest registered
    seqno 2, inverting the ordering that newest-wins depends on.
-3. **`worker_pool.rs:155`** — `if journal_writer.pos()? > 64_000_000` rotates
+3. **`worker_pool.rs:194`** — `if journal_writer.pos()? > 64_000_000` rotates
    the journal file. A second 64 MB threshold, independent of the memtable's.
 4. **`snapshot_tracker`** — the open-snapshot seqno watermark gates GC;
-   `mod.rs:757–758` pulls the watermark up on every rotation so a database with
+   `mod.rs:758–762` pulls the watermark up on every rotation so a database with
    no open snapshots does not stall GC forever
    (the comment cites fjall discussion #85).
 
-> **Upstream since the pin.** `src/poison_dart.rs` was renamed to
-> `src/poison.rs` (41 lines), and the bare `Arc<AtomicBool>` type alias became
-> a `PoisonSignal` newtype with an `is_poisoned()` reader, in fjall `3f3443d`
-> ("refactor: poisoning", first released in 3.1.8). The steps above describe
-> the pinned code, which is what the line numbers point at; the guard itself
-> is unchanged — `impl Drop for PoisonDart` still runs
-> `if std::thread::panicking() { … self.poison(); }`, now at `poison.rs:34–41` (upstream `cfcdce3`).
-
 ## Questions to answer while reading
 
-1. The journal lock is taken at `mod.rs:919`, before the memtable insert at
-   `:940`, and released at `:944`. Construct the concrete corruption that
-   swapping lines 928 and 940 would allow, in terms of what journal replay
+1. The journal lock is taken at `mod.rs:924`, before the memtable insert at
+   `:948`, and released at `:952`. Construct the concrete corruption that
+   swapping the journal write (933–937) and the memtable insert (948) would allow, in terms of what journal replay
    would reconstruct after a crash.
-2. `mod.rs:946` bumps an atomic counter, but backpressure is at `:795`. Read
+2. `mod.rs:954` bumps an atomic counter, but backpressure is at `:800`. Read
    `local_backpressure` and say which of its three thresholds a writer hits
    first on this topic's workload (1.08 M records, batches of 1,000), and
    whether it stalls or halts.
-3. `mod.rs:930–938` calls `persist(PersistMode::Buffer)` unless
+3. `mod.rs:939–946` calls `persist(PersistMode::Buffer)` unless
    `manual_journal_persist` is set. What durability does that actually give you
    — against a process crash, and against power loss? Check what this topic's
    `experiments/src/lib.rs:57` and `:69` do, and why parity with redb's
@@ -446,19 +473,20 @@ Answer each before unfolding it.
 <details>
 <summary>Answer</summary>
 
-`Keyspace::insert` (`mod.rs:905`) takes the journal writer lock (`:919`),
-allocates a seqno (`:926`), appends to the journal (`write_raw`, `:928`),
-persists in `PersistMode::Buffer` (`:932`), inserts into the memtable
-(`tree.insert`, `:940`), publishes the seqno to the snapshot tracker (`:942`),
-drops the journal lock (`:944`), accounts the bytes (`:946`) and calls
-`maintenance` (`:947`). `maintenance` (`:837`) calls `check_memtable_rotate`
-(`:831`), which — if `size > max_memtable_size`, default 64 MiB
-(`options.rs:91`) — calls `request_rotation` (`:818`) to *send* a
-`WorkerMessage::RotateMemtable`. A pool thread receives it (`worker_pool.rs:141`),
-retakes the journal lock and calls `inner_rotate_memtable` (`:727`), which seals
-the memtable, enqueues a `FlushTask` (`:746`) and sends `WorkerMessage::Flush`
-(`:750`). `flush::run` (`flush/worker.rs:12`) calls `tree.flush(...)` and frees
-the write-buffer bytes. `maintenance` also calls `local_backpressure` (`:795`).
+`Keyspace::insert` (`mod.rs:910`) takes the journal writer lock (`:924`),
+checks the poison flag (`:927`), allocates a seqno (`:931`), appends to the
+journal (`write_raw`, `:934`), persists in `PersistMode::Buffer` (`:941`),
+inserts into the memtable (`tree.insert`, `:948`), publishes the seqno to the
+snapshot tracker (`:950`), drops the journal lock (`:952`), accounts the bytes
+(`:954`) and calls `maintenance` (`:955`). `maintenance` (`:842`) calls
+`check_memtable_rotate` (`:836`), which — if `size > max_memtable_size`,
+default 64 MiB (`options.rs:91`) — calls `request_rotation` (`:823`) to *send*
+a `WorkerMessage::RotateMemtable`. A pool thread receives it
+(`worker_pool.rs:180`), retakes the journal lock and calls
+`inner_rotate_memtable` (`:732`), which seals the memtable, enqueues a
+`FlushTask` (`:751`) and sends `WorkerMessage::Flush` (`:755`). `flush::run`
+(`flush/worker.rs:12`) calls `tree.flush(...)` and frees the write-buffer
+bytes. `maintenance` also calls `local_backpressure` (`:800`).
 
 </details>
 
@@ -469,8 +497,8 @@ the write-buffer bytes. `maintenance` also calls `local_backpressure` (`:795`).
 
 **fjall owns lifecycle and policy**: the journal and its `PersistMode`
 (`journal/writer.rs:35`), memtable rotation and the worker-pool scheduling
-(`mod.rs:818` → `worker_pool.rs:141`), backpressure thresholds
-(`mod.rs:789–816`), the poison-on-panic guard (`poison_dart.rs:27`), and the
+(`mod.rs:823` → `worker_pool.rs:180`), backpressure thresholds
+(`mod.rs:794–821`), the poison-on-panic guard (`poison.rs:34`), and the
 defaults in `keyspace/options.rs` — block size, filter policy, compression
 policy, compaction strategy.
 
@@ -479,7 +507,7 @@ format, block index, bloom implementation, the newest-first search inside
 `tree.get`, and every compaction *geometry* — fjall's `compaction/worker.rs` is
 60 lines that just call `tree.compact(strategy, gc_watermark)`, and
 `compaction/mod.rs:7` merely re-exports `Fifo`/`Leveled`/`Levelled` from
-`lsm_tree::compaction`. The dependency is pinned at `~3.1.6` in `Cargo.toml:29`.
+`lsm_tree::compaction`. The dependency is required at `~3.1.10` in `Cargo.toml:29`.
 That split is the layering worth stealing.
 
 </details>
@@ -489,7 +517,7 @@ That split is the layering worth stealing.
 <details>
 <summary>Answer</summary>
 
-Default is `PersistMode::Buffer` (`mod.rs:932`) — bytes go to the OS page cache
+Default is `PersistMode::Buffer` (`mod.rs:941`) — bytes go to the OS page cache
 with no `fsync`. That survives a process crash but not power loss.
 `PersistMode::SyncData` (`journal/writer.rs:46` → `sync_data()`, `:226`) and
 `SyncAll` (`:49` → `sync_all()`, `:220`) are the durable modes.
@@ -531,11 +559,11 @@ spent to buy space, which the RUM paper explicitly puts *outside* its triangle
 <details>
 <summary>Answer</summary>
 
-`local_backpressure` at `src/keyspace/mod.rs:795–816`, called from
-`maintenance` (`:839`) on *every insert*. Three hard-coded thresholds: a write
-stall once L0 has ≥ 20 runs (`:800`), a hard halt looping on 10 ms sleeps once
-it has ≥ 30 (`check_write_halt`, `:789–793`), and a halt looping on 100 ms
-sleeps while 4 or more memtables are sealed and unflushed (`:806–813`). A writer
+`local_backpressure` at `src/keyspace/mod.rs:800–821`, called from
+`maintenance` (`:844`) on *every insert*. Three hard-coded thresholds: a write
+stall once L0 has ≥ 20 runs (`:805`), a hard halt looping on 10 ms sleeps once
+it has ≥ 30 (`check_write_halt`, `:794–798`), and a halt looping on 100 ms
+sleeps while 4 or more memtables are sealed and unflushed (`:811–818`). A writer
 that outruns compaction therefore does not degrade smoothly; it hits a cliff and
 sleeps in 10–100 ms units. That is the p99.9 in every LSM benchmark.
 
@@ -543,17 +571,17 @@ sleeps in 10–100 ms units. That is the p99.9 in every LSM benchmark.
 
 ## References
 
-**Code** (all line numbers at `fjall-rs/fjall@80cf6bc`, crate 3.1.6 — the pin
+**Code** (all line numbers at `fjall-rs/fjall@cfcdce3`, crate 3.1.13 — the pin
 table entry; verify with `python3 tools/pinned-source.py ref fjall`)
 - [fjall](https://github.com/fjall-rs/fjall) — `src/keyspace/mod.rs`
-  (`insert:905`, `get:623`, rotation `:727/:818/:831`, backpressure `:789–816`),
+  (`insert:910`, `get:628`, rotation `:732/:823/:836`, backpressure `:794–821`),
   `src/keyspace/options.rs` (every default cited here: memtable size `:91`,
   block size `:95`, pinning `:100–101`, filter policy `:108–111`, compression
   `:116`, compaction strategy `:123`), `src/journal/writer.rs` (`PersistMode:35`),
-  `src/flush/worker.rs:12`, `src/compaction/worker.rs:10`, `src/worker_pool.rs:141`,
-  `src/poison_dart.rs:27`, `src/ingestion.rs:36`
-- the external [`lsm-tree`](https://github.com/fjall-rs/lsm-tree) crate, pinned
-  at `~3.1.6` in `Cargo.toml:29`, holds the actual tree (memtable, SSTs, blooms,
+  `src/flush/worker.rs:12`, `src/compaction/worker.rs:10`, `src/worker_pool.rs:180`,
+  `src/poison.rs:8/:34`, `src/ingestion.rs:36`
+- the external [`lsm-tree`](https://github.com/fjall-rs/lsm-tree) crate, required
+  at `~3.1.10` in `Cargo.toml:29`, holds the actual tree (memtable, SSTs, blooms,
   block index) — topic 4's territory
 
 **This repo**
