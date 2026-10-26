@@ -1,3 +1,4 @@
+pub mod alp;
 pub mod baseline;
 pub mod bits;
 pub mod gen;

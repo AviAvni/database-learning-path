@@ -269,6 +269,12 @@ expensive part* — FSST has to build a symbol table, ALP has to search an expon
 — and *measure exhaustively when the analyze pass is just counting*. Bring that distinction
 to question 1 rather than the tidy version.
 
+What the exponent/factor pair *is*, why DuckDB can no longer write `CHIMP` or
+`PATAS` (`chimp_analyze.hpp:22-24` and `patas_analyze.hpp:22-24` return `nullptr`
+from their analyze-init with the comment "deprecated"), and a measured
+decimal-vs-XOR comparison are in
+[reading-alp-chimp.md](../30-timeseries/reading-alp-chimp.md).
+
 ### Step 5 — `fetch_row`: the random-access constraint that shapes the menu
 
 > **In:** an operator that wants row 1907 of a segment and nothing else.

@@ -100,6 +100,28 @@ analyze → score → compress decision with encode cost in dollars as a new
 axis — and the opposite end from the encodings this topic scans over
 directly: nothing it produces can be evaluated without decoding first.
 
+### The scan pipeline these encodings plug into
+
+```mermaid
+flowchart LR
+    Q["scan: WHERE ts BETWEEN a AND b,<br/>SUM(x)"] --> ZM{"zone map:<br/>segment min/max<br/>overlaps the range?"}
+    ZM -- "no" --> SKIP["skip: no read, no decode<br/>(section 3)"]
+    ZM -- "yes" --> RD["read the segment's<br/>COMPRESSED bytes<br/>(the only I/O)"]
+    RD --> ENC{"segment encoding"}
+    ENC -- "CONSTANT / RLE" --> RUN["operate on runs:<br/>value x run_length<br/>(no decode)"]
+    ENC -- "DICT / FSST" --> CODE["compare on codes,<br/>decode survivors only<br/>(section 5)"]
+    ENC -- "FOR / bit-packed" --> UNP["unpack + add base<br/>into a vector of ~2048"]
+    RUN --> AGG["aggregate<br/>over the vector"]
+    CODE --> AGG
+    UNP --> AGG
+    AGG --> OUT["result"]
+```
+
+Everything left of `AGG` is the lightweight-encoding zoo's job; everything
+right of it is the vectorized engine of topic 11. The bytes that cross the
+memory bus are the compressed ones, which is why a scan can beat the raw
+`sum` floor above.
+
 ## 3. Zone maps (min/max pruning)
 
 Per-segment min/max stats let the scan SKIP segments that can't match:
@@ -156,6 +178,37 @@ changed since (§7.1) — so read that comparison as a snapshot of Vortex
 v0.21.1. The point for this topic: §1's cascaded lightweight encodings
 ([reading-btrblocks-fsst.md](reading-btrblocks-fsst.md)) are now the
 building block of a file format, not an engine-internal detail.
+
+The mirror-image question is whether a *new* format is needed at all for a new
+processor. Luo, Chen, Binnig, *Do GPUs Really Need New Tabular File Formats?*
+(DaMoN '26, [arXiv:2602.17335](https://arxiv.org/abs/2602.17335),
+[doi](https://doi.org/10.1145/3789237.3809125)) argues no: the Parquet that
+DuckDB writes by default — one page per column chunk, 122,880-row row groups,
+V1 encodings only (§3 "Baseline") — starves a GPU reader, and four
+configuration changes fix it without leaving the format. Pages per column chunk
+raised to 100 or more, because cuDF maps pages to its kernel grid (Insight 1);
+row groups of millions of rows, because MiB-scale reads are what GPUDirect
+Storage needs to saturate an SSD (Insight 2, row-group size 10M in the
+experiments); a *per-chunk* choice of whichever Parquet V1 or V2 encoding
+gives the smallest chunk — the BtrBlocks idea inside plain Parquet (Insight 3);
+and compression applied only where it shrinks a chunk by more than 10%
+(Insight 4). On TPC-H SF300 `lineitem`, one A100, four NVMe SSDs, the
+effective read bandwidth goes **1 → 3 → 45 → 117 → 125 GiB/s** as the four
+changes are applied one after another (Fig. 1; the abstract says GB/s, the
+figure's axis is GiB/s). **Read 125 as an *effective* rate**: the paper defines
+it as the logical raw size after decoding and decompression divided by the scan
+time (§3, "Encoding Flexibility"), not as bytes crossing a bus. The hardware
+check is on the same figures: one SSD saturates at 6.4 GiB/s (Fig. 2), so four
+move at most 4 × 6.4 = 25.6 GiB/s of *file* bytes; at the compression ratio of
+5.3 that Fig. 3 annotates for the encoding-flexible files, 25.6 × 5.3 = 135.7
+GiB/s of logical data is the ceiling, and the reported 125 sits just under it; and the
+one-SSD point checks too, 6.4 × 5.3 = 33.9 against the reported 33 (Fig. 3).
+So the bandwidth the paper reports is a compression ratio multiplied by a
+saturated storage bus — the thesis of this topic ("compression IS
+performance") measured on a GPU — and not evidence that a GPU kernel decodes
+at 125 GiB/s. The paper is explicit that in-GPU-memory decoders reach "up to
+5700 GB/s" (§5), so on that axis the format is not the bottleneck; the
+file's compressed size is.
 
 ## 5. Late materialization
 
