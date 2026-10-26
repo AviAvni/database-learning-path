@@ -61,6 +61,18 @@ transform-first is 90x cheaper on the sparse side. Same decision as join
 ordering (topic 10) — the frameworks hardcode the good order; an engine
 with a cost model could *choose*.
 
+Measured, because "90x cheaper" is a claim about one half of the layer. On the
+SBM with Cora's widths (d_in 1433 -> 16): the sparse side is **89.6x** fewer
+FLOPs transform-first (0.018 vs 1.624 GFLOP, counted), but the dense product
+`XW` (0.751 GFLOP) is paid in *both* orders — `(AX)W` multiplies the same
+`n x 1433` by `1433 x 16` after aggregating — so the whole layer is **3.09x**
+fewer FLOPs (0.769 vs 2.375 GFLOP), and the measured time is **2.25x** (80.2
+vs 180.2 ms, median of 5; 2.23x in a second run; outputs agree to 2e-8). The
+order is worth having, but the headline is the whole layer's 2-3x, not the
+sparse half's 90x; the wide aggregate-first SpMM also runs at a better
+GFLOP/s than the dense kernel, which is why time falls short of the FLOP
+ratio.
+
 ## Our numbers (Apple M3 Pro, SBM n=16,384, m=566K directed, 2026-07-10)
 
 | lane | result |
@@ -79,6 +91,44 @@ Sparse's irregular gather is amortized by the
 64-float dense rows it drags along — a GNN's SpMM is memory-friendly in
 exactly the way topic 20's SpMV (1-wide) is not. Fat right-hand sides
 forgive sparsity.
+
+## Neighbour sampling: what it buys and what it does not
+
+A k-layer GNN computing the embedding of a batch needs the batch's k-hop
+neighbourhood — its **receptive field**, counted here as distinct vertices
+whose features are gathered and edges aggregated over (summed across layers).
+GraphSAGE's contribution (Hamilton et al. §3.1, §4.1: K=2, S1=25, S2=10) is to
+cap it: keep at most S_h neighbours per vertex at hop h, uniformly. The lane
+counts both, exactly (seeded), for a 256-vertex batch on two 262,144-vertex
+graphs of about the same average degree: an SBM (max degree 35) and a
+preferential-attachment graph with hubs (max degree 2,316).
+
+| graph | receptive field | vertices | % of graph | edges |
+|---|---|---:|---:|---:|
+| SBM | full 1 layer | 4,154 | 1.58% | 3,931 |
+| | full 2 layers | 55,812 | 21.29% | 67,680 |
+| | full 3 layers | 248,786 | 94.90% | 910,451 |
+| | sampled 2 layers (25,10) | 36,895 | 14.07% | 42,603 |
+| | sampled 3 layers (15,10,5) | 125,781 | 47.98% | 187,073 |
+| preferential | full 1 layer | 4,165 | 1.59% | 4,004 |
+| | full 2 layers | 114,729 | 43.77% | 175,872 |
+| | full 3 layers | 262,089 | 99.98% | 2,390,821 |
+| | sampled 2 layers (25,10) | 29,451 | 11.23% | 34,977 |
+| | sampled 3 layers (15,10,5) | 94,944 | 36.22% | 145,740 |
+
+Three things to read off it. **Explosion is real even at average degree 16:**
+256 seeds need 4,154 vertices at one layer, 55,812 at two and 94.9% of the SBM
+at three — the batch's cost is the graph's size, not the batch's. **Sampling
+helps most where degrees are skewed:** on the hub graph it cuts the 3-layer
+edge work 16.4x (2.39 M -> 145,740) and vertices 2.8x; on the SBM, where no
+vertex has more than 35 neighbours, a fan-out of 25 or 15 removes little at
+the first hop and the cut is 4.9x on edges, 2.0x on vertices. **Sampling bounds
+edges more than vertices:** at two layers on the SBM the sampled field still
+gathers 36,895 vertices against 55,812 (1.5x), because the cap limits how many
+neighbours each vertex contributes, not how many distinct vertices a batch
+reaches. A fixed budget `B*S1*S2` per batch (reading-graphsage.md, Step 4) is
+an upper bound on *edges* aggregated; the number of distinct vertices
+gathered still depends on the graph.
 
 ## Random-walk embeddings (DeepWalk -> node2vec)
 
@@ -109,7 +159,9 @@ prescribes.
 | `embed::train_skipgram` | SBM intra-block cosine > inter-block + 0.2 |
 | `gcn::gcn_norm` + `gcn_forward` | matches dense definitional oracle to 1e-4; rows sorted; transform-before-aggregate |
 
-Provided: CSR + SBM/ring-of-cliques generators (`graph.rs`), dense Mat +
+Provided: CSR + SBM/ring-of-cliques generators (`graph.rs`), neighbour
+sampling and receptive-field counts with a preferential-attachment generator
+(`sampling.rs`), dense Mat +
 glorot init (`dense.rs`), SpMM + row-normalized adjacency (`spmm.rs`),
 uniform walks (`walks.rs`), dense GCN oracle (`gcn.rs`), `gnn_bench`.
 

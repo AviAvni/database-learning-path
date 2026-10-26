@@ -292,10 +292,17 @@ of 109), 377 at 3 (106), and lane 1c's table:
 
 | columns | footer bytes | bytes / column |
 |---:|---:|---:|
+| 10 | 1,119 | 111.9 |
 | 100 | 10,843 | 108.4 |
 | 1,000 | 113,461 | 113.5 |
 | 10,000 | 1,157,462 | 115.7 |
 | 50,000 | 6,027,910 | 120.6 |
+
+The 10-column row is the control: the footer of a file holding only the
+columns a query projects. The 50,000-column footer is 6,027,910 / 1,119 =
+5,387 times larger: 5,000 times the columns, and 120.6 / 111.9 = 1.078 times
+the bytes per column. So the 6 MB is what the *other* 49,990 columns cost,
+not an inflated per-column price.
 
 The slow growth past 103 is varints widening: column 40,000's
 `data_page_offset` is a file offset in the hundreds of megabytes, which needs

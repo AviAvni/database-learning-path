@@ -7,6 +7,7 @@ use graph_ml_experiments::dense::{glorot, matmul};
 use graph_ml_experiments::embed::{mean_pair_cosine, train_skipgram};
 use graph_ml_experiments::gcn::{gcn_forward, gcn_norm};
 use graph_ml_experiments::graph::gen_sbm;
+use graph_ml_experiments::sampling;
 use graph_ml_experiments::spmm::{row_norm_adj, spmm};
 use graph_ml_experiments::walks::{node2vec_walks, uniform_walks};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -73,6 +74,90 @@ fn main() {
         g.n,
         el,
         flops / el.as_secs_f64() / 1e9
+    );
+
+    // --- provided, counted: neighbour explosion and sampling (GraphSAGE §3.1) ---
+    println!("\n== neighbour explosion: receptive field of a 256-vertex batch (counted, seeded) ==");
+    println!("   (two graphs of 262,144 vertices and about the same average degree, one with hubs and one without,");
+    println!("    large enough that a small batch's field is a fraction of the graph rather than all of it)");
+    let (big_sbm, _) = gen_sbm(256, 1024, 0.01, 0.00002, 43);
+    let big_pa = sampling::gen_preferential(262_144, 8, 43);
+    let max_deg = |g: &graph_ml_experiments::graph::Csr| (0..g.n as u32).map(|v| g.degree(v)).max().unwrap();
+    println!(
+        "   SBM: n={} avg_deg {:.1} max_deg {};  preferential attachment: n={} avg_deg {:.1} max_deg {}",
+        big_sbm.n, big_sbm.m() as f64 / big_sbm.n as f64, max_deg(&big_sbm),
+        big_pa.n, big_pa.m() as f64 / big_pa.n as f64, max_deg(&big_pa)
+    );
+    println!("   {:<13} {:<24} {:>10} {:>11} {:>12}", "graph", "receptive field", "vertices", "% of graph", "edges");
+    for (name, gr) in [("SBM", &big_sbm), ("preferential", &big_pa)] {
+        let seeds = sampling::pick_seeds(gr.n, 256, 5);
+        let rows = [
+            ("full 1 layer", sampling::full_field(gr, &seeds, 1)),
+            ("full 2 layers", sampling::full_field(gr, &seeds, 2)),
+            ("full 3 layers", sampling::full_field(gr, &seeds, 3)),
+            ("sampled 2 layers (25,10)", sampling::sampled_field(gr, &seeds, &[25, 10], 6)),
+            ("sampled 3 layers (15,10,5)", sampling::sampled_field(gr, &seeds, &[15, 10, 5], 6)),
+        ];
+        for (label, f) in rows {
+            println!(
+                "   {name:<13} {label:<26} {:>8} {:>10.2}% {:>12}",
+                f.vertices,
+                100.0 * f.vertices as f64 / gr.n as f64,
+                f.edges
+            );
+        }
+        println!(
+            "   {:<13} sampling cuts 2-layer vertices {:.1}x, edges {:.1}x; 3-layer vertices {:.1}x, edges {:.1}x",
+            "",
+            rows[1].1.vertices as f64 / rows[3].1.vertices as f64,
+            rows[1].1.edges as f64 / rows[3].1.edges as f64,
+            rows[2].1.vertices as f64 / rows[4].1.vertices as f64,
+            rows[2].1.edges as f64 / rows[4].1.edges as f64
+        );
+    }
+
+    // --- provided, measured: aggregate-first vs transform-first ---
+    println!("\n== associativity: A(XW) vs (AX)W, one layer, Cora-shaped widths (d_in 1433 -> 16) on the SBM ==");
+    let (d_in, d_out) = (1433usize, 16usize);
+    let xin = glorot(g.n, d_in, 300);
+    let wl = glorot(d_in, d_out, 301);
+    let nnz = g.m() as f64;
+    let n = g.n as f64;
+    let sp_tf = 2.0 * nnz * d_out as f64; // A (XW): spmm over d_out columns
+    let sp_af = 2.0 * nnz * d_in as f64; //  (A X) W: spmm over d_in columns
+    let dn = 2.0 * n * d_in as f64 * d_out as f64; // the dense XW or (AX)W product, same either way
+    println!(
+        "   counted FLOPs: transform-first {:.3} G (sparse {:.3} + dense {:.3});  aggregate-first {:.3} G (sparse {:.3} + dense {:.3})",
+        (sp_tf + dn) / 1e9, sp_tf / 1e9, dn / 1e9, (sp_af + dn) / 1e9, sp_af / 1e9, dn / 1e9
+    );
+    println!(
+        "   sparse side alone: {:.1}x fewer FLOPs transform-first; whole layer: {:.2}x",
+        sp_af / sp_tf,
+        (sp_af + dn) / (sp_tf + dn)
+    );
+    let med = |f: &dyn Fn() -> f64| {
+        let mut ts: Vec<f64> = (0..5).map(|_| f()).collect();
+        ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        ts[2]
+    };
+    let out_tf = std::cell::RefCell::new(None);
+    let out_af = std::cell::RefCell::new(None);
+    let t_tf = med(&|| {
+        let t = Instant::now();
+        let h = matmul(std::hint::black_box(&xin), &wl);
+        *out_tf.borrow_mut() = Some(spmm(&a, &h));
+        t.elapsed().as_secs_f64() * 1e3
+    });
+    let t_af = med(&|| {
+        let t = Instant::now();
+        let ax = spmm(&a, std::hint::black_box(&xin));
+        *out_af.borrow_mut() = Some(matmul(&ax, &wl));
+        t.elapsed().as_secs_f64() * 1e3
+    });
+    let diff = graph_ml_experiments::dense::max_abs_diff(out_tf.borrow().as_ref().unwrap(), out_af.borrow().as_ref().unwrap());
+    println!(
+        "   measured (median of 5): transform-first {t_tf:.1} ms, aggregate-first {t_af:.1} ms -> {:.2}x; outputs agree to {diff:.1e}",
+        t_af / t_tf
     );
 
     // --- stub: node2vec biased walks ---

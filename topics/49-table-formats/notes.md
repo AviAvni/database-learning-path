@@ -110,11 +110,19 @@ expired)".
 
 | columns | footer bytes | B/column | full µs | skip-stats µs | + cached schema µs | 10-column share |
 |---:|---:|---:|---:|---:|---:|---:|
+| 10 (control) | 1,119 | 111.9 | 4 | 4 | 3 | 100.00% |
 | 100 | 10,843 | 108.4 | 36 | 41 | 23 | 10.00% |
 | 1,000 | 113,461 | 113.5 | 353 | 355 | 231 | 1.00% |
 | 10,000 | 1,157,462 | 115.7 | 3,828 | 3,868 | 2,436 | 0.10% |
 | 50,000 | 6,027,910 | 120.6 | 19,484 | 20,037 | 12,768 | 0.02% |
 
+- **The control is the 10-column row.** A file holding only the 10 projected
+  columns has a 1,119-byte footer; the 50,000-column file's 6,027,910 bytes
+  are 5,387× that (5,000× the columns, 120.6/111.9 = 1.078× the bytes per
+  column). The 10-column timings (4 / 4 / 3 µs) are the floor the wide file
+  could reach if it could jump to its 10 columns; the other rows' times are
+  from the earlier, busier run and the 10-column row from a later one, so the
+  decode ratio is not quoted — the byte ratio is exact.
 - Bytes per column grow slowly (108 → 121) because column names and offsets
   get longer varints; the footer is linear in total columns.
 - Full decode ≈ 390 ns per column at 50,000 (19,484 µs / 50,000).
