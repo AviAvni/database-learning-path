@@ -349,6 +349,14 @@
   - [DuckPGQ: SQL/PGQ as joins, a CSR for the stars, and a factorized count](topics/46-relational-graph/reading-duckpgq.md)
   - [PostgreSQL's SQL/PGQ: a graph pattern rewritten into joins, and then reverted](topics/46-relational-graph/reading-postgres-sqlpgq.md)
   - [Topic 46 notes — graph queries on relational engines](topics/46-relational-graph/notes.md)
+- [Topic 50 — LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost](topics/50-llm-query-processing/README.md)
+  - [Semantic operators: a gold algorithm, and guarantees relative to it](topics/50-llm-query-processing/reading-lotus-semantic-operators.md)
+  - [LOTUS's cascade in code: two thresholds, a union bound, and a sample of the first 200 rows](topics/50-llm-query-processing/reading-lotus-source.md)
+  - [Abacus: Cascades that keep a Pareto frontier, fed by a bandit](topics/50-llm-query-processing/reading-abacus.md)
+  - [SemBench: the cost of a semantic query lives in joins, LIMIT and prompts](topics/50-llm-query-processing/reading-sembench.md)
+  - [Text-to-SQL benchmarks are broken: when half the labels are wrong](topics/50-llm-query-processing/reading-text-to-sql-broken.md)
+  - [Agent-first data systems: speculation is a workload with redundancy you can price](topics/50-llm-query-processing/reading-agent-first.md)
+  - [Topic 50 notes — LLM-era query processing](topics/50-llm-query-processing/notes.md)
 
 ---
 

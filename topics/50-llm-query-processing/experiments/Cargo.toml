@@ -1,0 +1,12 @@
+[package]
+name = "llm-query-processing-experiments"
+version = "0.1.0"
+edition = "2021"
+
+# No dependencies on purpose: the generator is a hand-written SplitMix64 so the
+# seeded workload cannot drift with a crate upgrade, and nothing here talks to
+# a network. Every "model" in this crate is a simulation (see src/model.rs).
+[dependencies]
+
+[profile.release]
+debug = true
