@@ -365,6 +365,13 @@
   - [DuckDB's join filters: min-max, IN-lists, exact bitmaps and a register-blocked Bloom filter](topics/47-semijoin-reduction/reading-duckdb-join-filters.md)
   - [DataFusion's dynamic filters: the hash table as the filter](topics/47-semijoin-reduction/reading-datafusion-dynamic-filters.md)
   - [Topic 47 notes — semi-join reduction in practice](topics/47-semijoin-reduction/notes.md)
+- [Topic 48 — Memory Tiering: CXL, Disaggregated Memory & Placement](topics/48-memory-tiering/README.md)
+  - [Hash Joins Meet CXL: move part of the data, not all of it](topics/48-memory-tiering/reading-hashjoins-meet-cxl.md)
+  - [Reading hashjoins-meet-cxl: placement is two system calls and a sysfs file](topics/48-memory-tiering/reading-hashjoins-cxl-code.md)
+  - [TPP: the kernel's tiering policy, and what its numbers measured](topics/48-memory-tiering/reading-tpp.md)
+  - [SIDLE: place tree nodes, not pages](topics/48-memory-tiering/reading-sidle.md)
+  - [OBASE: tiering fails at the layout, not at the policy](topics/48-memory-tiering/reading-obase.md)
+  - [Topic 48 notes — memory tiering](topics/48-memory-tiering/notes.md)
 
 ---
 

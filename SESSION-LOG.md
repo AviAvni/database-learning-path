@@ -193,6 +193,76 @@ checked with `pinned-source.py check`.
 Plumbing: PLAN.md §47 + map node, FINDINGS row, verify.sh lane, PROGRESS
 status + M47, SUMMARY entries, papers.md, topic counts 46 → 47, crate counts
 47 → 48, capstone milestone range.
+## 2026-10-26 — topic 48 — Memory Tiering: CXL, Disaggregated Memory & Placement
+
+No topic priced the memory tier behind DRAM, and an in-memory graph engine hits
+that wall first. This machine has no CXL and no NUMA, so the topic measures the
+mechanism every tiering policy depends on at the tier boundary it does have —
+cache in front of DRAM — and quotes the papers' CXL numbers with sections. A
+latency-injected "far tier" was rejected: it would measure the spin loop.
+
+**Lane 1, provided (Apple M3 Pro, load average 7.21 — sibling benchmarks were
+running all session; no run was possible below 7).** Lane 1a, dependent-load
+ladder (Sattolo permutation, median of 5): 1.18 ns at 16 KiB, 4.34 at 256 KiB,
+8.85 at 4 MiB, 14.95 at 8 MiB, 44.02 at 16 MiB, 90.03 at 32 MiB, 116.29 at
+512 MiB. Lane 1b: 1 GiB of 64 B objects, 90% of accesses to a hot set, the same
+seeded ids over a packed and a scattered layout (checksums agree on every row),
+timed in alternation; loop floor 7.96 ns, all-cold 129.28 ns. ns/access
+packed → scattered: 0.1% hot 26.98 → 37.03 (1.37×); 0.5% 37.19 → 86.12
+(2.35×); 1% 60.79 → 110.73 (1.76×); 5% 114.96 → 126.76 (1.07×). Exact counts,
+1% hot set: 90% of accesses on 655 16 KiB pages packed vs 55,806 scattered
+(hot-page utilization 100.0% vs 3.4%); at 4 KiB, 2,619 vs 149,206 pages (10.2
+vs 582.8 MiB); scattered hot set touches 65,536 of 65,536 16 KiB pages. Four
+runs' scattered/packed spread: 0.1% 1.37–1.87×, 0.5% 1.87–2.82×, 1% 1.37–2.19×,
+5% 0.93–1.07× (plus one 2.01× at load 10.95 that the sanity check flagged —
+223.6 ns against a 111.3 ns DRAM rung). The 8 and 16 MiB rungs moved from
+9.76/17.28 to 58.90/105.39 ns between runs: the shared L2's effective size is
+whatever other processes leave.
+
+**Lane 2 (stub, counted):** learn a layout from one window. Reference
+(frequency packing): 655 pages for 90% (oracle 655, scattered 55,800); after
+half the hot set drifts, scattered 47,467, oracle 47,561, learned 46,506.
+**Lane 3 (stub, MODEL, SIDLE Fig. 1(c) prices 111.2 / 276.9 ns, 189 ns per
+4 KiB page moved):** first touch 93.1% / 30.5% fast hits (packed / scattered),
+122.6 / 226.4 ns; promote-on-touch 134.1 / 467.7 ns; oracle static 120.4 /
+213.8 ns; reference TPP 96.9% / 34.4% hits, 124.0 / 293.0 ns — the model's
+negative result: TPP's migrations cost more than its hits save at these
+prices, and hysteresis cuts promotions 3.8× (681,004 vs 2,569,245). Eight stub
+tests were green against the references before stubbing; 10 provided tests
+pass.
+
+**Papers, verified.** Hash Joins Meet CXL (CIDR'26): 30.01 / 20.95 / 47.50
+GB/s, 3 : 2 (§4.1); Eq. 1 checked; Table 1 PHJ x* reproduces (0.5532 vs
+0.5528) but g does not quite (1.1665 vs 1.1703); **NPHJ does not reproduce**
+(x* 0.4789 vs 0.5104 from its own k, m); measured gains (22.20%, 3.59% runtime
+= 1.285×, 1.037×) exceed the model's stated upper bound. TPP (ASPLOS'23):
+Figure 2 80–140 / 170–250 ns; 55–80% idle (§2); Table 1 checked — the
+abstract's "18%" is default Linux's largest loss (Cache2 1:4 at 82.0%), "5–17%"
+are percentage points, and performance was measured on dual-socket servers
+emulating CXL (§6). SIDLE (VLDB'26): Figure 1(c) gives 2.49× latency and 65.6%
+bandwidth where the text says "~2×" and "~60%"; 82/85% hottest-node share
+(Figure 5); 71% / 81% (abstract); genuine CXL 1.1. OBASE (OSDI'26): Bravo 3.2% of
+bytes / 91.8% of pages; 16.3 GiB @ 21% → 6.33 GiB @ 57% (3.42 vs 3.61 GiB used
+— consistent); TPP 1.65 → 1.85× and 1.25 → 1.45×; slow tier is Optane PMem, not
+CXL; graphs out of scope (§3.2). Quoted only: Weisgut et al. (VLDB'25 §4.4,
+520 ns FPGA CXL random reads), SHARD (VLDB'26 §1, 2–3 µs RDMA), MAC (OSDI'26:
+2.4×, 24%/40% metadata, 98%). Declarative Memory Services (CIDR'26) skimmed: a
+vision paper with no numbers to check.
+
+**Code read:** `fukien/hashjoins-meet-cxl` at `0aeea0d` (new clone, pinned with
+the sticky pin-table). Placement is `mmap` + `mbind` (`MPOL_BIND`,
+`MPOL_WEIGHTED_INTERLEAVE`) with system-wide sysfs weights; the scripts' ratio
+is 10 : 7, not 3 : 2; **the paper's partial-move strategy is not in the
+release** (`hc_join` called by the scripts, never built; `phj.h:362` commented
+out; `common.c:5` fraction globals unused); every strategy times a full copy,
+in-CXL included; `memcpy_tps.c` copies 8 GiB under a "4 GB" comment and prints
+GiB/s as GB/s; the `algos[]` lookup has no sentinel.
+
+Five guides (hash-join paper, its code, TPP, SIDLE, OBASE). Plumbing: PLAN §48 +
+map node, FINDINGS row, verify.sh lane, PROGRESS + M48, SUMMARY, papers.md,
+topic count 46 → 47, crate count 47 → 48. Gates: `./verify.sh 48` PASS;
+`check-reading-depth.py --check --all` 246/246; mermaid 7 blocks 0 errors;
+book links 0 dead (5,998 checked); `-D warnings` build clean.
 
 ## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
 

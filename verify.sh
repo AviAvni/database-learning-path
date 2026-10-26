@@ -99,6 +99,7 @@ BENCHES=(
   "46-relational-graph:pgq_bench:2.27B tuples or 48M values — a path pattern, flat vs factorized"
   "50-llm-query-processing:semop_bench:most calls, least money — semantic predicates priced (simulated)"
   "47-semijoin-reduction:semijoin_bench:3,020,210 vs 60,504 tuples — a bad join order made harmless"
+  "48-memory-tiering:tier_bench:same accesses, hot set packed vs scattered — the tier boundary this machine has"
 )
 
 # topic dir : criterion bench : what it measures   (--criterion only: minutes each)

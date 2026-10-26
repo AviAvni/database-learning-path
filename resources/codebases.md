@@ -181,6 +181,7 @@ are worth fetching first.
 | `duckpgq-extension` | `29ca668a` | 2026-10-21 | 3 | [https://github.com/cwida/duckpgq-extension](https://github.com/cwida/duckpgq-extension) |
 | `y-crdt` | `03e14a0` | 2026-06-12 | 3 | [https://github.com/y-crdt/y-crdt](https://github.com/y-crdt/y-crdt) |
 | `antithesis-sdk-rust` | `78c9db5` | 2026-06-12 | 2 | [https://github.com/antithesishq/antithesis-sdk-rust](https://github.com/antithesishq/antithesis-sdk-rust) |
+| `hashjoins-meet-cxl` | `0aeea0d` | 2026-01-30 | 2 | [https://github.com/fukien/hashjoins-meet-cxl](https://github.com/fukien/hashjoins-meet-cxl) |
 | `helix-db` | `47191c6` | 2026-07-05 | 2 | [https://github.com/HelixDB/helix-db](https://github.com/HelixDB/helix-db) |
 | `timely-dataflow` | `15fc7c9` | 2026-06-12 | 2 | [https://github.com/TimelyDataflow/timely-dataflow](https://github.com/TimelyDataflow/timely-dataflow) |
 

@@ -65,6 +65,7 @@ is done.
 | 46 | Graph Queries on Relational Engines: SQL/PGQ, Factorized Execution & Path-Query Planning | done | todo |  |
 | 50 | LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost | done | todo |  |
 | 47 | Semi-join Reduction in Practice: Yannakakis, Predicate Transfer & Bitmap Filters | done | todo |  |
+| 48 | Memory Tiering: CXL, Disaggregated Memory & Placement | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -119,6 +120,7 @@ is done.
 | M46 factorized intermediates for the pattern engine (`Expand` chains kept as packed `Level { vals, off }` siblings with deferred flattening; `count`/`sum` as products of multiplicities; cascade-correct filters property-tested against flat plans; variable-length relationships planned as closures that can be intersected with other edges, under explicit set or bag semantics) | 46 | todo |
 | M50 semantic predicates in the planner (`ExpensivePredicate` with declared cost and a paid selectivity sample, rank ordering, LIMIT pushdown, (row, predicate) answer cache, two-threshold cascade with a guaranteed-threshold learner; call counts match lane 1 against a mock model) | 50 | todo |
 | M47 semi-join pass for the Cypher planner (forward/backward semi-joins over label and relationship matrices for acyclic `MATCH` patterns with the ≤ OUT bound asserted; exact bitmap or Bloom filter behind one trait with per-hop false-positive and inherited counters; RPT+-style run-time abandon; null-bearing `IN` kept out of the filter path; both anchors benchmarked against C FalkorDB) | 47 | todo |
+| M48 tier-aware placement for the graph store (fast/slow arenas, `mbind` on Linux; vertex renumbering by access frequency with pages-for-90% reported before and after; the partial-move decision before bulk traversals over a slow-tier adjacency; engine metadata pinned to the fast tier) | 48 | todo |
 
 ## Session log
 

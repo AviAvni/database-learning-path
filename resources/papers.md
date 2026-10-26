@@ -48,6 +48,7 @@ Everything below is either linked from a topic README or listed here:
 - Graph queries on relational engines: ten Wolde et al. "DuckPGQ: Efficient Property Graph Queries in an analytical RDBMS" CIDR'23 · Lehner & Neumann "The Data World Is Not Flat" VLDB'26 · Yasser, Dorbani & Mhedhbi "Factorized and Vectorized Execution" SIGMOD'26 · Pang et al. "A Unified Query Planning Framework for Conjunctive Regular Path Queries" VLDB'26 (→ topic 46)
 - LLM-era query processing: Patel et al. "Semantic Operators" (LOTUS) arXiv 2407.11418 / PVLDB'25 · Russo et al. "Abacus: A Cost-Based Optimizer for Semantic Operator Systems" VLDB'26 · Lao et al. "SemBench" VLDB'26 · Jin et al. "Text-to-SQL Benchmarks are Broken" CIDR'26 · Liu et al. "Supporting Our AI Overlords: Redesigning Data Systems to be Agent-First" CIDR'26 · Liu, Wang, Wu et al. "Can Large Language Models be a Cardinality Estimator?" arXiv 2603.28080 (→ topic 50)
 - Storage I/O & SSDs: Haas & Leis "What Modern NVMe Storage Can Do, And How To Exploit It" VLDB'23 · Jasny et al. "High-Performance DBMSs with io_uring: When and How to Use It" VLDB'26 · Lee, Ziegler & Leis "How to Write to SSDs" VLDB'26 · Houlborg, Tietgen et al. "Flexible I/O for Database Management Systems with xNVMe" CIDR'26 (→ topic 45)
+- Memory tiering & CXL: Maruf et al. "TPP: Transparent Page Placement for CXL-Enabled Tiered-Memory" ASPLOS'23 · Weisgut et al. "CXL Memory Performance for In-Memory Data Processing" VLDB'25 · Huang, Lu & Tan "Hash Joins Meet CXL: A Fresh Look" CIDR'26 · Castrillon et al. "Declarative Memory Services" CIDR'26 · Zhao et al. "SIDLE: Tree-structure Aware Indexes for CXL-based Heterogeneous Memory" VLDB'26 · Zha et al. "SHARD: A Scalable and Resize-optimized Hash Index on Disaggregated Memory" VLDB'26 · Banakar et al. "OBASE: Object-Based Address-Space Engineering to Improve Memory Tiering" OSDI'26 · Lee et al. "MAC: Metadata Acceleration … with CXL DRAM" OSDI'26 (→ topic 48)
 
 ## 2025–2026 papers (each read in full)
 
@@ -87,6 +88,8 @@ Interesting recent arXiv finds go here with a one-line why. Search these when st
 - arXiv:2512.04859 — Jasny, El-Hindi, Ziegler, Leis & Binnig, io_uring in DBMSs (VLDB'26): naive swap 1.06×, redesign 2.05×, PostgreSQL +11–15%. Topic 45.
 - arXiv:2603.09927 — Lee, Ziegler & Leis, "How to Write to SSDs" (VLDB'26): total WAF = DB WAF × SSD WAF; out-of-place + NoWA reaches SSD WAF 1 on commodity SSDs. Topic 45.
 - arXiv:2609.09002 — Yasser, Dorbani & Mhedhbi, "Factorized and Vectorized Execution" (SIGMOD'26): packed factorized vectors + cascade update; packed beats list-based on 1,883 of 1,951 plans. Topic 46.
+- arXiv:2603.00378 — Banakar et al., OBASE (OSDI'26): hot and cold objects share pages; reorganising the address space gives TPP the same throughput with half the DRAM (on an Optane stand-in for CXL). Topic 48.
+- arXiv:2206.02878 — Maruf et al., TPP (ASPLOS'23): the Linux memory-tiering policy; its Table 1 percentages are points, measured on a two-socket CXL stand-in. Topic 48.
 
 ## Blogs & talks worth following
 
