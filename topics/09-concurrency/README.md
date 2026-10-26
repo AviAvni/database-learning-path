@@ -100,6 +100,27 @@ x86 crash on the M-series. Test here.
   lands or retries. The hard part is never the CAS — it's DELETION
   (§4) and multi-pointer updates (the skiplist's towers, Bw-tree's SMOs).
 
+The OLC protocol as a message sequence: the reader writes nothing shared, and
+a writer's version bump is what invalidates it.
+
+```mermaid
+sequenceDiagram
+    participant R as Reader
+    participant N as Node (version word + data)
+    participant W as Writer
+    R->>N: v1 = read version (locked bit clear?)
+    R->>N: read keys / child pointer
+    W->>N: CAS version: set lock bit
+    W->>N: modify node
+    W->>N: unlock + bump version (v1 becomes v2)
+    R->>N: v2 = re-read version
+    alt v2 == v1
+        Note over R: read was consistent, descend
+    else v2 != v1 or locked
+        Note over R: discard what was read, restart from the root
+    end
+```
+
 ## 4. The reclamation problem (the actual boss fight)
 
 Lock-free reads mean a reader may hold a pointer to a node you just

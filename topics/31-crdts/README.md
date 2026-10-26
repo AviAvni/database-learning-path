@@ -58,18 +58,60 @@ graph TD
 ### LWW's lie, measured (bench lane 1, provided — runs today)
 
 Two replicas, 20K writes each, LWW map, varying keyspace and sync interval.
-"Lost" = a write some user made that no replica remembers after merge:
+The lane counts two things. **Overwritten** is every local value a merge
+replaced, which is what a naive merge counter reports. **Lost** is the subset
+replaced by a write that never saw it: replica B's write overwrote replica A's
+value without B having received it. Each write carries `(replica, seq,
+how many of the other replica's writes the writer had received)`, so "saw it"
+is a comparison, not a guess.
 
 ```
-    keys   sync_every       lost%
-      10            1      94.98%     ← hot keys + constant sync: LWW is a coin flip
-    1000          100      88.34%
-  100000        10000      12.45%     ← even huge keyspace + rare sync loses 1 in 8
+    keys   sync_every  overwritten%  lost (concurrent)%   model%
+      10            1       94.98%               5.00%    5.00%
+      10          100        5.00%               5.00%    5.00%
+    1000          100       88.34%               4.50%    4.53%
+  100000        10000       12.45%               4.64%    4.53%
 ```
 
-This is why "we're eventually consistent" without saying *how conflicts
-resolve* is not a semantics. The OR-Set and counters exist to make these
-writes survive instead.
+The first row is the number this topic used to headline, and it is a
+measurement of the wrong thing. With per-write sync on 10 keys, 94.98% of
+writes replace a value *that the writer had already received*: an ordinary
+sequential update, which any register does and which loses nothing. The writes
+that no replica remembers are **5.00%**: one in 20, exactly the chance
+(1/10) that both replicas picked the same key in the same window, times one
+loser per colliding pair out of two writes.
+
+The model column derives that. In a window of *s* writes per replica over *K*
+keys, a key is written by one replica with probability pA = 1 − (1 − 1/K)^s,
+by both with probability pA², and each doubly-written key loses one write, out
+of 2*s* writes: lost = K·pA² / (2*s*). Worked at K = 10, s = 1: pA = 0.1,
+10 × 0.01 / 2 = 0.05. At K = 1000, s = 100: pA = 1 − 0.999^100 = 0.09522,
+1000 × 0.009067 / 200 = 4.53%, against 4.50% measured.
+
+The sweep below is the decision-useful form (measured lost% with the model in
+brackets, 5,000 writes per replica):
+
+```
+    keys     sync_every=1    sync_every=10   sync_every=100  sync_every=1000
+      10     5.21% (5.00%)    21.09% (21.21%)     5.00% (5.00%)     0.50% (0.50%)
+     100     0.45% (0.50%)     4.54% (4.57%)    20.18% (20.10%)     4.99% (5.00%)
+    1000     0.03% (0.05%)     0.43% (0.50%)     4.27% (4.53%)    20.27% (19.99%)
+   10000     0.01% (0.00%)     0.04% (0.05%)     0.39% (0.50%)     4.58% (4.53%)
+```
+
+Loss is a function of the ratio *s*/*K*, not of either alone: it peaks near
+20% where the sync window is about as long as the key space (*s* ≈ *K*) and
+falls on both sides. Short windows leave nothing to collide with; long windows
+let a replica's own later writes supersede its earlier ones before they are
+ever exposed to the other side, and those self-supersessions are not losses.
+So the answer to "how bad is LWW" is "about 5% at one write per key per
+window, up to about 20% when the window equals the key space, ~0 when sync is
+much faster than the key space", and never the 95% the unclassified counter
+printed. Two caveats: 20% is for two replicas with uniform keys; more
+replicas multiply the collision pairs, and skew raises the doubly-written key
+count. And "lost" here means a write nobody saw before replacing it, not that
+the application cared: the OR-Set and counters exist to make those writes
+survive instead.
 
 ## Sequence CRDTs: where the real engineering is
 

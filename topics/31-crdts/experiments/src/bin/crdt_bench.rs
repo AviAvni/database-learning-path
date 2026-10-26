@@ -44,45 +44,131 @@ fn stub_lane(name: &str, f: fn()) {
     }
 }
 
+/// A write's identity for the oracle: (replica, per-replica sequence number,
+/// how many of the *other* replica's writes the writer had received when it
+/// wrote). Write (r, n) is causally before write (r', n', seen') iff r == r'
+/// (and n < n') or seen' >= n.
+type Wid = (u8, u32, u32);
+
+/// LWW merge that classifies every discarded value. Returns
+/// (overwritten, concurrent): `overwritten` is what `LwwMap::merge` counts
+/// (any local value replaced), `concurrent` counts only the replaced values
+/// whose replacement had NOT causally observed them — writes that were
+/// actually lost, as opposed to ordinary sequential updates of a key.
+fn merge_classified(me: &mut LwwMap<u64, Wid>, other: &LwwMap<u64, Wid>) -> (usize, usize) {
+    let (mut over, mut conc) = (0, 0);
+    for (k, reg) in &other.entries {
+        match me.entries.get_mut(k) {
+            Some(mine) => {
+                let old = mine.value;
+                if mine.merge(reg) {
+                    over += 1;
+                    let new = reg.value;
+                    let causal = old.0 == new.0 || new.2 >= old.1;
+                    if !causal {
+                        conc += 1;
+                    }
+                }
+            }
+            None => {
+                me.entries.insert(*k, reg.clone());
+            }
+        }
+    }
+    (over, conc)
+}
+
+/// Run two replicas for `writes_per_replica` writes each. Returns
+/// (total writes, overwritten, concurrent-lost).
+fn run_lww(keys: u64, sync_every: usize, writes_per_replica: usize) -> (usize, usize, usize) {
+    let mut rng = ChaCha8Rng::seed_from_u64(keys ^ sync_every as u64);
+    let mut a: LwwMap<u64, Wid> = LwwMap::new();
+    let mut b: LwwMap<u64, Wid> = LwwMap::new();
+    let (mut over, mut conc) = (0usize, 0usize);
+    let (mut seq_a, mut seq_b) = (0u32, 0u32);
+    let (mut a_knows_b, mut b_knows_a) = (0u32, 0u32);
+    let mut ts = 0u64;
+    let sync = |a: &mut LwwMap<u64, Wid>, b: &mut LwwMap<u64, Wid>, sa: u32, sb: u32, ka: &mut u32, kb: &mut u32| {
+        let (o, c) = merge_classified(a, b);
+        *ka = sb;
+        let (o2, c2) = merge_classified(b, a);
+        *kb = sa;
+        (o + o2, c + c2)
+    };
+    for i in 0..writes_per_replica {
+        ts += 1;
+        seq_a += 1;
+        seq_b += 1;
+        a.set(rng.gen_range(0..keys), (1, seq_a, a_knows_b), ts, 1);
+        b.set(rng.gen_range(0..keys), (2, seq_b, b_knows_a), ts, 2);
+        if (i + 1) % sync_every == 0 {
+            let (o, c) = sync(&mut a, &mut b, seq_a, seq_b, &mut a_knows_b, &mut b_knows_a);
+            over += o;
+            conc += c;
+        }
+    }
+    let (o, c) = sync(&mut a, &mut b, seq_a, seq_b, &mut a_knows_b, &mut b_knows_a);
+    over += o;
+    conc += c;
+    (2 * writes_per_replica, over, conc)
+}
+
 /// Lane 1: two replicas, `writes` writes each over `keys` keys, syncing
-/// every `sync_every` writes. Count writes lost to LWW at merge.
+/// every `sync_every` writes. Two counts per row: every local value the
+/// merge replaced ("overwritten": what a naive merge counter reports) and
+/// the subset replaced by a write that never saw it ("lost": a write no
+/// replica remembers and no later write was based on).
 fn lane1_lww_lie() {
     println!("=== lane 1: LWW's lie (lost concurrent writes) ===");
-    println!("{:>8} {:>12} {:>10} {:>10} {:>8}", "keys", "sync_every", "writes", "lost", "lost%");
+    println!("{:>8} {:>12} {:>10} {:>12} {:>13} {:>8} {:>8}", "keys", "sync_every", "writes", "overwritten%", "lost (concurrent)%", "model%", "lost n");
     // Kept small: state-based sync ships the WHOLE map every interval,
     // so sync_every=1 is O(writes * map_size). That cost is itself a
     // finding — real systems ship deltas (delta-CRDTs) for this reason.
     let writes_per_replica = 20_000;
     for &keys in &[10u64, 1_000, 100_000] {
         for &sync_every in &[1usize, 100, 10_000] {
-            let mut rng = ChaCha8Rng::seed_from_u64(keys ^ sync_every as u64);
-            let mut a: LwwMap<u64, u64> = LwwMap::new();
-            let mut b: LwwMap<u64, u64> = LwwMap::new();
-            let mut lost = 0usize;
-            let mut ts = 0u64;
-            for i in 0..writes_per_replica {
-                ts += 1;
-                a.set(rng.gen_range(0..keys), ts, ts, 1);
-                b.set(rng.gen_range(0..keys), ts, ts, 2);
-                if (i + 1) % sync_every == 0 {
-                    lost += a.merge(&b);
-                    lost += b.merge(&a);
-                }
-            }
-            lost += a.merge(&b);
-            lost += b.merge(&a);
-            let total = 2 * writes_per_replica;
+            let (total, over, conc) = run_lww(keys, sync_every, writes_per_replica);
             println!(
-                "{:>8} {:>12} {:>10} {:>10} {:>7.2}%",
+                "{:>8} {:>12} {:>10} {:>11.2}% {:>17.2}% {:>7.2}% {:>8}",
                 keys,
                 sync_every,
                 total,
-                lost,
-                100.0 * lost as f64 / total as f64
+                100.0 * over as f64 / total as f64,
+                100.0 * conc as f64 / total as f64,
+                model_lost_pct(keys, sync_every),
+                conc
             );
         }
     }
-    println!("(every 'lost' row entry is a user write no replica remembers)");
+    println!("(overwritten = values replaced at merge, including ordinary sequential updates;");
+    println!(" lost = replaced by a write that never saw them. model% = K * pA^2 / (2 s), pA = 1-(1-1/K)^s)");
+
+    println!("\n--- lane 1b: lost% as a function of key-space size and sync interval (5,000 writes/replica) ---");
+    let syncs = [1usize, 10, 100, 1_000];
+    print!("{:>8}", "keys");
+    for s in syncs {
+        print!(" {:>16}", format!("sync_every={s}"));
+    }
+    println!();
+    for &keys in &[10u64, 100, 1_000, 10_000] {
+        print!("{:>8}", keys);
+        for s in syncs {
+            let (total, _, conc) = run_lww(keys, s, 5_000);
+            print!(" {:>8.2}% ({:>4.2}%)", 100.0 * conc as f64 / total as f64, model_lost_pct(keys, s));
+        }
+        println!();
+    }
+    println!("(cell = measured lost% (model%); a window of s writes per replica collides on K*pA^2 keys)");
+}
+
+/// Expected concurrent loss: in one sync window each replica writes s
+/// times; a key written by both is one lost write (the loser). Number of
+/// doubly-written keys = K * pA^2 with pA = 1 - (1 - 1/K)^s; the window has
+/// 2s writes.
+fn model_lost_pct(keys: u64, s: usize) -> f64 {
+    let k = keys as f64;
+    let pa = 1.0 - (1.0 - 1.0 / k).powi(s as i32);
+    100.0 * k * pa * pa / (2.0 * s as f64)
 }
 
 /// Lane 2: N replicas do random add/remove on an OR-Set, gossiping with
