@@ -1,7 +1,8 @@
 # The redis skiplist: spans make rank queries free
 
 The canonical readable skiplist — the structure behind ZADD/ZRANGE/ZRANK in
-`t_zset.c` — with one addition the textbooks skip: every forward link records
+`t_zset.c` at the pinned Redis 8.6.2 (see the callout below for what replaced
+it upstream) — with one addition the textbooks skip: every forward link records
 how many level-0 nodes it jumps over, so summing spans during an ordinary
 descent yields a node's rank at no extra cost. This chapter builds the
 structure from a plain sorted list upward — express lanes, the descent, spans,
@@ -22,6 +23,29 @@ copies. Where this chapter contradicts an older account, check it yourself:
 tools/pinned-source.py show redis src/server.h -r 1690:1716
 tools/pinned-source.py show redis src/t_zset.c  -r 75:114
 ```
+
+> **Upstream since the pin.** Both Redis and Valkey have since retired the
+> skiplist as the stored encoding of a large sorted set. In Redis,
+> [#15635](https://github.com/redis/redis/pull/15635) (commit `81d653f5d`,
+> antirez, 2026-10-23; unstable only as of 2026-10-26) adds an `OBJ_ENCODING_BTREE`
+> encoding (`OBJECT ENCODING` answers `btree`): a B+ tree ordered by
+> (score, member) whose leaves are single allocations of at most 4095 bytes
+> and 96 elements (`ZBT_SCORE_LEAF_BYTES`, `ZBT_SCORE_LEAF_MAX` in
+> `src/zset_btree.c`), with per-child element counts in the inner nodes so
+> rank is still a descent, plus an open-addressing member index whose slots
+> hold only an 8-bit hash tag and a leaf ID. `zslCreate` survives in
+> `t_zset.c`, but the commit message limits it to a temporary structure
+> inside set-algebra commands. In Valkey,
+> [#4359](https://github.com/valkey-io/valkey/pull/4359) (commit `a34bb4c8b`,
+> shipped in 9.2.0-rc1) deletes `skiplist.c` and puts a B+ tree (`fbtree.c`;
+> `NODE_SIZE 61`, 512-byte leaves and 2048-byte inner nodes enforced by
+> `static_assert` in `fbtree_internal.h`) behind an `ordered_index.h` API,
+> again with per-child subtree sizes for rank. Small sets stay listpack in
+> both, and neither changes the RDB format. The steps below describe the
+> pinned code, which is what the line numbers point at; the chapter's core
+> argument survives the change — both replacements keep rank "free" by
+> storing per-child counts in inner nodes, which is the span idea moved from
+> a skiplist link to a B+ tree slot.
 
 ## The problem in one sentence
 

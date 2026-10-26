@@ -85,6 +85,21 @@ that "when executed solely by the main thread, `epoll_wait` consumes more than
 with the discipline that "at any given time, at most one thread, either an
 io_thread or the main thread, executes `epoll_wait`".
 
+> **Upstream since the pin.** valkey
+> [#3438](https://github.com/valkey-io/valkey/pull/3438) (Cluster Bus IO
+> offload, commit `2f3bcead2`, shipped in 9.2.0-rc1) split the single
+> `JobRequest` enum into `JobRequestSPSC` (`JOB_SPSC_FREE_ARGV`,
+> `JOB_SPSC_POLL` — the private-inbox tags) and `JobRequestSPMC` (read, write,
+> free-obj, poll, accept, plus new `JOB_REQ_CLUSTER_READ`,
+> `JOB_REQ_CLUSTER_WRITE`, `JOB_REQ_CLUSTER_ACCEPT`), and `JobResult` grew the
+> three matching `JOB_RES_CLUSTER_*` results, so 9.2.0-rc1 has eight shared
+> request types and five result types rather than six and two. The steps above
+> describe the pinned code, which is what the line numbers point at; the
+> contract still holds — the cluster jobs are transport only (`connRead`,
+> `connWrite`, inbound `connAccept` and framing), and the commit keeps every
+> cluster-state mutation and `clusterProcessPacket` on the main thread, so
+> there is still no "execute" job.
+
 Now the Amdahl accounting, because this is the step where people fool
 themselves. Amdahl's law says speedup is capped by the fraction you *do not*
 parallelize: if a share `s` of the work stays serial, the ceiling is `1/s` no
@@ -269,6 +284,23 @@ bookkeeping of round-robining private ones; above ten, it is not. That crossover
 is a *measured* engineering constant, not a principle — the lesson to steal is
 that "SPSC is always better" is false, and which queue wins depends on N.
 
+> **Upstream since the pin.** valkey
+> [#4076](https://github.com/valkey-io/valkey/pull/4076) (QoS for system
+> critical events, commit `88a536033`, shipped in 9.2.0-rc1) turned both shared
+> queues into two-element arrays indexed by a `jobPriority`
+> (`JOB_PRIORITY_NORMAL`, `JOB_PRIORITY_HIGH`): `io_shared_inbox[2]` and
+> `io_shared_outbox[2]`, with a per-priority `pending_io_responses` backlog.
+> Connections flagged as priority (`connIsPriority` — the comments name cluster
+> bus, replication streams and slot migration) and all cluster-bus jobs go to
+> the high queue, and each turn of `IOThreadMain` dequeues one high-priority
+> job before one normal one, still only after the private SPSC inbox is
+> drained. The SPMC-below-ten / SPSC-above poll crossover is unchanged in
+> 9.2.0-rc1 (the poll job goes to the normal queue). The steps above describe
+> the pinned code, which is what the line numbers point at; the per-direction
+> choice of discipline still holds — what changed is that there are now two
+> lanes of each shared discipline, so control-plane traffic cannot queue behind
+> a burst of client reads.
+
 ### Step 3 — tagged pointers and batch commit: making the handoff nearly free
 
 > **In:** a job that is a (pointer, type) pair.
@@ -303,6 +335,18 @@ Three bits is a budget of eight job types, and Step 1's
 `_Static_assert(JOB_REQ_COUNT <= 8, ...)` (`io_threads.h:15`) is what stops
 someone spending a ninth. Encoding is one `or`; decoding is two `and`s. This is
 topic 2's bit-smuggling in its simplest form.
+
+> **Upstream since the pin.** With the cluster-bus jobs added in valkey
+> [#3438](https://github.com/valkey-io/valkey/pull/3438) (commit `2f3bcead2`,
+> 9.2.0-rc1), `JobRequestSPMC` has exactly eight members, so `JOB_REQ_COUNT`
+> is 8 and every 3-bit tag value is in use; the assertion is still
+> `JOB_REQ_COUNT <= 8` (its message now reads "must not exceed 8").
+> The private-inbox tags got their own enum (`JobRequestSPSC`), which the
+> header comment justifies as "separate enums because they occupy independent
+> queues and may reuse values". The steps above describe the pinned code,
+> which is what the line numbers point at; the argument holds, with the caveat
+> that the budget is now fully spent on the shared queue — a ninth shared job
+> type would need either a second queue or a wider tag.
 
 Work the cache arithmetic, because it is the actual point. A queue slot is one
 8-byte word, so a 64-byte cache line holds **8 jobs**, and `BATCH_SIZE = 32`
@@ -483,6 +527,23 @@ cooldown, when it is empty. `io-threads` is a *ceiling*, not a thread count (max
 `updateIOThreads` (`io_threads.c:442`), which refuses while the response queue is
 too full to drain safely (`:455-464`) — a deadlock this design has to actively
 avoid, and documents.
+
+> **Upstream since the pin.** The ignition rule quoted above is gone from
+> both release lines. valkey
+> [#3544](https://github.com/valkey-io/valkey/pull/3544) (IO-Threads redesign
+> cleanup) replaced the `RUSAGE_THREAD` sys/user-CPU thresholds
+> (`IO_IGNITION_CPU_SYS` 30, `_SYS_LOW` 5, `_CPU_USER` 50) with one constant,
+> `IO_IGNITION_MAIN_THREAD_ACTIVE_PERCENT 30`, tested against
+> `STATS_METRIC_MAIN_THREAD_ACTIVE_TIME`, a metric fed from
+> `server.stat_active_time`, and renamed `IOThreadFreeArgv` to
+> `ioThreadFreeArgv`. It shipped in 9.1.0 (cherry-pick `e5b251d99`); on
+> unstable it was reverted for a SET regression (#3756) and re-applied with
+> the fix in [#3938](https://github.com/valkey-io/valkey/pull/3938) (commit
+> `859649d9a`, in 9.2.0-rc1). The steps above describe the pinned code, which
+> is what the line numbers point at; the adaptive-pool argument still holds,
+> but the "system CPU is Step 1's premise" reading does not carry over —
+> 9.1.0 and later ignite on how busy the main thread is, whether that time is
+> spent in the kernel or not.
 
 ### Step 5 — the published watermark: how you share buffers without locking them
 
@@ -693,6 +754,20 @@ One drift to note if you read the blog first: part 2 calls this function
 dict has been replaced by an open-addressed `hashtable`, and the function is
 `hashtablePrefetch`. The idea is identical; the names and the data structure are
 not.
+
+> **Upstream since the pin.** valkey
+> [#3940](https://github.com/valkey-io/valkey/pull/3940) (Nested prefetching,
+> commit `2d44c7499`, shipped in 9.2.0-rc1) extends the state machine one level
+> down: after `PREFETCH_VALUE` a key whose value is a hash, set or sorted set
+> enters `NESTED_PREFETCH_INIT` / `NESTED_PREFETCH_STEP` /
+> `NESTED_PREFETCH_VALUE`, running an incremental find for one member in the
+> value's *inner* hashtable. Commands opt in by marking the member argument as
+> `field` or `member` in their command JSON. The steps above describe the
+> pinned code, which is what the line numbers point at; the argument is the
+> same and generalises — the nested phases work only because the inner
+> hashtable exposes the same resumable `hashtableIncrementalFind*` API, and the
+> commit bounds the work at one member per key so the batch stays within
+> `prefetch-batch-max-size`.
 
 ## Where each step lives in the code
 
@@ -937,8 +1012,10 @@ the main reason the feature was widely left off.
 
 Costless idling is what makes the **adaptive pool** possible.
 `active_io_threads_num` starts at 1 even when `io-threads` is 8
-(`io_threads.c:497`); threads ignite only when the main thread's system CPU
-exceeds 30%, or exceeds 5% while user CPU exceeds 50% (`:148-151`, `:177-179`);
+(`io_threads.c:497`); at the pin, threads ignite only when the main thread's
+system CPU exceeds 30%, or exceeds 5% while user CPU exceeds 50% (`:148-151`,
+`:177-179`) — from Valkey 9.1.0 the test is main-thread active time above 30%
+instead (see the Step 4 callout);
 after that the pool moves ±1 thread based on average queue depth (`:206-218`),
 scaling down only after a cooldown. `io-threads` is therefore a ceiling (max 256,
 `config.h:361`), not a thread count — and its default is 1

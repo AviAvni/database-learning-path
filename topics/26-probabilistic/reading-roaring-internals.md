@@ -257,6 +257,26 @@ makes the rule interesting.) Topic 20's GraphBLAS sparse↔bitmap switch is
 the same crossover at per-matrix granularity — the same density
 arithmetic, measured twice.
 
+> **Upstream since the pin.** Redis now ships Roaring itself. redis
+> [#15331](https://github.com/redis/redis/pull/15331) (commit `f3b9b68ec`,
+> 2026-10-14; on unstable and the `8.12` branch, in no GA release as of
+> 2026-10-26) vendors CRoaring 4.7.2 under `deps/croaring`
+> (`roaring_version.h` defines `ROARING_VERSION "4.7.2"`) and adds a native
+> bitmap type, `OBJECT ENCODING` `bitmap-roaring`, which `SETBIT`, `GETBIT`,
+> `BITCOUNT`, `BITPOS`, `BITOP` and `BITFIELD` operate on alongside plain
+> string bitmaps. It is opt-in: new bitmaps are created as Roaring only when
+> `bitmap-default-roaring` is set (default `no`). Note for Step 5: the
+> vendored build passes `-DROARING_DISABLE_X64=1 -DDISABLENEON=1`
+> (`deps/croaring/Makefile:12`), so Redis runs CRoaring's *scalar* kernels,
+> not the `PCMPESTRM`/AVX paths the paper describes. The steps above describe
+> roaring-rs at its pinned commit, which is what the line numbers point at;
+> the table's redis column is still about HLL and still holds. Roaring is
+> now also a Redis encoding in its own right, but note what drives the switch
+> there: per the commit, an existing string bitmap converts in place on its
+> next bit-write when the config flag is on — a policy flag, not a density
+> threshold like the ones in this table (inside the Roaring value, CRoaring's
+> own containers still make the density choice of Steps 1-3).
+
 ## Where each step lives in the code
 
 [roaring-rs](https://github.com/RoaringBitmap/roaring-rs)

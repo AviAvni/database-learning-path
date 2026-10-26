@@ -146,7 +146,9 @@ control-byte designs make the *other* 79% (memory stalls) smaller too.
 - **redis `dict.c`** — the incremental rehash machine.
   → chapter: [`reading-redis-dict.md`](reading-redis-dict.md) — redis dict: rehashing
   100M keys without stopping the world
-- **redis `t_zset.c`** — the skiplist behind sorted sets (spans + rank queries).
+- **redis `t_zset.c`** — the skiplist behind sorted sets at the pinned 8.6.2
+  (spans + rank queries; upstream has since moved large sets to a B+ tree — the
+  chapter's opening callout has the details).
   → chapter: [`reading-redis-skiplist.md`](reading-redis-skiplist.md) — The redis
   skiplist: spans make rank queries free
 - **hashbrown** — SwissTable in Rust: control bytes, NEON group probing.

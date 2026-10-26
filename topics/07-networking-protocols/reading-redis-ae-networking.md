@@ -337,6 +337,22 @@ only *possible* because a pipelined client handed the server sixteen commands
 in one read. Pipelining does not merely save syscalls; it hands the engine a
 batch to be clever with.
 
+> **Upstream since the pin.** redis
+> [#15133](https://github.com/redis/redis/pull/15133), commit `62551a7b1`
+> (shipped in 8.8.0), added a second, *intra-command* entry point to the same
+> machinery: `dictPrefetchKeys(dicts, keys, nkeys)` in `memory_prefetch.h`
+> (capped at `DICT_PREFETCH_MAX_SIZE` = 64 keys per call), which MGET and MSET
+> now call on their own key arguments (`t_string.c`). Inside
+> `memory_prefetch.c` the file-local `dictPrefetch` / `getNextPrefetchInfo`
+> pair was replaced by a refactored state machine, and the kvobj-specific
+> payload hints moved into two new optional `dictType` callbacks,
+> `prefetchEntryKey` and `prefetchEntryValue`. The three batch functions named
+> above are unchanged. The steps above describe the pinned code, which is what
+> the line numbers point at; the argument still holds and is strengthened —
+> the prefetch only pays when the engine sees several independent keys before
+> touching any of them, and a multi-key command is now treated as one more
+> source of such a batch alongside a pipelined read.
+
 **Pipelining** is the client-side technique of writing many requests without
 waiting for each reply. The server needs no feature to support it: the inner
 loop at `:3566` drains whatever the buffer holds, and a client that sent 100

@@ -274,6 +274,30 @@ a file first. The child serialises a frozen point-in-time snapshot —
 copy-on-write does the freezing (topic 5) — while the parent
 accumulates new writes in the Step 3 buffer to stream afterwards.
 
+> **Upstream since the pin.** valkey
+> [#4460](https://github.com/valkey-io/valkey/pull/4460) (Forkless Save,
+> commit `acba5ddd0`, shipped in 9.2.0-rc1) adds a second way to take an RDB
+> snapshot: a background *thread* (`forkless.c`) walks the keyspace through a
+> new `bgIterator` in `BGITERATOR_CONSISTENCY_START` mode, which hands it keys
+> while blocking main-thread writes to each key until the iterator has
+> released it, so the snapshot is point-in-time without a fork or
+> copy-on-write. It is doubly opt-in: `forkless-infrastructure-enabled`
+> (immutable, default `no`; `valkey.conf` says it costs 4 extra bytes per
+> key) and then `bgsave-default-method forkless` (default `fork`), and it
+> falls back to a fork if a loaded module has not declared
+> `VALKEYMODULE_OPTIONS_HANDLE_FORKLESS`. It applies to BGSAVE and periodic
+> saves through `resolveBgsaveType` / `rdbStartBgsave`; replication full sync
+> does not use it — in 9.2.0-rc1 `startBgsaveForReplication` still calls
+> `rdbSaveToReplicasSockets` and `rdbSaveBackground` directly, both of which
+> call `serverFork`, and `src/replication.c` on unstable (2026-10-26) has no
+> reference to forkless. The steps above describe the pinned code, which is
+> what the line numbers point at; "both paths fork" is still true of full
+> sync in every released version. (`syncCommand` now tests
+> `server.rdb_write_target`, which a forkless save also sets to disk, instead
+> of `child_type`; but its "attach to the running save" case still requires
+> another replica already in `WAIT_BGSAVE_END`, which only a
+> replication-started — forked — save produces.)
+
 Config defaults at this pin, straight out of `src/config.c` — the
 first one is the Redis-6 trap:
 
@@ -290,6 +314,20 @@ first one is the Redis-6 trap:
 Diskless *sync* is on by default here; diskless *load* is not. So the
 primary streams the RDB without touching its own disk, and the
 replica still writes it to a file before loading.
+
+> **Upstream since the pin.** valkey
+> [#3853](https://github.com/valkey-io/valkey/pull/3853) (commit `66f9618f4`,
+> shipped in 9.2.0-rc1) adds per-replica streaming compression: a new
+> `repl-compression` config (`no` by default; `yes` or `lz4`), negotiated per
+> replica through `REPLCONF capa lz4`, so older or opted-out replicas keep
+> receiving plaintext. Per the commit message it covers the diskless full-sync
+> stream and the steady-state command stream, while a disk-based full sync is
+> still governed by `rdbcompression`. A `zstd` value was added on unstable by
+> [#3798](https://github.com/valkey-io/valkey/pull/3798) (commit `f2bcd083d`;
+> unstable only as of 2026-10-26). The steps above describe the pinned code,
+> which is what the line numbers point at; nothing in the table changes at its
+> default, and Step 2's argument is untouched — what is compressed is still
+> the statement stream, re-executed by the replica after decoding.
 
 The replica side is a nonblocking state machine driven by the event
 loop (topic 7). The states are `server.h:389-407` — thirteen of them,

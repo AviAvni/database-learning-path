@@ -366,6 +366,25 @@ merely replayed up to the last complete command. Two log formats, two different
 answers to "what does a torn tail mean" — and both are defensible, because a
 snapshot has no useful prefix while a command log does.
 
+> **Upstream since the pin.** The trailer and its all-or-nothing check are
+> unchanged, but *how* the load side computes the CRC64 changed in redis
+> [#15732](https://github.com/redis/redis/pull/15732) (commit `5019bc9af`;
+> unstable only as of 2026-10-26). At the pin `rdbLoadProgressCallback`
+> (`rdb.c:3589-3591`) folds each read into the running checksum as the parser
+> consumes it, often a few bytes at a time;
+> after the change `rioInitWithFileLoad` reads the file in 4 KB chunks and
+> checksums each chunk as it is read (`RIO_FLAG_CKSUM_AT_SOURCE`, with
+> `content_end = filesize - 8` keeping the trailer itself out of the sum),
+> and `crc64()` gained a runtime-dispatched PCLMULQDQ (carry-less multiply)
+> path for buffers of at least 64 bytes on x86-64, with the table code as
+> fallback. In the same week
+> [#15765](https://github.com/redis/redis/pull/15765) (commit `b8dfc63b3`,
+> unstable only) switched RDB string loading to a new chunked-copy LZF
+> decoder, `lzf_decompress2`. The steps above describe the pinned code,
+> which is what the line numbers point at; the argument still holds — the
+> file is still rejected wholesale on a mismatch, and the change only makes
+> the per-byte cost of verifying it smaller.
+
 The price of the fork is paid in page copies under write load: a write-hot
 parent duplicates its working set, and worst case a multi-GB dataset approaches
 2× RAM during the snapshot. This cost reaches all the way down into

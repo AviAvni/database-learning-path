@@ -324,7 +324,8 @@ whole read path:
    469      size_t i = 0; /* Position in the string. */
    470      size_t j = 0; /* Position in the node children (or bytes if compressed).*/
    471      while(h->size && i < len) {
-   ... 472-473: debug hook; unsigned char *v = h->data ...
+   ... 472: debug hook ...
+   473          unsigned char *v = h->data;
    475          if (h->iscompr) {
    476              for (j = 0; j < h->size && i < len; j++, i++) {
    477                  if (v[j] != s[i]) break;
@@ -403,6 +404,27 @@ Cost model: one dependent pointer hop per *node* (not per byte, thanks to
 compression), and inside a node the scan touches only the dense character
 prefix.
 
+> **Upstream since the pin.** The branching arm at lines 481-487 has changed
+> twice. First, a last-child-first check: before scanning, `raxLowWalk` now
+> compares `s[i]` against the *last* (largest) edge byte, matching it in one
+> compare and bailing out immediately when `s[i]` is larger, because the
+> children are sorted and sequential keys (stream IDs) almost always land
+> there — redis [#14885](https://github.com/redis/redis/pull/14885), commit
+> `63d841c3a` (shipped in 8.8.0). Second, the remaining open-coded loop at
+> lines 484-486 became `memchr(v, s[i], h->size)`, on the argument that libc's
+> `memchr` is SIMD-vectorised (SSE2/AVX2, NEON) — redis
+> [#15022](https://github.com/redis/redis/pull/15022), commit `ade0601c2`
+> (unstable and the 8.12 milestone tags `8.12-m01-int`/`8.12-m02-int`; in no
+> GA release as of 2026-10-26). The "Even when h->size is large" comment
+> survives in 8.8.0 and 8.10.0 above the scalar loop. In 8.10.0 `raxLowWalk`
+> also absorbed `raxFind`'s line-937 test and returns 1/0 itself, with
+> `raxFind` reduced to a wrapper around the new `raxFindLink` (see Step 6).
+> The steps above describe the pinned code, which is what the line numbers
+> point at; the argument still holds — `memchr` is still a linear scan of the
+> contiguous character prefix, never a binary search, and it still reads no
+> child pointer until a match is found, so the change vectorises exactly the
+> layout Step 4 paid for rather than replacing it.
+
 ### Step 6 — insert = split machinery
 
 > **In:** a key that diverges from the tree part-way through a compressed run,
@@ -462,6 +484,21 @@ Step 2, at `rax.c:1109-1110`: compressed nodes are chains of nodes that are
 **not keys** and have a **single child**. Every case above either preserves it
 or is the delete-side repair that restores it.
 
+> **Upstream since the pin.** `raxGenericInsert` no longer exists. redis
+> [#15252](https://github.com/redis/redis/pull/15252), commit `2df35f9fb`
+> (shipped in 8.10.0), split it into a two-step API: `raxFindLink` walks the
+> tree once and records the stop state (`stopnode`, `parentlink`, consumed
+> bytes, `splitpos`) in a `raxNodeLink`, and `raxInsertAt` commits the insert
+> at that recorded position. `raxInsert` and `raxTryInsert` are now
+> "`raxFindLink` then `raxInsertAt`", and callers that did `raxFind` followed
+> by `raxInsert` on a miss (streams, tracking, modules) walk the tree once
+> instead of twice. The ANNIBALE case enumeration and the ALGO 1 / ALGO 2
+> code moved into `raxInsertAt` essentially unchanged. The steps above
+> describe the pinned code, which is what the line numbers point at; the
+> argument still holds — the five cases, the two algorithms and the
+> compressed-node invariant are the same, only the walk that produces
+> `splitpos` is now done by the caller-visible half of the API.
+
 ### Step 7 — binary-comparable keys, in production
 
 > **In:** a radix tree that orders keys byte-wise, and a workload that wants
@@ -515,6 +552,22 @@ was built for:
 Every one of them is either long shared-prefix keys (stream IDs, tracking
 keys) or a small map that there may be thousands of. Neither is a case where a
 `dict` would win.
+
+> **Upstream since the pin.** redis
+> [#15256](https://github.com/redis/redis/pull/15256), commit `d397d2517`
+> (shipped in 8.10.0), added a fixed-length-key mode, `raxNewEx(metaSize,
+> alloc_size, keyFixedLen)`: when every key has the same length, the value is
+> stored directly in the leaf parent's child slot and the final leaf
+> `raxNode` is never allocated. Most of the trees in this table switched to
+> it in 8.10.0 — the stream rax and consumer-group PELs (`sizeof(streamID)`),
+> `clients_timeout_table` (16 bytes), `clients_index` and the backlog's
+> `blocks_index` (`sizeof(uint64_t)`). The steps above describe the pinned
+> code, which is what the line numbers point at; the binary-comparable-key
+> argument is unaffected, and Steps 3-4's node layout is unchanged for
+> variable-length trees; for these fixed-length trees, though, each key's
+> terminal leaf node — a separate 16-byte allocation in Step 4's table, before
+> allocator rounding — is gone,
+> which is precisely the memory the change was made to recover.
 
 ### Step 8 — the contrast: rax vs ART, opposite RUM corners
 
