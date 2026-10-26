@@ -10,6 +10,9 @@ create-missing = false
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
 
+[preprocessor.readme-links]
+command = "python3 tools/mdbook-readme-links.py"
+
 [output.html]
 git-repository-url = "https://github.com/AviAvni/database-learning-path"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]

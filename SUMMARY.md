@@ -1,8 +1,8 @@
 # Summary
 
 [Database Learning Path](README.md)
-[Findings — every measured result](FINDINGS.md)
-[The Plan](PLAN.md)
+[Findings](FINDINGS.md)
+[The Plan — Database Internals Curriculum](PLAN.md)
 [Progress](PROGRESS.md)
 [Session log](SESSION-LOG.md)
 [Contributing](CONTRIBUTING.md)
@@ -338,8 +338,8 @@
 
 ---
 
-- [Capstone: FalkorDB-flavored engine](capstone/README.md)
-  - [Baselines](capstone/BASELINES.md)
-- [Resources: papers](resources/papers.md)
-- [Resources: codebases](resources/codebases.md)
-- [Resources: tools](resources/tools.md)
+- [Capstone — falkordb-rs-next-gen, from scratch](capstone/README.md)
+  - [Reference baselines — falkordb-rs-next-gen](capstone/BASELINES.md)
+- [Papers, Articles, Books, Courses](resources/papers.md)
+- [Reference Codebases](resources/codebases.md)
+- [Tools](resources/tools.md)

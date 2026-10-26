@@ -26,7 +26,7 @@ jobs:
   # The reading guides' depth rules (CLAUDE.md § Reading-guide depth) have a
   # mechanical part — each step declaring its input and output, a collapsed
   # answer under every checklist item, a line-number gutter on every quoted
-  # snippet. Across 230 guides those survive only if a script enforces them.
+  # snippet. Across a few hundred guides those survive only if a script enforces them.
   # `--all` drops the ratchet the rollout ran behind: every guide is converted,
   # so a file that does not follow the rules is a new one that skipped them
   # rather than one the rollout has not reached. Nothing here needs a
@@ -56,6 +56,14 @@ jobs:
 
       - name: Add mermaid assets
         run: mdbook-mermaid install .
+
+      # Reaching the renderer is not parsing: a broken diagram still builds and
+      # shows up as an error icon in the browser. Parse each one with the same
+      # bundle the book ships.
+      - name: Mermaid diagrams parse
+        run: |
+          node tools/check-mermaid.js mermaid.min.js \
+            $(grep -rl '^```mermaid' --include='*.md' . --exclude-dir=book --exclude-dir=drafts)
 
       - name: Build HTML + PDF
         # PDF backend enabled via env so plain local `mdbook build` needs only mdbook-mermaid.
@@ -99,6 +107,11 @@ jobs:
             fail=1
           fi
           exit $fail
+
+      # A link inside a page can point at a page or heading that does not
+      # exist and still render without complaint; only the HTML shows it.
+      - name: Internal links resolve
+        run: python3 tools/check-book-links.py book/html
 
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'

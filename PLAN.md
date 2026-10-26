@@ -1,6 +1,6 @@
 # The Plan — Database Internals Curriculum
 
-32 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
+45 topics, self-paced, deliberately diverse: storage / in-memory / query / graph /
 vector / distributed / hardware topics are interleaved so it stays fun. Each topic has: why it
 matters, core concepts, reference code to read, key papers, and a build+bench exercise
 that also advances the **capstone** (`capstone/README.md`).
@@ -26,6 +26,15 @@ flowchart TD
     end
     subgraph GRAPH["Graph — home turf"]
         T13["13 graph engines"] --> T20["20 GraphBLAS internals"] --> T24["24 graph algorithms"] --> T25["25 graph ML"]
+        T24 --> T33["33 temporal graphs"]
+    end
+    subgraph USES["Graph use cases — deep dives"]
+        T38["38 GraphRAG &<br/>agent memory"]
+        T39["39 fraud &<br/>identity"]
+        T40["40 attack<br/>graphs"]
+        T41["41 on-chain<br/>analytics"]
+        T42["42 recommendations<br/>& social"]
+        T43["43 IT-ops<br/>dependencies"]
     end
     subgraph SEARCH["Indexes & search"]
         T14["14 vector"]
@@ -37,6 +46,7 @@ flowchart TD
     end
     subgraph DIST["Distributed"]
         T15["15 replication/Raft"] --> T29["29 distributed txns"]
+        T15 --> T36["36 sharding"] --> T37["37 distributed query"]
         T28["28 cloud-native"]
         T31["31 CRDTs"]
     end
@@ -49,6 +59,10 @@ flowchart TD
         T30["30 time-series"]
         T27 --> T32["32 HTAP"]
     end
+    subgraph PROD["Production"]
+        T34["34 debugging"]
+        T35["35 overload control"]
+    end
     T22["22 standard benchmarks — the yardstick for everything"]
     FOUNDATION --> CORE
     FOUNDATION --> QUERY
@@ -58,6 +72,8 @@ flowchart TD
     FOUNDATION --> DIST
     FOUNDATION --> CORRECT
     FOUNDATION --> STREAM
+    FOUNDATION --> PROD
+    GRAPH --> USES
     QUERY --> T22
     GRAPH --> T22
 ```

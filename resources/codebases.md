@@ -70,13 +70,17 @@ Clone the ones in active use to `~/repos/`.
 
 The reading guides quote a few thousand `file:line` anchors into the codebases
 above. A line number only means something next to the commit it was read at, so
-every clone the guides reference is pinned here — once, rather than in each of
-the 230 guides, so the record stays consistent instead of drifting per file.
+every clone the guides reference is pinned here — once, rather than in each
+guide, so the record stays consistent instead of drifting per file.
 
-Regenerate with `python3 tools/pin-table.py`, or `--check` to see whether your
-clones have moved since the table was written. Both read `~/repos` (override
+Refresh the mention counts with `python3 tools/pin-table.py`, or `--check` to
+see whether the table is stale and which of your clones have moved off their
+pin. A pin is sticky: regenerating never moves it, however far the clone's HEAD
+has wandered. Re-pinning is `--bump NAME`, done only after the guides citing
+NAME have been re-checked against the new commit. Both read `~/repos` (override
 with `DLP_CLONES`), so this is a local command — CI has no clones and does not
-check it.
+check it. Rows for clones that are not on your machine are kept as they are;
+`tools/pinned-source.py` fetches the pinned commit for those.
 
 Clone to `~/repos/<name>` and `git checkout` the listed commit if you want the
 anchors to land exactly; on a newer commit expect the structure to match and the
@@ -89,7 +93,7 @@ are worth fetching first.
 |---|---|---|---|---|
 | `postgres` | `701f021` | 2026-07-10 | 511 | [https://github.com/postgres/postgres](https://github.com/postgres/postgres) |
 | `redis` | `a176d1225` | 2026-03-24 | 495 | [https://github.com/redis/redis](https://github.com/redis/redis) |
-| `FalkorDB` | `aa75821ab` | 2026-08-25 | 347 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
+| `FalkorDB` | `ccb449a9a` | 2026-07-15 | 347 | [https://github.com/FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) |
 | `duckdb` | `6c0c1a68` | 2026-07-10 | 334 | [https://github.com/duckdb/duckdb](https://github.com/duckdb/duckdb) |
 | `rocksdb` | `7c80a5a` | 2026-07-09 | 299 | [https://github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
 | `neon` | `8f60b04` | 2026-05-25 | 207 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |

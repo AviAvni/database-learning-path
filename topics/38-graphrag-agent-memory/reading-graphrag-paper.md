@@ -317,7 +317,7 @@ Answer each before unfolding it.
 
 - Companion notes in this topic: [README.md](README.md) — HippoRAG covers the local/associative
   axis and Zep the temporal axis; GraphRAG covers the global-question axis.
-- [experiments/](experiments/) — this repo's crate demonstrates the local path-finding side, not
+- [experiments/](experiments/src/lib.rs) — this repo's crate demonstrates the local path-finding side, not
   community summarization; its measured headline is in [FINDINGS.md](../../FINDINGS.md) row 38.
 - Leiden implementation used by the paper: graspologic. Local search (entity-anchored) is a
   separate algorithm in the same system and is not the subject of this guide.

@@ -396,5 +396,5 @@ Answer each before unfolding it.
 - [Topic 34 — debugging & production diagnosis](../34-debugging/README.md)
   — Gil Tene's coordinated omission; §4 cites Tene for why reproducing a
   metastable failure needs an open-loop load generator.
-- This topic's [README](README.md) and [`experiments/`](experiments/)
+- This topic's [README](README.md) and [`experiments/`](experiments/src/sim.rs)
   — the deterministic simulator whose lane 1 reproduces Figure 2 exactly.
