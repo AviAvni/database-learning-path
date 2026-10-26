@@ -1,0 +1,20 @@
+[package]
+name = "alloc-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+rand = "0.8"
+rand_chacha = "0.3"
+# Optional global allocators for the comparison in the provided lane 1d.
+#   cargo run --release --features mimalloc --bin alloc_bench
+mimalloc = { version = "0.1", optional = true, default-features = false }
+tikv-jemallocator = { version = "0.6", optional = true }
+
+[features]
+mimalloc = ["dep:mimalloc"]
+jemalloc = ["dep:tikv-jemallocator"]
+
+[profile.release]
+debug = true
