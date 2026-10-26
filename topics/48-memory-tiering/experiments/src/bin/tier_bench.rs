@@ -7,13 +7,15 @@
 //! to 512 MiB, then one seeded access stream over 1 GiB of 64 B objects with
 //! the hot set packed or scattered — same ids, same order, different
 //! addresses.
+//! Lane 1c (provided, MODEL for the slow tier): the same loop with a fixed
+//! fast set of pages and a calibrated extra latency on every other access.
 //! Lane 2 (exercise, counted): learn a layout from one window, score it on
 //! the next.
 //! Lane 3 (exercise, MODEL): two-tier page placement priced with published
 //! CXL latencies. Nothing in lane 3 is measured.
 
 use memory_tiering_experiments::{
-    chase::{self, Arena},
+    chase::{self, Arena, FastSet, TierRun},
     gen::{self, Chain, Workload},
     layout::{self, count_window, count_window_by, Layout},
     reorg, stats, tier, LINE_BYTES, N_OBJ, OBJS_PER_16K, OBJS_PER_4K, OBJ_BYTES,
@@ -65,6 +67,7 @@ fn main() {
 
     let dram_ns = lane1a();
     lane1b(dram_ns);
+    lane1c();
     lane2();
     lane3();
 
@@ -207,6 +210,86 @@ fn lane1b(dram_ns: f64) {
         }
     }
     println!();
+}
+
+
+/// Lane 1c: two-tier emulation. The slow tier is a MODEL: every access to a
+/// page outside a fixed fast set is followed by a calibrated dependent spin
+/// worth (slow - fast) ns of SIDLE's CXL 1.1 platform. The counted column
+/// (slow share) is exact; the control column is measured with identical code
+/// and no spin; the "predicted" column checks the spin against
+/// control + slow share x extra.
+fn lane1c() {
+    println!("-- lane 1c: two-tier emulation — slow tier is a MODEL (software-delayed), everything else measured --");
+    let m = tier::SIDLE_CXL11;
+    let extra_ns = m.slow_ns - m.fast_ns;
+    let (iters, ns_iter, call_ns) = chase::calibrate_spin(extra_ns);
+    let total_pages = (N_OBJ / OBJS_PER_16K) as usize;
+    let fast_pages = 1024usize;
+    println!(
+        "   extra latency per slow access = {:.1} - {:.1} = {extra_ns:.1} ns (SIDLE Fig. 1(c)); spin calibrated at {ns_iter:.3} ns/iteration -> {iters} iterations = {call_ns:.1} ns per call, call overhead included",
+        m.slow_ns, m.fast_ns
+    );
+    println!(
+        "   fast tier = the {fast_pages} most-accessed 16 KiB pages of an earlier window ({} MiB, {:.1}% of the arena); every other page is slow",
+        fast_pages * 16 / 1024,
+        100.0 * fast_pages as f64 / total_pages as f64
+    );
+    println!("   (control = the same loop with 0 spin iterations; predicted = control + slow share x extra)
+");
+
+    let packed = Arena::new(Layout::packed(N_OBJ));
+    let scattered = Arena::new(Layout::scattered(N_OBJ));
+    println!("   hot set              layout      slow share   control ns   tiered ns   predicted ns   tiered/control   checksum");
+    let mut worst_pred = 0.0f64;
+    for &f in &HOT_FRACS {
+        let w = Workload::hotspot(N_OBJ, f);
+        // placement learned on an earlier window than the timed accesses
+        let mut c = Chain::new(gen::SEED ^ 0x1C);
+        gen::trace(&w, &mut c, WARM);
+        let learn = gen::trace(&w, &mut c, WINDOW);
+        let arenas = [&packed, &scattered];
+        let sets: Vec<FastSet> = arenas
+            .iter()
+            .map(|a| FastSet::from_pages(total_pages, &chase::top_pages(&learn, &a.layout, OBJS_PER_16K, fast_pages)))
+            .collect();
+        let runs = [
+            TierRun { arena: &packed, fast: &sets[0], spin_iters: 0 },
+            TierRun { arena: &packed, fast: &sets[0], spin_iters: iters },
+            TierRun { arena: &scattered, fast: &sets[1], spin_iters: 0 },
+            TierRun { arena: &scattered, fast: &sets[1], spin_iters: iters },
+        ];
+        let r = chase::measure_tiered(&runs, &w, gen::SEED, WARM, STEPS, REPS, OBJS_PER_16K);
+        let mut tiered = [0.0; 2];
+        for j in 0..2 {
+            let (ctl, slow, sum_c) = (r[2 * j].0, r[2 * j].1, r[2 * j].2);
+            let (tier_ns, slow_t, sum_t) = (r[2 * j + 1].0, r[2 * j + 1].1, r[2 * j + 1].2);
+            tiered[j] = tier_ns;
+            let pred = ctl + slow * extra_ns;
+            worst_pred = worst_pred.max((tier_ns / pred - 1.0).abs());
+            let head = if j == 0 {
+                format!("{:.1}% ({:.1} MiB)", f * 100.0, mib(w.hot as f64 * OBJ_BYTES as f64))
+            } else {
+                String::new()
+            };
+            println!(
+                "   {head:<19}  {:<10}  {:9.1}%   {ctl:10.2}   {tier_ns:9.2}   {pred:12.2}   {:13.2}x   {}",
+                arenas[j].layout.name,
+                slow * 100.0,
+                tier_ns / ctl,
+                if sum_c == sum_t && slow == slow_t { "agree" } else { "DIFFER" }
+            );
+        }
+        println!("   {:<19}  scattered/packed with the slow tier: {:.2}x time
+", "", tiered[1] / tiered[0]);
+    }
+    println!(
+        "   sanity: tiered time within {:.1}% of control + slow share x extra on every row (the spin costs about what it was calibrated to; it runs a little over inside the loop){}",
+        worst_pred * 100.0,
+        if worst_pred <= 0.25 { "" } else { "  ** IMPLAUSIBLE: spin miscalibrated or machine busy **" }
+    );
+    println!("   MODELLED: the {extra_ns:.1} ns per slow access and its serialisation. MEASURED: the control, the spin's calibration, the loop. COUNTED: slow share.
+");
 }
 
 /// Lane 2: learn a layout from one window, score it on the next.

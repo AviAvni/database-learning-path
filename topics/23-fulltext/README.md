@@ -69,6 +69,52 @@ rare term's idf ≈ 9 dominates, so almost none of the common term's
 them all anyway. The 52 µs dense∧sparse AND is roaring/galloping's
 reason: two-pointer intersection is O(|dense|), not O(|sparse|).
 
+## Posting-list compression, measured (fts_bench, same index)
+
+The "compression that keeps random access" trick is a claim about bytes, so
+the lane counts them. `compress.rs` encodes every posting list of the 100K-doc
+index two ways and checks both decode back to the original: **varint** (doc id
+as the delta from the previous one, 7 bits per byte — RediSearch's shape) and
+**128-block bit-packing** (tantivy's shape: per block one width byte, the
+deltas minus one packed at the width of the block's largest, then the term
+frequencies minus one the same way; the final partial block falls back to
+varint, as tantivy's does). A **bit width** here is the number of bits needed
+for the largest value in the block — `32 - leading_zeros(max)` — so it is set
+by the biggest gap in 128, not the typical one.
+
+| list class (by document frequency) | lists | postings | varint B/posting | bit-packed B/posting | bit-packed vs raw 8 B | vs varint |
+|---|---:|---:|---:|---:|---:|---:|
+| head, df >= 10,000 | 82 | 2,300,771 | 2.000 | 0.786 | 10.2x | 2.55x |
+| mid, 1,000 .. 9,999 | 789 | 2,021,291 | 2.060 | 1.132 | 7.1x | 1.82x |
+| low, 128 .. 999 | 6,037 | 1,813,736 | 2.610 | 1.635 | 4.9x | 1.60x |
+| tail, < 128 (varint in both) | 43,092 | 1,732,312 | 2.939 | 2.939 | 2.7x | 1.00x |
+| **all** | 50,000 | 7,868,110 | 2.363 | **1.544** | 5.2x | 1.53x |
+
+Total: 62.9 MB raw (u32 doc + u32 tf), 18.6 MB varint, 12.2 MB bit-packed. The
+byte counts are exact and reproduce on any machine.
+
+Read the head row with the arithmetic. A head list holds about 28,000 of the
+100,000 documents (2,300,771 / 82), so the mean gap is about 100,000 / 28,000 =
+3.6 and a typical gap needs 2 bits; but a block of 128 gaps has a largest gap
+of the order of 3.6 x ln 128 ~ 17, which needs 5 bits. Add the term-frequency
+block and the two width bytes (16 bits per 128 postings = 0.125 bits per posting) and
+the measured 0.786 B = 6.3 bits per posting is the right size. (An estimate:
+the lane does not print the block widths.) Varint cannot do better than one
+byte per value and every value here is under 128, so it spends exactly 2.000 B (one for the gap, one for the
+tf) on every head posting. The tail rows are identical because a list under
+128 postings has no full block, and 43,092 of the 50,000 lists are that short:
+**bit-packing buys nothing for most lists and 2.5x for the 82 head lists that
+carry 29% of the postings** — a Zipfian vocabulary in one table.
+
+The decode side is a negative result. A scalar decoder over the 82 head lists
+reads varint at 1.66 ns/posting and bit-packed at 2.96 ns/posting — the
+smaller encoding is *slower* to decode when no SIMD is involved, because
+unpacking an arbitrary width costs a shift-and-mask per value where varint on
+sub-128 values is a byte copy. tantivy's `bitpacking` crate unpacks 128 values
+with SIMD at fixed widths; that is where the speed comes from, and this lane
+does not measure it. What the lane does establish is the size side of the
+trade and that its speed side is not free.
+
 ## Reading guides
 
 - [reading-zobel-moffat.md](reading-zobel-moffat.md) — Inverted indexes: the whole design space in one survey
@@ -89,6 +135,7 @@ reason: two-pointer intersection is O(|dense|), not O(|sparse|).
 | `bm25.rs` | provided | K1/B, saturating tf, exhaustive term-at-a-time oracle |
 | `wand.rs` `wand_topk` | **stub** | block-max WAND: same top-k, fraction of the work |
 | `postings.rs` `Roaring` | **stub** | array/bitmap containers, AND/OR vs vec oracle |
+| `compress.rs` | provided | varint vs 128-block bit-packing: exact bytes per list class, scalar decode speed |
 | `bin/fts_bench.rs` | provided | all lanes, stubs in catch_unwind |
 
 ## M23 checklist (capstone)

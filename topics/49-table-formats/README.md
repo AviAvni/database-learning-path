@@ -98,10 +98,18 @@ read the timings as indicative):
 
 | columns | footer bytes | bytes/column | full decode µs | skip stats µs | + cached schema µs |
 |---:|---:|---:|---:|---:|---:|
+| 10 (the control) | 1,119 | 111.9 | 4 | 4 | 3 |
 | 100 | 10,843 | 108.4 | 36 | 41 | 23 |
 | 1,000 | 113,461 | 113.5 | 353 | 355 | 231 |
 | 10,000 | 1,157,462 | 115.7 | 3,828 | 3,868 | 2,436 |
 | 50,000 | 6,027,910 | 120.6 | 19,484 | 20,037 | 12,768 |
+
+The 10-column row is the control: the footer of a file that holds only the
+columns the query projects. Against it, the 50,000-column file's 6,027,910-byte
+footer is **5,387×** larger — the ratio of the column counts (5,000×) times a
+per-column cost 8% higher (120.6 against 111.9 bytes, wider varints for the
+larger offsets). The 6 MB is not a Parquet inefficiency per column; it is what
+49,990 columns the query never reads cost every reader of the file.
 
 The footer is linear in total columns, and so is decoding it, whatever the
 query projects: at 50,000 columns, 10 projected columns are 0.02% of the

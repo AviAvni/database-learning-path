@@ -288,7 +288,11 @@ fn lane1c() {
         "   {:>7} {:>12} {:>9} {:>10} {:>11} {:>14} {:>12}",
         "columns", "footer bytes", "B/column", "full µs", "skip-stats", "+cached schema", "10-col share"
     );
-    for cols in [100usize, 1_000, 10_000, 50_000] {
+    // 10 columns is the control: the footer of a file holding only the columns
+    // the query projects, so the wide rows read as a ratio against it.
+    let mut narrow = (0usize, 0.0f64);
+    let mut wide = (0usize, 0.0f64);
+    for cols in [10usize, 100, 1_000, 10_000, 50_000] {
         let file = footer::write_wide_file(cols, 1024, SEED);
         let ft = footer::footer_bytes(&file).to_vec();
         drop(file);
@@ -312,6 +316,12 @@ fn lane1c() {
         let cached = time(footer::Decode::SkipStatsCachedSchema, &opts_s);
         let (n, with) = footer::decode(&ft, footer::Decode::SkipStats, &opts);
         assert_eq!((n, with), (cols, 10));
+        if cols == 10 {
+            narrow = (ft.len(), full);
+        }
+        if cols == 50_000 {
+            wide = (ft.len(), full);
+        }
         println!(
             "   {:>7} {:>12} {:>9.1} {:>10.0} {:>11.0} {:>14.0} {:>11.2}%",
             cols,
@@ -323,7 +333,16 @@ fn lane1c() {
             1000.0 / cols as f64
         );
     }
-    println!("   (10-col share = the fraction of column-chunk entries a 10-column projection needs)\n");
+    println!("   (10-col share = the fraction of column-chunk entries a 10-column projection needs)");
+    println!(
+        "   control: the 10-column file the query actually needs has a {} B footer, {:.1} µs to decode;",
+        narrow.0, narrow.1
+    );
+    println!(
+        "            the 50,000-column footer is {:.0}x the bytes and {:.0}x the full-decode time of that control\n",
+        wide.0 as f64 / narrow.0 as f64,
+        wide.1 / narrow.1
+    );
 }
 
 fn lane2() {
