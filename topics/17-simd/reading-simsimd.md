@@ -968,9 +968,8 @@ Answer each before unfolding it.
 **This repo**
 - `topics/17-simd/notes.md` — the `dot` lane (naive 10.89 GB/s,
   unrolled-8 42.12 GB/s, N = 4M f32, Apple Silicon, measured
-  2026-07-10) that Steps 2 and 3 compute against. `FINDINGS.md` row 17
-  records a different run of the same bench (8.88 → 26.32 GB/s); cite
-  whichever you use by name and never average them.
+  2026-07-10) that Steps 2 and 3 compute against, and that
+  `FINDINGS.md` row 17 quotes.
 - `topics/17-simd/experiments/src/dot.rs` — `dot_naive` (one chain)
   and `dot_unrolled8` (eight) are the two rungs Step 2 uses.
 - `reading-polars-compute.md` (pairwise summation; per-call dispatch),

@@ -5,9 +5,9 @@ whole argument for this format over a reading list in one table: a link
 collection cannot be wrong in a way you can detect, and every row below can.
 
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
-Pro (5P + 6E, 36 GB)** on 2026-07-28, except topic 44's row, measured on
-the same machine on 2026-08-26, and rows 32, 42 and 45, measured on
-2026-10-26. Generators are seeded, so counts,
+Pro (5P + 6E, 36 GB)** on 2026-07-28, except row 17 (2026-07-10, the run
+topic 17's notes and guides compute against), row 44 (2026-08-26), and rows
+32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.
@@ -34,7 +34,7 @@ instead.
 | 14 | [Vector Search](topics/14-vector-search/README.md) | Brute force: **117 QPS** at recall 1.000. That single point is what every ANN index is betting against. | `./verify.sh 14` |
 | 15 | [Replication & Consensus](topics/15-replication-consensus/README.md) | Follower fsync policy alone spans **59×** (341 → 20,174 entries/s). Batching fixes the median and leaves the p99 at 2980 µs. | `./verify.sh 15` |
 | 16 | [Testing & Correctness](topics/16-testing-correctness/README.md) | Seeded crash testing catches planted bugs at **48.8% to 99.6%** per seed — same harness, four wildly different odds of ever finding out. | `./verify.sh 16` |
-| 17 | [SIMD](topics/17-simd/README.md) | Eight accumulators and no intrinsics: **8.88 → 26.32 GB/s**. Branchy filtering collapses to **0.95 GB/s** at 50% selectivity while branchless stays flat at ~10. | `./verify.sh 17` |
+| 17 | [SIMD](topics/17-simd/README.md) | Eight accumulators and no intrinsics: **10.89 → 42.12 GB/s** (3.9×). Branchy filtering collapses to **1.19 GB/s** at 50% selectivity while branchless stays flat at ~12–13. | `./verify.sh 17` |
 | 18 | [GPU Acceleration](topics/18-gpu/README.md) | **No crossover up to 2^24 elements.** At 16 M, upload alone costs 7197 µs against a 2723 µs CPU total — the transfer tax, measured. | `./verify.sh 18` |
 | 19 | [JIT & Compilation](topics/19-jit/README.md) | Interpretation cost compounds with expression size: 7 → 511 nodes costs the interpreter **94×** but the vectorized evaluator only **47×**, so the gap widens from 6× to 12×. | `./verify.sh 19` |
 | 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **20.7 → 12.3 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **175× faster**. | `./verify.sh 20` |

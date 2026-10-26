@@ -179,8 +179,6 @@ work apart from the branch (branchless always stores, so it moves more
 bytes), and the clock is a lower bound derived from another lane. But
 it is a measured bound from this machine, which is worth more than an
 unattributed "~15 cycles".
-(`FINDINGS.md`'s row 17 records 0.95 GB/s at 50 % from a different run
-of the same bench; use whichever you are citing, do not average them.)
 
 Two things the README's version of this story leaves out. First, §4's
 Algorithm 3 does not buffer the qualifying *values* — it selectively
