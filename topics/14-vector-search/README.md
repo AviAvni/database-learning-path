@@ -117,6 +117,78 @@ The planner-shaped decision (topic 10!): estimate filter cardinality
 → pick the algorithm. M14 inherits this: graph query + vector
 similarity = the anchor-selection problem again.
 
+## Newer work (2025–2026)
+
+**Practical and Asymptotically Optimal Quantization of
+High-Dimensional Vectors in Euclidean Space for Approximate Nearest
+Neighbor Search** (extended RaBitQ) — Jianyang Gao, Yutong Gou,
+Yuexuan Xu, Yongyi Yang, Cheng Long, Raymond Chi-Wing Wong. Proc. ACM
+Manag. Data 3(3), Article 202 (SIGMOD 2025).
+[doi](https://doi.org/10.1145/3725413) ·
+[arXiv](https://arxiv.org/abs/2409.09913)
+
+RaBitQ (Gao & Long, SIGMOD 2024, [doi](https://doi.org/10.1145/3654970))
+is the rung §3's ladder is missing: apply a random rotation, snap each
+normalized vector to the nearest rotated hypercube vertex — one bit per
+dimension, 32× smaller than f32 — and estimate distances with an
+estimator that is unbiased and comes with an error bound (§2.2 of this
+paper). One bit is too coarse to reach high recall without rescoring
+against the raw vectors, so the extension quantizes to B bits per
+dimension with a codebook built by shifting, normalizing and rotating
+a grid of B-bit integers, and splits each code so its most significant
+bits are exactly the 1-bit RaBitQ code: search estimates from those
+bits first and reads the remaining bits only for candidates it cannot
+prune (§1, §3, §4.2). At more than 6 bits per dimension, LVQ's average
+relative distance error is 1.3–3.1× larger than extended RaBitQ's at
+the same bit budget (§5.2.1, Fig. 3; arXiv v1 numbering). It slots
+between the scalar-u8 and binary rows of §3's table, and the
+TurboQuant callout in
+[reading-qdrant-quantization.md](reading-qdrant-quantization.md)
+describes Qdrant's own rotate-then-quantize family.
+
+**Fast Vector Search in PostgreSQL: A Decoupled Approach** — Jiayi Liu,
+Yunan Zhang, Chenzhe Jin, Aditya Gupta, Shige Liu, Jianguo Wang. CIDR
+2026. [pdf](https://www.cidrdb.org/cidr2026/papers/p2-liu.pdf)
+
+pgvector stores its HNSW and IVF indexes in PostgreSQL pages, so every
+graph hop goes through the buffer manager and every update is an
+in-place page write — a poor fit for indexes built to live in memory.
+PostgreSQL-V keeps PostgreSQL's index-access-method interface but
+implements the index outside the page structure, using native
+libraries (Faiss, hnswlib) inside an LSM-style framework of a mutable
+memtable plus immutable indexed segments; crash consistency comes from
+keeping the index's existence metadata in PostgreSQL's transactional
+storage and recovering the memtable and per-segment delete bitmaps on
+restart (§3). On SIFT10M and DEEP10M with pgvector's buffer pool sized
+to hold the whole index, search is 6.5–8.9× faster than pgvector with
+IVF_FLAT and 2.9–3.5× faster with HNSW (§4.2, Figs. 3–4). For the
+capstone's M14 this is the integration question in miniature: whether
+the vector index lives in the engine's own storage or beside it with a
+consistency protocol.
+
+**Revisiting Filtered ANN Benchmarks: A Hardness-Controlled Benchmark
+Generator for Realistic Evaluation** — Mintaek Lim, Dogeun Kim, Minwoo
+Kim, Jaeyoung Do. PVLDB 19(10), VLDB 2026.
+[arXiv](https://arxiv.org/abs/2606.14193)
+
+§5 says filtered search is the hard part; this paper asks how to
+measure how hard a given filtered query is. Selectivity alone does not
+order queries: a more restrictive filter makes a vector-first
+(post-filtering) search harder, because more candidates must be
+fetched, but a filter-first search easier, because less is left to
+traverse (§3.4.3). The authors
+define the over-fetch factor — how many vector-ranked candidates must
+be examined before K of them satisfy the filter — and build
+α-Hardness on it; across datasets and strategies it tracks measured
+performance with Spearman correlation typically ρ ≤ −0.7, while
+selectivity and attribute–vector correlation are often near zero or
+change sign (§3.2, §3.4.3, Fig. 3). Widely used synthetic filtered-ANN
+benchmarks turn out to sample a narrow, easy band of that hardness
+range. Read it with §5's planner menu and
+[reading-qdrant-hnsw.md](reading-qdrant-hnsw.md): a planner that
+estimates only filter cardinality is estimating the proxy this paper
+shows is unreliable.
+
 ## Experiments (`experiments/`)
 
 1. `brute.rs` + `data.rs` + `distance.rs` — PROVIDED: exact top-k

@@ -106,6 +106,49 @@ happens.
 | wgpu/WebGPU | everywhere | our experiments: WGSL → Metal/Vulkan/DX12 |
 | Mojo/MLIR | CPU SIMD + GPU | topic 17's parametric width, extended to the device axis |
 
+## Newer work (2025–2026)
+
+**Rethinking Analytical Processing in the GPU Era** — Bobbi Yogatama,
+Yifei Yang, Kevin Kristensen, Devesh Sarda, Abigale Kim, Adrian
+Cockcroft, Yu Teng, Joshua Patterson, Gregory Kimball, Wes McKinney,
+Weiwei Gong, Xiangyao Yu. CIDR 2026.
+[pdf](https://www.cidrdb.org/cidr2026/papers/p12-yogatama.pdf)
+
+The paper argues the old barriers (small device memory, PCIe,
+cost, engineering effort) have weakened, and builds Sirius to test it:
+a GPU-native engine that takes a Substrait plan from a host system —
+DuckDB on one node, Apache Doris distributed — and executes it with
+libcudf operators, leaving parsing and optimization on the CPU (§3).
+On TPC-H, Sirius on a GH200 rented at $1.5/hour runs 8.3× faster than
+DuckDB on a CPU instance with the same hourly price (§4.2, Fig. 4) —
+measured on hot runs with the data already cached in GPU memory, half
+of which is reserved as that cache (§4.1). That measurement condition
+is §2's data-resident assumption from Crystal, now stated as the
+product's operating mode, and the per-query breakdown shows joins
+dominating, which is §4's libcudf hash join doing the work.
+
+**gMatch: Fine-Grained and Hardware-Efficient Subgraph Matching on
+GPUs** — Weitian Chen, Shixuan Sun, Cheng Chen, Yongmin Hu, Yingqian
+Hu, Minyi Guo. PVLDB 19(8), VLDB 2026.
+[arXiv](https://arxiv.org/abs/2604.10601)
+
+Depth-first GPU subgraph matchers give each warp one partial match and
+pre-allocate a stack of size proportional to query size × maximum
+degree per warp, which runs out of memory on skewed graphs, and they
+leave most of a 32-lane warp idle whenever the candidate set is small —
+which after filtering it usually is (§1). gMatch makes the task
+finer-grained so the execution stack fits in shared memory, explores
+candidates in warp-level batches, and balances load by first
+generating a large pool of partial matches so work stealing is rarely
+needed (§3–4). On an RTX 4090 it averages 36.58× over EGSM on the
+gw dataset and 20.23× on db (§6.2, Fig. 9); it is also the only method
+in the comparison that completes every query on every dataset, while
+the pattern-mining systems BEEP and G2 Miner are faster on small
+datasets (abstract, §6.2). It is §5's Gunrock lesson — load-balancing
+ragged adjacency across warps — applied to topic 13's pattern
+matching, where the ragged unit is a partial match instead of a
+frontier vertex.
+
 ## Experiments (`experiments/`)
 
 wgpu compute on Metal. PROVIDED: `GpuCtx` + working sum-reduction

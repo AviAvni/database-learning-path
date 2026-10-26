@@ -188,6 +188,32 @@ are Umbra's own (Table 3: 108× the compile speed of LLVM -O3 for code
 1.2× slower) rather than a folk figure.
 Guide: [reading-cranelift-jit-demo.md](reading-cranelift-jit-demo.md).
 
+## Newer work (2025–2026)
+
+**The Data World Is Not Flat: Efficient Factorized Execution for
+Relational Systems** — Stefan Lehner, Thomas Neumann. PVLDB 19(11),
+VLDB 2026. [pdf](https://www.vldb.org/pvldb/vol19/p3006-lehner.pdf) ·
+[code](https://github.com/lehners/FactDB)
+
+Graph-shaped queries in a relational engine produce many-to-many
+joins whose flat intermediates repeat the same values over and over;
+a factorized representation stores them once as nested "value ×
+{children}" trees, but that tree is pointer-heavy and CPU-unfriendly.
+This paper builds a push-based, code-generating engine that emits
+specialized data structures for each query's factorization tree, runs
+it with intra-query parallelism, and adds "bottom-inserts" so a
+factorized join is symmetric and the join order can still be chosen
+freely (§1, §4–§5). The result is honest about where it pays: on the
+CE benchmark's acyclic queries the factorized engine has a 15%
+geometric-mean slowdown against the same engine run flat, but for
+queries whose flat run takes over 100 ms it is 52% faster, and it
+remains 58% slower in geometric mean than Umbra overall while beating
+it on long-running queries (§6.2). It applies §3's produce/consume
+idea to a non-flat tuple layout — the generated code, not an
+interpreter, absorbs the cost of the nested structure — and it pairs
+with topic 11's FFX paper, which attacks the same problem inside a
+vectorized engine instead.
+
 ## Experiments (`experiments/`)
 
 Three-way expression executor over f64 columns — the PLAN §19 bench:

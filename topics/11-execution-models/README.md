@@ -145,6 +145,55 @@ The two operators where analytics time actually goes.
   aggregate states live in flat columnar arrays indexed by group id
   (not per-group heap objects).
 
+## Newer work (2025–2026)
+
+**Factorized and Vectorized Execution: Optimizing Analytical and
+Semantic Queries over Relations** — Sunny Yasser, Anas Dorbani, Amine
+Mhedhbi. Proc. ACM Manag. Data 4(3), Article 178 (SIGMOD 2026).
+[arXiv](https://arxiv.org/abs/2609.09002)
+
+Many-to-many joins blow intermediates up far beyond the inputs, and a
+factorized representation stores them as a tree of "this parent value
+× these children" instead of the flat cross product. That tree fights
+§2's design: vectorized operators want flat, fixed-size, contiguous
+vectors, and the list-based approach Kùzu uses binds one parent value
+at a time, which leaves child vectors sparse and limits the tree
+shapes it can express (§4). FFX keeps vectors packed: a child vector
+holds all matches contiguously, an offset array maps parent position
+`i` to the slice `off[i]..off[i+1]`, selection is a bit array, and a
+"cascade update" operator propagates filtering through the hierarchy
+without leaving the vectorized loop (§4.1, §5.2). Single-threaded on
+LSQB at scale factor 10, query Q1 takes 1.28 s against 591.10 s for
+Kùzu and 18.43 s for DuckDB, while the cyclic Q2 is a tie with DuckDB
+(2.71 s vs 2.72 s) (Table 5) — with FFX's join orders picked by hand to
+maximize factorization (§7.3.3). Read it against §5's selection
+vectors and topic 13's [reading-kuzu.md](../13-graph-engines/reading-kuzu.md)
+Step 5; for the capstone, a Cypher pattern that fans out from one node
+twice (`(a)-->(b), (a)-->(c)`) is exactly the shape where factorized
+intermediates pay.
+
+**On the Vexing Difficulty of Evaluating IN Predicates** — Altan
+Birler, Thomas Neumann. CIDR 2026.
+[pdf](https://www.cidrdb.org/cidr2026/papers/p3-birler.pdf)
+
+`x IN (subquery)` looks like a semijoin, and is one only while no
+NULLs are involved: with a nullable multi-column key, three-valued
+logic makes the answer NULL rather than FALSE when no row matches
+exactly but some row matches on its non-NULL columns —
+`(3, 4) IN ((1, 2), (3, NULL))` is NULL (§1) — so the operator must
+look for partial matches, not just exact ones. The paper reduces the orthogonal-vectors problem to
+this and concludes no subquadratic algorithm exists in general unless
+the strong exponential time hypothesis fails (§5); it then gives
+mark-join algorithms, implemented in Umbra, that run in linear time in
+the common cases (§6). The survey is the striking part: ClickHouse
+25.8, Hyper 9.1.0, DuckDB 1.3.0, Snowflake 9.21.0, Redshift and
+Firebolt Core return wrong results for IN/NOT IN over nullable
+attributes, while PostgreSQL 17, Oracle 23c, SQLite 3.46.1 and others
+are correct but can go quadratic on simple inputs (§1). It extends §5:
+a mark join is a hash join whose probe emits TRUE/FALSE/NULL per
+outer row instead of filtering, and Cypher's `IN` over lists that may
+hold `null` raises the same question for the capstone.
+
 ## Experiments (`experiments/`)
 
 One query, three engines — `SELECT k, SUM(v) WHERE f < t GROUP BY k`:

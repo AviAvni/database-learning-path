@@ -138,6 +138,53 @@ MergeTree = topic 4's LSM ideas at analytics scale: immutable sorted
 parts, background merges, but the "memtable" is a whole part and the
 index is sparse because scans, not point reads, are the workload.
 
+## Newer work (2025–2026)
+
+**F3: The Open-Source Data File Format for the Future** — Xinyu Zeng,
+Ruijun Meng, Martin Prammer, Wes McKinney, Jignesh M. Patel, Andrew
+Pavlo, Huanchen Zhang. Proc. ACM Manag. Data 3(4) (SIGMOD), Article
+245, 2025. [doi](https://doi.org/10.1145/3749163) ·
+[code](https://github.com/future-file-format/f3)
+
+§4's Parquet is a decade-old layout whose newer encodings are
+optional, so a writer cannot assume a reader supports them. F3 keeps
+the columnar shape but decouples the physical I/O unit from the
+logical row group (§5.1), lets a column's dictionary scope differ from the row
+group — many small dictionaries for one column, one large one for
+another (§5.2) — stores metadata in FlatBuffers that can be read per
+column without deserializing the rest, and embeds WebAssembly decoders in
+each file so a reader without a native decoder can still decode
+(§6.2); the built-in encodings come from the Rust BtrBlocks and
+FastLanes implementations (§7.3). In a wide-table projection test,
+"even with thousands of columns, the metadata parsing overhead is
+still around 10ms in F3, an order of magnitude faster than Parquet"
+(§7.2, Fig. 9), and the Wasm binaries for two custom encodings add
+about 150 KB (§7.7); compression ratio is slightly worse than
+Parquet because F3 applies no block compression (§7.3). Vortex is one
+of the baselines, at v0.21.1, with a footnote that its encodings and layout have
+changed since (§7.1) — so read the comparison as dated. It
+continues §1's encoding zoo and
+[reading-btrblocks-fsst.md](reading-btrblocks-fsst.md): cascaded
+lightweight encodings are now the default building block of a file
+format, not an engine-internal detail.
+
+**Waiting to Decompress: The Economics of LLM-Based Compression** —
+Andreas Kipf, Tobias Schmidt, Ping-Lin Kuo, Skander Krid, Moritz
+Rengert, Luca Heller, Andreas Zimmerer, Mihail Stoian, Varun Pandey,
+Alexander van Renen. CIDR 2026.
+[pdf](https://www.cidrdb.org/cidr2026/papers/p34-kipf.pdf)
+
+A language model that predicts the next token can drive an arithmetic
+coder, and on Wikipedia text that beats traditional compressors' ratio
+by more than 2× (§1). The paper asks what it costs: with a cost
+model of S3 storage ($240 per TiB per year) plus GPU rental for
+compression, LLM-based compression takes 10 years of storage to
+amortize its compute against storing uncompressed, and 120 years to
+break even against CPU compressors (abstract, Fig. 1). It is §2's
+analyze → score → compress decision with a new axis — encode cost in
+dollars — and the opposite end from the encodings this topic scans
+over directly: nothing here can be evaluated without decoding first.
+
 ## Experiments (`experiments/`)
 
 1. `encodings.rs` — YOU implement RLE, dictionary, and bit-packing

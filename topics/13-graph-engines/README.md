@@ -161,6 +161,81 @@ quantified path patterns (`(a) (-[:KNOWS]->){1,5} (b)`) and path modes
 are the parts worth building into an AST *now* — hence M13's rule below.
 → guide: [`reading-query-languages.md`](reading-query-languages.md)
 
+## Newer work (2025–2026)
+
+**TurboLynx: Schemaless Graph Engine Strikes Back for General-Purpose
+Analytics** — Taesung Lee, Jaehyun Ha, Byungchul Tak, Wook-Shin Han.
+PVLDB 19(6), VLDB 2026.
+[pdf](https://www.vldb.org/pvldb/vol19/p1250-han.pdf)
+
+The paper's diagnosis matches §2's table: schemaless property-graph
+engines store schema per tuple (row records), run Volcano-style
+operators that cannot vectorize over mixed schemas, and plan with thin
+custom optimizers. TurboLynx groups vertices and edges with similar
+property sets into cost-based clusters called graphlets, stores each
+columnar, lets every operator consume input spanning several
+graphlets (with a shared-schema row format so intermediate schemas do
+not multiply), and plans with an extended Orca optimizer that merges
+graphlets before join enumeration to keep the search space bounded
+(§1, §4). With all systems single-threaded, its geometric-mean
+end-to-end speedup on LDBC SNB Interactive SF100 is 183.9× over DuckPGQ
+and 7.74× over Umbra, while on TPC-H SF100 Umbra is the faster one
+(0.58×) (§5.3, Table 4). It is §3's
+pointer-chasing argument extended to properties: the capstone's
+attribute storage faces the same row-vs-columnar choice that its
+adjacency already made.
+
+**A Unified Query Planning Framework for Conjunctive Regular Path
+Queries** — Yue Pang, Lei Zou, Angela Bonifati, M. Tamer Özsu,
+Xiaofang Zhou. PVLDB 19(10), VLDB 2026.
+[pdf](https://www.vldb.org/pvldb/vol19/p2686-pang.pdf)
+
+A Cypher/GQL pattern mixes fixed edges (subgraph matching) with
+variable-length paths (regular path queries), and engines plan the
+two parts separately and glue them in a fixed order. This paper puts
+both in one algebra over a hypergraph query model with six operators —
+traverse-intersect (TI, which runs as a leapfrog-style intersection
+when several edges meet at one vertex), Kleene closure (KC), subgraph
+join (SJ, for bushy joins), UNION, inverse (INV) and SCAN — and
+enumerates equivalent plans by rewrite rules under a cost model (§1,
+§4). Implemented on MillenniumDB and inside Neo4j through its
+user-defined procedure API, single-threaded, it reports an average end-to-end
+speedup of 2.08× over MillenniumDB on WDBench and 1.68× over Neo4j on
+LDBC SNB, with about 68% fewer timeouts on WDBench (§5.1, Table 5).
+It joins §4 (WCOJ) to §6's quantified path patterns: the capstone's
+planner will need a single cost-based space for `(a)-[:KNOWS*1..5]->(b)`
+inside a larger pattern, not a fixed-order splice.
+
+**Semantic Data Modeling, Graph Query, and SQL, Together at Last?** —
+Jeff Shute, Colin Zheng, Romit Kudtarkar. CIDR 2026.
+[pdf](https://www.vldb.org/cidrdb/papers/2026/p11-shute.pdf)
+
+A design paper from Google with no performance numbers. It extends
+GoogleSQL with join columns (a foreign-key relationship becomes a
+column of type `ROW<Table>`, read with dotted paths such as
+`c.Nation.Region.r_name`), horizontal aggregation over arrays and
+join columns (`SUM(UNNEST(c.Orders.Lineitems.l_extendedprice))`), and
+measure columns that are grain-locked so a join cannot double-count
+them; tables plus join columns form a "semantic data graph" (§3, §4).
+The authors report these features are used in F1 by multiple teams
+(§1.1). It is the SQL/PGQ row of §6's table approached from the other
+side — graph traversal as SQL syntax over declared relationships —
+and [reading-query-languages.md](reading-query-languages.md) is where
+to compare it with `GRAPH_TABLE`.
+
+**Status: GQL and SQL/PGQ in shipping systems (checked October 2026).**
+PostgreSQL committed SQL/PGQ (`CREATE PROPERTY GRAPH`, `GRAPH_TABLE`)
+to master as `2f094e7ac69` on 2026-03-16, then reverted it together
+with its follow-up fixes on 2026-09-07 — on master as `b1f106c80cb`
+and on `REL_19_STABLE` as `2b9e1aff4d3`. The `REL_19_BETA4` and
+`REL_19_RC1` tags contain the revert, and the parser grammar on both
+branches has no `GRAPH_TABLE`, so PostgreSQL 19 does not ship SQL/PGQ.
+Neo4j's Cypher 25 manual keeps a
+[GQL conformance appendix](https://neo4j.com/docs/cypher-manual/25/appendix/gql-conformance/)
+listing the mandatory GQL features Cypher supports and those it does
+not yet. §6's caution stands: write the capstone's AST for GQL's path
+modes now, because the standard is ahead of most implementations.
+
 ## Experiments (`experiments/`)
 
 2-hop neighborhood (distinct nodes at distance 1 or 2, excluding self)
