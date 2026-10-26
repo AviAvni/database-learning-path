@@ -11,9 +11,9 @@
 //!   multiply/AND instead of an `if` — you measured why in topic 0
 //!   (branch_misprediction: 8.1x on shuffled data)
 //! - stretch: split the loop into N independent accumulator arrays and
-//!   merge at the end (ILP — polars float_sum's multi-accumulator trick;
-//!   measure whether it helps when the destination is a 64-slot array
-//!   with random access)
+//!   merge at the end (ILP — independent dependency chains, the effect
+//!   polars float_sum gets from its pairwise split; measure whether it
+//!   helps when the destination is a 64-slot array with random access)
 //!
 //! After it passes, LOOK AT THE ASM (`cargo asm` or objdump): did the
 //! autovectorizer emit NEON? Record in notes.md.

@@ -11,8 +11,8 @@ then hands you the line anchors to watch each piece in production code.
 Read RocksDB first (you know this file from topic 2 — now the concurrency),
 then memgraph as the contrast.
 
-Everything below is read at the pinned commits **`facebook/rocksdb@7c80a5a`**
-(`memtable/inlineskiplist.h`, 1422 lines) and
+Everything below is read at commits **`facebook/rocksdb@ea3136053`**
+(`memtable/inlineskiplist.h`, 1428 lines) and
 **`memgraph/memgraph@8f87f6a`** (`src/utils/skip_list.hpp`, 1854 lines).
 Confirm with `python3 tools/pinned-source.py ref rocksdb`.
 
@@ -51,23 +51,23 @@ Generic write-ups say "height ≥ h with probability 2⁻ʰ". **Neither of these
 implementations uses that.** Read the real constants:
 
 ```cpp
-// memtable/inlineskiplist.h:70-78 — RocksDB's defaults
-    70    static const uint16_t kMaxPossibleHeight = 32;
-    76    explicit InlineSkipList(Comparator cmp, Allocator* allocator,
-    77                            int32_t max_height = 12,
-    78                            int32_t branching_factor = 4);
+// memtable/inlineskiplist.h:71-79 — RocksDB's defaults
+    71    static const uint16_t kMaxPossibleHeight = 32;
+    77    explicit InlineSkipList(Comparator cmp, Allocator* allocator,
+    78                            int32_t max_height = 12,
+    79                            int32_t branching_factor = 4);
 ```
 
 ```cpp
-// memtable/inlineskiplist.h:559-573 — the coin, once per level
-   559  int InlineSkipList<Comparator>::RandomHeight() {
-   560    auto rnd = Random::GetTLSInstance();
-   562    // Increase height with probability 1 in kBranching
-   563    int height = 1;
-   564    while (height < kMaxHeight_ && height < kMaxPossibleHeight &&
-   565           rnd->Next() < kScaledInverseBranching_) {
-   566      height++;
-   567    }
+// memtable/inlineskiplist.h:563-577 — the coin, once per level
+   563  int InlineSkipList<Comparator>::RandomHeight() {
+   564    auto rnd = Random::GetTLSInstance();
+   566    // Increase height with probability 1 in kBranching
+   567    int height = 1;
+   568    while (height < kMaxHeight_ && height < kMaxPossibleHeight &&
+   569           rnd->Next() < kScaledInverseBranching_) {
+   570      height++;
+   571    }
 ```
 
 `branching_factor = 4` means **p = 1/4**, not 1/2, and `max_height = 12`
@@ -154,20 +154,20 @@ store; readers Acquire-load and are guaranteed a fully-built object.
 RocksDB says exactly this in the comments on its accessors:
 
 ```cpp
-// memtable/inlineskiplist.h:379-396 — where the barriers live, and why
-   379    Node* Next(int n) {
-   381      // Use an 'acquire load' so that we observe a fully initialized
-   382      // version of the returned Node.
-   383      return ((&next_[0] - n)->Load());
-   384    }
-   386    void SetNext(int n, Node* x) {
-   388      // Use a 'release store' so that anybody who reads through this
-   389      // pointer observes a fully initialized version of the inserted node.
-   390      (&next_[0] - n)->Store(x);
-   391    }
-   393    bool CASNext(int n, Node* expected, Node* x) {
-   395      return (&next_[0] - n)->CasStrong(expected, x);
-   396    }
+// memtable/inlineskiplist.h:383-400 — where the barriers live, and why
+   383    Node* Next(int n) {
+   385      // Use an 'acquire load' so that we observe a fully initialized
+   386      // version of the returned Node.
+   387      return ((&next_[0] - n)->Load());
+   388    }
+   390    void SetNext(int n, Node* x) {
+   392      // Use a 'release store' so that anybody who reads through this
+   393      // pointer observes a fully initialized version of the inserted node.
+   394      (&next_[0] - n)->Store(x);
+   395    }
+   397    bool CASNext(int n, Node* expected, Node* x) {
+   399      return (&next_[0] - n)->CasStrong(expected, x);
+   400    }
 ```
 
 Two things worth stopping on. First, `Load`/`Store`/`CasStrong` are
@@ -175,10 +175,10 @@ RocksDB's own wrappers in `util/atomic.h` — `Load` is acquire (`:111-113`),
 `Store` is release (`:108-110`), and `CasStrong` is **acq_rel**
 (`:118-121`), not the release/relaxed pair you might guess. Second, look at
 the addressing: `&next_[0] - n`. **The tower grows downward in memory.**
-The comment at `:352-356` explains: the key is stored in the bytes
+The comment at `:356-360` explains: the key is stored in the bytes
 immediately after the struct and the higher `next_` pointers immediately
 *before* it, so a node is one allocation with no separate tower array and
-no stored height. `NoBarrier_SetNext` (`:399`, wrapping `StoreRelaxed` at
+no stored height. `NoBarrier_SetNext` (`:408`, wrapping `StoreRelaxed` at
 `util/atomic.h:60`) is the Relaxed variant used for the not-yet-published
 half of the idiom.
 
@@ -197,50 +197,51 @@ per level, and let readers see partial towers. This is the real loop, not a
 paraphrase:
 
 ```cpp
-// memtable/inlineskiplist.h:1134-1172 — Insert<UseCAS=true>, asserts elided
-  1134    if (UseCAS) {
-  1135      for (int i = 0; i < height; ++i) {
-  1136        while (true) {
-  1137          // Checking for duplicate keys on the level 0 is sufficient
-  1138          if (UNLIKELY(i == 0 && splice->next_[i] != nullptr &&
-  1139                       compare_(splice->next_[i]->Key(), key_decoded) <= 0)) {
-  1141            return false;
-  1142          }
-  1143          if (UNLIKELY(i == 0 && splice->prev_[i] != head_ &&
-  1144                       compare_(splice->prev_[i]->Key(), key_decoded) >= 0)) {
-  1146            return false;
-  1147          }
-  1152          x->NoBarrier_SetNext(i, splice->next_[i]);
-  1153          if (splice->prev_[i]->CASNext(i, splice->next_[i], x)) {
-  1155            break;
-  1156          }
-  1157          // CAS failed, we need to recompute prev and next. ...
-  1162          FindSpliceForLevel<false>(key_decoded, splice->prev_[i], nullptr, i,
-  1163                                    &splice->prev_[i], &splice->next_[i]);
-  1168          if (i > 0) {
-  1169            splice_is_valid = false;
-  1170          }
-  1171        }
-  1172      }
+// memtable/inlineskiplist.h:1140-1178 — Insert<UseCAS=true>, asserts elided
+  1140    if (UseCAS) {
+  1141      for (int i = 0; i < height; ++i) {
+  1142        while (true) {
+  1143          // Checking for duplicate keys on the level 0 is sufficient
+  1144          if (UNLIKELY(i == 0 && splice->next_[i] != nullptr &&
+  1145                       compare_(splice->next_[i]->Key(), key_decoded) <= 0)) {
+  1147            return false;
+  1148          }
+  1149          if (UNLIKELY(i == 0 && splice->prev_[i] != head_ &&
+  1150                       compare_(splice->prev_[i]->Key(), key_decoded) >= 0)) {
+  1152            return false;
+  1153          }
+  1158          x->NoBarrier_SetNext(i, splice->next_[i]);
+  1159          if (splice->prev_[i]->CASNext(i, splice->next_[i], x)) {
+  1161            break;
+  1162          }
+  1163          // CAS failed, we need to recompute prev and next. It is unlikely
+        // ... 1164-1167: the rest of the comment (quoted in the prose below) ...
+  1168          FindSpliceForLevel<false>(key_decoded, splice->prev_[i], nullptr, i,
+  1169                                    &splice->prev_[i], &splice->next_[i]);
+  1174          if (i > 0) {
+  1175            splice_is_valid = false;
+  1176          }
+  1177        }
+  1178      }
 ```
 
 Read four things off it:
 
-- **`NoBarrier_SetNext` then `CASNext`** (`:1152-1153`) is the publication
+- **`NoBarrier_SetNext` then `CASNext`** (`:1158-1159`) is the publication
   idiom, verbatim: relaxed write into the unpublished node, then one
   acq_rel CAS that makes it reachable.
 - **A lost race re-searches ONE level, from where it already was**
-  (`:1162-1163`): `FindSpliceForLevel` starts at `splice->prev_[i]`, not at
-  the head. The comment at `:1157-1161` gives the reasoning — it is unlikely
+  (`:1168-1169`): `FindSpliceForLevel` starts at `splice->prev_[i]`, not at
+  the head. The comment at `:1163-1167` gives the reasoning — it is unlikely
   that many nodes landed between prev and next, so scanning forward from the
   old prev beats restarting. No thread ever waits for another; there is no
   full restart.
-- **Duplicate detection happens only at level 0** (`:1138-1147`, and the
+- **Duplicate detection happens only at level 0** (`:1144-1153`, and the
   comment says so). That is the linearization point: whoever wins the level-0
   CAS owns the key.
-- **A failed CAS above level 0 invalidates the splice** (`:1168-1170`),
+- **A failed CAS above level 0 invalidates the splice** (`:1174-1176`),
   because narrowing the bracket at level i may break the `Splice` invariant
-  stated at `:341-346` — `prev_[i+1].key <= prev_[i].key < next_[i].key <=
+  stated at `:345-350` — `prev_[i+1].key <= prev_[i].key < next_[i].key <=
   next_[i+1].key`.
 
 Why bottom-first makes partial towers harmless *for a set*: level 0 (every
@@ -344,34 +345,34 @@ is an L2/LLC miss at ~15 ns, the search costs ~465 ns and the CASes ~3 ns.
 **The search is 99% of the insert.** So RocksDB caches it:
 
 ```cpp
-// memtable/inlineskiplist.h:340-350 — Splice: a cached search path, with its invariant
-   340  struct InlineSkipList<Comparator>::Splice {
-   341    // The invariant of a Splice is that prev_[i+1].key <= prev_[i].key <
-   342    // next_[i].key <= next_[i+1].key for all i.  That means that if a
-   343    // key is bracketed by prev_[i] and next_[i] then it is bracketed by
-   344    // all higher levels.  It is _not_ required that prev_[i]->Next(i) ==
-   345    // next_[i] (it probably did at some point in the past, but intervening
-   346    // or concurrent operations might have inserted nodes in between).
-   347    int height_ = 0;
-   348    Node** prev_;
-   349    Node** next_;
-   350  };
+// memtable/inlineskiplist.h:344-354 — Splice: a cached search path, with its invariant
+   344  struct InlineSkipList<Comparator>::Splice {
+   345    // The invariant of a Splice is that prev_[i+1].key <= prev_[i].key <
+   346    // next_[i].key <= next_[i+1].key for all i.  That means that if a
+   347    // key is bracketed by prev_[i] and next_[i] then it is bracketed by
+   348    // all higher levels.  It is _not_ required that prev_[i]->Next(i) ==
+   349    // next_[i] (it probably did at some point in the past, but intervening
+   350    // or concurrent operations might have inserted nodes in between).
+   351    int height_ = 0;
+   352    Node** prev_;
+   353    Node** next_;
+   354  };
 ```
 
 A `Splice` is the (pred, succ) pair per level left over from the previous
-insert. `InsertWithHint` (`:111`) and `InsertWithHintConcurrently` (`:117`)
-take one; `RecomputeSpliceLevels` (`:331`, defined `:1016`) repairs **only
+insert. `InsertWithHint` (`:115`) and `InsertWithHintConcurrently` (`:121`)
+take one; `RecomputeSpliceLevels` (`:335`, defined `:1022`) repairs **only
 the levels the new key invalidated**. Sequential or near-sequential writers
 — the common memtable pattern, since keys arrive roughly in order within a
 column family — keep most levels and re-search only the bottom one or two.
 The last sentence of the invariant is the concurrency subtlety: a splice may
 be *stale* (someone inserted between prev and next) without being *wrong*,
-which is exactly why the CAS at `:1153` can fail and re-search just its own
+which is exactly why the CAS at `:1159` can fail and re-search just its own
 level.
 
-One more workload door: `Insert` (`:908`) and `InsertConcurrently` (`:913`)
-are the same template (`:1028`) selected by a `UseCAS` bool — look back at
-Step 3's `if (UseCAS)` at `:1134` and the `else` at `:1173`. Single-writer
+One more workload door: `Insert` (`:914`) and `InsertConcurrently` (`:919`)
+are the same template (`:1034`) selected by a `UseCAS` bool — look back at
+Step 3's `if (UseCAS)` at `:1140` and the `else` at `:1179`. Single-writer
 mode skips the atomics entirely, and it is a **compile-time** choice, so
 there is not even a branch. (M9 note: FalkorDB's single writer can take
 exactly this door.)
@@ -538,38 +539,38 @@ The comparison table (fill it in notes.md):
 
 | | RocksDB `InlineSkipList` | memgraph `SkipList` |
 |---|---|---|
-| p, max height | 1/4, 12 (`:76-78`) | 1/2, 32 (`:61`, `:106-116`) |
-| writers coordinate by | one CAS per level (`:1153`) | per-node spinlocks (`:1364`) |
+| p, max height | 1/4, 12 (`:77-79`) | 1/2, 32 (`:61`, `:106-116`) |
+| writers coordinate by | one CAS per level (`:1159`) | per-node spinlocks (`:1364`) |
 | readers see partial insert? | yes — levels link independently (fine for a set) | no — `fully_linked` gate (`:1398`) |
 | readers write shared memory? | never (`:26-27`) | never (they only read the bits) |
 | delete | never (tombstones; invariant (1) `:31-33`) | `marked` bit, then unlink (`:1672`, `:1696`) |
 | reclamation | none needed (arena dies at flush) | accessor-id GC (`:241-253`) |
-| failure/retry | re-find *one level* from prev (`:1162`) | unlock all, restart insert (`:1375`) |
-| single-writer escape | `UseCAS=false`, compile-time (`:1134`) | none |
+| failure/retry | re-find *one level* from prev (`:1168`) | unlock all, restart insert (`:1375`) |
+| single-writer escape | `UseCAS=false`, compile-time (`:1140`) | none |
 
 ## Where each step lives in the code
 
 Read RocksDB first, then memgraph as the contrast. Budget ~2 h. In both
 files, read the doc comment above the class before the class.
 
-**RocksDB `InlineSkipList`** — `memtable/inlineskiplist.h` at `7c80a5a`
+**RocksDB `InlineSkipList`** — `memtable/inlineskiplist.h` at `ea3136053`
 
 | Step | What | Line |
 |---|---|---|
-| 1 | `kMaxPossibleHeight = 32`; the ctor defaults `max_height=12, branching_factor=4` | `:70`, `:76-78` |
-| 1 | `RandomHeight` — the p = 1/4 coin | `:559-573` |
-| 2 | `Next`/`SetNext`/`CASNext` and their barrier comments | `:379-396` |
-| 2 | the tower grows *downward*: `&next_[0] - n` | `:352-356`, `:383` |
-| 2 | `NoBarrier_SetNext` / `NoBarrier_Next` | `:399-410` |
+| 1 | `kMaxPossibleHeight = 32`; the ctor defaults `max_height=12, branching_factor=4` | `:71`, `:77-79` |
+| 1 | `RandomHeight` — the p = 1/4 coin | `:563-577` |
+| 2 | `Next`/`SetNext`/`CASNext` and their barrier comments | `:383-400` |
+| 2 | the tower grows *downward*: `&next_[0] - n` | `:356-360`, `:387` |
+| 2 | `NoBarrier_SetNext` / `NoBarrier_Next` | `:403-414` |
 | 2 | the orderings themselves | `util/atomic.h:60`, `:108-113`, `:118-121` |
 | 3 | the thread-safety contract | `:20-27` |
-| 3 | `Insert<UseCAS>` — the whole CAS loop | `:1134-1172` |
-| 3 | one-level re-find on CAS failure | `:1162-1163`; the reasoning `:1157-1161` |
+| 3 | `Insert<UseCAS>` — the whole CAS loop | `:1140-1178` |
+| 3 | one-level re-find on CAS failure | `:1168-1169`; the reasoning `:1163-1167` |
 | 4 | invariant (1): nodes are never deleted | `:29-38` |
-| 5 | `Splice` and its invariant | `:340-350`; fwd decl `:64` |
-| 5 | `InsertWithHint` / `InsertWithHintConcurrently` | `:111`, `:117` |
-| 5 | `RecomputeSpliceLevels` | `:331` (decl), `:1016` (defn) |
-| 5 | `Insert` / `InsertConcurrently` / the shared template | `:908`, `:913`, `:1028` |
+| 5 | `Splice` and its invariant | `:344-354`; fwd decl `:65` |
+| 5 | `InsertWithHint` / `InsertWithHintConcurrently` | `:115`, `:121` |
+| 5 | `RecomputeSpliceLevels` | `:335` (decl), `:1022` (defn) |
+| 5 | `Insert` / `InsertConcurrently` / the shared template | `:914`, `:919`, `:1034` |
 
 **memgraph `SkipList`** — `src/utils/skip_list.hpp` at `8f87f6a`; one header
 holds the list, the accessors, and the GC.
@@ -612,8 +613,8 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   RocksDB: **p = 1/4, max height 12** — the constructor defaults are
-  `max_height = 12, branching_factor = 4` (`inlineskiplist.h:76-78`), and
-  `RandomHeight` (`:559-573`) increases the height "with probability 1 in
+  `max_height = 12, branching_factor = 4` (`inlineskiplist.h:77-79`), and
+  `RandomHeight` (`:563-577`) increases the height "with probability 1 in
   kBranching". memgraph: **p = 1/2, max height 32** —
   `kSkipListMaxHeight = 32` (`skip_list.hpp:61`) and `gen_height`
   (`:106-117`) takes `__builtin_ffs` of a uniform 32-bit draw, which is 1
@@ -634,14 +635,14 @@ Answer each before unfolding it.
 
   Only level 3, and not from the head. `Insert<UseCAS>` calls
   `FindSpliceForLevel<false>(key_decoded, splice->prev_[i], nullptr, i, …)`
-  at `inlineskiplist.h:1162-1163` — the search restarts from the *old*
-  `prev_[i]` and scans forward. The comment at `:1157-1161` gives the
+  at `inlineskiplist.h:1168-1169` — the search restarts from the *old*
+  `prev_[i]` and scans forward. The comment at `:1163-1167` gives the
   reason: it is unlikely that many nodes were inserted between prev and
   next, and `next_[i]` is known stale so it is useless as a hint.
 
-  It also sets `splice_is_valid = false` when `i > 0` (`:1168-1170`),
+  It also sets `splice_is_valid = false` when `i > 0` (`:1174-1176`),
   because narrowing the bracket at level i can break the `Splice` invariant
-  at `:341-346` — so the *next* insert recomputes the whole path rather
+  at `:345-350` — so the *next* insert recomputes the whole path rather
   than trusting a cache that may now be inconsistent between levels.
   Levels 0, 1 and 2, already linked, are untouched.
 
@@ -740,13 +741,13 @@ Answer each before unfolding it.
 
 | File | Lines | What |
 |---|---|---|
-| `memtable/inlineskiplist.h` (`rocksdb@7c80a5a`) | 20–38 | the contract and the two invariants — start here |
-| | 70–78, 559–573 | p = 1/4, max height 12 |
-| | 340–350 | `Splice` and its invariant |
-| | 352–410 | `Node` — downward tower, barrier-carrying accessors |
-| | 1134–1172 | `Insert<UseCAS>` — the CAS loop, in full |
-| | 908, 913, 1028 | `Insert` / `InsertConcurrently` / the shared template |
-| `util/atomic.h` (`rocksdb@7c80a5a`) | 60, 108–121 | what `Load`, `Store`, `CasStrong` actually order |
+| `memtable/inlineskiplist.h` (`rocksdb@ea3136053`) | 20–38 | the contract and the two invariants — start here |
+| | 71–79, 563–577 | p = 1/4, max height 12 |
+| | 344–354 | `Splice` and its invariant |
+| | 356–414 | `Node` — downward tower, barrier-carrying accessors |
+| | 1140–1178 | `Insert<UseCAS>` — the CAS loop, in full |
+| | 914, 919, 1034 | `Insert` / `InsertConcurrently` / the shared template |
+| `util/atomic.h` (`rocksdb@ea3136053`) | 60, 108–121 | what `Load`, `Store`, `CasStrong` actually order |
 | `src/utils/skip_list.hpp` (`memgraph@8f87f6a`) | 61, 69, 106–117 | max height, GC trigger, `gen_height` |
 | | 156–169 | the node: lock, `marked`, `fully_linked`, tower |
 | | 241–255, 257, 367 | the accessor-id GC, described by its author |

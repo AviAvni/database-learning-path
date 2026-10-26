@@ -77,8 +77,12 @@ n tables → Catalan-many trees × orderings: 20-way join ≈ 10¹⁸ plans.
   sized 1..n. O(3ⁿ) worst case but connected-subgraphs-only in practice.
   Keep "interesting orders" (sorted outputs) as separate DP entries.
 - **Fallbacks when n is big**: postgres switches to a genetic algorithm
-  at `geqo_threshold` (12); DuckDB exits DP for greedy when the pair
-  count explodes (plan_enumerator.cpp:234).
+  at `geqo_threshold` (12); DuckDB goes straight to greedy at 12 relations
+  and exits DP for greedy when the pair count reaches 10,000
+  (`plan_enumerator.cpp:590` and `:243`). polars only ever searches
+  greedily, over left-deep orders of each run of inner equi-joins, and
+  keeps the order the user wrote when any input lacks an estimate
+  (`reading-rust-planner-stack.md` Step 5).
 - Left-deep vs bushy: Selinger searched left-deep only (pipelining +
   smaller space); modern engines (DuckDB) search bushy — graph pattern
   queries especially want bushy plans.
@@ -101,6 +105,35 @@ dwarfs cost-model error. postgres's shrug when it knows nothing:
 `DEFAULT_EQ_SEL = 0.005` (selfuncs.h:34) — a constant guess powering
 million-dollar plan choices.
 
+Benchmarks can hide the problem in two directions. JOB showed that synthetic
+data hides estimation errors; **Survivorship Bias in Industrial Database
+Workloads** (Ryan Marcus, Jeffrey Tao, Peizhi Wu, Zijie Zhao, CIDR 2026,
+[pdf](https://www.cidrdb.org/cidr2026/papers/p22-marcus.pdf)) shows that real
+traces hide the queries nobody dared to send. A vendor's trace contains the
+queries that run well on that vendor's system, because users reshape their
+workloads around what is fast. Across the OLAP platforms in the authors' data,
+query repetition rates range from 58% to 75%, and the higher rates go with
+higher per-query startup cost (§2.1); after one platform shipped a rollup
+optimization, the share of users issuing rollup queries rose from about 2% to
+about 6% (§2.2, Fig. 3). A graph database's own query logs are no exception.
+
+The other response to bad estimates is to make the plan matter less. **Robust
+Predicate Transfer with Dynamic Execution** (RPT+; Yiming Qiao, Peter Boncz,
+Huanchen Zhang, PVLDB 19(6), VLDB 2026,
+[pdf](https://www.vldb.org/pvldb/vol19/p1278-qiao.pdf)) passes Bloom filters
+forward and backward over the join tree before any join runs (a
+Yannakakis-style semijoin reduction), so every base table is already shrunk and
+a bad join order costs less. The original predicate-transfer method paid for
+redundant Bloom-filter builds and for tuple-level filters that cannot skip
+whole row groups; RPT+ adds asymmetric forward/backward transfer plans,
+"cascade filters" that combine min–max block skipping with the Bloom filter,
+and pipelines that decide at run time whether a filter is worth building.
+Implemented on top of DuckDB v1.3.0 and compared against the unmodified v1.3.0
+release, it reports geometric-mean speedups of 1.47× on JOB, 1.28× on
+SQLStorm, 1.17× on TPC-H and 1.01× on Appian (§6.2, Fig. 11). A multi-hop
+Cypher `MATCH` in the capstone is exactly the chain of joins the transfer phase
+prunes.
+
 Graph angle: a 3-hop Cypher pattern is a 3-way self-join on the edge
 relation — cardinality = sparse matrix-product size estimation. Same
 problem, different clothes (M10/M20 will meet it as nnz estimation).
@@ -119,6 +152,23 @@ problem, different clothes (M10/M20 will meet it as nnz estimation).
         G2 = {Scan(A), IndexScan(A)}     groups = equivalence classes,
         G3 = {Scan(B)}                   members share cardinality
 ```
+
+The extensibility is not hypothetical. **I Can't Believe It's Not Yannakakis:
+Pragmatic Bitmap Filters in Microsoft SQL Server** (Hangdong Zhao, Yuanyuan
+Tian, Rana Alotaibi, Bailu Ding, Nicolas Bruno, Jesús Camacho-Rodríguez,
+Vassilis Papadimos, Ernesto Cervantes Juárez, Cesar Galindo-Legaria, Carlo
+Curino, CIDR 2026, [pdf](https://www.cidrdb.org/cidr2026/papers/p29-zhao.pdf))
+describes the predicate-transfer idea of §4 as it already runs in production.
+SQL Server's batch-mode hash join builds a bitmap from its build side and pushes
+it into the probe subtree; because execution is pull-based, bitmaps cascade
+through a chain of joins, and the Cascades optimizer costs each plan with the
+bitmaps it would receive, so a bitmap can change the chosen join order — the
+bitmap is carried as a context property through the memo. The paper argues
+this yields instance-optimal plans for acyclic queries whenever those plans are
+also the cheapest by estimate. On TPC-H SF100 with SQL Server 2025, bitmaps
+versus no bitmaps gave over 2× speedups on 7 of the 22 queries, and 12 acyclic
+queries ran with instance-optimal plans (§5, Table 1). Read it with
+[reading-selinger-cascades.md](reading-selinger-cascades.md).
 
 ## 6. Code to read (guides in this dir)
 
@@ -142,67 +192,6 @@ Further references:
   "Bao" (SIGMOD 2021, Marcus et al.) steer the whole planner — Bao
   picks among hint sets so the classical optimizer stays as the safety
   net. Read after the VLDB'15 paper: they are its direct descendants.
-
-## Newer work (2025–2026)
-
-**Robust Predicate Transfer with Dynamic Execution** — Yiming Qiao,
-Peter Boncz, Huanchen Zhang. PVLDB 19(6), VLDB 2026.
-[pdf](https://www.vldb.org/pvldb/vol19/p1278-qiao.pdf)
-
-§3–§4's problem is that the join order is chosen from cardinalities
-that can be wrong by orders of magnitude. Predicate transfer sidesteps
-part of it: before any join runs, Bloom filters are passed forward and
-backward over the join tree (a Yannakakis-style semijoin reduction), so
-every base table is already shrunk and a bad join order costs less. The
-original method paid for redundant Bloom-filter builds and for
-tuple-level filters that cannot skip whole row groups; RPT+ adds
-asymmetric forward/backward transfer plans, "cascade filters" that
-combine min–max block skipping with the Bloom filter, and pipelines
-that decide at run time whether a filter is worth building.
-Implemented on top of DuckDB v1.3.0 and compared against the
-unmodified v1.3.0 release, it reports geometric-mean speedups of
-1.47× on JOB, 1.28× on SQLStorm, 1.17× on TPC-H and 1.01× on Appian
-(§6.2, Fig. 11). It is the complement to §4's error table: instead of
-estimating better, make the plan matter less — and a multi-hop Cypher
-`MATCH` in the capstone is exactly the chain of joins the transfer
-phase prunes.
-
-**I Can't Believe It's Not Yannakakis: Pragmatic Bitmap Filters in
-Microsoft SQL Server** — Hangdong Zhao, Yuanyuan Tian, Rana Alotaibi,
-Bailu Ding, Nicolas Bruno, Jesús Camacho-Rodríguez, Vassilis
-Papadimos, Ernesto Cervantes Juárez, Cesar Galindo-Legaria, Carlo
-Curino. CIDR 2026.
-[pdf](https://www.cidrdb.org/cidr2026/papers/p29-zhao.pdf)
-
-The same idea, found already in production. SQL Server's batch-mode
-hash join builds a bitmap from its build side and pushes it into the
-probe subtree; because execution is pull-based, bitmaps cascade
-through a chain of joins, and the Cascades optimizer costs each plan
-with the bitmaps it would receive, so a bitmap can change the chosen
-join order. The paper argues this yields instance-optimal plans for
-acyclic queries whenever those plans are also the cheapest by
-estimate. On TPC-H SF100 with SQL Server 2025, bitmaps versus no
-bitmaps gave over 2× speedups on 7 of the 22 queries, and 12 acyclic
-queries ran with instance-optimal plans (§5, Table 1). Read it after
-§5 and [reading-selinger-cascades.md](reading-selinger-cascades.md):
-the bitmap is carried as a context property through the memo, which is
-the extensibility the Cascades architecture pays for.
-
-**Survivorship Bias in Industrial Database Workloads** — Ryan Marcus,
-Jeffrey Tao, Peizhi Wu, Zijie Zhao. CIDR 2026.
-[pdf](https://www.cidrdb.org/cidr2026/papers/p22-marcus.pdf)
-
-A caution about the workloads an optimizer is tuned for: a vendor's
-trace contains the queries that run well on that vendor's system,
-because users reshape their workloads around what is fast. Across the
-OLAP platforms in the authors' data, query repetition rates range from
-58% to 75%, and the higher rates go with higher per-query startup cost
-(§2.1); after one platform shipped a rollup optimization, the share of
-users issuing rollup queries rose from about 2% to about 6% (§2.2,
-Fig. 3). It sits beside [reading-how-good-optimizers.md](reading-how-good-optimizers.md):
-JOB showed that synthetic benchmarks hide estimation errors, and this
-paper shows that real traces can hide the queries nobody dared to
-send — including in a graph database's own query logs.
 
 ## 7. Experiments (`experiments/`)
 

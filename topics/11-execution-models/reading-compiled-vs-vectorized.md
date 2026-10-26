@@ -13,8 +13,8 @@ There is no headline winner. The paper's own summary opens "To our
 surprise, the performance of vectorized and data-centric compiled query
 execution is quite similar in OLAP workloads" (§10), and every number
 below is checked against the section, table or figure it came from. Two
-figures this guide used to carry were not in the paper at all; both
-corrections are called out where they occur.
+figures commonly attributed to the paper are not in it at all; the steps
+they would belong to say so.
 
 ## The problem in one sentence
 
@@ -94,9 +94,9 @@ The amortization is not a hope, it is measured:
    time inside primitives                 98.5%
 ```
 
-**Correction:** this guide previously estimated the residue as "~100 ns
-of dispatch ÷ 2048 rows ≈ 0.05 ns/row". The estimate was invented; the
-paper measured the thing directly, and 1.5% is the number to quote.
+It is tempting to derive this from first principles — some dispatch cost
+divided by a vector length — but the paper measured the thing directly,
+and 1.5% is the number to quote.
 
 §4.2 then goes further, and this is the sentence the rest of the guide
 hangs on. Tectorwise executes more instructions per tuple than Typer —
@@ -203,9 +203,8 @@ The result (§4.1, Figure 3, SF=1, 1 thread):
    "neither paradigm is clearly dominated by the other"
 ```
 
-**Correction:** this guide previously reported "TPC-H geometric mean
-within ~10-20%". No such figure appears in the paper — there is no
-geometric mean over TPC-H in it, and the honest summary is the range
+There is no geometric mean over TPC-H anywhere in the paper, so a
+"within ~10-20%" summary has no source; the honest summary is the range
 above: 1.74× the worst way for Tectorwise, 1.32× the worst way for
 Typer, direction depending on the query. Reporting a mean would also
 have destroyed the finding, since the two halves of the spread point
@@ -231,8 +230,8 @@ less than their sum. §4.1 explains the mechanism in both directions:
   out-of-order window of each CPU fills up more quickly with complex
   loops thus they generate less outstanding loads."
 
-**Correction:** this guide previously said the fused loop has "ONE miss
-in flight". The paper's claim is *fewer*, not one — the out-of-order
+The paper's claim is *fewer* outstanding misses for the fused loop, not
+one — the out-of-order
 window fills faster because each iteration carries more instructions.
 The distinction matters: the cure is not "batch or lose", it is anything
 that keeps the reorder window free, which is why software prefetching
@@ -349,7 +348,7 @@ running slower (§5.3).
 > **In:** a performance comparison that came out a tie, which is
 > precisely what makes §8 the deciding section.
 > **Out:** five dimensions on which the models are *not* tied, and the
-> one place this guide previously invented a number.
+> one cost the paper deliberately leaves unmeasured.
 
 §8's opening states the situation: "The performance differences are not
 large enough to make a general recommendation whether to use
@@ -365,10 +364,9 @@ factors… may be of greater importance."
   team "felt compelled to additionally integrate the compilation-based
   engine Hekaton".
 - **Compile time (§8.2)** — vectorization wins, because primitives are
-  precompiled. **Correction:** this guide previously priced Typer's
-  compilation at "100s of ms of LLVM per query". That figure is not in
-  the paper, which excludes compilation time from every measurement
-  (§3). What §8.2 does say is the *shape*: LLVM compile time is "often
+  precompiled. The paper puts no number on Typer's compilation — it
+  excludes compilation time from every measurement (§3), so any
+  "hundreds of ms of LLVM per query" figure comes from somewhere else. What §8.2 does say is the *shape*: LLVM compile time is "often
   super-linear to code size", and code size grows with operator count —
   or with column count, since "a small SQL query such as `SELECT * FROM
   T` can produce a lot of code if table T has thousands of columns". The

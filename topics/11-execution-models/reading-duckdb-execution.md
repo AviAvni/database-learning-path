@@ -8,8 +8,8 @@ salt-tagged join hash table — the data plane first, then the control
 plane, then the operator where the tricks pay off. Then it hands you the
 anchors to watch each step run.
 
-Every anchor below is duckdb at the commit this repo pins,
-`6c0c1a68` (`resources/codebases.md`). Quoted C++ carries its real line
+Every anchor below is duckdb **v2.0.0**, commit `d54cbbe3df`
+(`resources/codebases.md`). Quoted C++ carries its real line
 numbers in the gutter; elisions are marked. Where a number could be
 remembered wrong — the vector size, the salt width, the morsel size —
 the guide quotes the constant instead of asserting it.
@@ -161,10 +161,9 @@ and kernels dispatch on it:
     22  };
 ```
 
-Six kinds, not the five this guide used to list: `SHREDDED_VECTOR` — the
-shredded representation of a `VARIANT` column, where a semi-structured
-value's common sub-fields are stored as real typed columns — is present at
-this pin.
+Six kinds. The newest, `SHREDDED_VECTOR`, is the shredded representation
+of a `VARIANT` column, where a semi-structured value's common sub-fields
+are stored as real typed columns.
 
 The payoff is arithmetic. `2 * price` with a CONSTANT `2` runs one loop
 over `price` and never writes 2048 copies of the literal: 2048 × 8 B =
@@ -210,24 +209,24 @@ takes `(data, sel, count)` and iterates `sel` instead of `0..2048`:
 
 ```cpp
 // src/include/duckdb/common/types/selection_vector.hpp — write, read, and
-// the storage. 124-127 and 134-140 in full, then the private member at 175.
+// the storage. 124-127 and 136-142 in full, then the private member at 177.
    124  	inline void set_index(idx_t idx, idx_t loc) { // NOLINT: allow casing for legacy reasons
    125  		D_ASSERT(idx < capacity);
    126  		sel_vector[idx] = UnsafeNumericCast<sel_t>(loc);
    127  	}
-// ... 128-133: swap(i, j) ...
-   134  	inline idx_t get_index(idx_t idx) const { // NOLINT: allow casing for legacy reasons
-   135  		return sel_vector ? get_index_unsafe(idx) : idx;
-   136  	}
-   137  	inline idx_t get_index_unsafe(idx_t idx) const { // NOLINT: allow casing for legacy reasons
-   138  		D_ASSERT(idx < capacity);
-   139  		return sel_vector[idx];
-   140  	}
-// ... 141-174: data(), Slice, Verify, Sort ...
-   175  	sel_t *sel_vector;
+// ... 128-135: ShiftLeft, swap(i, j) ...
+   136  	inline idx_t get_index(idx_t idx) const { // NOLINT: allow casing for legacy reasons
+   137  		return sel_vector ? get_index_unsafe(idx) : idx;
+   138  	}
+   139  	inline idx_t get_index_unsafe(idx_t idx) const { // NOLINT: allow casing for legacy reasons
+   140  		D_ASSERT(idx < capacity);
+   141  		return sel_vector[idx];
+   142  	}
+// ... 143-176: data(), Slice, Verify, Sort ...
+   177  	sel_t *sel_vector;
 ```
 
-Line 135 is the piece worth stopping on: a null `sel_vector` means the
+Line 137 is the piece worth stopping on: a null `sel_vector` means the
 identity mapping. "No selection" is not a special case the caller must
 test for — it is a selection vector whose `get_index(i)` returns `i`, so
 the one kernel loop covers both the filtered and the unfiltered path.
@@ -247,48 +246,71 @@ survivor count at 50% selectivity, not a vector size:
 by the next filter in the chain, while a selection vector composes: filter
 two selects from filter one's output positions and still moves no data.
 
-The kernel shape, in Rust, so the loop is legible:
+The kernels that produce selection vectors live in one place.
+`ScalarExecutor` (`src/include/duckdb/common/vector_operations/scalar_executor.hpp`,
+"Internal execution engine shared by the named scalar executor facades",
+:30-31) owns the representation, validity and selection handling for unary,
+binary, ternary and variadic operations alike; `UnaryExecutor`,
+`BinaryExecutor` and the rest are facades that forward into it (for example
+`binary_executor.hpp:189`). Its flat select loop:
 
-```rust
-// ILLUSTRATION — not quoted from duckdb; the real select loops are the
-// templates in src/include/duckdb/common/vector_operations/unary_executor.hpp:310
-// (`SelectLoopSelSwitch`), which handle the vector-type and validity cases
-// this omits. The (data, sel, count) shape and the branch-free body are real.
-fn filter_lt(v: &[i64], t: i64, sel: &[u32], out_sel: &mut [u32]) -> usize {
-    let mut n = 0;
-    for &i in sel {
-        out_sel[n] = i;                    // branch-free: write always,
-        n += (v[i as usize] < t) as usize; // advance only on match
-    }
-    n   // survivor count — the data vectors are untouched, zero copies
-}
+```cpp
+// src/include/duckdb/common/vector_operations/scalar_executor.hpp — SelectFlatLoop, 579-611
+   579  	template <uint64_t CONSTANT_MASK, class SINK, class ADAPTER, class... ARGS, size_t... Is>
+   580  	static idx_t SelectFlatLoop(const std::tuple<const ARGS *...> &input_data, const ValidityMask &input_validity,
+   581  	                            const SelectionVector &sel, idx_t count, const SINK &sink, ADAPTER &adapter,
+   582  	                            std::index_sequence<Is...>) {
+// ... 583-585: copy the sink, base_idx = 0, number of 64-bit validity words ...
+   586  		for (idx_t entry_idx = 0; entry_idx < entry_count; entry_idx++) {
+   587  			auto validity_entry = input_validity.GetValidityEntry(entry_idx);
+   588  			auto next = MinValue<idx_t>(base_idx + ValidityMask::BITS_PER_VALUE, count);
+   589  			if (ValidityMask::AllValid(validity_entry)) {
+   590  				for (; base_idx < next; base_idx++) {
+   591  					auto result_idx = sel.get_index(base_idx);
+   592  					bool comparison_result =
+   593  					    adapter.Operation(std::get<Is>(input_data)[InputIndex<Is, CONSTANT_MASK>(base_idx)]...);
+   594  					local_sink.Append(comparison_result, result_idx);
+   595  				}
+   596  			} else if (ValidityMask::NoneValid(validity_entry)) {
+   597  				local_sink.AppendInvalidRange(sel, base_idx, next);
+   598  				base_idx = next;
+   599  			} else {
+// ... 600-607: a mixed word — the same loop, with ValidityMask::RowIsValid ANDed into the result ...
+   608  			}
+   609  		}
+   610  		return local_sink.Result(count);
+   611  	}
 ```
 
-The branch-free body is the point: write unconditionally, advance the
-counter only on match, so there is no branch for the predictor to miss on
-50%-selective data. [FINDINGS.md](../../FINDINGS.md) row 17 puts a number
-on what that avoids — a branchy filter runs 0.95 GB/s where a branchless
-one runs ~10 GB/s on the same data. A DICTIONARY vector (Step 2) is this
-same trick promoted from a call argument to a vector representation.
+It reads validity (the NULL mask) one 64-bit word at a time: a word with every
+row valid runs the inner loop at 590-595 with no per-row NULL test at all, a
+word with no row valid is appended as one range at 597 without evaluating the
+comparison, and only a mixed word pays a per-row validity check. Every
+comparison result, with its `sel` index, goes to a *sink*, and the sink is
+where the branch disappears:
 
-> **Upstream since the pin.** `SelectLoopSelSwitch`, the anchor the
-> illustration points at (`unary_executor.hpp:310`, and again in the
-> source table below), no longer exists. DuckDB
-> [#24564](https://github.com/duckdb/duckdb/pull/24564) ("Unify and
-> optimize scalar executor infrastructure", merge commit `7a61069345`,
-> 2026-08-17, released in v2.0.0) moved the representation, validity and
-> selection handling that unary, binary, ternary and variadic execution
-> each did separately into one internal `ScalarExecutor`
-> (`src/include/duckdb/common/vector_operations/scalar_executor.hpp`),
-> keeping `UnaryExecutor` and the others as facades with their old entry
-> points. At v2.0.0 the select kernels are `SelectFlatLoop`,
-> `SelectGenericLoop` and `SelectGenericConstantLoop` there; the flat loop
-> reads validity one 64-bit word at a time, runs an all-valid word through
-> a loop with no per-row validity test, appends an all-NULL word as one
-> range, and hands each comparison result plus its `sel` index to a sink,
-> which records the match. The steps above describe the pinned code,
-> which is what the line numbers point at; the `(data, sel, count)` shape
-> the illustration models is unchanged.
+```cpp
+// src/include/duckdb/common/vector_operations/scalar_executor.hpp — StaticSelectionSink::Append, 463-472
+   463  		inline void Append(bool comparison_result, idx_t result_idx) {
+   464  			if constexpr (HAS_TRUE_SELECTION) {
+   465  				true_selection[true_count] = UnsafeNumericCast<sel_t>(result_idx);
+   466  				true_count += comparison_result;
+   467  			}
+   468  			if constexpr (HAS_FALSE_SELECTION) {
+   469  				false_selection[false_count] = UnsafeNumericCast<sel_t>(result_idx);
+   470  				false_count += !comparison_result;
+   471  			}
+   472  		}
+```
+
+Lines 465-466 are the branch-free body: write the row's position
+unconditionally, advance the counter only on a match, so there is no branch
+for the predictor to miss on 50%-selective data. The `if constexpr` at 464 and
+468 is resolved at compile time, so a caller that wants only the true side
+pays for nothing else. [FINDINGS.md](../../FINDINGS.md) row 17 puts a number
+on what that avoids — a branchy filter runs 0.95 GB/s where a branchless one
+runs ~10 GB/s on the same data. A DICTIONARY vector (Step 2) is this same
+trick promoted from a call argument to a vector representation.
 
 ### Step 4 — pipelines: the plan splits at its breakers
 
@@ -317,12 +339,13 @@ previous pipeline's materialized result) → a chain of streaming operators
 
 Pipelines are the scheduling unit: each may be run by many threads at
 once, and dependencies (build before probe) gate execution.
-`Pipeline::ScheduleParallel` (`src/parallel/pipeline.cpp:136-153`) decides
-the degree by asking *both* ends — `TryGetMaxThreads` (`:101-134`) starts
+`Pipeline::ScheduleParallel` (`src/parallel/pipeline.cpp:168-185`) decides
+the degree by asking *both* ends — `TryGetMaxThreads` (`:127-166`) starts
 from the source's `MaxThreads()`, lets every intermediate operator lower
 it, clamps to `TaskScheduler::NumberOfThreads()`, and lets the sink lower
-it again — and falls back to `ScheduleSequentialTask` (`:95`) when any
-participant says no.
+it again — and `Pipeline::Schedule` (`:316`) falls back to
+`ScheduleSequentialTask` (`:121`, called at `:326`) when any participant
+says no.
 
 This is where **morsel-driven parallelism** plugs in
 ([reading-morsel-parallelism.md](reading-morsel-parallelism.md)): rather
@@ -335,20 +358,29 @@ is a row group, and the size is computed, not hard-coded:
 
 ```cpp
 // src/storage/data_table.cpp — how many parallel work units a table offers.
-   276  idx_t DataTable::MaxThreads(ClientContext &context) const {
-   277  	idx_t row_group_size = GetRowGroupSize();
-   278  	idx_t parallel_scan_vector_count = row_group_size / STANDARD_VECTOR_SIZE;
-   279  	if (ClientConfig::GetConfig(context).verify_parallelism) {
-   280  		parallel_scan_vector_count = 1;
-   281  	}
-   282  	idx_t parallel_scan_tuple_count = STANDARD_VECTOR_SIZE * parallel_scan_vector_count;
-   283  	return GetTotalRows() / parallel_scan_tuple_count + 1;
-   284  }
+   294  idx_t DataTable::MaxThreads(ClientContext &context) const {
+   295  	idx_t row_group_size = GetRowGroupSize();
+   296  	idx_t parallel_scan_vector_count = row_group_size / STANDARD_VECTOR_SIZE;
+   297  	if (ClientConfig::GetConfig(context).verify_parallelism) {
+   298  		parallel_scan_vector_count = 1;
+   299  	}
+   300  	idx_t parallel_scan_tuple_count = STANDARD_VECTOR_SIZE * parallel_scan_vector_count;
+   301  	idx_t total_rows = GetTotalRows();
+   302  	auto local_storage = LocalStorage::Get(context, db).GetStorage(*this);
+   303  	if (local_storage) {
+   304  		// transaction-local rows are scanned in parallel as well
+   305  		total_rows += local_storage->GetCollection().GetTotalRows();
+   306  	}
+   307  	return total_rows / parallel_scan_tuple_count + 1;
+   308  }
 ```
 
-With `DEFAULT_ROW_GROUP_SIZE` at 122880
-(`src/include/duckdb/storage/storage_info.hpp:26`, and `:394` asserts it is
-a multiple of the vector size), the arithmetic is exact:
+Line 300 is the morsel size and line 307 the count. Lines 301-306 add the
+rows the current transaction has written but not yet committed, because those
+are scanned in parallel too. With `DEFAULT_ROW_GROUP_SIZE` at 122880
+(`src/include/duckdb/storage/storage_info.hpp:26`, and `:402` checks it is
+a multiple of the vector size), the arithmetic is exact for a table with no
+uncommitted local rows:
 
 ```
  vectors per row group      = 122880 / 2048            = 60 vectors
@@ -411,26 +443,26 @@ The loop that implements this:
 
 ```cpp
 // src/parallel/pipeline_executor.cpp — the source-to-sink loop inside
-// Execute(max_chunks) (260). 296-301 fetch, 319-323 push.
-   296  		} else if (!exhausted_pipeline || next_batch_blocked) {
-   297  			SourceResultType source_result = SourceResultType::BLOCKED;
-   298  			if (!next_batch_blocked) {
-   299  				// "Regular" path: fetch a chunk from the source and push it through the pipeline
-   300  				source_chunk.Reset();
-   301  				source_result = FetchFromSource(source_chunk);
-// ... 302-318: BLOCKED/FINISHED handling and the batch-index path ...
-   319  			if (exhausted_pipeline && source_chunk.size() == 0) {
-   320  				continue;
-   321  			}
-   322  
-   323  			result = ExecutePushInternal(source_chunk, chunk_budget);
+// Execute(max_chunks) (330). 379-384 fetch, 410-414 push.
+   379  		} else if (!exhausted_pipeline || next_batch_blocked) {
+   380  			SourceFetchResult source_result;
+   381  			if (!next_batch_blocked) {
+   382  				// "Regular" path: fetch a chunk from the source and push it through the pipeline
+   383  				source_chunk.Reset();
+   384  				source_result = FetchFromSource(source_chunk);
+// ... 385-409: batch-advance, BLOCKED/FINISHED handling and the batch-index path ...
+   410  			if (exhausted_pipeline && source_chunk.size() == 0) {
+   411  				continue;
+   412  			}
+   413  
+   414  			result = ExecutePushInternal(source_chunk, chunk_budget);
 ```
 
-`ExecutePushInternal` (`:375-422`) then loops the chunk through the
-operator chain via `Execute(input, result, idx)` (`:483`) and into
-`Sink` — and its own `do … while (chunk_budget.Next())` at 387-420 is the
+`ExecutePushInternal` (`:560-612`) then loops the chunk through the
+operator chain via `Execute(input, result, idx)` (`:744`) and into
+`Sink` — and its own `do … while (chunk_budget.Next())` at 572-610 is the
 `HAVE_MORE_OUTPUT` loop in the flesh: it re-executes the *same* input
-until the operator says `NEED_MORE_INPUT` (417-419) or the budget runs out.
+until the operator says `NEED_MORE_INPUT` (607-609) or the budget runs out.
 
 Why the protocol beats internal buffering, on numbers: memory in flight
 per thread is one chunk per operator.
@@ -455,9 +487,11 @@ running and not running.
 
 Build side: each thread collects its chunks into thread-local partitioned
 row-format storage (no contention), and the partitions are merged at the
-end — `JoinHashTable::Merge` (`src/execution/join_hashtable.cpp:149-187`),
-whose `sink_collection->Combine` is line 169. That is the morsel-driven
-two-phase pattern of Step 4 applied to a hash table.
+end — `JoinHashTable::Merge` (`src/execution/join_hashtable.cpp:157-184`),
+whose `sink_collection->Combine` is line 181. That is the morsel-driven
+two-phase pattern of Step 4 applied to a hash table. (The assertion at 179
+shows one more thing every thread-local table shares: a single Bloom filter
+per join — "the filter that gets published", in the comment at 177-178.)
 
 The table itself is **open-addressed with linear probing** — not chained —
 and each slot is one 8-byte word doing two jobs:
@@ -487,35 +521,35 @@ topic 2's bit-smuggling, and the payoff is a probe loop that dereferences
 nothing until the salt agrees:
 
 ```cpp
-// src/execution/join_hashtable.cpp — the salted probe, 243-266, inside
-// ProbeForPointersInternal (232).
-   243  		if (USE_SALTS) {
-   244  			// increment the ht_offset of the entry as long as the next entry is occupied and salt does not match
-   245  			while (true) {
-   246  				const ht_entry_t entry = entries.get()[row_ht_offset];
-   247  				const bool occupied = entry.IsOccupied();
-   248  
-   249  				// the entry is empty -> no match possible
-   250  				if (!occupied) {
-   251  					break;
-   252  				}
-   253  
-   254  				const hash_t row_salt = ht_entry_t::ExtractSalt(row_hash);
-   255  				const bool salt_match = entry.GetSalt() == row_salt;
-   256  				if (salt_match) {
-   257  					// we know that the entry is occupied and the salt matches -> compare the keys
-   258  					auto row_index = GetOptionalIndex<HAS_SEL>(row_sel, i);
-   259  					AddPointerToCompare(state, entry, pointers_result_v, row_ht_offset, keys_to_compare_count,
-   260  					                    row_index);
-   261  					break;
-   262  				}
-   263  
-   264  				// full and salt do not match -> continue probing
-   265  				IncrementAndWrap(row_ht_offset, ht.bitmask);
-   266  			}
+// src/execution/join_hashtable.cpp — the salted probe, 241-264, inside
+// ProbeForPointersInternal (229).
+   241  		if (USE_SALTS) {
+   242  			// increment the ht_offset of the entry as long as the next entry is occupied and salt does not match
+   243  			while (true) {
+   244  				const ht_entry_t entry = entries.get()[row_ht_offset];
+   245  				const bool occupied = entry.IsOccupied();
+   246  
+   247  				// the entry is empty -> no match possible
+   248  				if (!occupied) {
+   249  					break;
+   250  				}
+   251  
+   252  				const hash_t row_salt = ht_entry_t::ExtractSalt(row_hash);
+   253  				const bool salt_match = entry.GetSalt() == row_salt;
+   254  				if (salt_match) {
+   255  					// we know that the entry is occupied and the salt matches -> compare the keys
+   256  					auto row_index = GetOptionalIndex<HAS_SEL>(row_sel, i);
+   257  					AddPointerToCompare(state, entry, pointers_result_v, row_ht_offset, keys_to_compare_count,
+   258  					                    row_index);
+   259  					break;
+   260  				}
+   261  
+   262  				// full and salt do not match -> continue probing
+   263  				IncrementAndWrap(row_ht_offset, bitmask);
+   264  			}
 ```
 
-Line 250 breaks on an empty slot; 254-255 compare salts; only 259 records
+Line 248 breaks on an empty slot; 252-253 compare salts; only 257 records
 a pointer for the key comparison to follow. A non-matching key whose salt
 differs never touches the tuple.
 
@@ -534,57 +568,60 @@ misses to save:
 
 ```cpp
 // src/include/duckdb/execution/join_hashtable.hpp — when salting is worth it.
-    93  	//! only compare salts with the ht entries if the capacity is larger than 8192 so
-    94  	//! that it does not fit into the CPU cache
-    95  	static constexpr const idx_t USE_SALT_THRESHOLD = 8192;
+   140  	//! only compare salts with the ht entries if the capacity is larger than 8192 so
+   141  	//! that it does not fit into the CPU cache
+   142  	static constexpr const idx_t USE_SALT_THRESHOLD = 8192;
 ```
 
 Check the threshold against the ladder: 8192 entries × 8 B = 64 KB, which
 fits inside this machine's measured 128 KB L1d. Below the threshold the
 entry load is an L1 hit, the pointer chase is an L2 hit, and the salt
 compare would be pure added instructions — so it is compiled out
-(`UseSalt()`, `:370-373`, selects between two template instantiations).
+(`UseSalt()`, `join_hashtable.cpp:368-371`, selects between two template
+instantiations; the `#ifdef DUCKDB_HASH_ZERO` around the constant at
+`join_hashtable.hpp:136-143` sets the threshold to 0 in a build where every
+hash is 0, so the salt path still gets exercised there).
 
 And the whole probe is vectorized, which is what makes the misses overlap:
 
 ```cpp
-// src/execution/join_hashtable.cpp — GetRowPointersInternal (300): probe the
+// src/execution/join_hashtable.cpp — GetRowPointersInternal (298): probe the
 // whole vector, compare the whole vector, re-probe only the non-matches.
-   323  	do {
-   324  		const idx_t keys_to_compare_count = ProbeForPointers<USE_SALTS>(state, ht, entries, pointers_result_v, row_sel,
-   325  		                                                                elements_to_probe_count, has_row_sel);
-   326  
-   327  		// if there are no keys to compare, we are done
-   328  		if (keys_to_compare_count == 0) {
-   329  			break;
-   330  		}
-   331  
-   332  		// Perform row comparisons, after Match function call salt_match_sel will point to the keys that match
-   333  		keys_no_match_count = 0;
-   334  		const idx_t keys_match_count =
-   335  		    ht.row_matcher_build.Match(keys, key_state.vector_data, state.keys_to_compare_sel, keys_to_compare_count,
-   336  		                               pointers_result_v, &state.keys_no_match_sel, keys_no_match_count);
-// ... 337-350: append the matches to match_sel ...
-   351  		for (idx_t i = 0; i < keys_no_match_count; i++) {
-   352  			const auto row_index = state.keys_no_match_sel.get_index(i);
-   353  			auto ht_offset_and_salt = ht_offsets_and_salts[row_index];
-   354  			IncrementAndWrap(ht_offset_and_salt, ht.bitmask | ht_entry_t::SALT_MASK);
-   355  			hashes_dense[i] = ht_offset_and_salt; // populate dense again
-   356  		}
-   357  
-   358  		// in the next iteration, we have a selection vector with the keys that do not match
-   359  		row_sel = state.keys_no_match_sel;
-   360  		has_row_sel = true;
+   321  	do {
+   322  		const idx_t keys_to_compare_count = ProbeForPointers<USE_SALTS>(state, ht, entries, pointers_result_v, row_sel,
+   323  		                                                                elements_to_probe_count, has_row_sel);
+   324  
+   325  		// if there are no keys to compare, we are done
+   326  		if (keys_to_compare_count == 0) {
+   327  			break;
+   328  		}
+   329  
+   330  		// Perform row comparisons, after Match function call salt_match_sel will point to the keys that match
+   331  		keys_no_match_count = 0;
+   332  		const idx_t keys_match_count =
+   333  		    ht.row_matcher_build.Match(keys, key_state.vector_data, state.keys_to_compare_sel, keys_to_compare_count,
+   334  		                               pointers_result_v, &state.keys_no_match_sel, keys_no_match_count);
+// ... 335-348: append the matches to match_sel ...
+   349  		for (idx_t i = 0; i < keys_no_match_count; i++) {
+   350  			const auto row_index = state.keys_no_match_sel.get_index(i);
+   351  			auto ht_offset_and_salt = ht_offsets_and_salts[row_index];
+   352  			IncrementAndWrap(ht_offset_and_salt, ht.bitmask | ht_entry_t::SALT_MASK);
+   353  			hashes_dense[i] = ht_offset_and_salt; // populate dense again
+   354  		}
+   355  
+   356  		// in the next iteration, we have a selection vector with the keys that do not match
+   357  		row_sel = state.keys_no_match_sel;
+   358  		has_row_sel = true;
+   359  
+   360  		elements_to_probe_count = keys_no_match_count;
    361  
-   362  		elements_to_probe_count = keys_no_match_count;
-   363  
-   364  	} while (DUCKDB_UNLIKELY(keys_no_match_count > 0));
+   362  	} while (DUCKDB_UNLIKELY(keys_no_match_count > 0));
 ```
 
-Read 351-362: linear probing's "keep walking until you find it" is
+Read 349-360: linear probing's "keep walking until you find it" is
 expressed as a *selection vector of the keys that have not yet resolved*,
 fed back into the next round. That is Step 3's mechanism reused as control
-flow. And because the 2048 entry loads at 246 are issued from a loop with
+flow. And because the 2048 entry loads at 244 are issued from a loop with
 no dependency between iterations, the core can have many of them in flight
 at once — **memory-level parallelism**, the reason a vectorized probe beats
 a fused compiled loop that resolves one key at a time
@@ -594,7 +631,7 @@ a fused compiled loop that resolves one key at a time
 
 Read in this order: the vector types (the data plane), then the pipeline
 executor (the control plane), then the join hash table (where it pays).
-All anchors are duckdb `6c0c1a68`.
+All anchors are duckdb v2.0.0, `d54cbbe3df`.
 
 | File | Lines | What is there | Step |
 |---|---|---|---|
@@ -603,19 +640,19 @@ All anchors are duckdb `6c0c1a68`.
 | `src/include/duckdb/common/enums/vector_type.hpp` | 15-22 | the six `VectorType` kinds | 2 |
 | `src/include/duckdb/common/vector/unified_vector_format.hpp` | 22-35 | `(sel, data, validity)` — the normalize-then-one-loop dodge | 2 |
 | `src/include/duckdb/common/types/vector.hpp` | 127 | `ToUnifiedFormat` — the entry point to it | 2 |
-| `src/include/duckdb/common/types/selection_vector.hpp` | 124-140, 175 | `set_index`, `get_index` (null `sel` = identity, 135), `sel_t *sel_vector` | 3 |
+| `src/include/duckdb/common/types/selection_vector.hpp` | 124-142, 177 | `set_index`, `get_index` (null `sel` = identity, 137), `sel_t *sel_vector` | 3 |
 | `src/include/duckdb/common/typedefs.hpp` | 30 | `typedef uint32_t sel_t` — 4 bytes per selected row | 3 |
-| `src/include/duckdb/common/vector_operations/unary_executor.hpp` | 310 | `SelectLoopSelSwitch` — the real select kernels | 3 |
-| `src/parallel/pipeline.cpp` | 95, 101-134, 136-153 | sequential fallback; `TryGetMaxThreads`; `ScheduleParallel` | 4 |
-| `src/storage/data_table.cpp` | 276-284 | `MaxThreads` — morsels are row groups, computed here | 4 |
-| `src/include/duckdb/storage/storage_info.hpp` | 26, 394 | `DEFAULT_ROW_GROUP_SIZE 122880ULL`; asserted a multiple of the vector size | 4 |
+| `src/include/duckdb/common/vector_operations/scalar_executor.hpp` | 30-31, 463-472, 579-611 | `ScalarExecutor`, the shared engine; the branch-free sink; `SelectFlatLoop` | 3 |
+| `src/parallel/pipeline.cpp` | 121, 127-166, 168-185, 316-326 | sequential task; `TryGetMaxThreads`; `ScheduleParallel`; `Schedule` and its fallback | 4 |
+| `src/storage/data_table.cpp` | 294-308 | `MaxThreads` — morsels are row groups, computed here | 4 |
+| `src/include/duckdb/storage/storage_info.hpp` | 26, 402 | `DEFAULT_ROW_GROUP_SIZE 122880ULL`; checked to be a multiple of the vector size | 4 |
 | `src/include/duckdb/common/enums/operator_result_type.hpp` | 15-27 | the four-state operator contract, with its own rationale | 5 |
-| `src/parallel/pipeline_executor.cpp` | 260, 301, 375-422, 483 | `Execute(max_chunks)`; `FetchFromSource`; `ExecutePushInternal`; the per-operator `Execute` | 5 |
-| `src/execution/join_hashtable.cpp` | 149-187 | `Merge` — thread-local partitions combined at 169 | 6 |
+| `src/parallel/pipeline_executor.cpp` | 330, 384, 560-612, 744 | `Execute(max_chunks)`; `FetchFromSource`; `ExecutePushInternal`; the per-operator `Execute` | 5 |
+| `src/execution/join_hashtable.cpp` | 157-184 | `Merge` — thread-local partitions combined at 181 | 6 |
 | `src/include/duckdb/execution/ht_entry.hpp` | 33-37, 73-80 | 16 salt bits / 48 pointer bits in one word; `ExtractSalt` | 6 |
-| `src/execution/join_hashtable.cpp` | 232-279 | `ProbeForPointersInternal` — the salted linear probe | 6 |
-| `src/execution/join_hashtable.cpp` | 300-368, 370-373 | vectorized probe rounds driven by a non-match selection vector; `UseSalt()` | 6 |
-| `src/include/duckdb/execution/join_hashtable.hpp` | 93-95 | `USE_SALT_THRESHOLD = 8192` — and *why*, in the comment | 6 |
+| `src/execution/join_hashtable.cpp` | 229-277 | `ProbeForPointersInternal` — the salted linear probe | 6 |
+| `src/execution/join_hashtable.cpp` | 298-366, 368-371 | vectorized probe rounds driven by a non-match selection vector; `UseSalt()` | 6 |
+| `src/include/duckdb/execution/join_hashtable.hpp` | 140-142 | `USE_SALT_THRESHOLD = 8192` — and *why*, in the comment | 6 |
 
 ## Takeaway
 
@@ -693,7 +730,7 @@ Answer each before unfolding it.
   positions and still moves nothing.
 
   "No selection" is not special because `get_index`
-  (`selection_vector.hpp:134-136`) returns `idx` when `sel_vector` is null.
+  (`selection_vector.hpp:136-138`) returns `idx` when `sel_vector` is null.
   An absent selection vector *is* the identity mapping, so one kernel loop
   serves the filtered and unfiltered paths and there is no branch on
   "was there a filter" in the hot loop.
@@ -724,15 +761,15 @@ Answer each before unfolding it.
   DuckDB stores each hash-table slot as a single 8-byte word whose low 48
   bits are the tuple pointer and whose high 16 bits are a slice of the
   key's hash — the salt (`ht_entry.hpp:34-36`). A probe compares the salt
-  first (`join_hashtable.cpp:254-255`), and since a differing salt proves a
+  first (`join_hashtable.cpp:252-253`), and since a differing salt proves a
   differing key, all but 2^-16 = 1/65,536 of non-matching probes are
   rejected from the entry load alone, never dereferencing the pointer.
 
   It is switched off below `USE_SALT_THRESHOLD = 8192`
-  (`join_hashtable.hpp:93-95`) because the saving is a *cache miss*, not a
+  (`join_hashtable.hpp:140-142`) because the saving is a *cache miss*, not a
   comparison: 8192 entries × 8 B is 64 KB, which fits in this machine's
   measured 128 KB L1d, so there is no miss to avoid and the salt compare
-  would be pure added work. `UseSalt()` (`:370-373`) picks between two
+  would be pure added work. `UseSalt()` (`join_hashtable.cpp:368-371`) picks between two
   template instantiations, so the branch does not exist at run time either.
 
   </details>
@@ -746,13 +783,13 @@ Answer each before unfolding it.
   (`operator_result_type.hpp:20-21`) is telling the executor "call me again
   with the *same* input" — so the explosion is drained one chunk at a time
   through `ExecutePushInternal`'s loop
-  (`pipeline_executor.cpp:387-420`) instead of accumulating. Peak memory is
+  (`pipeline_executor.cpp:572-610`) instead of accumulating. Peak memory is
   therefore one chunk per operator per thread: 5 operators × 128 KB × 8
   threads ≈ 5.1 MB, against 50e6 rows × 10× join fanout × 64 B = 32 GB if
   the join buffered its own output.
 
   The second reason is ownership: chunks belong to the executor, which
-  reuses them (`final_chunk.Reset()`, `:390`). An operator that buffered
+  reuses them (`final_chunk.Reset()`, `:575`). An operator that buffered
   would have to own — and allocate — its output instead.
 
   </details>
@@ -760,10 +797,11 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [duckdb](https://github.com/duckdb/duckdb) at `6c0c1a68` — the data
+- [duckdb](https://github.com/duckdb/duckdb) v2.0.0 at `d54cbbe3df` — the data
   plane: `src/include/duckdb/common/vector_size.hpp`,
   `enums/vector_type.hpp`, `types/data_chunk.hpp`,
-  `types/selection_vector.hpp`, `vector/unified_vector_format.hpp`; the
+  `types/selection_vector.hpp`, `vector/unified_vector_format.hpp`,
+  `vector_operations/scalar_executor.hpp`; the
   control plane: `src/parallel/pipeline.cpp`,
   `src/parallel/pipeline_executor.cpp`, `src/storage/data_table.cpp`; the
   payoff: `src/execution/join_hashtable.cpp`,

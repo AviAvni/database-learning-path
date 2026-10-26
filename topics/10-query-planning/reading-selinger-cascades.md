@@ -331,29 +331,46 @@ avoid re-evaluating subqueries unnecessarily" when the correlated values repeat
 
 This is the pre-decorrelation world. Turning correlated subqueries into joins —
 DuckDB's "deliminator" pass (`OptimizerType::DELIMINATOR`,
-`src/optimizer/optimizer.cpp:242`), DataFusion's
-`datafusion/optimizer/src/decorrelate_predicate_subquery.rs:130` — took decades to get right and is still
-the hardest rewrite family in any pipeline.
+`src/optimizer/optimizer.cpp:307` at `d54cbbe3df`), DataFusion's
+`decorrelate_predicate_subquery` rule (named at
+`datafusion/optimizer/src/decorrelate_predicate_subquery.rs:179` at
+`350ca7650`) — took decades to get right and is still the hardest rewrite
+family in any pipeline.
 
-> **Upstream since the pin.** DataFusion supplied a live example of that
-> difficulty after the pin. The **COUNT bug** is the classic
-> decorrelation error: when the inner block is an aggregate with no
-> `GROUP BY`, the subquery returns one row even for an outer row with no
-> matches (`COUNT(*)` over nothing is 0, not "no row"), but a plain join
-> rewrite produces no row for it, so the answer changes. DataFusion
-> [#25391](https://github.com/apache/datafusion/pull/25391) (commit
-> `86e10a549`, 2026-10-21) found that correlated `EXISTS`/`NOT EXISTS`
-> "had count-bug compensation available but never turned it on"; it now
-> decorrelates those cases into a `LEFT JOIN` and substitutes the
-> aggregate's empty-input value. The `IN`/`NOT IN` forms still return
-> wrong rows in that shape, so
-> [#26677](https://github.com/apache/datafusion/pull/26677) (commit
-> `4b7bc8b5b`, 2026-10-25) makes them fail with an error until
-> compensation exists for them too. Both are on `main`, not in a tagged
-> release as of 55.2.0, and both edit
-> `decorrelate_predicate_subquery.rs`. The anchor above describes the
-> pinned code, which is what the line number points at; the claim that
-> this is still the hardest rewrite family is, if anything, reinforced.
+The classic way to get it wrong is the **COUNT bug**. When the inner block is an
+aggregate with no `GROUP BY`, it returns exactly one row for *every* outer row —
+`COUNT(*)` over nothing is 0, not "no row" — but the obvious rewrite (group the
+inner table by the correlation key, then join) produces no row at all for an
+outer row with no matches, so the answer changes. Work it on two orders: order 1
+has two items, order 2 has none, and the query is
+
+```sql
+SELECT o.id FROM orders o
+WHERE EXISTS (SELECT COUNT(*) FROM items i WHERE i.order_id = o.id)
+```
+
+Per §6's semantics the subquery returns one row for each order — `(2)` for
+order 1 and `(0)` for order 2 — so `EXISTS` is true twice and the answer is
+**{1, 2}**. The naive rewrite groups `items` by `order_id`, yielding the single
+group `{1: 2}`, and semi-joins `orders` to it: order 2 has no group, so the
+answer is **{1}**. One row silently lost. The fix is to make the join an outer
+join and substitute the aggregate's *empty-input value* (0 for `COUNT`, NULL for
+`SUM`) wherever the inner side came back NULL-padded.
+
+DataFusion's `build_join` (`decorrelate_predicate_subquery.rs:804`) shows what
+doing that safely costs. For `EXISTS`/`NOT EXISTS` it pulls the correlated
+aggregate up with count-bug handling on (:822) and keeps a map from each
+aggregate to its empty-input value (`count_bug_compensation`, :824-828); when
+compensation applies it builds that outer join through
+`build_join_with_count_bug` (defined at :1176, called at :899). Three checks
+can veto compensation — the join filter reads the aggregate's own output
+(:829-836), the correlation keys are not bare columns (:843-844), or a `HAVING`
+would be silently dropped (:845-849) — and then it falls back to the
+uncompensated rewrite (:850-853). For `IN`/`NOT IN` there is no compensation
+yet: the comment at :857-859 calls the code a stopgap, and unless re-running the
+pull-up shows the count bug is harmless for that shape (:866-881), the
+subquery is not decorrelated at all (:882-884). A hundred lines of guards
+around one substitution is what "hardest rewrite family" means in practice.
 
 Why it matters: read §6 as the "before" picture. It tells you exactly what
 problem all that machinery exists to escape, and why an engine's subquery
@@ -734,9 +751,9 @@ Answer each before unfolding it.
 - `postgres/postgres@701f021` — `src/backend/optimizer/path/allpaths.c:3952`
   (`standard_join_search`) is Step 4, `src/include/utils/selfuncs.h:34-40` is
   Step 2, still. See `reading-postgres-optimizer.md`.
-- `duckdb/duckdb@6c0c1a68` — `src/optimizer/join_order/` is Step 4 with a
+- `duckdb/duckdb@d54cbbe3df` (v2.0.0) — `src/optimizer/join_order/` is Step 4 with a
   different enumeration order and no interesting orders. See
   `reading-duckdb-optimizer.md`.
-- `apache/datafusion@1e77af8` — `datafusion/optimizer/src/optimizer.rs` is a
+- `apache/datafusion@350ca7650` — `datafusion/optimizer/src/optimizer.rs` is a
   distant, memo-less descendant of Step 7's rule architecture. See
   `reading-rust-planner-stack.md`.

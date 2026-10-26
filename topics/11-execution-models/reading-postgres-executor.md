@@ -257,8 +257,8 @@ and stays.
 
 > **In:** the tuple that `ExecProcNode` returns at `executor.h:327` — a
 > `TupleTableSlot *`, not a row of values.
-> **Out:** the cost of getting a column out of it, and the correction to
-> a claim this guide used to make.
+> **Out:** the cost of getting a column out of it, and how often that cost
+> is actually paid — less often than the usual summary says.
 
 Tuples travel between operators as a **`TupleTableSlot`** — a container
 that can hold a heap tuple (the packed on-disk byte layout), a minimal
@@ -291,9 +291,8 @@ how far it got in `tts_nvalid`:
    428  }
 ```
 
-Line **422** is the correction this guide owes you. An earlier version of
-this chapter said postgres "pays this per attribute access, per tuple".
-It does not: the `attnum > tts_nvalid` test means the deform happens only
+Line **422** is the one to focus on. A common summary says postgres "pays
+this per attribute access, per tuple". It does not: the `attnum > tts_nvalid` test means the deform happens only
 when the requested column is past the high-water mark, and every access
 below it is two array reads (425, 427). `slot_getsomeattrs` (`:375-381`)
 guards the same way, and the deform routine says so itself:
@@ -315,7 +314,7 @@ So the honest claim is: **postgres deforms once per tuple per slot, up to
 the highest column the plan touches.** That is still a per-tuple cost, and
 it is still what the vectorized engines amortise — DuckDB deforms once
 per column per 2048-row chunk — but it is a factor of "columns touched"
-smaller than the version this guide used to assert.
+smaller than the per-access version of the claim.
 
 Why it matters: the honest number is the one worth beating. Per tuple,
 not per access, is what your `vectorized.rs` has to divide by its batch
@@ -543,7 +542,7 @@ it does not get away with it, and that is the market gap DuckDB drove a
 truck through.
 
 Postgres does JIT, and the scope is narrower than "queries" and wider
-than this guide used to say. `src/backend/jit/README:249-251`:
+than "expressions only". `src/backend/jit/README:249-251`:
 "Currently expression evaluation and tuple deforming are JITed" — so
 Step 4's deform and Steps 5-6's step list both get compiled, and the
 operator loop of Step 2 does not. The trigger is a cost threshold, not a

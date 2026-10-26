@@ -9,7 +9,7 @@ the CAS fast path, the wait queue, the lost-wakeup race the whole design
 orbits, and the padding that keeps neighbouring locks off each other's
 cache lines — then pins each piece to its line in the file.
 
-Everything below is read at the pinned commit **`postgres/postgres@701f021`**
+Everything below is read at commit **`postgres/postgres@701f021`**
 (`python3 tools/pinned-source.py ref postgres`). `lwlock.c` is 1939 lines
 there. Line numbers in other releases will differ; three of the flag names
 changed as recently as PG 17, so check before you trust a number from a

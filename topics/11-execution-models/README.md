@@ -100,8 +100,9 @@ tuple stays in CPU registers from scan to sink.
 
 VLDB'18 ("Everything You Always Wanted to Know…") raced the two champions:
 **roughly equal on aggregation-heavy work; compilation wins complex
-expressions and tight OLTP; vectorization wins compile-time (ms vs
-100s of ms), profiling, and adaptivity.** DuckDB chose vectors partly for
+expressions and tight OLTP; vectorization wins on compile time (its
+primitives are precompiled, while LLVM compile time grows with code size),
+profiling, and adaptivity.** DuckDB chose vectors partly for
 engineering reasons — no LLVM dependency, debuggable C++ kernels. Topic 19
 revisits compilation; M11 goes vectorized.
 
@@ -144,55 +145,49 @@ The two operators where analytics time actually goes.
   `GroupedHashAggregateStream` interns group keys → dense group index →
   aggregate states live in flat columnar arrays indexed by group id
   (not per-group heap objects).
-
-## Newer work (2025–2026)
-
-**Factorized and Vectorized Execution: Optimizing Analytical and
-Semantic Queries over Relations** — Sunny Yasser, Anas Dorbani, Amine
-Mhedhbi. Proc. ACM Manag. Data 4(3), Article 178 (SIGMOD 2026).
-[arXiv](https://arxiv.org/abs/2609.09002)
-
-Many-to-many joins blow intermediates up far beyond the inputs, and a
-factorized representation stores them as a tree of "this parent value
-× these children" instead of the flat cross product. That tree fights
-§2's design: vectorized operators want flat, fixed-size, contiguous
-vectors, and the list-based approach Kùzu uses binds one parent value
-at a time, which leaves child vectors sparse and limits the tree
-shapes it can express (§4). FFX keeps vectors packed: a child vector
-holds all matches contiguously, an offset array maps parent position
-`i` to the slice `off[i]..off[i+1]`, selection is a bit array, and a
-"cascade update" operator propagates filtering through the hierarchy
-without leaving the vectorized loop (§4.1, §5.2). Single-threaded on
-LSQB at scale factor 10, query Q1 takes 1.28 s against 591.10 s for
-Kùzu and 18.43 s for DuckDB, while the cyclic Q2 is a tie with DuckDB
-(2.71 s vs 2.72 s) (Table 5) — with FFX's join orders picked by hand to
-maximize factorization (§7.3.3). Read it against §5's selection
-vectors and topic 13's [reading-kuzu.md](../13-graph-engines/reading-kuzu.md)
-Step 5; for the capstone, a Cypher pattern that fans out from one node
-twice (`(a)-->(b), (a)-->(c)`) is exactly the shape where factorized
-intermediates pay.
-
-**On the Vexing Difficulty of Evaluating IN Predicates** — Altan
-Birler, Thomas Neumann. CIDR 2026.
-[pdf](https://www.cidrdb.org/cidr2026/papers/p3-birler.pdf)
-
-`x IN (subquery)` looks like a semijoin, and is one only while no
-NULLs are involved: with a nullable multi-column key, three-valued
-logic makes the answer NULL rather than FALSE when no row matches
-exactly but some row matches on its non-NULL columns —
-`(3, 4) IN ((1, 2), (3, NULL))` is NULL (§1) — so the operator must
-look for partial matches, not just exact ones. The paper reduces the orthogonal-vectors problem to
-this and concludes no subquadratic algorithm exists in general unless
-the strong exponential time hypothesis fails (§5); it then gives
-mark-join algorithms, implemented in Umbra, that run in linear time in
-the common cases (§6). The survey is the striking part: ClickHouse
-25.8, Hyper 9.1.0, DuckDB 1.3.0, Snowflake 9.21.0, Redshift and
-Firebolt Core return wrong results for IN/NOT IN over nullable
-attributes, while PostgreSQL 17, Oracle 23c, SQLite 3.46.1 and others
-are correct but can go quadratic on simple inputs (§1). It extends §5:
-a mark join is a hash join whose probe emits TRUE/FALSE/NULL per
-outer row instead of filtering, and Cypher's `IN` over lists that may
-hold `null` raises the same question for the capstone.
+- **Many-to-many joins** blow intermediates up far beyond the inputs, and
+  a *factorized* representation stores them as a tree of "this parent
+  value × these children" instead of the flat cross product. That tree
+  fights §2's design: vectorized operators want flat, fixed-size,
+  contiguous vectors. **Factorized and Vectorized Execution: Optimizing
+  Analytical and Semantic Queries over Relations** (FFX; Sunny Yasser,
+  Anas Dorbani, Amine Mhedhbi, Proc. ACM Manag. Data 4(3), Article 178,
+  SIGMOD 2026, [arXiv](https://arxiv.org/abs/2609.09002)) reconciles them.
+  The list-based approach Kùzu uses binds one parent value at a time,
+  which leaves child vectors sparse and limits the tree shapes it can
+  express (§4). FFX keeps vectors packed: a child vector holds all matches
+  contiguously, an offset array maps parent position `i` to the slice
+  `off[i]..off[i+1]`, selection is a bit array, and a "cascade update"
+  operator propagates filtering through the hierarchy without leaving the
+  vectorized loop (§4.1, §5.2). Single-threaded on LSQB at scale factor
+  10, query Q1 takes 1.28 s against 591.10 s for Kùzu and 18.43 s for
+  DuckDB, while the cyclic Q2 is a tie with DuckDB (2.71 s vs 2.72 s)
+  (Table 5) — with FFX's join orders picked by hand to maximize
+  factorization (§7.3.3). Read it against the selection vectors above and
+  topic 13's [reading-kuzu.md](../13-graph-engines/reading-kuzu.md) Step 5;
+  for the capstone, a Cypher pattern that fans out from one node twice
+  (`(a)-->(b), (a)-->(c)`) is exactly the shape where factorized
+  intermediates pay.
+- **`IN` is a join with a trap.** `x IN (subquery)` looks like a
+  semijoin, and is one only while no NULLs are involved: with a nullable
+  multi-column key, three-valued logic makes the answer NULL rather than
+  FALSE when no row matches exactly but some row matches on its non-NULL
+  columns — `(3, 4) IN ((1, 2), (3, NULL))` is NULL. **On the Vexing
+  Difficulty of Evaluating IN Predicates** (Altan Birler, Thomas Neumann,
+  CIDR 2026, [pdf](https://www.cidrdb.org/cidr2026/papers/p3-birler.pdf))
+  works this out (§1): the operator must look for partial matches, not
+  just exact ones. The paper reduces the orthogonal-vectors problem to
+  this and concludes no subquadratic algorithm exists in general unless
+  the strong exponential time hypothesis fails (§5); it then gives
+  mark-join algorithms, implemented in Umbra, that run in linear time in
+  the common cases (§6). Its survey is the striking part: ClickHouse 25.8,
+  Hyper 9.1.0, DuckDB 1.3.0, Snowflake 9.21.0, Redshift and Firebolt Core
+  return wrong results for IN/NOT IN over nullable attributes, while
+  PostgreSQL 17, Oracle 23c, SQLite 3.46.1 and others are correct but can
+  go quadratic on simple inputs (§1). A mark join is a hash join whose
+  probe emits TRUE/FALSE/NULL per outer row instead of filtering, and
+  Cypher's `IN` over lists that may hold `null` raises the same question
+  for the capstone.
 
 ## Experiments (`experiments/`)
 
@@ -229,16 +224,14 @@ came from, if you want the pre-history of §4.
 
 ## Capstone M11
 
-Vectorized runtime for the graph engine. Reference mirror: FalkorDB's Rust
-engine on the `main` branch of
-[FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) —
-`graph/src/runtime/batch.rs`, `graph/src/runtime/vectorized.rs`,
-`graph/src/runtime/eval.rs`, read at the v6.0.0 tag (commit `2b26fd767e`,
-2026-09-25). These files are **not** covered by the pin table: its
-`FalkorDB` row (`ccb449a9a`, 2026-07-15) is a C-engine commit from before
-`main` switched to the Rust engine (FalkorDB #2279, commit `1665fbd98`,
-2026-08-02), and none of these files exists there. Cite these paths with
-the v6.0.0 tag, not the pin.
+Vectorized runtime for the graph engine. The reference is FalkorDB 6's
+Rust engine, which lives on the `main` branch of
+[FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB); read it at the
+v6.0.0 tag (commit `2b26fd767e`): `graph/src/runtime/batch.rs`,
+`graph/src/runtime/vectorized.rs`, `graph/src/runtime/vector_expr.rs` and
+`graph/src/runtime/eval.rs`. The C engine quoted elsewhere in this course
+(FalkorDB 4.x, `master`, the pin table's `ccb449a9a`) has no counterpart to
+these files, so cite them with the v6.0.0 tag.
 
 - [ ] batch type: fixed-capacity columnar chunk (node ids, properties) +
       selection vector — pick the batch size by measuring, not by copying
@@ -246,26 +239,18 @@ the v6.0.0 tag, not the pin.
 - [ ] operator pipeline: source (label scan) → expand → filter → project,
       each `fn next(&mut self, out: &mut Batch)`
 - [ ] expression eval over batches (property predicates) — no per-row dyn
-      dispatch
+      dispatch. The reference answer is `VectorEval`
+      (`graph/src/runtime/vector_expr.rs:196` at v6.0.0), which evaluates
+      the *whole* expression tree column-at-a-time — one bulk property
+      fetch per reference and one pass per operator. Its module comment
+      (`vector_expr.rs:1-8`) gives the shape; `vectorized.rs` is the layer
+      below it, comparing one materialized column against one constant. A
+      node with no columnar arm is evaluated per row into a column and the
+      walk stays columnar above it (`:21-26`, "There is no 'this tree is
+      not vectorizable' answer to fall back on"), and `A AND B` evaluates
+      `B` only over the rows where `A` was not false, preserving
+      short-circuit semantics (`:37-39`)
 - [ ] the FalkorDB angle: Expand over a sparse matrix IS a vectorized
       kernel already (one GraphBLAS call per batch of source nodes);
       decide where matrix ops end and row-ish batches begin
 - [ ] bench: M11 runtime vs M10's naive interpreter on the same plan
-
-> **Upstream since the pin.** The reference mirror's files live in
-> FalkorDB's Rust engine, which is now `main` of
-> [FalkorDB/FalkorDB](https://github.com/FalkorDB/FalkorDB) and shipped as
-> FalkorDB 6.0.0 on 2026-09-25, replacing the C engine (the C code
-> continues on `master` as 4.22.x). There,
-> [#2628](https://github.com/FalkorDB/FalkorDB/pull/2628) (commit
-> `342a6823d`, in v6.0.0) changed the expression-eval checkbox's
-> reference answer: `VectorEval` in `graph/src/runtime/vector_expr.rs`
-> evaluates the *whole* expression tree column-at-a-time, one bulk
-> property fetch per reference and one pass per operator, where before
-> only `entity.property <op> constant` predicates took a columnar kernel
-> and everything else fell back to row-at-a-time. A node with no columnar
-> arm is evaluated per row into a column and the walk stays columnar above
-> it, so the "is this vectorizable?" classification
-> (`SimplePredicate`, `VectorizablePredicate`) was deleted. Read
-> `vector_expr.rs` at v6.0.0 alongside `vectorized.rs` and `eval.rs` when
-> designing M11's expression evaluator.

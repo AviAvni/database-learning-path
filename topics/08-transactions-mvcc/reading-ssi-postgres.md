@@ -34,9 +34,9 @@ measurements put the bill at **5% throughput on a CPU-bound TPC-C variant**
 (§8.1), and **nothing measurable at all when the workload is disk-bound** (§8.2,
 150 warehouses).
 
-> The previous version of this guide claimed "~7% overhead". That number is not
-> in the paper. It has been replaced above by the three figures the paper
-> actually reports, each with its section.
+> A single "~7% overhead" figure is sometimes attributed to this paper. It is
+> not in it; the three figures above, each with its section, are what the
+> paper reports.
 
 ## The concepts, step by step
 

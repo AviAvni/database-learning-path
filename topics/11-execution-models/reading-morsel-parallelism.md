@@ -8,10 +8,9 @@ falls out of it. This chapter builds the six concepts behind that
 sentence, then routes you through the paper.
 
 Every figure below is checked against the paper and cited to its section
-or table. Two claims this guide used to carry did not survive that check,
+or table. Two common summaries of the paper do not survive that check,
 and one of them is the most useful thing here: **a morsel is not a
-vector, and morsel size is not a cache parameter.** The correction is in
-Step 3.
+vector, and morsel size is not a cache parameter.** Step 3 shows why.
 
 ## The problem in one sentence
 
@@ -55,17 +54,16 @@ and all three follow from the decision being made *early*:
 ### Step 2 — the failure mode: the slowest thread sets the runtime
 
 > **In:** a static split of the input across N threads.
-> **Out:** the actual failure mode, which is *not* the one this guide
-> used to name — plus the paper's measurement of it on a workload with
-> no skew in it at all.
+> **Out:** the actual failure mode, which is broader than the usual
+> answer — plus the paper's measurement of it on a workload with no skew
+> in it at all.
 
 The obvious story is **skew**: some partitions carry far more work than
 others — a hot key range, a filter that passes 90% in one region and 1%
 elsewhere — so the thread holding the hot partition grinds while the
 rest idle. That story is true, and it is not the whole failure.
 
-**Correction:** this guide previously attributed stranding to skew
-alone. TPC-H is, in the paper's words, "fully uniform" — there is no
+Skew alone does not explain it. TPC-H is, in the paper's words, "fully uniform" — there is no
 data skew to blame — and exchange-based Vectorwise still strands
 workers on it. §5.2, on the *trivially* parallelizable scan-only Q6:
 "the slowest thread often finishes work 50% before the last. While in
@@ -198,11 +196,10 @@ fn worker(dispatcher: &Dispatcher, ht: &BuildHt) {
 }
 ```
 
-Now the part to unlearn. **Correction:** this guide previously said
-morsel size is "a trade: too small and per-morsel scheduling overhead
-dominates; too big and you're back to coarse partitions that can't
-rebalance", and question 1 below asked for the bound "above" in terms of
-cache. The cache half is contradicted by §3.3, which opens by
+Now the part to unlearn. Morsel size is often described as "a trade: too
+small and per-morsel scheduling overhead dominates; too big and you're
+back to coarse partitions that can't rebalance", with the upper bound set
+by cache. The cache half is contradicted by §3.3, which opens by
 distinguishing morsels from vectors precisely on this point:
 
 ```
@@ -292,10 +289,10 @@ The evidence is bandwidth, §5.3 (Table 1, Nehalem EX):
    -> "shows that its buffer manager is not NUMA-aware"
 ```
 
-**Correction:** this guide previously priced a remote access at "~2× the
-latency". The paper gives no such ratio; what it measures is the
-*fraction* of accesses that go remote and the QPI saturation that
-results. Quote those instead.
+Note what the paper does *not* give: a latency ratio for a remote access
+(the often-quoted "~2×" has no source here). What it measures is the
+*fraction* of accesses that go remote and the QPI saturation that results.
+Quote those.
 
 ### Step 5 — elasticity: the commit unit is one morsel
 
@@ -454,26 +451,23 @@ Where you have already seen the idea shipped:
   work-stealing executor — morsels with explicit ordering and
   backpressure ([reading-rust-execution-stack.md](reading-rust-execution-stack.md)).
   Its `DEFAULT_IDEAL_MORSEL_SIZE` is 100,000, the paper's number
-  unchanged after a decade.
+  unchanged after a decade. It also carries part of the NUMA half: with the
+  `numa` Cargo feature, executor threads are grouped into NUMA regions read
+  from the machine topology through hwloc (the Portable Hardware Locality
+  library), each worker is pinned to its region, and work stealing is
+  region-local first — of four steal passes, the first three skip victims
+  in other regions and only the last steals globally
+  (`crates/polars-async/src/executor/mod.rs:276-292`, `try_steal_task`, at
+  py-2.1.0 `7f902bd3ff`). It is opt-in twice over: the feature is not in
+  the Python runtime's default set (`py-polars/runtime/polars-runtime-64/Cargo.toml:92`
+  defines it, `:114` is `default = ["full", "nightly"]`), and even when
+  compiled in, the topology is only loaded if `POLARS_NUMA_AWARE` is set
+  (`DEFAULT_NUMA_AWARE = false`, `crates/polars-config/src/lib.rs:134-135`;
+  checked at `executor/numa/mod.rs:22-25`). What it implements is the
+  paper's preference for stealing local work first, not its NUMA-aware
+  placement of the data itself.
 - **Your topic 9 `scaling.rs`**: you measured the stranding effect
   without naming it.
-
-> **Upstream since the pin.** polars' executor has since picked up part of
-> the NUMA half. [#28464](https://github.com/pola-rs/polars/pull/28464)
-> (commit `4e69898ff0`) groups executor threads into NUMA regions read
-> from the machine topology through hwloc (the Portable Hardware Locality
-> library), pins each worker thread to its
-> region, and makes work stealing region-local first: of four steal
-> passes, the first three skip victims in other regions and only the last
-> steals globally (`crates/polars-async/src/executor/mod.rs`,
-> `try_steal_task`). [#28785](https://github.com/pola-rs/polars/pull/28785)
-> (commit `e3f23bc6bd`) then put it behind a `numa` cargo feature, which
-> the Python release builds enable. Both shipped in py-1.44.0
-> (2026-08-24), and at runtime it is still opt-in:
-> `DEFAULT_NUMA_AWARE` is `false`, switched by `POLARS_NUMA_AWARE`. The
-> polars bullet above describes the pinned code; what polars added is the
-> paper's preference for stealing local work first, not its NUMA-aware
-> placement of the data itself, and only when the variable is set.
 
 ## Takeaway
 

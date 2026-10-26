@@ -20,11 +20,10 @@ Predict FIRST, then measure.
   crossbeam's `CachePadded` is *not* the thing being caught out here: it is
   `repr(align(128))` on x86-64 and aarch64 alike. Check the 64-byte assumption
   wherever you wrote it yourself.
-- **Run-to-run variance is large on the packed row** and worth knowing about:
-  an earlier run of this same binary recorded 636 ms / 63 M inc/s, i.e. a 59×
-  ratio rather than 17.8×. Contended-line throughput depends on how the threads
-  happen to interleave, so treat the *order of magnitude* as the finding and
-  quote a range, not a point, if you cite it.
+- **The packed row is the noisy one.** Contended-line throughput depends on
+  how the threads happen to interleave, so its ratio moves a lot between runs
+  of the same binary; treat the *order of magnitude* as the finding and quote
+  a range, not a point, if you cite it.
 
 ### scaling — 90/10 read/write mix, keyspace 100 000, Mops/s total
 

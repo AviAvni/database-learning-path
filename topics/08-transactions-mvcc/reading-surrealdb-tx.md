@@ -14,11 +14,10 @@ Line numbers below are `surrealdb/surrealdb@9d9a5b0`, checked with
 `surrealdb/core/src/kvs/`; that prefix is dropped in the prose below and
 restored in the tables.
 
-**Two corrections to the previous version of this guide, made up front because
-the rest depends on them.** (1) `Transactor` (`tr.rs:37`) is a *struct*, not a
+**Two facts the rest of the guide depends on.** (1) `Transactor` (`tr.rs:37`) is a *struct*, not a
 trait — it holds `inner: Box<dyn Transactable>`, and `Transactable`
 (`api.rs:498`) is the actual trait each engine implements. (2) The engine list
-at this pin is **five**, and FoundationDB is not among them: `kv-mem`,
+is **five**, and FoundationDB is not among them: `kv-mem`,
 `kv-indxdb`, `kv-rocksdb`, `kv-tikv`, `kv-surrealkv` (`core/Cargo.toml:19-35`,
 enumerated as `DatastoreFlavor` at `ds.rs:556-567`).
 
@@ -208,9 +207,9 @@ intent.
 > what every engine must supply and what the trait builds for it, with the
 > counts.
 
-The old version of this guide said the interface "fits in one trait: roughly
-eight method signatures." The real shape is more interesting, and countable. At
-`9d9a5b0`, `Transactable` (`api.rs:498-1082`) declares **38 methods: 19 with no
+It is tempting to summarise the interface as "one trait, roughly eight method
+signatures". The real shape is more interesting, and countable. At `9d9a5b0`,
+`Transactable` (`api.rs:498-1082`) declares **38 methods: 19 with no
 body (required) and 19 with a default body (derived)**.
 
 The 19 an engine must write:
@@ -313,7 +312,7 @@ TiKV cannot, at all, and says so inline in every read:
    724              let res = inner.tx.get(key).await?;
 ```
 
-So `version: Option<u64>` is a *capability* with three tiers at this pin:
+So `version: Option<u64>` is a *capability* with three tiers:
 always-available (none), available-if-configured (mem, rocksdb, surrealkv),
 never (tikv). `Error::UnsupportedVersionedQueries` is declared once, at
 `err.rs:69`, and is the whole vocabulary for the refusal. The price of exposing
@@ -484,8 +483,8 @@ concurrent writers cannot change the answer, so the cache can never go stale
 *because of someone else*. Topic 6's hardest problem, cross-actor invalidation,
 is deleted outright by the layer below.
 
-**But "a within-txn cache never invalidates" — the previous version of this
-guide's claim — is not true at this pin, in two ways.**
+**But "a within-txn cache never invalidates" — the tempting conclusion — is
+not true, in two ways.**
 
 1. **Self-invalidation is real, and explicit.** A transaction that writes the
    catalog must invalidate its own cached view of it, because read-your-own-writes
