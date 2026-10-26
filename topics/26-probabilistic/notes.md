@@ -33,6 +33,42 @@ The whole topic in these four numbers: a filter should say "definitely
 absent" at ~HashSet speed with ~5% of its memory (12 MB at 10 bpk), and a
 learned index should collapse most of binary search's 23-miss walk.
 
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. A scratch reference solution for the
+blocked bloom (`new`: ceil(n*bpk/512) 64-byte blocks, 6 probes; block by
+`fastrange32(h1)`, bit positions from the top 9 bits of `h2 * 0x9e3779b9`
+iterated) and HyperLogLog (P=14, Ertl tau/sigma estimator) passes every bloom
+and hll test; the cuckoo and learned-index lanes were not implemented. From
+`cargo run --release --bin filter_bench` (Apple M3 Pro, 2026-10-26, one run on
+a machine shared with other jobs — load average above 25 — so every timing in
+this run is inflated: its binary-search miss read 556 ns against the 186 ns
+Baseline above. Compare within the run):
+
+```
+binary search (miss): 556 ns/lookup
+BTreeMap (miss):      426 ns/lookup
+HashSet (miss):        96 ns/lookup  [224 MB]
+blocked bloom  8 bpk: 21 ns/query  fpr 0.0236 (theory 0.0216)   9 MB
+blocked bloom 10 bpk: 28 ns/query  fpr 0.0096 (theory 0.0084)  11 MB
+blocked bloom 16 bpk: 21 ns/query  fpr 0.0012 (theory 0.0009)  19 MB
+hll P=14 (16 KB):     est 10132906 vs true 10000000 (err 1.329%)
+```
+
+- **FPR** is deterministic (seeded keys): 2.36% / 0.96% / 0.12% at 8 / 10 / 16
+  bits per key, 1.09x / 1.14x / 1.33x the standard-bloom theory — the cache-line
+  layout costs 10-33%, less than the test's 4x allowance. 8 to 16 bpk cuts FPR
+  20x.
+- **Time**: within the run the bloom miss (21-28 ns) was 3.4-4.6x faster than the
+  HashSet (96 ns), 20-26x faster than binary search (556 ns). On a quiet
+  machine the Baseline pairs (186 / 20 ns) put the bloom at roughly HashSet
+  speed and about 7-9x under binary search — one order of magnitude in time,
+  not two.
+- **Space** (exact): bloom 10 bpk = 11.9 MiB; HashSet 224 MB (19x); sorted keys
+  76 MB (6.4x); HLL 16 KB (the one-byte-per-register layout, ~14,000x under the
+  HashSet). The HLL error of 1.33% is within the 1.04/sqrt(16384) = 0.81%
+  standard error's 2 sigma.
+
 ## Predictions (fill BEFORE implementing the stubs)
 
 | stub lane | predicted | measured |

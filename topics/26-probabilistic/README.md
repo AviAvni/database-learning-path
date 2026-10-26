@@ -2,7 +2,9 @@
 
 **Why this matters:** indexes are bets — write amplification paid for read
 speed. Probabilistic structures make a sharper bet: be *slightly wrong* in
-a bounded, one-sided way and win orders of magnitude in space/time. Redis
+a bounded, one-sided way and win in space and time: about one order of
+magnitude for a blocked bloom filter against a hash set or a binary search, and
+four orders of magnitude of space for HyperLogLog (16 KB against a 224 MB set). Redis
 PFCOUNT, RocksDB's bloom-per-SST, roaring in Lucene/ClickHouse — this is
 production math, not exotica.
 
@@ -18,6 +20,14 @@ hold in every run. `./verify.sh 26` gives your machine's.
 | BTreeMap | 240 | ~200 MB |
 | HashSet | 20 | **224 MB** |
 | blocked bloom (stub target) | ~15-25 | **12 MB** at 10 bits/key |
+
+The reference solution (`notes.md`, "Reference numbers") measured the stub
+target: blocked bloom at 10 bits/key answered a miss in 28 ns with a 0.96%
+false-positive rate in 11.9 MiB — against 224 MB for the HashSet (19x smaller)
+and 76 MB for the sorted keys (6.4x smaller) — and HyperLogLog counted the 10 M
+keys to 1.33% error in 16 KB, 14,000x smaller than the HashSet. Those are the
+"orders of magnitude": one in time, one to four in space, depending on whether
+you need membership or only a count.
 
 The whole topic in one row: the bloom filter should answer "definitely
 absent" at HashSet speed with 5% of HashSet's memory — by being wrong

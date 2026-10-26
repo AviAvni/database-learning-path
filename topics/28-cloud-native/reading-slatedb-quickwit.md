@@ -249,9 +249,14 @@ Answer each before unfolding it.
   which decisions invert.
   <details><summary>Answer</summary>
 
-  Only durability reprices: a local fsync is ~0.10 ms (our local p50) but
-  a durable S3 write is 14–113 ms (our S3 p50/p99) — ~140× worse at the
-  median, ~1,130× at the tail. So SlateDB batches many puts per WAL SST
+  Only durability reprices: a durable local write costs one fsync — on this
+  Mac 22.67 µs for plain `fsync` (not durable on macOS) or 2.97 ms for
+  `F_FULLFSYNC` (topic 5's measured rungs) — while a durable S3 write is of
+  the order of the simulated S3 GET latency, 14–113 ms (our S3 p50/p99; the
+  simulator models reads, not PUTs). Against the 2.97 ms durable rung that is
+  ~5× at the median and ~38× at the tail; against the simulated 0.10 ms local
+  *read* it would be the 140× and ~1,130× of the table, but that compares a
+  write with a read. So SlateDB batches many puts per WAL SST
   and lets callers choose `AwaitDurable` vs no-sync; reads (memtable → L0 →
   runs) are unchanged.
 

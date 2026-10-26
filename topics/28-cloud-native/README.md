@@ -11,6 +11,19 @@ Neon, SlateDB — and it reprices every trade-off from topics 3–6.
 | local NVMe read | 0.10 ms | 0.12 ms | 1× |
 | raw S3 GET | 14.17 ms | 112.99 ms | 140× / 940× |
 
+**Neither row is a device measurement.** Both tiers are latency *models*
+charged (not slept) from a seeded RNG: the local tier is `LocalDisk` in
+`experiments/src/sim.rs` — 90–119 µs first byte plus 4 GB/s transfer — and the
+S3 tier is a lognormal with a ~14 ms median. The 0.10 ms is therefore a model
+constant picked to be NVMe-shaped, not the cost of any real read. For a measured
+local-SSD number see topic 45: **p50 68.8 µs, mean 72.2 µs at queue depth 1**
+(13,810 IOPS) for a 4 KiB random `pread` that bypasses the page cache
+(`F_NOCACHE` on macOS, `O_DIRECT` on Linux). A read served from the page cache
+costs far less again (topic 45 lane 1c, nanoseconds per page). Three different
+paths, three different numbers: the model's 0.10 ms sits within 1.4x of the
+measured uncached 72 µs, which is why the 140x ratio survives, but the exact
+ratio should not be quoted as a measurement.
+
 Object storage is two orders of magnitude slower at the median and worse at
 the tail — and every serious engine moved there anyway, because:
 

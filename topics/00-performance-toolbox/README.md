@@ -56,18 +56,22 @@ Approximate, Apple M-series / modern x86, per access:
 | L1 | 64–192 KB | ~1 ns | 3–5 |
 | L2 | 4–16 MB | ~3–5 ns | 12–20 |
 | L3 / SLC | 8–96 MB | ~10–20 ns | 40–80 |
-| DRAM | GBs | ~80–100 ns | 300–400 |
+| DRAM | GBs | ~90–110 ns † | 300–400 |
 | NVMe read | TBs | ~20–100 µs | ~10⁵ |
-| fsync (NVMe) | — | ~0.1–1 ms | ~10⁶ |
+| fsync (NVMe) | — | ~0.1–1 ms ‡ | ~10⁶ |
+
+‡ A typical-datacenter-NVMe figure, not this laptop's. Measured here (topic 5): `fsync` 22.67 µs p50 — which on macOS does *not* reach stable media — and `F_FULLFSYNC` 2.97 ms p50.
+
+† Measured by `cache_ladder` on this M3 Pro: 87 ns at a 64 MB working set, 104–113 ns at 128–512 MB (the rise past 64 MB is TLB reach). The ladder below rounds to ~100 ns, the figure FINDINGS row 0 quotes.
 
 The same ladder on a log scale — each step down is roughly an order of magnitude:
 
 ```
                1ns    10ns   100ns    1µs    10µs   100µs    1ms
 L1     ~1 ns   ●
-L2     ~4 ns   ──●
+L2     ~5 ns   ──●
 SLC   ~15 ns   ────●
-DRAM  ~90 ns   ───────●
+DRAM ~100 ns   ───────●
 NVMe  ~50 µs   ──────────────────────────●
 fsync ~0.5 ms  ────────────────────────────────────────●
                └─ one DRAM miss ≈ 100 adds; one fsync ≈ 10,000 DRAM misses
@@ -76,9 +80,9 @@ fsync ~0.5 ms  ─────────────────────�
 ```mermaid
 flowchart LR
     CPU["CPU core<br/>registers"] --> L1["L1<br/>64–192 KB · ~1 ns"]
-    L1 --> L2["L2<br/>4–16 MB · ~4 ns"]
+    L1 --> L2["L2<br/>4–16 MB · ~5 ns"]
     L2 --> SLC["L3 / SLC<br/>8–96 MB · ~15 ns"]
-    SLC --> DRAM["DRAM<br/>GBs · ~90 ns"]
+    SLC --> DRAM["DRAM<br/>GBs · ~100 ns"]
     DRAM --> NVMe["NVMe<br/>TBs · ~50 µs"]
     NVMe --> FSYNC["fsync<br/>~0.5 ms"]
 ```

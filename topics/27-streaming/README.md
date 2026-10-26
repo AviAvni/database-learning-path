@@ -27,24 +27,31 @@ view maintenance needs, and stating it in milliseconds first is what keeps the
 rest of the topic honest. The three views are deliberately different shapes:
 reachability is cheap to redo (26 ms) so incrementalization has little room and
 mostly has to avoid regressions; the wedge join is expensive and *local*, so
-delta rules should win enormously; triangles sit between them and are where the
+delta rules should win big, if the state they join against is indexed; triangles sit between them and are where the
 bookkeeping cost of maintaining state starts to show against the recompute it
 saves.
 
 Predict the speedup for each of the three before implementing, and predict which
 one's incremental version is *slower* to initialize than a full recompute — that
-one is the interesting result, not the 100× one.
+one is the interesting result, not the 1000× one.
 
 ## Our motivation numbers first (Apple M3 Pro, 50K nodes / 500K edges, batches of 100 changes)
 
 | standing query | full recompute / batch | incremental target |
 |---|---|---|
-| triangle count | 100.5 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
-| 2-hop wedge join | 923.5 ms | ~µs-ms (stub) — bilinear delta rule |
-| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
+| triangle count | 100.5 ms | per-edge common-neighbour probes — batch·d̄, not m·d̄ (reference: 97.5 µs, 1271x) |
+| 2-hop wedge join | 923.5 ms | bilinear delta rule (reference: 39.5 ms, 24x — see below) |
+| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* (reference: 646 µs, 43x) |
 
-The gap is 3-5 orders of magnitude, and none of it requires cleverness —
-just refusing to touch data that didn't change.
+The reference solution (`notes.md`, one run) measured **1-3 orders of
+magnitude**, not more: 1271x on triangles, 43x on reachability, and only 24x on
+the wedge join. The wedge lane is the instructive one: its delta rule is
+correct, but the straightforward state (a sorted `ZSet` re-merged and
+re-hashed per batch) is still O(state) per step, so most of the saving is
+spent keeping state, not joining deltas — the gap the arrangement (an indexed
+spine) is built to close. Refusing to touch data that didn't change is what
+buys the factor; how cheaply you can *find* the untouched data decides how
+much of it you get.
 
 ## The one algebraic idea
 

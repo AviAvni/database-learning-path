@@ -3,7 +3,9 @@
 Volcano vs vectorized vs compiled — the defining performance battle of
 modern analytics. Topic 10 chose the plan; this topic is about how fast
 you can RUN it. The gap between tuple-at-a-time and vectorized execution
-is one to two orders of magnitude, and you will measure it yourself.
+is a few-fold for vectorized batches and close to one order of magnitude for a
+fused, branch-free kernel (the reference solution measured 1.7-3.1x and 3.7-9.2x
+across selectivities, `notes.md`), and you will measure it yourself.
 
 ```mermaid
 flowchart LR
@@ -11,7 +13,7 @@ flowchart LR
     M -->|"Volcano '90"| V["next() per TUPLE<br/>interpret per tuple"]
     M -->|"X100 '05"| X["next() per VECTOR<br/>interpret per 1-2K batch"]
     M -->|"HyPer '11"| H["compile plan to<br/>machine code, no next()"]
-    V --> C[same results,<br/>10-100x apart]
+    V --> C[same results,<br/>~2-5x / ~4-9x apart]
     X --> C
     H --> C
 ```
@@ -33,6 +35,12 @@ way it moves.** Cost rises monotonically with selectivity, because in a Volcano
 pipeline every row that *survives* the filter pays the full per-tuple
 interpretation bill on its way to the aggregate: a virtual call per operator per
 row. The filter is not the expensive part. Passing it is.
+
+The reference solution for the two exercise lanes (`notes.md`, "Reference
+numbers") puts a number on the gap: at 50% selectivity vectorized ran **1.7x**
+faster than Volcano and the fused kernel **9.2x**, in one run of all three
+back to back; the ratios moved between runs on a loaded machine, the ordering
+never did.
 
 Put that next to topic 12's measurement of the same machine — ~50 GB/s of
 sequential u64 fold, about 6.2 G values/s — and the gap is 60×. That gap is what
