@@ -170,11 +170,10 @@ byte-equivalents (bytes + 250,000 per request):
   215.7), slightly *beats* it at 0.2 (388.0 vs 393.4: it can use different
   intervals as the table grows), and ties at 2. It does not beat every-10 on
   the rarely read table (221.5 vs 219.3): ten is a good constant there.
-- Ski rental is 1.42× the best fixed interval at 0.02. A first version of
-  this lane spaced reads exactly every 1/rate commits; fixed intervals that
-  divided the spacing then checkpointed just before every read and looked
-  unbeatable (k = 50 "won" at 0.02). The reads were made random to remove
-  that aliasing.
+- Ski rental is 1.42× the best fixed interval at 0.02. Reads arrive at
+  random, not exactly every 1/rate commits: with evenly spaced reads, a fixed
+  interval that divides the spacing checkpoints just before every read and
+  looks unbeatable (k = 50 would "win" at 0.02) — an aliasing artifact.
 
 ## Predictions (fill BEFORE implementing the stubs)
 
@@ -202,14 +201,11 @@ code's own first drafts — not numeric guesses written in advance.
   would still walk every column chunk, so the cost stays linear. It does — and
   the skip turned out to save nothing at all (1% slower), which was not
   expected.
-- **Lane 3:** the lane was first written with ski rental as the exercise, on
-  the strength of its 2-competitive bound. It stays within 2× of the best
-  fixed interval (1.42× worst), but it is the worst non-trivial policy on a
-  rarely read table, so it became the provided negative result and EOQ the
-  exercise.
-- **Lane 3, first draft:** reads spaced exactly every 1/rate commits made
-  fixed intervals look unbeatable (aliasing, above); random arrivals were the
-  fix.
+- **Lane 3:** ski rental has a 2-competitive bound and stays within 2× of the
+  best fixed interval (1.42× worst), but it is the worst non-trivial policy on
+  a rarely read table, so it is the provided negative result and EOQ the
+  exercise. Read arrivals are random so that fixed intervals cannot alias with
+  the read spacing (above).
 
 </details>
 

@@ -1,8 +1,8 @@
 //! Seeded, integer-only generators.
 //!
 //! Everything here iterates in a deterministic order and never reads the
-//! iteration order of a `HashMap`/`HashSet` (the bug class fixed in topics 27
-//! and 42): edges are produced into a `Vec`, then sorted and deduplicated, so
+//! iteration order of a `HashMap`/`HashSet` (whose order differs from run to
+//! run): edges are produced into a `Vec`, then sorted and deduplicated, so
 //! the edge list — and every count derived from it — is identical on every
 //! machine and every run.
 

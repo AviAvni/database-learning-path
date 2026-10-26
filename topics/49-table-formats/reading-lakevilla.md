@@ -666,6 +666,6 @@ delta-rs implementation of the same commit race in
 
 **This topic** — [README.md](README.md), [notes.md](notes.md) (lane 2
 reference numbers). Related topics:
-[topic 28](../28-cloud-native/README.md) (object storage; its "Newer work"
-item on LakeVilla), [topic 29](../29-distributed-txn/README.md) (distributed
+[topic 28](../28-cloud-native/README.md) (object storage; its §3 note on
+LakeVilla), [topic 29](../29-distributed-txn/README.md) (distributed
 transactions, OCC and validation).

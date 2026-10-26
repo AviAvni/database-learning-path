@@ -12,8 +12,8 @@ same number of steps), builds the six operators and their rewrite rules, works
 the cost model's formulas on numbers, and reads Table 5 — including what its
 "average speedup" averages, and the benchmark where timeouts did not move.
 
-Everything quoted is from PVLDB 19(10): 2686–2698. Topic 13's README carries a
-short "Newer work" note on this paper; this is the full reading.
+Everything quoted is from PVLDB 19(10): 2686–2698. Topic 13's README §4 (worst-case optimal joins) carries a
+short note on this paper; this is the full reading.
 
 ## The problem in one sentence
 

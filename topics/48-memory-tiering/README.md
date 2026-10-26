@@ -81,9 +81,9 @@ DRAM *after* layout.
 
 The two sanity lines are part of the result. The all-cold row is the same loop
 with no hot set; a hot set can only make it cheaper, so any row above it
-means the machine changed under the run, not the placement (an earlier run at
-load 11 printed a 5% scattered row at 223.6 ns against a 111.3 ns DRAM rung,
-and the check flagged it; see notes.md). The loop floor — 8 ns of multiplies and
+means the machine changed under the run, not the placement (at load 11 a 5%
+scattered row read 223.6 ns against a 111.3 ns DRAM rung, which is what the
+check catches; see notes.md). The loop floor — 8 ns of multiplies and
 shifts that sit on the dependency chain to pick the next object — is in every
 row.
 
@@ -313,7 +313,7 @@ cargo run --release --bin tier_bench
 
 ## Capstone M48 — tier-aware placement for the graph store
 
-The reference engine, falkordb-rs-next-gen at its pinned commit, keeps the
+The reference engine, falkordb-rs-next-gen at `9d28bdc6`, keeps the
 whole graph in one memory pool; this milestone adds the placement layer.
 
 - [ ] A `MemoryTier` abstraction over the M-series storage (adjacency matrices,

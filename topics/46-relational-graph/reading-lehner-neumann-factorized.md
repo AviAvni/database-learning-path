@@ -544,4 +544,5 @@ Answer each before unfolding it.
 - Next chapter: [reading-ffx-factorized-vectorized.md](reading-ffx-factorized-vectorized.md),
   the same idea in a vectorized engine.
 - Topic 11's [README](../11-execution-models/README.md) for compiled vs
-  vectorized execution, and its "Newer work" entry on FFX.
+  vectorized execution, and its §5 (hash joins and aggregation, vectorized)
+  note on FFX.

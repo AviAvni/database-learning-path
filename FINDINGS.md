@@ -7,7 +7,8 @@ collection cannot be wrong in a way you can detect, and every row below can.
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
 Pro (5P + 6E, 36 GB)** on 2026-07-28, except rows 17, 18, 20, 22 and 25
 (2026-07-10, the runs those topics' notes and guides compute against), row 44 (2026-08-26), and rows
-27, 32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
+27, 32, 42 and 45–50 (2026-10-26; row 50 is a seeded simulation whose figures
+do not depend on the machine). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.

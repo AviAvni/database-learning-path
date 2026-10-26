@@ -51,8 +51,12 @@ plans); the absolute values move by ~20% with load. Quote counts, not ms.
 | 10,000 | 131,072 | 13.11 | 0.00181 (9) | 0.00184 | 0.00901 |
 | 100,000 | 2,097,152 | 20.97 | 0.00006 (15) | 0.00004 | 0.00249 |
 
-Register-blocked = DuckDB's layout at `6c0c1a68` (4 bits in one 64-bit word,
-≥ 12 bits/key rounded to a power of two) with this crate's hash. An
+Register-blocked = DuckDB v2.0.0's layout (`d54cbbe3df`: 4 bits in one 64-bit
+word, sized at ≥ 12 bits/key rounded to a power of two) with this crate's hash.
+These sizes are what DuckDB allocates for an exact build count; its `Seal` step
+folds a filter only when the key set is sparser than that sizing assumes, which
+none of these three rows is (folded density⁴ 2.2%, 4.4%, 1.0% against its
+0.646% target). An
 independent Python simulation of the same layout while writing the DuckDB
 guide gave 0.0045 at 1,000 keys and 0.0091 at 10,000 — same shape.
 
@@ -184,8 +188,8 @@ Detail at 8 bits/key (k = 6):
 
 ## Cross-topic threads
 
-- Topic 10's "Newer work" items on RPT+, SQL Server bitmaps and the IN paper
-  are the one-paragraph versions of guides 2–4 here; both checked claims
+- Topic 10's §4 (RPT+) and §5 (SQL Server bitmaps) and topic 11's §5 (the IN
+  paper) are the one-paragraph versions of guides 2–4 here; both checked claims
   there (1.47/1.28/1.17/1.01×; 7 of 22 > 2×, 12 instance-optimal) match.
 - Topic 44's Free Join chapter places Yannakakis as the acyclic case; lane
   1's chain is the simplest instance.
@@ -194,12 +198,13 @@ Detail at 8 bits/key (k = 6):
 
 ## Open questions
 
-- Is DuckDB's pause really permanent? The trace in
-  reading-duckdb-join-filters.md Step 6 says the resume condition can never
-  fire once paused; confirm with a DuckDB build and a probe column whose first
-  six vectors all match.
+- Does DuckDB's pause back off as traced? Step 6 of
+  reading-duckdb-join-filters.md says a filter that stays unselective is
+  evaluated for 6 vectors, skipped for 4, evaluated for 6, skipped for 14, and
+  so on; confirm with a DuckDB build and a probe column whose first six
+  vectors all match.
 - Does DataFusion populate a dynamic filter routed into a lower join's build
-  side before that build scans? Routing allows it (`exec.rs:1675-1693`);
+  side before that build scans? Routing allows it (`exec.rs:1983-1995`, key transfer `:1970-1988`);
   execution order was not traced.
 - How large is the inherited term on a star schema, where there is no second
   hop?

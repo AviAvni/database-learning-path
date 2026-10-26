@@ -80,11 +80,13 @@ key columns — do these collapse to the ordinary semi-join and anti-join that
 the rest of this topic filters with.
 
 The engines in this topic encode that boundary in code. DuckDB refuses to
-generate join filters for MARK and ANTI joins (`join_filter_pushdown_optimizer.cpp:110-126`
-at `6c0c1a68`); DataFusion refuses dynamic filters when NULLs compare equal
-(`exec.rs:869-871` at `1e77af8`), because "a probe-side NULL key evaluates
-such predicates to NULL and would be pruned, even though it can match a
-build-side NULL". See [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md)
+generate join filters for MARK and ANTI joins (`join_filter_pushdown_optimizer.cpp:128-144`
+at v2.0.0, `d54cbbe3df`); DataFusion (at `350ca7650`) refuses dynamic filters
+for a null-aware join whose build keys can be NULL
+(`exec.rs:1043-1058`), and for a null-equal join widens the filter with
+`key IS NULL` so a probe-side NULL — which "evaluates such predicates to NULL
+and would be pruned, even though it can match a build-side NULL" — survives
+(`shared_bounds.rs:807-868`). See [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md)
 Step 2 and [reading-datafusion-dynamic-filters.md](reading-datafusion-dynamic-filters.md)
 Step 2.
 
@@ -188,9 +190,9 @@ systems were linear except SQLite and MariaDB on the correlated form.
 
 | step | where | what to look at |
 |---|---|---|
-| 3 | `duckdb` `src/optimizer/join_filter_pushdown_optimizer.cpp:110-126` | MARK/ANTI excluded from join filters |
-| 3 | `datafusion` `datafusion/physical-plan/src/joins/hash_join/exec.rs:859-886` | no dynamic filter when NULLs compare equal |
-| 3 | `duckdb` `src/planner/filter/table_filter_bloom_function.cpp:151-183` | how a Bloom probe treats a NULL key |
+| 3 | `duckdb` `src/optimizer/join_filter_pushdown_optimizer.cpp:128-144` | MARK/ANTI excluded from join filters |
+| 3 | `datafusion` `datafusion/physical-plan/src/joins/hash_join/exec.rs:1043-1058`, `shared_bounds.rs:807-868` | no dynamic filter for a null-aware join with a nullable build key; `key IS NULL` escape for null-equal joins |
+| 3 | `duckdb` `src/planner/filter/table_filter_bloom_function.cpp:266-308` | how a Bloom probe treats a NULL key |
 | — | lanes 1–3 | all keys non-NULL by construction: this chapter is why that matters |
 
 ## Questions (answer in notes.md)
@@ -203,8 +205,8 @@ systems were linear except SQLite and MariaDB on the correlated form.
 3. Lane 3's bitmaps drop a probe row whose key is not in the build set. If a
    key could be NULL and the join were `NOT IN`, what would the bitmap have
    to do with NULL-keyed rows?
-4. Is DuckDB 1.3.0's wrong answer on the survey still present at the pinned
-   commit? Design a query that would tell.
+4. Is DuckDB 1.3.0's wrong answer on the survey still present at v2.0.0
+   (`d54cbbe3df`)? Design a query that would tell.
 
 ## Done when
 
@@ -229,8 +231,9 @@ Answer each before unfolding it.
   COALESCE(p, TRUE), i.e. a row with a NULL marker must be excluded (§4).
   Only when p cannot evaluate to NULL — no nullable key columns — are these
   the plain semi-join and anti-join that hash-based filtering implements.
-  That is why DuckDB generates no join filters for MARK and ANTI joins and
-  DataFusion none for null-equal joins.
+  That is why DuckDB generates no join filters for MARK and ANTI joins, and
+  DataFusion pushes none for a null-aware join with a nullable build key and
+  keeps NULL-keyed probe rows alive for a null-equal one.
 
   </details>
 
@@ -291,6 +294,7 @@ Answer each before unfolding it.
   join), §5 (OV reduction), §6 (right/left mark join), §7 (Figures 7–10).
 - Thomas Neumann, Viktor Leis, Alfons Kemper, **"The Complete Story of Joins
   (in HyPer)"**, BTW 2017 — the mark join.
-- Topic 11's [README](../11-execution-models/README.md), "Newer work".
+- Topic 11's [README](../11-execution-models/README.md) §5 (hash joins and
+  aggregation, vectorized), which summarises this paper.
 - Previous: [reading-sqlserver-bitmaps.md](reading-sqlserver-bitmaps.md).
   Next: [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md).

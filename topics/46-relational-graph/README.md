@@ -8,11 +8,10 @@ two things a relational engine does badly on graph patterns — the
 **many-to-many blow-up** of flat joins (Lehner & Neumann, VLDB'26; Yasser,
 Dorbani & Mhedhbi's FFX, SIGMOD'26) and the **planning of variable-length
 paths** inside a larger pattern (Pang et al., VLDB'26). Topic 13 treated
-SQL/PGQ as a language question, and the "Newer work (2025–2026)" sections of
-[topic 10](../10-query-planning/README.md#newer-work-20252026),
-[topic 11](../11-execution-models/README.md#newer-work-20252026) and
-[topic 13](../13-graph-engines/README.md#newer-work-20252026) carry one-paragraph
-notes on TurboLynx, CRPQ planning and FFX. This topic is the deep version: it
+SQL/PGQ as a language question, and
+[topic 11's §5](../11-execution-models/README.md) (FFX) and
+[topic 13's §3, §4 and §6](../13-graph-engines/README.md) (TurboLynx, CRPQ
+planning, and the SQL/PGQ status) carry one-paragraph notes on these papers. This topic is the deep version: it
 measures the blow-up, reads the papers to the table, and reads the two
 implementations to the line.
 
@@ -263,7 +262,7 @@ cargo run --release --bin pgq_bench
 - **Topic 10 (planning) ↔ 46.** Join ordering decides the f-tree as well as the
   cost; the CRPQ planner's DP over connected edge subsets is topic 10's
   dynamic programming with a closure operator added. Predicate transfer (topic
-  10's newer work) shrinks inputs; factorization shrinks outputs — FFX §1.1
+  10 §4 and topic 47) shrinks inputs; factorization shrinks outputs — FFX §1.1
   calls them complementary.
 - **Topic 11 (execution) ↔ 46.** Compiled vs vectorized is exactly the split
   between Lehner & Neumann and FFX; FFX's selection bitmap is topic 11's

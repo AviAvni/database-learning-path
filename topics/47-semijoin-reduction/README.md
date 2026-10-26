@@ -2,9 +2,10 @@
 
 Topic 10 spent a chapter showing that cardinality estimates are routinely
 wrong by orders of magnitude, and a planner that trusts them picks join
-orders that are wrong by the same factor. Its "Newer work" section names
-three 2026 papers with a different answer — make the join order matter
-less — and topic 44 met the theory behind them (Yannakakis' algorithm, as
+orders that are wrong by the same factor. Its §4 (cardinality
+estimation) covers RPT+ and its §5 (two optimizer architectures) SQL
+Server's bitmap filters — 2026 papers with a different answer: make the join
+order matter less — and topic 44 met the theory behind them (Yannakakis' algorithm, as
 the acyclic half of Free Join) in the e-graph setting. This topic goes deep
 on that answer, because it is a *general* fix: it helps every query engine
 whose estimates are poor, and a Cypher planner choosing where to anchor a
@@ -103,8 +104,9 @@ bad plan's 80 M tuples/s is far below anything implausible (topic 12's
 Predicate transfer replaces semi-joins with Bloom filters. How leaky they are
 depends on the layout, so lane 1b measures two at equal bit budgets on one
 million absent keys: a classic Bloom filter, and the **register-blocked**
-layout DuckDB uses at the pinned commit (4 bits in one 64-bit word, ≥ 12
-bits per key rounded to a power of two):
+layout DuckDB v2.0.0 (`d54cbbe3df`) uses (4 bits in one 64-bit word, sized at
+≥ 12 bits per key rounded to a power of two, before the filter is folded at
+seal time):
 
 ```
       keys filter                                 bits  bits/key   k  measured FPR    formula
@@ -190,7 +192,7 @@ Lane 3 (your stub) runs it two ways. Reference:
 
 One pass equals the full two-pass reduction (60,504), because §3.3's argument
 needs only that every probe hits. Confine bitmaps to the probe scan, as
-DuckDB's pushdown walk does at the pinned commit, and the bad order gets
+DuckDB's pushdown walk does (v2.0.0), and the bad order gets
 nothing: the rare_tag bitmap is on a column only a build side has. And under
 bitmaps the textbook "bad" order is the cheapest plan of the four — the
 reason SQL Server costs bitmaps inside its optimizer (§4).
@@ -218,23 +220,24 @@ involved: `(3, 4) IN ((1, 2), (3, NULL))` is NULL, not FALSE (CIDR'26 Birler &
 Neumann §1). With several nullable columns no subquadratic algorithm is
 expected (§5, by reduction from orthogonal vectors). Every filter in this
 topic is a semi-join in disguise, so every engine here refuses to push one
-where NULL semantics apply: DuckDB skips MARK and ANTI joins, DataFusion
-skips null-equal joins ([reading-in-predicates.md](reading-in-predicates.md)).
+where NULL semantics apply: DuckDB skips MARK and ANTI joins; DataFusion skips
+null-aware joins whose build keys can be NULL and, for null-equal joins, widens
+the filter with `key IS NULL` ([reading-in-predicates.md](reading-in-predicates.md)).
 
 ## Production shape — DuckDB and DataFusion
 
 | piece | where | what to notice |
 |---|---|---|
-| DuckDB: which joins, which scans | `duckdb` `src/optimizer/join_filter_pushdown_optimizer.cpp:294-388`, `:143-270` | targets searched from the **probe child only** (`:337`, `:156-160`); bail-out at a scan without the column (`:216-219`) |
-| DuckDB: filter choice at build end | `src/execution/operator/join/physical_hash_join.cpp:1581-1700` | IN-list (≤ 50 rows), exact range bitmap (span < 2²⁶), min-max + Bloom |
-| DuckDB: Bloom policy | `physical_hash_join.cpp:1292-1338` | build ≤ estimated probe; unfiltered builds > 4,194,304 rows at ratio > 0.1 refused |
-| DuckDB: the filter | `src/planner/filter/table_filter_bloom_function.cpp:23-131` | register-blocked, 4 bits per key, ≥ 12 bits/key, power of two |
-| DuckDB: run-time pause | `table_filter_functions.cpp:36-62`, `table_filter_selectivity_optional_function.cpp:25-46` | 6 vectors sampled, Bloom paused at ≥ 50% pass rate; as written the pause never ends |
-| DataFusion: the filter object | `datafusion` `datafusion/physical-expr/src/expressions/dynamic_filters/mod.rs:246-274` | `lit(true)` placeholder, `update` bumps a generation |
-| DataFusion: routing | `datafusion/physical-plan/src/joins/hash_join/exec.rs:1593-1713` | parent filters go to the child owning the column — **including the build side** |
-| DataFusion: membership | `exec.rs:2106-2129`, `shared_bounds.rs:88-204` | IN-list ≤ 150 keys / 128 KiB, else the **hash table itself**; bounds ANDed first |
+| DuckDB: which joins, which scans | `duckdb` `src/optimizer/join_filter_pushdown_optimizer.cpp:317-414`, `:161-293` | targets searched from the **probe child only** (`:360`, `:178-180`); passes through projections and group keys; bail-out at a scan without the column (`:237-240`) |
+| DuckDB: filter choice at build end | `src/execution/operator/join/physical_hash_join.cpp:1837-1967` | IN-list (2–50 rows, statistics-only), bitmap over the key range (span < 2²⁶), else min-max + Bloom |
+| DuckDB: Bloom policy | `physical_hash_join.cpp:1439-1484` | build ≤ estimated probe; unfiltered builds > 4,194,304 rows at ratio > 0.1 refused (the bitmap obeys the same rule, `:1486-1502`) |
+| DuckDB: the filter | `src/planner/filter/table_filter_bloom_function.cpp:27-150`, `Seal` `:91-131` | register-blocked, 4 bits per key, sized at ≥ 12 bits/key, power of two, then folded while the false-positive estimate stays within 0.646% |
+| DuckDB: run-time pause | `table_filter_functions.cpp:36-62`, `table_filter_selectivity_optional_function.cpp:25-46` | 6 vectors sampled, Bloom paused at ≥ 50% pass rate; the pause grows 4, 14, 24, … vectors and then re-checks |
+| DataFusion: the filter object | `datafusion` `datafusion/physical-expr/src/expressions/dynamic_filters/mod.rs:317-345` | `lit(true)` placeholder, `update` bumps a generation |
+| DataFusion: routing | `datafusion/physical-plan/src/joins/hash_join/exec.rs:1918-2015` | parent filters go to the child owning the column — **including the build side** — and filters on join keys transfer to the other side of an inner or semi join |
+| DataFusion: membership | `exec.rs:3356-3406`, `shared_bounds.rs:90-216` | IN-list ≤ 150 keys / 128 KiB, else the **hash table itself** (plus a pruning-only key-range bitmap); bounds ANDed first |
 
-Anchors are `duckdb` at `6c0c1a68` and `datafusion` at `1e77af8`, read with
+Anchors are `duckdb` at v2.0.0 (`d54cbbe3df`) and `datafusion` at `350ca7650`, read with
 `tools/pinned-source.py`. Guides: [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md),
 [reading-datafusion-dynamic-filters.md](reading-datafusion-dynamic-filters.md).
 
@@ -244,8 +247,8 @@ Anchors are `duckdb` at `6c0c1a68` and `datafusion` at `1e77af8`, read with
 2. [reading-rpt-plus.md](reading-rpt-plus.md) — Qiao, Boncz & Zhang (VLDB'26): asymmetric transfer plans, cascade filters, dynamic pipelines, and the regressions they remove.
 3. [reading-sqlserver-bitmaps.md](reading-sqlserver-bitmaps.md) — Zhao et al. (CIDR'26): bitmap-building hash joins, the one-pass instance-optimality proof, bitmaps in Cascades.
 4. [reading-in-predicates.md](reading-in-predicates.md) — Birler & Neumann (CIDR'26): three-valued IN, mark joins, the orthogonal-vectors hardness, and linear mark joins for one nullable column.
-5. [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md) — DuckDB at `6c0c1a68`: the pushdown walk, the four filter kinds, the register-blocked Bloom filter, and the pause rule.
-6. [reading-datafusion-dynamic-filters.md](reading-datafusion-dynamic-filters.md) — DataFusion at `1e77af8`: dynamic filters, column-ownership routing, and the hash table as the filter.
+5. [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md) — DuckDB v2.0.0 (`d54cbbe3df`): the pushdown walk, the four filter kinds, the register-blocked Bloom filter, and the pause rule.
+6. [reading-datafusion-dynamic-filters.md](reading-datafusion-dynamic-filters.md) — DataFusion at `350ca7650`: dynamic filters, column-ownership and key-transfer routing, and the hash table as the filter.
 
 ## Experiments
 
@@ -300,8 +303,8 @@ cargo run --release --bin semijoin_bench
 ## Cross-topic threads
 
 - **Topic 10 (query planning) ↔ 47.** Its estimation-error chapter is the
-  problem; its "Newer work" names these papers; its Cascades chapter is where
-  SQL Server costs the bitmaps (CIDR'26 §4).
+  problem; its §4 (RPT+) and §5 (SQL Server's bitmaps) introduce these papers, and
+  its Cascades chapter is where SQL Server costs the bitmaps (CIDR'26 §4).
 - **Topic 44 (e-graphs) ↔ 47.** [reading-free-join.md](../44-egraphs-egglog/reading-free-join.md)
   Step 1 places Yannakakis as the acyclic half of the join story, and
   egglog's planner aims its decomposition at a Yannakakis-style semi-join

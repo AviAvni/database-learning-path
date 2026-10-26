@@ -17,9 +17,9 @@
 //!   cascade the CIDR'26 paper proves instance-optimal (its Algorithm 1).
 //! * [`Pushdown::ProbeSpineOnly`] — a bitmap may only filter `order[0]`, the
 //!   relation at the bottom of the probe spine. This models DuckDB's
-//!   join-filter pushdown at the pinned commit, which follows only a join's
-//!   probe child (`join_filter_pushdown_optimizer.cpp:153-161`) and bails out
-//!   at a scan that does not bind the filtered column (`:216-219`). It is a
+//!   join-filter pushdown (v2.0.0, `d54cbbe3df`), which follows only a join's
+//!   probe child (`join_filter_pushdown_optimizer.cpp:178-180`) and bails out
+//!   at a scan that does not bind the filtered column (`:237-240`). It is a
 //!   model of that code path, not a measurement of DuckDB.
 //!
 //! Filters do not chain within one relation's scan in a surprising way: a

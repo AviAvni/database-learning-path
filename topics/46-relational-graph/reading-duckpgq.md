@@ -6,8 +6,8 @@ pattern into an ordinary SQL join plan, and handles variable-length paths by
 building a CSR on the fly inside scalar UDFs and running a SIMD multi-source
 BFS. Its CIDR'23 paper said the two things missing were worst-case-optimal joins
 and factorization; three years later the repository has a factorized-join
-optimizer pass. This chapter reads the paper and the code side by side at the
-pinned commit, works the CSR construction and the BFS lanes on small numbers,
+optimizer pass. This chapter reads the paper and the code side by side at
+`29ca668`, works the CSR construction and the BFS lanes on small numbers,
 states exactly what a bounded quantifier compiles to (a filter on *shortest*
 distance), and then puts TurboLynx's VLDB'26 measurement of DuckPGQ next to it —
 including a row of TurboLynx's Table 4 whose ratios do not match its own
@@ -330,7 +330,7 @@ the gap between this and Steps 4–6 of the FFX chapter.
 > **Out:** TurboLynx's Table 4 numbers for DuckPGQ next to plain DuckDB, and
 > an internal inconsistency in the same table.
 
-TurboLynx (Lee, Ha, Tak & Han, PVLDB 19(6), VLDB'26 — topic 13's "Newer work")
+TurboLynx (Lee, Ha, Tak & Han, PVLDB 19(6), VLDB'26 — summarised in topic 13's README §3)
 benchmarks DuckPGQ at commit `947eb8d` against DuckDB v1.2.0, single-threaded,
 geometric mean of five runs after three warm-ups, 1-hour timeout counted as
 1 hour (§5.1). Its Table 4 gives each competitor's geometric-mean time over the
@@ -366,7 +366,7 @@ rows that do check.
 1. **CIDR'23 §1** for SQL/PGQ syntax by example; **§2**'s list c1–c8 and g1–g4
    is the paper's thesis — read g3 and g4 twice.
 2. **§3** with Listings 1–2 (the 2023 versions of Steps 3's code; compare with
-   the pinned files — Listing 2 used AVX-512 integers, the pinned code uses
+   the files at `29ca668` — Listing 2 used AVX-512 integers, that code uses
    `std::bitset`).
 3. **§4** with Step 5.
 4. Code: `match.cpp:1046` (`MatchBindReplace`) → `:869` (`ProcessPathList`) →
@@ -451,7 +451,7 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can state precisely what `(a)-[e]->{2,3}(b)` computes in DuckPGQ at the pinned commit.
+- [ ] You can state precisely what `(a)-[e]->{2,3}(b)` computes in DuckPGQ at `29ca668`.
 
   <details><summary>Answer</summary>
 

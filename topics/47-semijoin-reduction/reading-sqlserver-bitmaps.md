@@ -115,7 +115,7 @@ relation is a build side, built top-down as in Step 2. The two modes differ in
 *where* a bitmap may go. **Into lower builds** lets the bitmap from join j
 filter any relation below it that binds its variable — Algorithm 1's
 cascade. **Probe spine only** lets it filter only `order[0]` — the shape
-DuckDB's pushdown has at the pinned commit
+DuckDB's pushdown has at v2.0.0 (`d54cbbe3df`)
 ([reading-duckdb-join-filters.md](reading-duckdb-join-filters.md), Step 3).
 Reference numbers:
 

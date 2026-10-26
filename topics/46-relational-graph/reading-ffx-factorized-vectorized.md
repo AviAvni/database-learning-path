@@ -13,8 +13,8 @@ with hand-picked join orders, and where Table 4's prose summary does not match
 its own rows.
 
 Everything quoted is from arXiv:2609.09002v1 (Proc. ACM Manag. Data 4(3),
-Article 178). Topic 11's README carries a short "Newer work" note on this
-paper; this is the full reading.
+Article 178). Topic 11's README §5 (hash joins and aggregation, vectorized) carries a short
+note on this paper; this is the full reading.
 
 ## The problem in one sentence
 

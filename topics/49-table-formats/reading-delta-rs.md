@@ -15,12 +15,12 @@ introduced it (Armbrust et al., "Delta Lake: High-Performance ACID Table
 Storage over Cloud Object Stores", PVLDB 13(12), VLDB'20). It builds the
 vocabulary step by step, quotes the code that implements each step, and ties
 each step to this topic's lane 1 model (`experiments/src/delta.rs`) and its
-lane 2 and lane 3 exercises. Three things in the pinned code are worth knowing
+lane 2 and lane 3 exercises. Three things in the code at `26ea54f` are worth knowing
 before you use it, and none of them is in the paper: the default checkpoint
 interval is **100**, not the paper's 10; the S3 DynamoDB lock is **gone** —
 S3 commits now rely on the store's own create-only write; and the conflict
 checker lets **two compactions remove the same file** and both commit, which
-the Scala reference implementation at its own pin does not.
+the Scala reference implementation (`a7d0822`) does not.
 
 Every number below is quoted from the section cited next to it or from this
 topic's measured lanes ([README.md](README.md), [notes.md](notes.md)).
@@ -163,7 +163,7 @@ describes in §3.2.2. `DefaultLogStore::committer` picks `ConditionalPut`
 **The S3 story changed.** The paper says plainly that "Amazon S3 does not have
 atomic 'put if absent' or rename operations", and that Databricks used "a
 separate lightweight coordination service" to give out log IDs (§3.2.2).
-delta-rs long shipped a DynamoDB-based lock for the same reason. At the pin,
+delta-rs long shipped a DynamoDB-based lock for the same reason. In this tree
 the S3 factory still parses the option and then refuses it:
 
 ```rust
@@ -189,7 +189,7 @@ Line **45** is the point: every S3 table now gets the `DefaultLogStore`, i.e.
 the `ConditionalPut` committer of lines 134-151 — the store's own create-only
 write replaced the lock service. LakeVilla (VLDB'26, §8.1) states the premise
 this rests on: AWS S3 and MinIO "provide strict consistency [4, 76] and
-conditional writes [6]". Two comments in the pinned tree have not caught up —
+conditional writes [6]". Two comments in this tree have not caught up —
 `crates/aws/src/logstore/mod.rs:3` still lists an `S3DynamoDBLogStore`, and
 `crates/core/src/kernel/transaction/mod.rs:11-13` still says "an atomic
 rename is attempted" — so read the code, not the module docs.
@@ -309,12 +309,12 @@ stagnates" in miniature ([reading-lakevilla.md](reading-lakevilla.md)).
 
 > **In:** the winning-commit summaries Step 3 fetches.
 > **Out:** delta-rs's six checks, the three isolation levels, why blind
-> appends never conflict, and the one rule where the pinned delta-rs and the
-> pinned Spark reference disagree. Lane 2's validation is a subset of this.
+> appends never conflict, and the one rule where delta-rs (`26ea54f`) and the
+> Spark reference (`a7d0822`) disagree. Lane 2's validation is a subset of this.
 
 An **isolation level** names which anomalies a database allows.
 **Serializable**: the result equals some serial order of the transactions.
-**Write-serializable** (the level the pinned code treats as the normal case
+**Write-serializable** (the level the code treats as the normal case
 for data-changing writes; this chapter did not trace where its default is
 set): writes are serializable, but a
 reader may see a snapshot that does not include a concurrent blind append.
@@ -394,12 +394,12 @@ the winner's removes by `dataChange` first:
 
 Line **640** drops every remove written with `dataChange: false` — which is
 exactly how compaction writes its removes (`crates/core/src/operations/optimize.rs:522`
-sets `data_change: false`). The pinned test suite asserts the consequence:
+sets `data_change: false`). The test suite asserts the consequence:
 `test_concurrent_compaction_double_delete_still_conflicts`
 (`conflict_checker.rs:1275-1302`) has two transactions remove the same file
 with `dataChange: false` and asserts `result.is_ok()`, with a comment calling
 this "matching the Spark reference implementation". The Spark reference at
-the `delta` pin does not filter:
+`a7d0822` does not filter:
 
 ```scala
 // spark/src/main/scala/org/apache/spark/sql/delta/ConflictChecker.scala:1246-1261 — delta-io/delta at a7d0822
@@ -446,7 +446,7 @@ will often contain many (e.g. 10,000+) files. Listing such a large directory
 can be prohibitively expensive").
 
 How often? The paper: "By default, our clients write checkpoints every 10
-transactions" (§3.1.3), and Spark's `DeltaConfig` at the pin still defaults
+transactions" (§3.1.3), and Spark's `DeltaConfig` at `a7d0822` defaults
 `checkpointInterval` to `"10"` (`spark/src/main/scala/org/apache/spark/sql/delta/DeltaConfig.scala:480-482`).
 delta-rs does not:
 
@@ -592,7 +592,7 @@ the target) and saves a round. The rounds are flat at 3 whatever the history
 length; multiplied by the paper's "at least 5–10 ms of base latency" per read
 (§2.3) that is a 15 ms floor before the first data byte.
 
-**What delta-rs runs at the pin.** Snapshot construction is the kernel's:
+**What delta-rs runs.** Snapshot construction is the kernel's:
 `Snapshot::try_new_with_engine_and_catalog` hands the table root to
 `KernelSnapshot::builder_for(table_root)…build(engine)`
 (`crates/core/src/kernel/snapshot/mod.rs:224-260`, line 231), and the kernel
@@ -681,7 +681,7 @@ expiry ([reading-table-specs.md](reading-table-specs.md)).
    cleanup).
 4. **`crates/core/src/kernel/transaction/conflict_checker.rs:381-672`** for
    Step 4, then its tests from line 742; read `:1275-1334` next to Spark's
-   `ConflictChecker.scala:1217-1263` at the `delta` pin.
+   `ConflictChecker.scala:1217-1263` at `a7d0822`.
 5. **`crates/core/src/protocol/checkpoints.rs:20-236`** for Steps 5 and 7.
 6. **`crates/core/src/table/config.rs:222-275`** — every default named here.
 7. Skip `crates/core/src/kernel/snapshot/mod.rs` beyond `:210-262` and
@@ -724,7 +724,7 @@ expiry ([reading-table-specs.md](reading-table-specs.md)).
 
 Answer each before unfolding it.
 
-- [ ] You can say what object a Delta commit creates, with which store primitive, and what delta-rs does on S3 at the pin.
+- [ ] You can say what object a Delta commit creates, with which store primitive, and what delta-rs does on S3.
 
   <details><summary>Answer</summary>
 
@@ -732,12 +732,12 @@ Answer each before unfolding it.
   a create-only write — `object_store::PutMode::Create` in
   `FileSystemCommitter::commit` (`committer.rs:88`, `:134-151`); "already
   exists" becomes `CommitResponse::Conflict` (`:145-147`). On S3, delta-rs at
-  `26ea54f` no longer supports the DynamoDB lock: the factory logs an error if
+  `26ea54f` does not support the DynamoDB lock: the factory logs an error if
   it is requested and returns the `DefaultLogStore` anyway
   (`crates/aws/src/lib.rs:39-50`), whose committer is the conditional put
   (`default_logstore.rs:66-72`). The paper's §3.2.2 workaround — a
-  coordination service because S3 had no put-if-absent — is no longer needed
-  because the store now provides the conditional write.
+  coordination service because S3 had no put-if-absent — is not needed here
+  because the store provides the conditional write.
 
   </details>
 
@@ -763,7 +763,7 @@ Answer each before unfolding it.
   100 commits (`crates/core/src/table/config.rs:269-274`), triggered when
   `(version + 1)` is a multiple of the interval (`transaction/mod.rs:1133`),
   so at versions 99, 199, …. The paper says its clients checkpoint "every 10
-  transactions" (§3.1.3) and Spark's `DeltaConfig` at the `delta` pin still
+  transactions" (§3.1.3) and Spark's `DeltaConfig` at `a7d0822`
   defaults to 10 (`DeltaConfig.scala:480-482`). A delta-rs reader of an
   untuned table may replay up to 99 commit files after the last checkpoint
   instead of 9.
@@ -784,14 +784,14 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can describe the one conflict rule where the pinned delta-rs and the pinned Spark reference disagree, and what it permits.
+- [ ] You can describe the one conflict rule where delta-rs (`26ea54f`) and the Spark reference (`a7d0822`) disagree, and what it permits.
 
   <details><summary>Answer</summary>
 
   The double-delete check. delta-rs keeps only winning removes with
   `data_change` set (`conflict_checker.rs:640`), and compaction writes its
   removes with `data_change: false` (`optimize.rs:522`), so two compactions
-  removing the same file both pass; the pinned test at `:1275-1302` asserts
+  removing the same file both pass; the test at `:1275-1302` asserts
   exactly that and calls it Spark-compatible. Spark's
   `checkForDeletedFilesAgainstCurrentTxnDeletedFiles` at `a7d0822` compares
   every removed file (`ConflictChecker.scala:1252`). From the code, the
@@ -826,7 +826,7 @@ Answer each before unfolding it.
 | `crates/core/src/logstore/committer.rs:42-63, 85-93, 126-163` | the `Committer` contract; `PutMode::Create`; `TmpCommit` |
 | `crates/core/src/logstore/default_logstore.rs:66-72` | the default store commits by conditional put |
 | `crates/core/src/logstore/mod.rs:806-828, 913-937` | `get_latest_version` via a kernel log segment; `rename_if_not_exists` |
-| `crates/aws/src/lib.rs:36-50`; `crates/aws/src/logstore/mod.rs:1-3` | DynamoDB no longer supported; stale module doc |
+| `crates/aws/src/lib.rs:36-50`; `crates/aws/src/logstore/mod.rs:1-3` | DynamoDB not supported; stale module doc |
 | `crates/core/src/kernel/transaction/mod.rs:11-13, 120, 860-1014, 1036-1139` | stale rename doc; 15 retries; the commit loop; post-commit checkpoint and cleanup |
 | `crates/core/src/kernel/transaction/conflict_checker.rs:421-429, 504-672, 1275-1334` | the six checks; the `data_change` filters; the double-compaction test |
 | `crates/core/src/operations/optimize.rs:522, 977-986` | compaction removes with `data_change: false`; per-bin commit with read files |

@@ -6,7 +6,7 @@
 //! measures the real rate against that formula.
 //!
 //! The production filters this topic reads are not this one: DuckDB's
-//! (`table_filter_bloom_function.cpp:23-131` at the pinned commit) is
+//! (`table_filter_bloom_function.cpp:27-150`, DuckDB v2.0.0 `d54cbbe3df`) is
 //! *register-blocked* — every key sets 4 bits inside one 64-bit word — and
 //! RPT+'s is cache-sectorized (§5.4). Both trade a little accuracy for one
 //! memory access per probe. This one is the accuracy reference.
@@ -77,11 +77,12 @@ impl Bloom {
     }
 }
 
-/// A register-blocked Bloom filter in the shape DuckDB uses at the pinned
-/// commit (`table_filter_bloom_function.cpp:23-131`): at least 12 bits per
-/// key, rounded up to a power of two; the low hash bits pick one 64-bit
-/// word (a "sector"); four 6-bit fields from the high bytes pick the bits set
-/// inside it. One memory access per probe, at the price of accuracy — every
+/// A register-blocked Bloom filter in the shape DuckDB v2.0.0 (`d54cbbe3df`)
+/// uses (`table_filter_bloom_function.cpp:27-150`): sized at at least 12 bits
+/// per key, rounded up to a power of two (DuckDB's seal step may fold a filter
+/// built from an over-estimate; this crate sizes from the exact count); the
+/// low hash bits pick one 64-bit word (a "sector"); four 6-bit fields from the
+/// high bytes pick the bits set inside it. One memory access per probe, at the price of accuracy — every
 /// key shares its word with its neighbours. The hash is this crate's
 /// `mix64`, not DuckDB's, so the layout is DuckDB's and the numbers are ours.
 #[derive(Clone, Debug)]

@@ -172,8 +172,7 @@ Why it matters: every guarantee downstream assumes the sample represents the
 table. Here it represents the table's prefix. If the table's order is
 unrelated to the predicate the estimate is still unbiased for the prefix and
 merely noisier than its size suggests; if order and predicate correlate, the
-thresholds are learned on the wrong population. This is the reading at the
-pin, not a claim about intent — `cascade_IS_max_sample_range` is a public knob
+thresholds are learned on the wrong population. This is the reading of the code at `136ae4f`, not a claim about intent — `cascade_IS_max_sample_range` is a public knob
 and a caller can raise it.
 
 ### Step 4 — τ−: the recall threshold and its correction

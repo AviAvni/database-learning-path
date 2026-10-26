@@ -3,7 +3,7 @@
 [apache/iceberg-rust](https://github.com/apache/iceberg-rust) is the Rust
 implementation of the Iceberg table format, and the one a Rust engine — the
 capstone included — would link against. This chapter reads its write path and
-its scan planner at the pinned commit `26356f5` (2026-10-26; recorded in
+its scan planner at `26356f5` (2026-10-26; recorded in
 [resources/codebases.md](../../resources/codebases.md)) with one question in
 mind: **what does a single small commit cost, in objects written and read,
 and how does that cost grow with the number of commits already made?**
@@ -14,13 +14,13 @@ new manifest list, a *complete* new table-metadata file — and then asks the
 catalog for one compare-and-swap. Two of those four objects grow with the
 table's history, so the bytes a stream of small commits writes grow with the
 square of their number: this topic's lane 1 measured **398.7 MB of metadata
-for 1,000 one-file commits** on the same object layout. And at the pin, the
+for 1,000 one-file commits** on the same object layout. And the
 default commit also *reads* every live manifest to check for duplicate
 files — a quadratic cost in reads that the lane's model deliberately does not
 charge, and that this chapter finds in the code.
 
 Java Iceberg's default append is different (it merges manifests), and
-iceberg-rust has no equivalent at the pin; the chapter reads Java's merge
+iceberg-rust has no equivalent; the chapter reads Java's merge
 logic from the `iceberg` clone at `47677ab` to say exactly what the Rust
 library is missing. The spec-level picture — what Iceberg, Delta and DuckLake
 each store — is in [reading-table-specs.md](reading-table-specs.md); the
@@ -103,14 +103,14 @@ catalog row ──► 00042-…metadata.json ──► snapshot 42 ──► sna
 
 > **In:** the five objects from Step 1.
 > **Out:** the exact sequence of reads and writes one `fast_append` commit
-> issues at the pin, and where the atomicity comes from. Step 3 adds what
+> issues, and where the atomicity comes from. Step 3 adds what
 > happens when the compare-and-swap fails; Step 4 prices the writes.
 
 A **fast append** is Iceberg's cheapest way to add data files: write one new
 manifest holding only the new files, and keep every existing manifest as it
 is. It is the only append iceberg-rust implements — `Transaction` exposes
 `fast_append()` at `crates/iceberg/src/transaction/mod.rs:148-151`, and a
-grep of the whole `crates/` tree at the pin finds no merge append and no
+grep of the whole `crates/` tree at `26356f5` finds no merge append and no
 manifest rewrite (Step 5).
 
 `FastAppendAction::commit` builds a `SnapshotProducer` and, with
@@ -368,7 +368,7 @@ that: `FastAppendAction::commit` constructs a fresh `SnapshotProducer`
 id unless one was set, `append.rs:100`), re-runs the duplicate check over
 every manifest, writes a **new** manifest for the same files, and a new
 manifest list. A failed attempt's manifest and manifest list are left behind:
-`cleanup` is a no-op at the pin (`append.rs:119-122`, "generated manifests
+`cleanup` is a no-op (`append.rs:119-122`, "generated manifests
 are not yet tracked for terminal cleanup").
 
 And because `RefSnapshotIdMatch` pins `main` to the exact snapshot read, two
@@ -449,8 +449,8 @@ with a checkpoint every 10 commits ([reading-delta-rs.md](reading-delta-rs.md)).
 Avro would shrink e, s and m; it would not change the N(N+1)/2.
 
 The read side has the same shape, and the lane does **not** charge it: the
-lane's single writer keeps its state in memory and issues only writes. At the
-pin, iceberg-rust's default `check_duplicate = true` makes commit i GET the
+lane's single writer keeps its state in memory and issues only writes. iceberg-rust's
+default `check_duplicate = true` makes commit i GET the
 manifest list and all i − 1 existing manifests (Step 2), plus the manifest
 list a second time in `existing_manifest`. Over 1,000 commits that is
 0 + 1 + … + 999 = 499,500 manifest GETs for the duplicate check alone —
@@ -530,7 +530,7 @@ largest merge-append commit wrote 877,726 bytes, more than any fast append's
 
 iceberg-rust has the hook for this — `produce_manifests` passes the manifest
 list through a `ManifestProcess` (`snapshot.rs:393`) — but the only
-implementation at the pin, `DefaultManifestProcess`, returns its input
+implementation, `DefaultManifestProcess`, returns its input
 unchanged (`snapshot.rs:97-107`). The grep for `MergeAppend`,
 `merge_append`, `min-count-to-merge`, `manifest-merge`, `rewrite_manifests`
 and `RewriteManifest` over `crates/` at `26356f5` finds nothing. A Rust
@@ -610,7 +610,7 @@ snapshots, which no predicate prunes.
 > before/after.
 
 **Snapshot expiry** removes old snapshots from the metadata file so that
-their files may later be deleted. At the pin it is metadata-only — the doc
+their files may later be deleted. It is metadata-only — the doc
 comment says so at line 33:
 
 ```rust
@@ -773,7 +773,7 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can say what expiry changes at the pin and what it costs.
+- [ ] You can say what expiry changes and what it costs.
 
   <details><summary>Answer</summary>
 

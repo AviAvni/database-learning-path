@@ -182,7 +182,7 @@ budgets and one million absent keys:
 ```
 
 The classic filter at 21 bits per key lands on the paper's CSBF figure
-(6 × 10⁻⁵); the register-blocked layout DuckDB uses at the pinned commit is
+(6 × 10⁻⁵); the register-blocked layout DuckDB v2.0.0 (`d54cbbe3df`) uses is
 **40×** worse at the same memory. That is the accuracy RPT+ is protecting.
 
 ### Step 7 — dynamic pipelines: measure the filter before paying for it
@@ -239,10 +239,10 @@ an average 226.29×.
 
 The baseline matters for reading these. The paper's DuckDB v1.3.0 (DDB in
 Figure 11) "supports min-max filter transfer … but does not support Bloom
-filters" (§6). DuckDB at this repo's pinned commit (`6c0c1a68`, 2026-07-10)
-*does* build Bloom filters and exact range bitmaps for join keys — see
+filters" (§6). DuckDB v2.0.0 (`d54cbbe3df`)
+*does* build Bloom filters and range bitmaps (exact when the key span fits) for join keys — see
 [reading-duckdb-join-filters.md](reading-duckdb-join-filters.md) — so the
-1.17×–1.47× are against an engine that has since moved.
+1.17×–1.47× are against an engine without them.
 
 ## How to read the paper (with the concepts in hand)
 
@@ -396,5 +396,5 @@ Answer each before unfolding it.
 - Previous: [reading-yannakakis-predicate-transfer.md](reading-yannakakis-predicate-transfer.md).
   Next: [reading-sqlserver-bitmaps.md](reading-sqlserver-bitmaps.md), which
   gets the same guarantee with one pass and no separate phase.
-- Topic 10's [README](../10-query-planning/README.md), "Newer work", for the
-  one-paragraph version of this paper.
+- Topic 10's [README](../10-query-planning/README.md) §4 (cardinality
+  estimation), for the one-paragraph version of this paper.

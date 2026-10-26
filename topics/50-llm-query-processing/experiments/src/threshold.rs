@@ -26,7 +26,7 @@
 //!
 //! Implement [`learn_thresholds`] so the cascade meets both targets in at
 //! least a 1 − δ fraction of trials, while still saving oracle calls. LOTUS's
-//! recipe (`lotus/sem_ops/cascade_utils.py:42-144` at the pinned commit; see
+//! recipe (`lotus/sem_ops/cascade_utils.py:42-144` at `136ae4f`; see
 //! reading-lotus-source.md) is one way: replace the empirical recall target by
 //! an upper confidence bound, and accept a precision threshold only when the
 //! *lower* confidence bound of the sample precision above it clears the

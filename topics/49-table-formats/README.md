@@ -1,9 +1,9 @@
 # Topic 49 — Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage
 
 Topic 12 taught the column encodings inside a file, and topic 28 taught the
-object store under it. Both now end on a "Newer work" item that points here:
-topic 12's on **F3**, a file format that embeds its own WebAssembly decoders
-([topic 12](../12-columnar-analytics/README.md)), and topic 28's on
+object store under it. Both carry a note that points here:
+topic 12's §4 on **F3**, a file format that embeds its own WebAssembly decoders
+([topic 12](../12-columnar-analytics/README.md)), and topic 28's §3 on
 **LakeVilla**, multi-table ACID transactions built from nothing but conditional
 writes ([topic 28](../28-cloud-native/README.md)). Between those two sits the
 layer the whole lakehouse direction rests on and this curriculum had not
@@ -145,7 +145,7 @@ a scan" (spec, "Goals") — and lane 1a shows a fast-append table missing it by
 three orders of magnitude (1,003 GETs) until manifests are merged. Java's
 default `newAppend()` merges once 100 manifests accumulate
 (`TableProperties.java:119`), which caps planning at ≤ 102 manifest reads;
-iceberg-rust at the pin implements fast append only
+iceberg-rust implements fast append only
 ([reading-iceberg-rust.md](reading-iceberg-rust.md)).
 
 **Delta** (PROTOCOL.md, "Delta Log Entries"): the root *is* the newest
@@ -198,7 +198,7 @@ Every number in lane 1a improves only after somebody runs maintenance:
 rewrite manifests, expire snapshots, write a checkpoint. When to do it is a
 cost trade the protocols leave open — PROTOCOL.md only says writers "are
 encouraged to checkpoint reasonably frequently"; the Delta paper's clients use
-every 10 commits (§3.1.3) and delta-rs at its pin defaults to 100
+every 10 commits (§3.1.3) and delta-rs (`26ea54f`) defaults to 100
 ([reading-delta-rs.md](reading-delta-rs.md)). Lane 3 prices the choice in one
 unit — bytes moved plus 250,000 byte-equivalents per request (5 ms × 50 MB/s,
 the low ends of Delta VLDB'20 §2.3) — on a 600-commit table read at a seeded
@@ -232,7 +232,7 @@ places where the text and the figures disagree (Fig. 9, Fig. 13, Fig. 15).
 
 ## Production shape
 
-| concern | where it lives (at the pins in [resources/codebases.md](../../resources/codebases.md)) |
+| concern | where it lives (pinned in [resources/codebases.md](../../resources/codebases.md)) |
 |---|---|
 | Iceberg spec: goals, fast append, manifest lists, conflict rules | `iceberg` `format/spec.md` — "Goals", "Snapshots", "Manifest Lists", "Commit Conflict Resolution and Retry" |
 | Java's merge append defaults | `iceberg` `core/src/main/java/org/apache/iceberg/TableProperties.java:115-122`, `BaseTable.java:209-216`, `ManifestMergeManager.java:175` |
@@ -292,9 +292,9 @@ depend on the encoding at all.
 ## Cross-topic threads
 
 - [Topic 12](../12-columnar-analytics/README.md) — the encodings inside the
-  data files; F3 is its "Newer work" item, taken apart here.
+  data files; F3 is its §4 note, taken apart here.
 - [Topic 28](../28-cloud-native/README.md) — object-store latency and tiering;
-  LakeVilla is its "Newer work" item, and conditional PUT is the same
+  LakeVilla is its §3 note, and conditional PUT is the same
   primitive SlateDB fences writers with.
 - [Topic 8](../08-transactions-mvcc/README.md) and
   [topic 29](../29-distributed-txn/README.md) — optimistic concurrency and

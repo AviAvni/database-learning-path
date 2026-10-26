@@ -252,7 +252,7 @@ physical operator does to a cost-based choice.
 ### Step 7 — the code: cardinality, joins, and the bandit's bonus
 
 > **In:** Steps 2–4 as the paper states them.
-> **Out:** what Palimpzest computes at the pinned commit — where it matches
+> **Out:** what Palimpzest computes at `807ed30` — where it matches
 > the paper and where it does more.
 
 Abacus is Palimpzest's optimizer (`README.md:55`;

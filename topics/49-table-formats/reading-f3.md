@@ -18,13 +18,13 @@ heard of an encoding can still read the column.
 
 This chapter builds the vocabulary the paper assumes — row groups, footers,
 Thrift, FlatBuffers, dictionary scope, WebAssembly sandboxes — then walks
-the design against the prototype's code at the pinned commit, and ends with
+the design against the prototype's code at `bd92506`, and ends with
 three places where the paper's prose and its own figures disagree. The
 footer half is the one this topic measures: lane 1c times the Parquet
 footer the paper's Figure 9 complains about, with the `parquet` crate,
 on this laptop. The table-format layer above these files is the subject of
 the topic's other guides; topic 12's [README](../12-columnar-analytics/README.md)
-carries the short "Newer work" note on F3 that this chapter expands.
+§4 (the formats) carries the short note on F3 that this chapter expands.
 
 Every number below is quoted from the section, table or figure cited next to
 it, or from this topic's measured lane ([README.md](README.md),
@@ -165,7 +165,7 @@ per row group, plus one for the footer (§4, Figure 3):
 - **Postscript** — fixed-size, at the very end: the sizes of ColMetadata and
   Footer, checksums, version.
 
-The schema at the pin says the same thing in its own vocabulary — the footer
+The schema at `bd92506` says the same thing in its own vocabulary — the footer
 holds pointers, and column metadata is "stored out-of-band":
 
 ```text
@@ -279,7 +279,7 @@ optimal configuration for cloud object storage" (§5.1, citing Durner et al.).
 The prototype's constant is `DEFAULT_IOUNIT_SIZE = 8 * 1024 * 1024`
 (`fff-poc/src/options.rs:12`). Each IOUnit holds one or more **EncUnits**,
 "the minimal units for encoding and decoding" — an opaque byte buffer in one
-encoding (§5.1); at the pin an EncUnit defaults to 64K values
+encoding (§5.1); an EncUnit defaults to 64K values
 (`File.fbs:180`). The IOUnit's metadata lives centrally in ColMetadata, not
 in a page header in-line, so metadata-only work never touches data bytes
 (§4).
@@ -406,7 +406,7 @@ their instance, and because instance creation costs an `mmap` per instance
 in Wasmtime's default configuration, the prototype keeps a pool of instances
 per binary with static memory so base addresses never move (§6.3).
 
-The pool is visible at the pin:
+The pool is visible in the code:
 
 ```rust
 // fff-ude-wasm/src/lib.rs:340-354 — take an instance from the pool, call, put it back, at bd92506
@@ -465,7 +465,7 @@ Lines 278–279 are the compatibility test, which is **semantic versioning**
 back to Wasm only if the reader's version is *older* than the file's and
 either the majors differ or the reader is still on a 0.x major, where any
 bump may break. A reader newer than the file always decodes natively. The
-built-in encodings at the pin are Vortex's (`VortexEncUnitDecoder`, line 283),
+built-in encodings are Vortex's (`VortexEncUnitDecoder`, line 283),
 as §5.1 says ("Our prototype uses the encoding implementation in Vortex …
 more than 15 state-of-the-art encoding methods").
 
@@ -723,4 +723,4 @@ the 60% / 100-column rule, per-column reads);
 measurement and the load it was taken under),
 [reading-parquet-footer.md](reading-parquet-footer.md) (the arrow-rs decoder
 lane 1c times). Topic 12's [README](../12-columnar-analytics/README.md)
-(encodings, and its "Newer work" note on F3).
+(encodings, and its §4 note on F3).

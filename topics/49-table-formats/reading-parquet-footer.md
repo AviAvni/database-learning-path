@@ -24,7 +24,7 @@ not help — skip-stats decoding is no faster than a full decode — and Step 5
 explains why from the code. The one option that does help, supplying a cached
 schema, cuts the time by roughly a third and leaves it exactly as linear.
 
-Every anchor is into `apache/arrow-rs` at the pinned commit `fed7862`
+Every anchor is into `apache/arrow-rs` at `fed7862`
 ([resources/codebases.md](../../resources/codebases.md)), whose
 `parquet/Cargo.toml` declares version 59.1.0. Lane 1c builds against the
 crates.io `parquet` 59.1.0, and the five files quoted below

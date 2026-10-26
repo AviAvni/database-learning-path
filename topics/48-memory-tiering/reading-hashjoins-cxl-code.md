@@ -176,7 +176,7 @@ from the source buffer to the destination buffer, and the time is recorded as
 `memcpy` (line 74). Reading the README's quick start with the mask encoding:
 `--dnm=2 --snm=4` copies from node 2 to node 1, and `--dnm=4 --snm=4` copies
 from node 2 to node 2. Assuming node 2 is the CXL node and node 1 local DRAM
-(the repository has no topology file — `config/` is absent at the pin — so
+(the repository has no topology file — `config/` is absent at `0aeea0d` — so
 this is an inference from the masks), the strategies are:
 
 | paper strategy (§4.1) | `--snm` | `--dnm` |
@@ -324,7 +324,7 @@ Start at `src/join.c` (184 lines) for the masks and the timing, then
 `openmp_memcpy` in `src/inc/common.c:159-195`. `phj.c` repeats the same
 allocation pattern with radix partitioning; read `phj.c:1-120` for the
 buffers. Finish with the two scripts. Use `tools/pinned-source.py show
-hashjoins-meet-cxl <file> -r A:B` to read at the pin.
+hashjoins-meet-cxl <file> -r A:B` to read at `0aeea0d`.
 
 ## Questions to answer while reading
 
