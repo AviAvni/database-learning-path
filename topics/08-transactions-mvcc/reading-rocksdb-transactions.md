@@ -8,9 +8,9 @@ numbers give snapshots for free, and how the two schools bolt onto the
 same skeleton — differing only in WHEN conflicts are detected. Then it
 hands you the file:line anchors to watch both.
 
-**Every line number below was re-verified against
-`facebook/rocksdb@7c80a5a`** (check with `python3 tools/pinned-source.py
-ref rocksdb`). Everything is under `utilities/transactions/` unless the
+**Every line number below is from
+`facebook/rocksdb@ea3136053`** (`main`, carrying the 11.13 release; check
+with `python3 tools/pinned-source.py ref rocksdb`). Everything is under `utilities/transactions/` unless the
 path says otherwise.
 
 ## The problem in one sentence
@@ -49,12 +49,12 @@ first (read-your-own-writes), then fall through to the DB. The switch is
 visible in the base class:
 
 ```cpp
-// utilities/transactions/transaction_base.h — indexing_enabled_, 455-459
-   455   // If true, future Put/PutEntity/Merge/Delete operations will be indexed in
-   456   // the WriteBatchWithIndex. If false, future Put/PutEntity/Merge/Delete
-   457   // operations will be inserted directly into the underlying WriteBatch and not
-   458   // indexed in the WriteBatchWithIndex.
-   459   bool indexing_enabled_;
+// utilities/transactions/transaction_base.h — indexing_enabled_, 458-462
+   458    // If true, future Put/PutEntity/Merge/Delete operations will be indexed in
+   459    // the WriteBatchWithIndex. If false, future Put/PutEntity/Merge/Delete
+   460    // operations will be inserted directly into the underlying WriteBatch and not
+   461    // indexed in the WriteBatchWithIndex.
+   462    bool indexing_enabled_;
 ```
 
 The index is what costs; a transaction that never reads its own writes can
@@ -98,22 +98,22 @@ Snapshots can be taken eagerly or lazily:
 
 ```cpp
 // utilities/transactions/transaction_base.h — snapshot API, 264-272
-   264   void SetSnapshot() override;
-   265   void SetSnapshotOnNextOperation(
-   266       std::shared_ptr<TransactionNotifier> notifier = nullptr) override;
+   264    void SetSnapshot() override;
+   265    void SetSnapshotOnNextOperation(
+   266        std::shared_ptr<TransactionNotifier> notifier = nullptr) override;
    267
-   268   void ClearSnapshot() override {
-   269     snapshot_.reset();
-   270     snapshot_needed_ = false;
-   271     snapshot_notifier_ = nullptr;
-   272   }
+   268    void ClearSnapshot() override {
+   269      snapshot_.reset();
+   270      snapshot_needed_ = false;
+   271      snapshot_notifier_ = nullptr;
+   272    }
 ```
 
-`snapshot_needed_` is declared at `transaction_base.h:463` with the comment
+`snapshot_needed_` is declared at `transaction_base.h:466` with the comment
 "SetSnapshotOnNextOperation() has been called and the snapshot has not yet
 been reset" — line 270 above is where `ClearSnapshot` resets it. And note
 `TransactionOptions::set_snapshot` defaults to **false**
-(`include/rocksdb/utilities/transaction_db.h:299`): by default a
+(`include/rocksdb/utilities/transaction_db.h:307`): by default a
 transaction has no snapshot at all until it takes one, and each read sees
 the latest committed data.
 
@@ -287,20 +287,20 @@ fails. Every `Put`, `Delete`, `Merge` and `SingleDelete` in
 `PessimisticTransaction::TryLock` itself is at `:1151`, and `GetForUpdate`
 (`:164` and `:172`, both forwarding to `GetForUpdateImpl` at `:182`) is the
 read-side equivalent — it takes an exclusive lock by default
-(`include/rocksdb/utilities/transaction.h:411`, `bool exclusive = true`).
+(`include/rocksdb/utilities/transaction.h:413`, `bool exclusive = true`).
 
 The locks live in a `PointLockManager`
 (`lock/point/point_lock_manager.h:110`), which is a **striped** hash table:
 
 ```cpp
-// utilities/transactions/lock/point/point_lock_manager.cc — LockMap::GetStripe, 441-443
-   441  size_t LockMap::GetStripe(const std::string& key) const {
-   443    return FastRange64(GetSliceNPHash64(key), num_stripes_);
+// utilities/transactions/lock/point/point_lock_manager.cc — LockMap::GetStripe, 466-468 (467, an assert, elided)
+   466  size_t LockMap::GetStripe(const std::string& key) const {
+   468    return FastRange64(GetSliceNPHash64(key), num_stripes_);
 ```
 
 Each stripe has its own mutex and condition variable, so ordinary lock
 traffic does not serialize on one latch. The default is
-`num_stripes = 16` (`include/rocksdb/utilities/transaction_db.h:171`) — a
+`num_stripes = 16` (`include/rocksdb/utilities/transaction_db.h:179`) — a
 number worth remembering, because it is small. Question 2 makes you work
 the pathology.
 
@@ -309,36 +309,46 @@ the pathology.
 
 | Option | Line | Default | Consequence |
 |---|---|---|---|
-| `transaction_lock_timeout` | 181 | **1000 ms** | a blocked lock gives up after 1 s and returns `TimedOut` |
-| `deadlock_detect` | 304 | **false** | **deadlock detection is off unless you ask for it** |
-| `deadlock_detect_depth` | 351 | 50 | how far the wait-for graph is walked when it *is* on |
+| `transaction_lock_timeout` | 189 | **1000 ms** | a blocked lock gives up after 1 s and returns `TimedOut` |
+| `deadlock_detect` | 312 | **false** | **deadlock detection is off unless you ask for it** |
+| `deadlock_detect_depth` | 359 | 50 | how far the wait-for graph is walked when it *is* on |
 
 So the out-of-the-box defence against deadlock is **the timeout**, not the
 detector. Turn detection on and `AcquireWithTimeout`
-(`point_lock_manager.h:208`, definition around
-`point_lock_manager.cc:630-640`) calls `IncrementWaiters`
-(`point_lock_manager.cc:840`), which does a bounded breadth-first walk of
+(`point_lock_manager.h:211`, the deadlock-detect call site at
+`point_lock_manager.cc:656-666`) calls `IncrementWaiters`
+(`point_lock_manager.cc:866`), which does a bounded breadth-first walk of
 the wait-for graph:
 
 ```cpp
-// utilities/transactions/lock/point/point_lock_manager.cc — IncrementWaiters, 870-888 and 921-932 (elided)
-   870    for (int tail = 0, head = 0; head < txn->GetDeadlockDetectDepth(); head++) {
-   883      if (tail == head) {
-   884        return false;                       // ran out of edges: no deadlock
-   887      auto next = queue_values[head];
-   888      if (next == id) {                     // found a cycle back to me
-   921    // Wait cycle too big, just assume deadlock.
-   930    dlock_buffer_.AddNewPath(DeadlockPath(deadlock_time, true));
-   932    return true;
+// utilities/transactions/lock/point/point_lock_manager.cc — IncrementWaiters, 896-914 and 947-958
+   896    for (int tail = 0, head = 0; head < txn->GetDeadlockDetectDepth(); head++) {
+          // ... 897-906: enqueue the transactions the current one waits for ...
+   908      // No more items in the list, meaning no deadlock.
+   909      if (tail == head) {
+   910        return false;
+   911      }
+   912
+   913      auto next = queue_values[head];
+   914      if (next == id) {
+          // ... 915-944: cycle back to me — record the path, return true;
+          //      otherwise follow next's wait edges ...
+   947    // Wait cycle too big, just assume deadlock.
+          // ... 948-955: read the clock for the record ...
+   956    dlock_buffer_.AddNewPath(DeadlockPath(deadlock_time, true));
+   957    DecrementWaitersImpl(txn, wait_ids);
+   958    return true;
 ```
 
-Read lines 921–932 carefully: if the search exhausts
+Line 909 is the honest exit — the queue ran dry, no cycle. Line 914 is the
+real one — the walk came back to the transaction that started it. Now read
+lines 947–958 carefully: if the search exhausts
 `deadlock_detect_depth` without closing a cycle, RocksDB **declares a
 deadlock anyway**. That is a deliberate false positive — a wait chain 51
 transactions long aborts somebody even when no cycle exists. Detected
 cycles are recorded in a bounded ring (`DeadlockInfoBufferTempl`,
 `point_lock_manager.h:31-101`) readable via `GetDeadlockInfoBuffer`
-(`point_lock_manager.h:156`).
+(`point_lock_manager.h:158`).
 
 Locks release only after commit's write lands (`Commit` —
 `pessimistic_transaction.cc:681`); that is **strict 2PL**, which is what
@@ -422,21 +432,21 @@ textbook taxonomy has no cell for.
 
 ## Where each step lives in the code
 
-All anchors verified at `facebook/rocksdb@7c80a5a`; ~1.5 h.
+All anchors verified at `facebook/rocksdb@ea3136053`; ~1.5 h.
 
 | Step | File | Lines | What |
 |---|---|---|---|
-| 1, 3 | `utilities/transactions/transaction_base.h` | 274-278, 455-459 | `WriteBatchWithIndex`, `indexing_enabled_`, `DisableIndexing` |
-| 2 | `utilities/transactions/transaction_base.h` | 264-272, 463 | `SetSnapshot`, `SetSnapshotOnNextOperation`, `ClearSnapshot`, `snapshot_needed_` |
-| 2, 5 | `include/rocksdb/utilities/transaction_db.h` | 171, 181, 299, 304, 325, 341, 351 | `num_stripes`, `transaction_lock_timeout`, `set_snapshot`, `deadlock_detect`, `lock_timeout`, `deadlock_timeout_us`, `deadlock_detect_depth` |
+| 1, 3 | `utilities/transactions/transaction_base.h` | 274-278, 458-462 | `WriteBatchWithIndex`, `indexing_enabled_`, `DisableIndexing` |
+| 2 | `utilities/transactions/transaction_base.h` | 264-272, 466 | `SetSnapshot`, `SetSnapshotOnNextOperation`, `ClearSnapshot`, `snapshot_needed_` |
+| 2, 5 | `include/rocksdb/utilities/transaction_db.h` | 179, 189, 307, 312, 333, 349, 359 | `num_stripes`, `transaction_lock_timeout`, `set_snapshot`, `deadlock_detect`, `lock_timeout`, `deadlock_timeout_us`, `deadlock_detect_depth` |
 | 4 | `utilities/transactions/optimistic_transaction.cc` | 60-74, 76-91, 93-134, 192-201 | `Commit` dispatch; serial vs parallel validate; ascending bucket-lock order at 122-124; `CheckTransactionForConflicts` |
-| 4 | `utilities/transactions/optimistic_transaction.h` | 67, 76, 78 | the three declarations |
+| 4 | `utilities/transactions/optimistic_transaction.h` | 69, 78, 80 | the three declarations |
 | 4 | `utilities/transactions/transaction_util.cc` | 50-152, 154, 188 | `CheckKey` — the `TryAgain` branch at 85-104, the `Busy` branch at 130-147; `CheckKeysForConflicts` |
 | 5 | `utilities/transactions/pessimistic_transaction.cc` | 164, 172, 182, 489-519, 681, 1151, 1290 | `GetForUpdate`, `Operate` (lock-then-buffer), `Commit`, `TryLock`, `ValidateSnapshot` |
 | 5 | `utilities/transactions/transaction_util.cc` | 20 | `CheckKeyForConflicts` — the *pessimistic* read-validation entry point |
-| 5 | `utilities/transactions/lock/point/point_lock_manager.h` | 26-28, 31-101, 110, 156, 169-198, 208, 218 | `LockInfo`/`LockMap`/`LockMapStripe`, deadlock ring buffer, `PointLockManager`, the mandated lock order, `AcquireWithTimeout`, `IncrementWaiters` |
-| 5 | `utilities/transactions/lock/point/point_lock_manager.cc` | 195, 326-358, 441-443, 630-640, 840-932 | stripe struct, `LockMap`, `GetStripe`, the deadlock-detect call site, `IncrementWaiters` |
-| 5 | `include/rocksdb/utilities/transaction.h` | 402-406, 408-412 | the documented status codes; `GetForUpdate`'s `exclusive = true` default |
+| 5 | `utilities/transactions/lock/point/point_lock_manager.h` | 26-28, 31-101, 110, 158, 171-201, 211, 221 | `LockInfo`/`LockMap`/`LockMapStripe`, deadlock ring buffer, `PointLockManager`, the mandated lock order, `AcquireWithTimeout`, `IncrementWaiters` |
+| 5 | `utilities/transactions/lock/point/point_lock_manager.cc` | 205, 336-374, 466-468, 656-666, 866-958 | stripe struct, `LockMap`, `GetStripe`, the deadlock-detect call site, `IncrementWaiters` |
+| 5 | `include/rocksdb/utilities/transaction.h` | 404-408, 410-414 | the documented status codes; `GetForUpdate`'s `exclusive = true` default |
 
 ## Questions for notes.md
 
@@ -446,8 +456,8 @@ All anchors verified at `facebook/rocksdb@7c80a5a`; ~1.5 h.
    the `TryAgain` retry loop: if a transaction takes longer than one
    memtable rotation, what is its steady-state commit rate?
 2. The lock manager stripes by key hash into `num_stripes = 16` stripes
-   (`point_lock_manager.cc:441-443`,
-   `include/rocksdb/utilities/transaction_db.h:171`). Work the pathology for
+   (`point_lock_manager.cc:466-468`,
+   `include/rocksdb/utilities/transaction_db.h:179`). Work the pathology for
    a graph workload where every transaction touches the same super-node's
    adjacency entries: how many of the 16 stripe mutexes carry the load, and
    does raising `num_stripes` help?
@@ -456,10 +466,10 @@ All anchors verified at `facebook/rocksdb@7c80a5a`; ~1.5 h.
    isolation level do you actually get, and construct the write skew that
    sneaks through. Compare with `reading-ssi-postgres.md`.
 4. `deadlock_detect` defaults to false
-   (`include/rocksdb/utilities/transaction_db.h:304`). What happens to a
+   (`include/rocksdb/utilities/transaction_db.h:312`). What happens to a
    genuine two-transaction deadlock under the defaults, how long does it
    take, and which status does the loser get? Now read
-   `point_lock_manager.cc:921-932` — what does the detector do that the
+   `point_lock_manager.cc:947-958` — what does the detector do that the
    timeout does not, and what false positive does it introduce?
 5. FalkorDB angle: GRAPH.QUERY writes are single-threaded today (one
    writer). If M8 keeps single-writer, which of these two machineries do you
@@ -562,15 +572,15 @@ trading memory for a lower spurious-abort rate. Note that `TryAgain` is a
 <details><summary>Answer</summary>
 
 **Not by default.** `TransactionOptions::deadlock_detect = false`
-(`include/rocksdb/utilities/transaction_db.h:304`). Out of the box, a real
-deadlock is resolved by `transaction_lock_timeout` (line 181, default
+(`include/rocksdb/utilities/transaction_db.h:312`). Out of the box, a real
+deadlock is resolved by `transaction_lock_timeout` (line 189, default
 **1000 ms**), and the loser gets `Status::TimedOut`. If you enable
 detection, `AcquireWithTimeout` calls `IncrementWaiters`
-(`point_lock_manager.cc:840`), a breadth-first walk of the wait-for graph
-bounded by `deadlock_detect_depth` (line 351, default 50), and the loser
+(`point_lock_manager.cc:866`), a breadth-first walk of the wait-for graph
+bounded by `deadlock_detect_depth` (line 359, default 50), and the loser
 gets `Status::Busy` with `SubCode::kDeadlock`
-(`point_lock_manager.cc:634`). The detector also has a deliberate false
-positive: `point_lock_manager.cc:921-932`, "Wait cycle too big, just assume
+(`point_lock_manager.cc:660`). The detector also has a deliberate false
+positive: `point_lock_manager.cc:947-958`, "Wait cycle too big, just assume
 deadlock" — a wait chain longer than the depth limit aborts a transaction
 even with no cycle present.
 
@@ -581,11 +591,11 @@ even with no cycle present.
 
 <details><summary>Answer</summary>
 
-`LockMap::GetStripe` (`point_lock_manager.cc:441-443`) is
+`LockMap::GetStripe` (`point_lock_manager.cc:466-468`) is
 `FastRange64(GetSliceNPHash64(key), num_stripes_)` — a pure function of the
 *key*. One key hashes to exactly one stripe, so all lock traffic serializes
 on that stripe's single mutex and the other 15 of 16 stripes
-(`transaction_db.h:171`) sit idle. **Raising `num_stripes` does not help at
+(`transaction_db.h:179`) sit idle. **Raising `num_stripes` does not help at
 all**, because striping only spreads *distinct* keys; it is a fix for lock
 table contention, not for key contention. The only fixes are workload-side:
 shard the hot key, or stop taking a lock on it (which is what an
@@ -630,19 +640,19 @@ throughput per completed transaction.
 ## References
 
 **Code** — all anchors verified at
-[`facebook/rocksdb@7c80a5a`](https://github.com/facebook/rocksdb)
+[`facebook/rocksdb@ea3136053`](https://github.com/facebook/rocksdb)
 
 | File | Lines | What |
 |---|---|---|
-| `utilities/transactions/transaction_base.h` | 264-278, 455-463 | shared skeleton: snapshots, indexing |
-| `utilities/transactions/optimistic_transaction.h` | 67, 76, 78 | OCC declarations |
+| `utilities/transactions/transaction_base.h` | 264-278, 458-466 | shared skeleton: snapshots, indexing |
+| `utilities/transactions/optimistic_transaction.h` | 69, 78, 80 | OCC declarations |
 | `utilities/transactions/optimistic_transaction.cc` | 60-134, 192-201 | commit dispatch, both validate modes, conflict check |
 | `utilities/transactions/transaction_util.cc` | 20, 50-152, 154, 188 | `CheckKey` and its two entry points |
 | `utilities/transactions/pessimistic_transaction.cc` | 164-200, 489-519, 681, 1151, 1290 | lock-then-buffer, commit, `TryLock`, `ValidateSnapshot` |
-| `utilities/transactions/lock/point/point_lock_manager.h` | 26-101, 110-218 | lock table types, deadlock buffer, API |
-| `utilities/transactions/lock/point/point_lock_manager.cc` | 195, 326-358, 441-443, 630-640, 840-932 | striping and deadlock detection |
-| `include/rocksdb/utilities/transaction_db.h` | 171, 181, 296-351 | the defaults that decide behaviour |
-| `include/rocksdb/utilities/transaction.h` | 402-412 | documented status codes |
+| `utilities/transactions/lock/point/point_lock_manager.h` | 26-101, 110-221 | lock table types, deadlock buffer, API |
+| `utilities/transactions/lock/point/point_lock_manager.cc` | 205, 336-374, 466-468, 656-666, 866-958 | striping and deadlock detection |
+| `include/rocksdb/utilities/transaction_db.h` | 179, 189, 304-359 | the defaults that decide behaviour |
+| `include/rocksdb/utilities/transaction.h` | 404-414 | documented status codes |
 
 **Papers**
 

@@ -11,7 +11,7 @@ ideas in order — table functions, vendored determinism, chunked
 generation, and answers-as-oracle — then hands you the file anchors
 and the exact SQL to run.
 
-Every C++ line number below belongs to **duckdb/duckdb@6c0c1a68**
+Every C++ line number below belongs to **duckdb/duckdb@d54cbbe3df** (v2.0.0)
 (`python3 tools/pinned-source.py show duckdb extension/tpch/…` prints
 the same gutters). Rust line numbers are this topic's `experiments/`.
 Spec clause numbers are TPC-H revision 3.0.1. Where the file layout
@@ -33,7 +33,7 @@ answers.
 
 > **In:** SQL, and the idea that a query scans stored pages.
 > **Out:** what `CALL dbgen(sf=1)` actually is — the bind/init/execute
-> lifecycle, the seven named parameters, and the surprise that this table
+> lifecycle, the seven keyword parameters, and the surprise that this table
 > function returns no table.
 
 A **table function** is a function the query engine treats as a
@@ -44,29 +44,41 @@ data generator — plugs into the query machinery this way. DuckDB
 registers three of them plus a pragma for TPC-H:
 
 ```cpp
-// duckdb extension/tpch/tpch_extension.cpp — LoadInternal, 244-267 (elided at 246-252)
-   244  static void LoadInternal(ExtensionLoader &loader) {
-   245  	TableFunction dbgen_func("dbgen", {}, DbgenFunction, DbgenBind, DbgenInit);
-   // ... 246-252: named_parameters sf, overwrite, catalog, schema, suffix, children, step ...
-   253  	dbgen_func.call_return_type = StatementReturnType::NOTHING;
-   254  	dbgen_func.table_scan_progress = DbgenProgress;
-   255  	loader.RegisterFunction(dbgen_func);
-   256
-   257  	// create the TPCH pragma that allows us to run the query
-   258  	auto tpch_func = PragmaFunction::PragmaCall("tpch", PragmaTpchQuery, {LogicalType::BIGINT});
-   259  	loader.RegisterFunction(tpch_func);
-   260
-   261  	// create the TPCH_QUERIES function that returns the query
-   262  	TableFunction tpch_query_func("tpch_queries", {}, TPCHQueryFunction, TPCHQueryBind, TPCHInit);
-   263  	loader.RegisterFunction(tpch_query_func);
-   264
-   265  	// create the TPCH_ANSWERS that returns the query result
-   266  	TableFunction tpch_query_answer_func("tpch_answers", {}, TPCHQueryAnswerFunction, TPCHQueryAnswerBind, TPCHInit);
-   267  	loader.RegisterFunction(tpch_query_answer_func);
-   268  }
+// duckdb extension/tpch/tpch_extension.cpp — LoadInternal, 248-275
+   248  static void LoadInternal(ExtensionLoader &loader) {
+   249  	TableFunction dbgen_func("dbgen", {}, DbgenFunction, DbgenBind, DbgenInit);
+   250  	dbgen_func.GetSignature().WithTypedKwargs("options", [](TypedKwargs &options) {
+   251  		options.Add("sf", LogicalType::DOUBLE)
+   252  		    .Add("overwrite", LogicalType::BOOLEAN)
+   253  		    .Add("catalog", LogicalType::VARCHAR)
+   254  		    .Add("schema", LogicalType::VARCHAR)
+   255  		    .Add("suffix", LogicalType::VARCHAR)
+   256  		    .Add("children", LogicalType::UINTEGER)
+   257  		    .Add("step", LogicalType::UINTEGER);
+   258  	});
+   259  	dbgen_func.call_return_type = StatementReturnType::NOTHING;
+   260  	dbgen_func.table_scan_progress = DbgenProgress;
+   261  	loader.RegisterFunction(dbgen_func);
+   262
+   263  	// create the TPCH pragma that allows us to run the query
+   264  	auto tpch_func = PragmaFunction::PragmaCall("tpch", PragmaTpchQuery,
+   265  	                                            FunctionSignature().AddPositionalOnly("query_nr", LogicalType::BIGINT));
+   266  	loader.RegisterFunction(tpch_func);
+   267
+   268  	// create the TPCH_QUERIES function that returns the query
+   269  	TableFunction tpch_query_func("tpch_queries", {}, TPCHQueryFunction, TPCHQueryBind, TPCHInit);
+   270  	loader.RegisterFunction(tpch_query_func);
+   271
+   272  	// create the TPCH_ANSWERS that returns the query result
+   273  	TableFunction tpch_query_answer_func("tpch_answers", {}, TPCHQueryAnswerFunction, TPCHQueryAnswerBind, TPCHInit);
+   274  	loader.RegisterFunction(tpch_query_answer_func);
+   275  }
 ```
 
-Line 245 is the three-callback shape every DuckDB table function has:
+Lines 250-258 declare the function's **keyword arguments** (parameters
+passed by name, `sf=1`, rather than by position) and their types: the
+seven `CALL dbgen(...)` accepts. Line 249 is the three-callback shape
+every DuckDB table function has:
 
 - **bind** — `DbgenBind` (49-93) runs once at plan time. It parses the
   named parameters (59-78), defaults catalog and schema from the
@@ -98,34 +110,43 @@ The struct bind fills in is small enough to read whole:
 
 `sf` is a `double` (21), so `CALL dbgen(sf=0.01)` is legal even though
 Clause 4.1.3.1 admits only ten scale factors — DuckDB's small SFs are
-useful and are not TPC-H. `suffix` (24) lets you generate a second
+useful and are not TPC-H. The generator's constructor bounds it: a NaN
+is rejected, `sf <= 0` finishes without generating anything, and
+anything above `MAX_SCALE` — 100000.0, `dss.h:360` — is rejected
+(`dbgen.cpp:1140-1152`). `suffix` (24) lets you generate a second
 copy of the schema alongside the first; `children`/`step` (26-27) are
 Step 3's explicit partitioning.
 
 **The surprise.** Lines 90-91 of `DbgenBind` declare a single BOOLEAN
-column named `Success`, and line 253 sets
+column named `Success`, and line 259 sets
 `call_return_type = StatementReturnType::NOTHING`. `dbgen` is a table
 function that **returns no rows of TPC-H data at all**: it *creates
 and populates the eight tables as a side effect*
 (`CreateTPCHSchema` at 107) and reports only that it finished. So the
 accurate sentence is "the generator is an operator, so it inherits
 the engine's scheduling, progress reporting and interrupt handling"
-(`DbgenProgress` at 135-148, `context.InterruptCheck()` at 1127 of
+(`DbgenProgress` at 135-148, `context.InterruptCheck()` at 1195 of
 `dbgen.cpp`) — not "the generated rows flow through the query as this
 function's output". They do not.
 
-`tpch_queries` (262) and `tpch_answers` (266) *are* ordinary
-row-returning table functions, and `PRAGMA tpch(6)` is neither: line
-258 registers it as a **query-rewrite pragma**, whose handler simply
-returns the query's text:
+`tpch_queries` (269) and `tpch_answers` (273) *are* ordinary
+row-returning table functions, and `PRAGMA tpch(6)` is neither: lines
+264-265 register it as a **query-rewrite pragma** taking one positional
+`query_nr`, whose handler simply returns the query's text:
 
 ```cpp
-// duckdb extension/tpch/tpch_extension.cpp — PragmaTpchQuery, 239-242
-   239  static string PragmaTpchQuery(ClientContext &context, const FunctionParameters &parameters) {
-   240  	auto index = parameters.values[0].GetValue<int32_t>();
-   241  	return tpch::DBGenWrapper::GetQuery(index);
-   242  }
+// duckdb extension/tpch/tpch_extension.cpp — PragmaTpchQuery, 240-246
+   240  static string PragmaTpchQuery(ClientContext &context, const FunctionParameters &parameters) {
+   241  	if (parameters.values[0].IsNull()) {
+   242  		throw InvalidInputException("Cannot use NULL as argument for the TPC-H query number");
+   243  	}
+   244  	auto index = parameters.values[0].GetValue<int32_t>();
+   245  	return tpch::DBGenWrapper::GetQuery(index);
+   246  }
 ```
+
+The line to focus on is 245, its only successful `return`: after
+rejecting a NULL query number (241-243), it hands back a string.
 
 `PRAGMA tpch(6)` does not "run Q6 specially" — it expands to the text
 of `q06.sql` and DuckDB then plans and executes that SQL like any
@@ -164,10 +185,32 @@ names it exactly:
 Nine vendored translation units (12-20) plus the DuckDB glue (11).
 `rnd.cpp`, `rng64.cpp` and `speed_seed.cpp` are the seeded random
 number machinery; `permute.cpp` is dbgen's deterministic shuffle;
-`text.cpp` builds the comment strings that Q9's `%green%` and Q13's
-`l_comment` search. The seeds and value distributions are the ones
+`text.cpp` builds the comment strings that Q13's
+`o_comment NOT LIKE '%special%requests%'` searches (`q13.sql:11`);
+Q9's `%green%` is matched against `p_name`, which dbgen assembles
+from a list of colour words instead (`AppendPartName`,
+`dbgen.cpp:374`). The seeds and value distributions are the ones
 every published TPC-H result used, so DuckDB's SF1 `lineitem` is
 row-for-row the same data as everyone else's SF1 `lineitem`.
+
+The comment columns show what "the same data" costs. Every comment is
+a random slice of a **pseudo-text pool** — one long fixed string of
+generated sentences — and the reference dbgen's pool is 300 MiB:
+`TEXT_POOL_SIZE (300 * 1024 * 1024)` at
+`dbgen/include/dbgen/dss.h:173`, passed to `load_dists` at
+`dbgen.cpp:1164`. A smaller pool would be cheaper and would change
+every comment, and with them the answers of any query that filters
+on comments (Q13, above).
+DuckDB keeps the full pool but builds it lazily: the generated header
+`dbgen/include/dbgen/text_pool_checkpoints.h` splits it into
+`TEXT_POOL_CHUNK_COUNT 1200` chunks of `1 << TEXT_POOL_CHUNK_SHIFT`
+= 2¹⁸ = 262,144 bytes (lines 6-7; 1,200 × 262,144 = 314,572,800 B =
+300 MiB), each with a checkpoint — the start offset and RNG state of
+the sentence that covers the chunk's first byte — so any chunk can be
+generated on first use without generating the ones before it. The
+commit that introduced it (`c1845dda99`) reports SF 0.1 output
+byte-identical to `tpchgen-cli` and a cost of about +30% wall time at
+SF 1.
 
 That is the non-negotiable property: a benchmark generator's output
 must be *deterministic and shared*, or cross-paper comparison dies.
@@ -210,19 +253,19 @@ into the engine's own chunk format and flushes a chunk whenever it
 fills:
 
 ```cpp
-// duckdb extension/tpch/dbgen/dbgen.cpp — append_begin_row, 184-192
-   184  static void append_begin_row(tpch_append_information &info) {
-   185  	D_ASSERT(info.appender || info.optimistic_collection);
-   186  	D_ASSERT(info.active_row == DConstants::INVALID_INDEX);
-   187  	if (info.row >= STANDARD_VECTOR_SIZE) {
-   188  		info.FlushChunk();
-   189  	}
-   190  	info.active_row = info.row;
-   191  	info.active_col = 0;
-   192  }
+// duckdb extension/tpch/dbgen/dbgen.cpp — append_begin_row, 201-209
+   201  static void append_begin_row(tpch_append_information &info) {
+   202  	D_ASSERT(info.appender || info.optimistic_collection);
+   203  	D_ASSERT(info.active_row == DConstants::INVALID_INDEX);
+   204  	if (info.row >= STANDARD_VECTOR_SIZE) {
+   205  		info.FlushChunk();
+   206  	}
+   207  	info.active_row = info.row;
+   208  	info.active_col = 0;
+   209  }
 ```
 
-Line 187's `STANDARD_VECTOR_SIZE` is not folklore — it is
+Line 204's `STANDARD_VECTOR_SIZE` is not folklore — it is
 `DEFAULT_STANDARD_VECTOR_SIZE`, defined as `2048U`:
 
 ```cpp
@@ -254,25 +297,25 @@ Parallelism is a separate decision, not a consequence. `GenerateNext`
 dispatches to one of two modes:
 
 ```cpp
-// duckdb extension/tpch/dbgen/dbgen.cpp — GenerateNext, 1126-1143
-  1126  	bool GenerateNext() override {
-  1127  		context.InterruptCheck();
-  1128  		if (finished.load()) {
-  1129  			return true;
-  1130  		}
-  1131  		if (total_work == 0) {
-  1132  			Finish();
-  1133  			return true;
-  1134  		}
-  1135  		switch (mode) {
-  1136  		case DBGenMode::PARALLEL:
-  1137  			return GenerateParallel();
-  1138  		case DBGenMode::SEQUENTIAL:
-  1139  			return GenerateSequential();
-  1140  		default:
-  1141  			throw InternalException("Unexpected TPC-H dbgen mode");
-  1142  		}
-  1143  	}
+// duckdb extension/tpch/dbgen/dbgen.cpp — GenerateNext, 1194-1211
+  1194  	bool GenerateNext() override {
+  1195  		context.InterruptCheck();
+  1196  		if (finished.load()) {
+  1197  			return true;
+  1198  		}
+  1199  		if (total_work == 0) {
+  1200  			Finish();
+  1201  			return true;
+  1202  		}
+  1203  		switch (mode) {
+  1204  		case DBGenMode::PARALLEL:
+  1205  			return GenerateParallel();
+  1206  		case DBGenMode::SEQUENTIAL:
+  1207  			return GenerateSequential();
+  1208  		default:
+  1209  			throw InternalException("Unexpected TPC-H dbgen mode");
+  1210  		}
+  1211  	}
 ```
 
 and `DbgenBind` exposes dbgen's own partitioning scheme so you can
@@ -293,7 +336,7 @@ generate one slice per process:
 
 `CALL dbgen(sf=100, children=8, step=3)` generates the fourth eighth
 of SF-100 — the same `-C`/`-S` flags the original dbgen has, because
-the vendored C is doing the work. Line 1127's `InterruptCheck` is the
+the vendored C is doing the work. Line 1195's `InterruptCheck` is the
 other half of "the generator is an operator": Ctrl-C works during a
 20-minute SF-100 generation, and `DbgenProgress` (135-148) drives the
 progress bar, because the generator lives inside the engine's task
@@ -320,27 +363,27 @@ timed.
 But only up to a point, and the point is in the code:
 
 ```cpp
-// duckdb extension/tpch/dbgen/dbgen.cpp — GetAnswer, 1451-1466
-  1451  string DBGenWrapper::GetAnswer(double sf, int query) {
-  1452  	if (query <= 0 || query > TPCH_QUERIES_COUNT) {
-  1453  		throw SyntaxException("Out of range TPC-H query number %d", query);
-  1454  	}
-  1455  	const char *answer;
-  1456  	if (sf == 0.01) {
-  1457  		answer = TPCH_ANSWERS_SF0_01[query - 1];
-  1458  	} else if (sf == 0.1) {
-  1459  		answer = TPCH_ANSWERS_SF0_1[query - 1];
-  1460  	} else if (sf == 1) {
-  1461  		answer = TPCH_ANSWERS_SF1[query - 1];
-  1462  	} else {
-  1463  		throw NotImplementedException("Don't have TPC-H answers for SF %llf!", sf);
-  1464  	}
-  1465  	return answer;
-  1466  }
+// duckdb extension/tpch/dbgen/dbgen.cpp — GetAnswer, 1516-1531
+  1516  string DBGenWrapper::GetAnswer(double sf, int query) {
+  1517  	if (query <= 0 || query > TPCH_QUERIES_COUNT) {
+  1518  		throw SyntaxException("Out of range TPC-H query number %d", query);
+  1519  	}
+  1520  	const char *answer;
+  1521  	if (sf == 0.01) {
+  1522  		answer = TPCH_ANSWERS_SF0_01[query - 1];
+  1523  	} else if (sf == 0.1) {
+  1524  		answer = TPCH_ANSWERS_SF0_1[query - 1];
+  1525  	} else if (sf == 1) {
+  1526  		answer = TPCH_ANSWERS_SF1[query - 1];
+  1527  	} else {
+  1528  		throw NotImplementedException("Don't have TPC-H answers for SF %llf!", sf);
+  1529  	}
+  1530  	return answer;
+  1531  }
 ```
 
-Three scale factors: **0.01, 0.1 and 1** (1456-1461), and anything
-else throws (1462-1464). The repository contains
+Three scale factors: **0.01, 0.1 and 1** (1521-1526), and anything
+else throws (1527-1529). The repository contains
 `dbgen/answers/sf10/` and `dbgen/answers/sf100/` directories too, but
 Step 2's generated header only carries three arrays
 (`TPCH_ANSWERS_SF0_01`, `_SF0_1`, `_SF1`), so those two SFs are
@@ -350,23 +393,23 @@ against shipped answers is not something this extension can do.
 The `tpch_answers` table function makes the same statement in SQL:
 
 ```cpp
-// duckdb extension/tpch/tpch_extension.cpp — TPCHQueryAnswerFunction, 209-218
-   209  static void TPCHQueryAnswerFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-   210  	auto &data = data_p.global_state->Cast<TPCHData>();
-   211  	idx_t tpch_queries = 22;
-   212  	vector<double> scale_factors {0.01, 0.1, 1};
-   213  	idx_t total_answers = tpch_queries * scale_factors.size();
-   214  	if (data.offset >= total_answers) {
-   215  		// finished returning values
-   216  		return;
-   217  	}
+// duckdb extension/tpch/tpch_extension.cpp — TPCHQueryAnswerFunction, 210-218
+   210  static void TPCHQueryAnswerFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+   211  	auto &data = data_p.global_state->Cast<TPCHData>();
+   212  	idx_t tpch_queries = 22;
+   213  	vector<double> scale_factors {0.01, 0.1, 1};
+   214  	idx_t total_answers = tpch_queries * scale_factors.size();
+   215  	if (data.offset >= total_answers) {
+   216  		// finished returning values
+   217  		return;
+   218  	}
 ```
 
 ```
   SELECT count(*) FROM tpch_answers();
-    = tpch_queries × scale_factors.size()          (line 213)
+    = tpch_queries × scale_factors.size()          (line 214)
     = 22 × 3
-    = 66 rows, with columns (query_nr, scale_factor, answer)   (195-207)
+    = 66 rows, with columns (query_nr, scale_factor, answer)   (195-208)
 ```
 
 So the correctness loop you can actually close is:
@@ -451,22 +494,23 @@ milliseconds, so `bytes / ms / 1e6` is GB/s:
       42,000,000 /  2.7 / 1e6 = 15.6 GB/s      (notes.md prints 15.7)
 ```
 
-The canonical headline is FINDINGS.md row 22, from the later
-2026-07-28 run: **Q1 at 5.2–5.7 GB/s and Q6 at 9.0–14.4 GB/s
-effective**. Both are "effective" bandwidth — bytes the query
+FINDINGS.md row 22 records the same run as
+**Q1 at 4.7–5.6 GB/s and Q6 at 11.9–15.7 GB/s effective** across
+SF 0.05–0.25. Both are "effective" bandwidth — bytes the query
 logically consumed divided by wall time — not DRAM traffic; at these
 working-set sizes much of it is served from cache.
 
 For calibration on the same machine, FINDINGS.md row 17 measures a
-tuned eight-accumulator sum at **26.32 GB/s** and a branchless filter
-flat at **~10 GB/s** while the branchy version collapses to
-**0.95 GB/s** at 50% selectivity. Q6's 1.9% selectivity (see
+tuned eight-accumulator sum at **42.12 GB/s** and a branchless filter
+flat at **~12–13 GB/s** while the branchy version collapses to
+**1.19 GB/s** at 50% selectivity. Q6's 1.9% selectivity (see
 [reading-boncz-tpch.md](reading-boncz-tpch.md) Step 4) sits on the
 safe side of that crater, which is why the branchy oracle is already
 fast.
 
 What real dbgen adds that ours does not: correlated text fields
-(`text.cpp`, whose comments carry the `%green%` Q9 searches for),
+(`text.cpp`'s pseudo-text comments, which Q13's `%special%requests%`
+filters on),
 spec-exact value distributions and the functional dependency between
 `returnflag` and `linestatus`, the correlated date columns of CP3.3,
 the other seven tables, refresh streams RF1/RF2, and Step 2's shared
@@ -479,8 +523,8 @@ it cannot answer.
 ## Where each step lives in the code
 
 Layout of [`duckdb/extension/tpch/`](https://github.com/duckdb/duckdb)
-at `6c0c1a68` — 159 files, of which 110 are answer CSVs and 22 are
-query `.sql` files, leaving 27 files of actual code and build glue:
+at `d54cbbe3df` — 161 files, of which 110 are answer CSVs and 22 are
+query `.sql` files, leaving 29 files of actual code and build glue:
 
 | path | lines | what (step) |
 |---|---|---|
@@ -489,12 +533,14 @@ query `.sql` files, leaving 27 files of actual code and build glue:
 | `tpch_extension.cpp` | 95-97 | `DbgenInit` — per-execution `DBGenGlobalState` (1) |
 | `tpch_extension.cpp` | 99-133 | `DbgenFunction` — create schema (107), loop `GenerateNext` (117-132) (3) |
 | `tpch_extension.cpp` | 135-148 | `DbgenProgress` — why the progress bar works (3) |
-| `tpch_extension.cpp` | 209-237 | `TPCHQueryAnswerFunction` — 22 × 3 = 66 answer rows (4) |
-| `tpch_extension.cpp` | 239-242 | `PragmaTpchQuery` — `PRAGMA tpch(n)` is a query rewrite (1) |
-| `tpch_extension.cpp` | 244-268 | `LoadInternal` — the four registrations; `NOTHING` return type at 253 (1) |
-| `dbgen/dbgen.cpp` | 184-192 | `append_begin_row` — flush at `STANDARD_VECTOR_SIZE` (3) |
-| `dbgen/dbgen.cpp` | 1126-1143 | `GenerateNext` — PARALLEL/SEQUENTIAL dispatch, interrupt check (3) |
-| `dbgen/dbgen.cpp` | 1451-1466 | `GetAnswer` — answers exist for SF 0.01/0.1/1 only (4) |
+| `tpch_extension.cpp` | 210-238 | `TPCHQueryAnswerFunction` — 22 × 3 = 66 answer rows (4) |
+| `tpch_extension.cpp` | 240-246 | `PragmaTpchQuery` — `PRAGMA tpch(n)` is a query rewrite (1) |
+| `tpch_extension.cpp` | 248-275 | `LoadInternal` — the keyword parameters (250-258), the four registrations; `NOTHING` return type at 259 (1) |
+| `dbgen/dbgen.cpp` | 201-209 | `append_begin_row` — flush at `STANDARD_VECTOR_SIZE` (3) |
+| `dbgen/dbgen.cpp` | 1194-1211 | `GenerateNext` — PARALLEL/SEQUENTIAL dispatch, interrupt check (3) |
+| `dbgen/dbgen.cpp` | 1516-1531 | `GetAnswer` — answers exist for SF 0.01/0.1/1 only (4) |
+| `dbgen/include/dbgen/dss.h` | 173 | `TEXT_POOL_SIZE` — the 300 MiB pseudo-text pool every comment slices (2) |
+| `dbgen/include/dbgen/text_pool_checkpoints.h` | 6-7 | 1,200 lazily generated 256 KiB pool chunks, generated by `generate_text_checkpoints.py` (2) |
 | `src/include/duckdb/common/vector_size.hpp` | 15-21 | `2048` — the chunk size Step 3 divides by (3) |
 | `dbgen/bm_utils.cpp`, `build.cpp`, `permute.cpp`, `rnd.cpp`, `rng64.cpp`, `speed_seed.cpp`, `text.cpp`, `dbgen_gunk.cpp` | — | the vendored TPC-official C, listed at `tpch_config.py:12-20` (2) |
 | `dbgen/queries/q01.sql … q22.sql` | — | the 22 queries with validation parameters substituted (4) |
@@ -502,8 +548,8 @@ query `.sql` files, leaving 27 files of actual code and build glue:
 | `dbgen/include/tpch_constants.hpp` | 1, 5, 28, 74, 120, 166 | the generated header: `TPCH_QUERIES_COUNT = 22`, one query array, three answer arrays (2, 4) |
 | `tpch_config.py` | 4-22 | build manifest: include dirs and the ten source files (2) |
 
-Reading order: `tpch_extension.cpp` top to bottom (301 lines), then
-`dbgen.cpp:184-192` and `1126-1143` for the chunking, then open
+Reading order: `tpch_extension.cpp` top to bottom (312 lines), then
+`dbgen.cpp:201-209` and `1194-1211` for the chunking, then open
 `queries/q06.sql` and `answers/sf1/q06.csv` side by side — the second
 is one number, and [reading-boncz-tpch.md](reading-boncz-tpch.md)
 Step 4 derives it.
@@ -539,21 +585,21 @@ fused aggregation over 98.6% of LINEITEM; Q9 should be the one that
 moves by a large factor when the join-order optimizer is disabled.
 Compute effective GB/s the way Step 5 does — Q1 reads 38 B/row and Q6
 28 B/row of the *spec's* column widths, so SF 1 is 228 MB and 168 MB
-respectively — and compare against FINDINGS.md row 22's 5.2–5.7 and
-9.0–14.4 GB/s.
+respectively — and compare against FINDINGS.md row 22's 4.7–5.6 and
+11.9–15.7 GB/s.
 
 ## Questions (answer in notes.md)
 
 1. Measure DuckDB Q1 and Q6 at SF 1 on this machine, with
    `SET threads = 1` and without. Compute effective GB/s using Step 5's
    38 and 28 bytes per row, and compare against our oracle lanes and
-   topic 17's 26.32 GB/s eight-accumulator ceiling. Where does the gap
+   topic 17's 42.12 GB/s eight-accumulator ceiling. Where does the gap
    come from — vectorization, fewer passes, or parallelism?
 2. Why does shipping `answers/` matter more than shipping `queries/`?
    Relate to topic 16's oracle taxonomy — and say what the SF ≤ 1
-   limit in `GetAnswer` (dbgen.cpp:1462-1464) costs you at SF 10.
+   limit in `GetAnswer` (dbgen.cpp:1527-1529) costs you at SF 10.
 3. `dbgen` is registered with `call_return_type = NOTHING`
-   (tpch_extension.cpp:253) and generates into tables rather than into
+   (tpch_extension.cpp:259) and generates into tables rather than into
    its own output chunk. Which topic-11 concept is the chunked
    `append_begin_row`/`FlushChunk` loop, and which one is it *not*?
 4. Q9 with `disabled_optimizers = 'join_order'`: how much slower, and
@@ -578,12 +624,12 @@ Answer each before unfolding it.
   **execute** (`DbgenFunction`, 99-133 — called until finished).
 
   `CALL dbgen(sf=1)` returns a single BOOLEAN column called `Success`
-  (declared at 90-91), and line 253 sets
+  (declared at 90-91), and line 259 sets
   `call_return_type = StatementReturnType::NOTHING`. The TPC-H rows are a
   *side effect*: `CreateTPCHSchema` at 107 creates the eight tables and the
   generator fills them. The payoff of being an operator is scheduling,
   progress (`DbgenProgress`, 135-148) and cancellation
-  (`InterruptCheck`, dbgen.cpp:1127) — not that the data flows through the
+  (`InterruptCheck`, dbgen.cpp:1195) — not that the data flows through the
   query.
 
   </details>
@@ -611,8 +657,8 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `append_begin_row` (dbgen.cpp:184-192) flushes when `info.row >=
-  STANDARD_VECTOR_SIZE` (187-189), and `STANDARD_VECTOR_SIZE` is
+  `append_begin_row` (dbgen.cpp:201-209) flushes when `info.row >=
+  STANDARD_VECTOR_SIZE` (204-206), and `STANDARD_VECTOR_SIZE` is
   `DEFAULT_STANDARD_VECTOR_SIZE = 2048U` in
   `src/include/duckdb/common/vector_size.hpp:16`.
 
@@ -620,7 +666,7 @@ Answer each before unfolding it.
   for all 8,661,245 SF-1 rows. Peak intermediate storage: zero — there is no
   `.tbl` file, no file format to version and no parser to disagree.
 
-  Parallelism is separate: `GenerateNext` (1126-1143) dispatches to
+  Parallelism is separate: `GenerateNext` (1194-1211) dispatches to
   `GenerateParallel` or `GenerateSequential`, and `children`/`step`
   (tpch_extension.cpp:73-81) expose dbgen's own `-C`/`-S` partitioning for
   generating one slice per process.
@@ -631,16 +677,16 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `GetAnswer` (dbgen.cpp:1451-1466) handles `sf == 0.01`, `0.1` and `1`
-  (1456-1461) and throws `NotImplementedException` for anything else
-  (1462-1464). The repo contains `answers/sf10/` and `answers/sf100/`
+  `GetAnswer` (dbgen.cpp:1516-1531) handles `sf == 0.01`, `0.1` and `1`
+  (1521-1526) and throws `NotImplementedException` for anything else
+  (1527-1529). The repo contains `answers/sf10/` and `answers/sf100/`
   directories, but the generated header carries only three answer arrays, so
   those two are files on disk and absent from the binary — an SF-10 run
   cannot be diffed against a shipped answer.
 
   `tpch_answers()` returns `tpch_queries × scale_factors.size()` =
-  22 × 3 = **66 rows** (tpch_extension.cpp:211-213), with columns
-  `query_nr`, `scale_factor`, `answer` (195-207).
+  22 × 3 = **66 rows** (tpch_extension.cpp:212-214), with columns
+  `query_nr`, `scale_factor`, `answer` (195-208).
 
   </details>
 
@@ -655,15 +701,14 @@ Answer each before unfolding it.
 
   At SF 0.25 (1,500,000 rows) with notes.md's 2026-07-10 baseline:
   1,500,000 × 38 = 57,000,000 B over 10.2 ms = 5.59 GB/s for Q1, and
-  1,500,000 × 28 = 42,000,000 B over 2.7 ms = 15.6 GB/s for Q6. FINDINGS.md
-  row 22's canonical figures from the later 2026-07-28 run are 5.2–5.7 and
-  9.0–14.4 GB/s.
+  1,500,000 × 28 = 42,000,000 B over 2.7 ms = 15.6 GB/s for Q6. FINDINGS.md row 22
+  records the same run: 4.7–5.6 and 11.9–15.7 GB/s across SF 0.05–0.25.
 
   "Effective" means bytes the query logically consumed ÷ wall time. It is
   **not** DRAM traffic: at these working-set sizes much of the data is served
   from cache, and it excludes the write side, the allocator, and everything
   the HashMap does. Comparing it to a DRAM bandwidth figure is a category
-  error; comparing it to topic 17's 26.32 GB/s accumulate lane, measured the
+  error; comparing it to topic 17's 42.12 GB/s accumulate lane, measured the
   same way on the same machine, is not.
 
   </details>
@@ -686,7 +731,7 @@ Answer each before unfolding it.
 
 **Code**
 - [duckdb](https://github.com/duckdb/duckdb) `extension/tpch/` —
-  pinned at `6c0c1a68`. `tpch_extension.cpp` is 301 lines and reads
+  pinned at `d54cbbe3df` (v2.0.0). `tpch_extension.cpp` is 312 lines and reads
   top to bottom in one sitting; the vendored `dbgen/` C is 1990s
   TPC-official code and is worth skimming, not reading.
 
@@ -700,20 +745,23 @@ Answer each before unfolding it.
 | `extension/tpch/tpch_extension.cpp` | 99-133 | `DbgenFunction`; `CreateTPCHSchema` at 107, generate loop at 117-132 |
 | `extension/tpch/tpch_extension.cpp` | 135-148 | `DbgenProgress` |
 | `extension/tpch/tpch_extension.cpp` | 172-193 | `TPCHQueryFunction` — the 22 query texts as a table |
-| `extension/tpch/tpch_extension.cpp` | 209-237 | `TPCHQueryAnswerFunction` — 66 rows, three scale factors |
-| `extension/tpch/tpch_extension.cpp` | 239-242 | `PragmaTpchQuery` — `PRAGMA tpch(n)` returns SQL text |
-| `extension/tpch/tpch_extension.cpp` | 244-268 | `LoadInternal`; `StatementReturnType::NOTHING` at 253 |
-| `extension/tpch/dbgen/dbgen.cpp` | 184-192 | `append_begin_row` — the chunk flush |
-| `extension/tpch/dbgen/dbgen.cpp` | 1126-1143 | `GenerateNext` — parallel/sequential dispatch |
-| `extension/tpch/dbgen/dbgen.cpp` | 1444-1449 | `GetQuery` — bounds-checked lookup into `TPCH_QUERIES` |
-| `extension/tpch/dbgen/dbgen.cpp` | 1451-1466 | `GetAnswer` — SF 0.01 / 0.1 / 1 only |
+| `extension/tpch/tpch_extension.cpp` | 210-238 | `TPCHQueryAnswerFunction` — 66 rows, three scale factors |
+| `extension/tpch/tpch_extension.cpp` | 240-246 | `PragmaTpchQuery` — `PRAGMA tpch(n)` returns SQL text |
+| `extension/tpch/tpch_extension.cpp` | 248-275 | `LoadInternal`; keyword parameters at 250-258, `StatementReturnType::NOTHING` at 259 |
+| `extension/tpch/dbgen/dbgen.cpp` | 201-209 | `append_begin_row` — the chunk flush |
+| `extension/tpch/dbgen/dbgen.cpp` | 1140-1152 | scale-factor guards: NaN rejected, `sf <= 0` generates nothing, `sf > MAX_SCALE` rejected |
+| `extension/tpch/dbgen/dbgen.cpp` | 1194-1211 | `GenerateNext` — parallel/sequential dispatch |
+| `extension/tpch/dbgen/dbgen.cpp` | 1509-1514 | `GetQuery` — bounds-checked lookup into `TPCH_QUERIES` |
+| `extension/tpch/dbgen/dbgen.cpp` | 1516-1531 | `GetAnswer` — SF 0.01 / 0.1 / 1 only |
+| `extension/tpch/dbgen/include/dbgen/dss.h` | 173, 360 | `TEXT_POOL_SIZE` (300 MiB) and `MAX_SCALE` (100000.0) |
+| `extension/tpch/dbgen/include/dbgen/text_pool_checkpoints.h` | 6-7 | 1,200 chunks of 2¹⁸ bytes, each with a sentence checkpoint |
 | `extension/tpch/dbgen/include/tpch_constants.hpp` | 1, 5, 28, 74, 120, 166 | generated by `scripts/generate_csv_header.py` |
 | `extension/tpch/tpch_config.py` | 4-22 | build manifest |
 | `src/include/duckdb/common/vector_size.hpp` | 15-21 | `STANDARD_VECTOR_SIZE = 2048` |
 | `experiments/src/lineitem.rs` | 8-16 | dbgen-lite's seven columns |
 | `experiments/src/bin/bench_suite.rs` | 74-79 | the 38 B / 28 B per row accounting behind the GB/s headline |
 
-Pinned revisions: duckdb/duckdb@6c0c1a68 (regenerate the pin table
+Pinned revisions: duckdb/duckdb@d54cbbe3df (regenerate the pin table
 with `python3 tools/pin-table.py`).
 
 **Specification**
@@ -726,6 +774,6 @@ with `python3 tools/pin-table.py`).
 **Cross-topic**
 - topic 11 — operator-vs-materialization; Step 3's chunk loop.
 - topic 16 — oracle taxonomy; Step 4's shipped answers.
-- topic 17 — 26.32 GB/s accumulate and the branchless filter floor,
+- topic 17 — 42.12 GB/s accumulate and the branchless filter floor,
   the calibration for Step 5's effective bandwidth.
 - topic 0 `reading-fair-benchmarking.md` — "incorrect code wins".

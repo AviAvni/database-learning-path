@@ -2,7 +2,7 @@
 
 **A self-paced curriculum in database internals, where every claim is measured.**
 
-45 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
+46 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
 through the papers and the production code, then hands you a Rust benchmark that
 demonstrates the thing being claimed — so you finish with a number you produced
 yourself, not a fact you read.
@@ -124,7 +124,8 @@ Build artifacts land in `../.dlp-target`, outside the clone — see
 
 Written by [Avi Avni](https://github.com/AviAvni), a core developer of
 [FalkorDB](https://github.com/FalkorDB/FalkorDB) and
-[falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) — so graph
+[falkordb-rs-next-gen](https://github.com/FalkorDB/falkordb-rs-next-gen) (the Rust
+engine of FalkorDB 6) — so graph
 internals are home turf and get the deepest treatment, but the goal is breadth across
 every database domain, which is why roughly two-thirds of the topics are not about
 graphs at all.

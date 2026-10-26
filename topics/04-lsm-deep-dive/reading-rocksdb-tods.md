@@ -124,7 +124,7 @@ CPU). "Most of the workloads are space constrained."
 The engineering response was **Dynamic Leveled Compaction**: size each level
 from the *actual* size of the last level rather than from static targets. (This
 is `level_compaction_dynamic_level_bytes`, the branch you saw guarding the score
-formula at `rocksdb db/version_set.cc:4135`.) The measured effect, §3 and
+formula at `rocksdb db/version_set.cc:3816`.) The measured effect, §3 and
 Table 4 — RocksDB 5.9, all defaults, constant 2 MB/s write rate, keys chosen
 randomly from a prepopulated space:
 
@@ -499,7 +499,7 @@ Answer each before unfolding it.
 | "Customizability is always good to users" among failed suggestions | Appendix, "Suggestions that did not work out" |
 
 **Code**
-- `rocksdb db/version_set.cc:4135` at `7c80a5a` — the
+- `rocksdb db/version_set.cc:3816` at `ea3136053` — the
   `level_compaction_dynamic_level_bytes` branch, i.e. Dynamic Leveled
   Compaction from §3, in the scoring code.
 

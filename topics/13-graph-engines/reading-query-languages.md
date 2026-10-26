@@ -16,9 +16,9 @@ Matching in GQL and SQL/PGQ* (SIGMOD 2022,
 figure; every ISO designation was checked against iso.org; every
 grammar anchor is **kuzu pinned at `89f0263`**
 ([`resources/codebases.md`](../../resources/codebases.md)). Four
-numbers in the previous version of this chapter — the size of
-`Cypher.g4`, the date on Cypher, the list of GQL restrictors, and the
-year on the GQL standard — did not survive that check.
+numbers that circulate loosely — the size of `Cypher.g4`, the date on
+Cypher, the list of GQL restrictors, and the year on the GQL standard
+— are stated here only as those sources give them.
 
 ## The problem in one sentence
 
@@ -86,8 +86,7 @@ graph elements. Three standard choices: **homomorphism** (anything may
 repeat — nodes and edges), **isomorphism** (no repeated nodes),
 **trail** (no repeated *edges*).
 
-The previous version of this chapter tried to demonstrate the split on
-a 2-edge pattern. That does not work: on a simple graph, a 2-path with
+A 2-edge pattern cannot demonstrate the split: on a simple graph, a 2-path with
 distinct edges automatically has distinct endpoints, so trail and
 node-isomorphism agree by construction. You need three edges. Take the
 undirected triangle and count properly:
@@ -126,15 +125,14 @@ for nodes, no-repeated-relationship for edges — a semantics decision
 disguised as a default, and every engine since has had to
 reverse-engineer the corner cases.
 
-**Correction.** The previous version dated that decision to "Cypher
-2012". The paper does not support a year for Cypher specifically; what
-it says is that declarative property graph languages appeared "since
+The paper does not give a year for Cypher specifically; what it says
+is that declarative property graph languages appeared "since
 2010" — "Cypher from Neo4j, GSQL from TigerGraph, and PGQL from
 Oracle, as well as industry/academia prototypes such as G-CORE" — and
 that "the **2015** openCypher project has led to a widening industrial
 use of Cypher as a language for property graphs, but did not succeed
 on its own in establishing a standard" (§1, p.2). Use 2010 for the
-category and 2015 for openCypher; drop the 2012.
+category and 2015 for openCypher.
 
 Why it matters: two engines can both "support Cypher patterns" and
 return different counts; if you build an engine (M13), you must *pick*
@@ -162,10 +160,8 @@ syntax. The motivation is not elegance, it is termination:
 > — §5, p.17
 
 A **restrictor** is "a path predicate … such that the number of
-matches cannot be infinite" (§5.1). **Correction:** the previous
-version listed the restrictors as "TRAIL / ACYCLIC / SIMPLE, or ALL
-for homomorphism". There is no `ALL` restrictor. Figure 7 lists
-exactly three:
+matches cannot be infinite" (§5.1). It is tempting to add "or `ALL` for homomorphism" to the
+list; there is no `ALL` restrictor. Figure 7 lists exactly three:
 
 | Keyword | Description (Fig. 7, p.19) |
 |---|---|
@@ -206,8 +202,7 @@ and other common 'regex' tools … written as postfix operators on
 either a single edge pattern or a parenthesized path pattern" (§4,
 p.14), replacing Cypher's `[*1..5]` with a composable form.
 
-**Correction — scope.** The previous version implied GQL makes
-matching semantics fully configurable. It does not. Restrictors
+GQL does not make matching semantics fully configurable. Restrictors
 constrain repetition *within a path pattern*; constraining repetition
 *across* the whole graph pattern is listed as a **Language
 Opportunity**, i.e. deferred out of the shipped standard:
@@ -263,8 +258,7 @@ graph TD
     SPARQL["SPARQL 1.1 (W3C, RDF)"] -.->|"paths, not property graphs"| GQL
 ```
 
-**Correction — the year.** The previous version dated SQL/PGQ to 2023.
-The paper's Figure 10 (p.28) is a *projected* timeline, carrying
+The year needs care. The paper's Figure 10 (p.28) is a *projected* timeline, carrying
 footnote 6: "The schedule depends on work that has not been completed
 and so could change." It projected the SQL/PGQ IS for 2023-03-13 and
 the GQL IS for 2023-09-10. What actually published is **ISO/IEC
@@ -358,8 +352,7 @@ the query says what, not how.
    graph-to-graph composability) that GQL absorbed — Step 4's middle
    arrow.
 3. **kuzu's `src/antlr4/Cypher.g4`** — not a paper, but read it like
-   one. **Correction:** it is **917 lines**, not the 690 the previous
-   version claimed. Go straight to the relationship rules, because
+   one. It is **917 lines**. Go straight to the relationship rules, because
    kuzu has already done question 6's exercise:
 
 ```antlr

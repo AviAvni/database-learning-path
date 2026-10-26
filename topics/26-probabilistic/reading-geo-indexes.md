@@ -8,7 +8,7 @@ seams — then surveys the families that *do* build real spatial
 structures (R-tree, S2, H3), with the valkey source as the running
 example.
 
-Every code anchor below is valkey at commit `8891441ab`, the revision
+Every code anchor below is valkey at commit `668d875ca` (`unstable`), the revision
 this repo pins (`src/geohash.c`, `src/geohash_helper.c`, `src/geo.c`),
 quoted with the line numbers the code occupies in that version. The S2
 and H3 figures are quoted from their project docs; the geohash precision
@@ -75,7 +75,7 @@ same cell** — prefix-similar codes = spatially-near points. The
 interleave is five magic-mask rounds, quoted verbatim:
 
 ```c
-// src/geohash.c:52-76 (interleave64, valkey@8891441ab)
+// src/geohash.c:52-76 (interleave64, valkey@668d875ca)
     52  static inline uint64_t interleave64(uint32_t xlo, uint32_t ylo) {
     53      static const uint64_t B[] = {0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
     54                                   0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL};
@@ -138,10 +138,10 @@ pipeline:
    step = geohashEstimateStepsByRadius(r, lat)   geohash_helper.c:64
      (pick cell level so one cell ≳ the radius; higher lat ⇒
       cells narrow ⇒ adjust — spherical reality leaks in)
-   for cell + 8 neighbors:                        geo.c:375
+   for cell + 8 neighbors:                        geo.c:374
      score range = [hash << (52-2·step), (hash+1) << ...]
-                                                  geo.c:338
-     ZRANGEBYSCORE → candidates                   geo.c:367
+                                                  geo.c:337
+     ZRANGEBYSCORE → candidates                   geo.c:366
    exact haversine filter on candidates
 ```
 
@@ -226,9 +226,9 @@ discrete-cell-only answers.
 |---|---|---|
 | `geohash.c:52-76` `interleave64` | 3 | the Morton interleave, five magic-mask rounds |
 | `geohash_helper.c:64` `geohashEstimateStepsByRadius` | 4 | pick the cell level covering the radius; latitude-dependent, clamped near the poles |
-| `geo.c:338` `scoresOfGeoHashBox` | 4 | cell → zset score range: `hash << shift` to `(hash+1) << shift` |
-| `geo.c:367` `membersOfGeoHashBox` | 4 | one box's score range → ZRANGEBYSCORE candidate fetch |
-| `geo.c:375` `membersOfAllNeighbors` | 4 | the 3×3 neighborhood scan (calls `membersOfGeoHashBox` per box at :424) + haversine post-filter |
+| `geo.c:337` `scoresOfGeoHashBox` | 4 | cell → zset score range: `hash << shift` to `(hash+1) << shift` |
+| `geo.c:366` `membersOfGeoHashBox` | 4 | one box's score range → ZRANGEBYSCORE candidate fetch |
+| `geo.c:374` `membersOfAllNeighbors` | 4 | the 3×3 neighborhood scan (calls `membersOfGeoHashBox` per box at :424) + haversine post-filter |
 
 Read them in pipeline order (encode → step estimate → ranges → neighbors)
 — it is one straight-line data path, ~400 lines total.
@@ -304,8 +304,8 @@ Answer each before unfolding it.
 
   Pick a cell level ≈ the radius (`geohashEstimateStepsByRadius`,
   geohash_helper.c:64), scan the cell + 8 neighbors as zset score ranges
-  (`scoresOfGeoHashBox` geo.c:338 → `membersOfGeoHashBox` geo.c:367,
-  looped over the 9 in `membersOfAllNeighbors` geo.c:375), then
+  (`scoresOfGeoHashBox` geo.c:337 → `membersOfGeoHashBox` geo.c:366,
+  looped over the 9 in `membersOfAllNeighbors` geo.c:374), then
   haversine-filter. The 3×3 block is 9 cells against a query circle of
   area ≈ π r²; with one cell ≳ the radius that is roughly a 3–10×
   over-fetch, which the exact filter removes.
@@ -347,7 +347,7 @@ Answer each before unfolding it.
 
 **Code & docs**
 - [valkey](https://github.com/valkey-io/valkey) `src/geohash.c`,
-  `src/geohash_helper.c`, `src/geo.c` (pinned at `8891441ab`;
+  `src/geohash_helper.c`, `src/geo.c` (pinned at `668d875ca`;
   `GEO_STEP_MAX = 26` in `src/geohash.h`)
 - [s2geometry.io cell statistics](https://s2geometry.io/resources/s2cell_statistics)
   — S2 cell hierarchy: 6 faces at level 0, levels 0–30

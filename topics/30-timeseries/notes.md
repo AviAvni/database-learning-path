@@ -1,22 +1,61 @@
 # Topic 30 — Notes
 
-## Measured: the baseline to beat (lane 1, provided)
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
 1M samples, 10s scrape interval ±100ms jitter, `cargo run --release --bin tsdb_bench`:
 
+```
+=== tsdb_bench: 1000000 samples/series shape, 10s scrape interval ===
+
+-- baselines (provided): raw = 16.00 B/sample --
+ constant: delta+varint 11.00 B/sample | decode 312 Msamples/s
+    gauge: delta+varint 11.00 B/sample | decode 272 Msamples/s
+  counter: delta+varint 11.00 B/sample | decode 351 Msamples/s
+   random: delta+varint 11.00 B/sample | decode 351 Msamples/s
+
+-- gorilla codec (stub lane) --
+gorilla lane: [stub — implement gorilla.rs]
+
+-- out-of-order ingestion tax (stub lane) --
+ooo lane: [stub — implement head.rs]
+
+-- tag index at 100K series (stub lane) --
+index lane: [stub — implement index.rs]
+```
+
+The B/sample column is seeded and exact — 11.00 on all four shapes, on every
+run. Decode throughput is a timing and moves by up to ~20% between runs; cite
+one run by date.
+
 | shape | delta+varint B/sample | decode Msamples/s |
 |---|---|---|
-| constant | 11.00 | 292 |
-| gauge | 11.00 | 268 |
-| counter | 11.00 | 303 |
-| random | 11.00 | 333 |
+| constant | 11.00 | 312 |
+| gauge | 11.00 | 272 |
+| counter | 11.00 | 351 |
+| random | 11.00 | 351 |
 
 The flat 11.00 is the finding: timestamps compress to ~3 B (varint of
 jittered deltas) but the raw 8-byte values dominate and are *shape-blind*.
 Whatever the codec does about timestamps is a rounding error until it
 attacks the value bytes — hence XOR floats.
 
-## Predictions (before implementing the stubs)
+## Predictions (fill BEFORE implementing the stubs)
+
+| lane | predicted | measured |
+|---|---|---|
+| gorilla constant — B/sample | | |
+| gorilla gauge — B/sample | | |
+| gorilla counter — B/sample | | |
+| gorilla random — B/sample | | |
+| gorilla decode — Msamples/s | | |
+| ooo tax 0%→50% — ingest and flush | | |
+| index intersect hot∧rare | | |
+| index build 100K series | | |
+
+Record actuals in the measured column after implementing.
+
+<details>
+<summary>Author's prediction</summary>
 
 | lane | prediction | reasoning |
 |---|---|---|
@@ -29,7 +68,13 @@ attacks the value bytes — hence XOR floats.
 | index intersect hot∧rare | <1 µs | shortest-list-first makes the unique instance label do all the work |
 | index build 100K series | tens of ms | 400K postings pushes into a HashMap |
 
-Record actuals next to these after implementing.
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification (they pin roundtrip and ratio *bounds* — e.g. gorilla on
+random values must stay above 8 B/sample — rather than the paper's table).
 
 ## Things that surprised me while designing the experiments
 

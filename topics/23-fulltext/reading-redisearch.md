@@ -3,8 +3,9 @@
 Home turf: this is what FalkorDB delegates full-text to, and the
 interesting part is that the C core is being strangler-figged into
 Rust crates behind FFI (`c_entrypoint/inverted_index_ffi`,
-`varint_ffi`) — the exact migration pattern falkordb-rs-next-gen
-lives. Read the `inverted_index` crate as a *mutable, in-memory*
+`varint_ffi`) — the same migration path FalkorDB itself took from its
+C engine (4.x, the `master` branch) to its Rust engine (FalkorDB 6, on
+`main`). Read the `inverted_index` crate as a *mutable, in-memory*
 counterpart to tantivy's immutable segments
 ([reading-tantivy.md](reading-tantivy.md)). Before pointing at the
 code, this chapter builds the design one constraint at a time —
@@ -230,7 +231,8 @@ monomorphized type.
    each): compute bytes/posting for both. Where does varint actually
    WIN?
 5. Sketch M23's native replacement: which parts of this crate would
-   you lift verbatim into falkordb-rs-next-gen, and where does the
+   you lift verbatim into the Rust engine (FalkorDB `main`, formerly
+   falkordb-rs-next-gen), and where does the
    graph (node ids = doc ids, roaring hit-sets into masked mxv)
    change the design?
 

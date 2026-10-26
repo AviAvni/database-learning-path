@@ -9,6 +9,123 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-26 — repo-wide review — a pin that moved itself, three benches that measured the wrong thing, and what upstream did since July
+
+A review of the whole repo against today's upstreams and literature, three
+months after most pins were taken. Topic 45 (below) is the new topic it
+seeded; everything else is here.
+
+**The C FalkorDB anchors had stopped resolving.** Topic 44's regeneration of
+the pin table ran while `~/repos/FalkorDB` was on the Rust engine and moved the
+FalkorDB pin from `ccb449a9a` (C) to `aa75821ab`, a tree with no `src/graph/`;
+`pinned-source.py check FalkorDB src/graph/delta_matrix/delta_matrix.h:108`
+failed while four guides still named `ccb449a9a`. Restored, and fixed at the
+cause: `tools/pin-table.py` now keeps every existing pin, re-pins only on
+`--bump NAME`, keeps rows for clones deleted from this machine (seven had been,
+and a regeneration would have dropped them), and reports drifted clones
+without rewriting them.
+
+**The published book had 85 dead links**, every one a `.../README.md` link that
+mdbook renders as a `README.html` it never writes — 43 of them in FINDINGS.md.
+A preprocessor (`tools/mdbook-readme-links.py`) rewrites them in the book's copy
+only. Two CI steps were added for what CI could not see: every internal link
+and anchor in the rendered HTML (`tools/check-book-links.py`: 5,857 links, 0
+dead) and every diagram through mermaid's own parser (`tools/check-mermaid.js`:
+91 blocks, 0 errors; a deliberately broken control fails).
+
+**Three benchmarks were measuring something other than what they claimed.**
+- Topic 27: `ChurnGen` drew deletions by seeded index into a `HashSet`'s
+  iteration order, which std randomizes per process — 1364 vs 1365 triangles
+  and 21,062,928 vs 21,063,216 wedges on consecutive runs. Now sorted: 1365 /
+  21,063,140 on every run.
+- Topic 42: the same pattern in the collaboration generator's triadic closure
+  and in `personalization()`'s sample. Now 0.353 / 0.157 / 0.922 and 0.403 /
+  0.815 / 0.457 on every run, random predictor 0.313%; lane 3's references
+  re-derived (PA 1.0×, common neighbours 21.7×, Jaccard 27.9×, Adamic/Adar
+  24.0×). And the July audit's "correction" of FINDINGS row 42 to 34.0% / 92.3%
+  was itself the error: the crate as first committed gives 0.353 / 0.922 today,
+  and 0.340 / 0.923 never came from committed code. The original 35.3% / 92.2%
+  is restored.
+- Topic 32: lane 1's write p99 was 20.3 s, then 37.5 s, then 3.2 s and 22.2 s
+  on consecutive runs of a "2 s" window — `std::sync::Mutex` on macOS is
+  `os_unfair_lock`, the scanner re-took the lock before the woken writer ran,
+  and the lane measured starvation. With `parking_lot::FairMutex` it measures
+  the HTAP problem itself: p99 209 ns → 2.25 ms (= 2 s / 889 scans, one scan),
+  14,052,932 → 21,543 writes, reproducing within 1% over three runs.
+A full double run of `./verify.sh`, diffed, found no other count that differs
+between runs.
+
+**Upstream since the pins**, as ~45 "Upstream since the pin" callouts with
+anchors left at the pin, each checked against code and release tags: Redis
+8.8–8.10 rax rework and the unstable B+-tree sorted sets; Valkey 9.2-rc1's
+fbtree ordered index, SPSC/SPMC I/O-thread jobs and Forkless Save (full sync
+still forks — read from `startBgsaveForReplication`); qdrant v1.19–1.20
+(the `m0 != 0` gate went in 1.20.0, not 1.19.2); DuckDB 2.0.0 (44 optimizer
+calls, +5; `skip_scan` gone); DataFusion range repartitioning; Polars 2.x;
+RocksDB 11.13's PerfContext change (attributed, not measured); Turso
+`wal_autocheckpoint`; ClickHouse adaptive codec selection, which contradicts a
+guide's "nothing analyzes". FalkorDB 6.0.0 (2026-09-29) is the Rust engine on
+`main`; the C engine continues on `master`, and `ccb449a9a` is pre-split C
+history. Kùzu is archived at exactly its pin. PostgreSQL 19 does not ship
+SQL/PGQ: committed as 2f094e7ac69, reverted as b1f106c80cb / 2b9e1aff4d3.
+Seven claims turned out to be wrong at the pin itself and were corrected
+(qdrant's "≈2M points scored", "three quantization families", DataFusion's
+two partitioning schemes, DuckDB's "exactly two" selectivity sites, an
+unsourced "~1 ns" PerfContext bump, a rax snippet that elided the line its
+prose pointed at, an unqualified Valkey ignition rule).
+
+**Newer work.** 39 papers from 2025–2026, each downloaded and read, added to
+22 topic READMEs with section/table citations and to resources/papers.md.
+The papers corrected their own leads more than once: TurboLynx's 183.9× is over
+DuckPGQ only and it is 0.58× Umbra on TPC-H; RPT+ is built on DuckDB 1.3.0, not
+shipped in it; S-RocksDB's abstract pairs two settings (like-for-like 64.3M →
+10,206 stalled writes); TVA's "9.9×" is nowhere in its evaluation. Five could
+not be read and were left out (cache_ext, Fawkes, ValScope, Aquila, CGIF).
+
+**Notes.** Topics 26–43 now open with a dated baseline from this day's run and
+an empty prediction worksheet; the author's predictions moved into collapsed
+blocks.
+
+**Capstone baselines.** Re-measured against clean, tagged builds of both
+shipping engines — C FalkorDB v4.22.2 (7b61f511d) and Rust FalkorDB v6.0.3
+(c937aa4fa) — 100 rounds, median and p99, plus memory. Against the C bar, Rust
+is 1.18–1.60× slower on bulk creates, level on matches (0.94–0.99×), 0.34–0.62×
+on deletes, and 3–22% lower on peak RSS (1M edges: 693 vs 879 MiB). Load
+average 2.9–3.4 during the runs, recorded.
+
+## 2026-10-26 — topic 45 — Async I/O & Modern SSDs: the interface is not the win
+
+**New topic 45, `Async I/O & Modern SSDs: io_uring, Out-of-Place Writes, and When They Help`** — the topic that prices what topics 5, 6, 7 and 19 only named. Package: README, five reading guides, `notes.md`, a Rust crate with lane 1 implemented and two lanes stubbed, `FINDINGS.md` row, `verify.sh` lane, `PLAN.md` §45 and a map node (`T6 --> T45`), capstone M45, SUMMARY entries, `resources/papers.md` entries. `check-reading-depth.py --check --all` reads **241/241**.
+
+**The measured headline is queue depth, not an interface.** A 1 GiB seeded file written and read around the page cache (`F_NOCACHE` + `F_RDAHEAD 0` on macOS, `O_DIRECT` on Linux), 20,000 fresh seeded random 4 KiB reads per row, queue depth bought with blocking `pread` threads, Apple M3 Pro internal SSD (APPLE SSD AP0512Z):
+
+```
+    QD      IOPS    MiB/s   p50 µs   p99 µs  mean µs   predicted  achieved
+     1     13810       54     68.8     80.6     72.2       13843      100%
+     2     27155      106     69.5    110.6     73.5       27686       98%
+     4     52450      205     72.0    115.9     76.1       55373       95%
+     8     96907      379     74.0    155.5     82.4      110746       88%
+    16    155741      608     91.5    199.4    102.4      221491       70%
+    32    244300      954    112.5    316.5    130.3      442983       55%
+    64    248363      970    203.0    583.9    254.3      885965       28%
+```
+
+**18× through the same system call.** The predicted column is Little's law with QD-1 latency held fixed; fed each row's own mean latency the law closes to 0.2% at QD 8 (8 / 82.4 µs = 97,087 vs 96,907) and 1.3% at QD 64 (251,671 vs 248,363) — past QD 16 the device queues and extra in-flight reads buy latency. Three sanity lines are part of the output: QD-1 p50 68.8 µs above the 8 µs cold-read floor; best random row 970 MiB/s = 16% of the measured sequential ceiling of 5,967 MiB/s (1 MiB reads, 8 threads); `pread`, 8 threads and `lio_listio` return the same checksum `9786a6be5036cf04` over 2,000 shared offsets. Run-to-run on this machine: QD-1 13,330–13,810, QD-64 237,589–248,363, ceiling 5,967–6,180 MiB/s.
+
+**Lane 1b — a batch barrier halves throughput.** POSIX AIO `lio_listio(LIO_WAIT)`: batch 1 / 4 / 16 → 13,385 / 39,273 / 79,200 IOPS, 2.000 / 1.250 / 1.062 syscalls per I/O (every result needs its own `aio_return`), batch p50 71.8 / 89.0 / 189.2 µs against a max-of-b-QD-1-draws prediction of 72.3 / 85.6 / 124.8 µs. Batch 16 is **0.51× the 155,741 of sixteen threads**. An early hypothesis that macOS caps AIO at its `kern.aiothreads` = 4 workers was refuted by the same row (79,200 > QD-4's 52,450) and removed, not explained.
+
+**Lane 1c — what a syscall costs.** Warm page cache, ns per 4 KiB page at 1/2/4/8/16/32/64 pages per call (`pread`, then one `preadv` over contiguous pages), best of 3: 612 / 435 / 271 / 225 / 217 / 196 / 195 — 2.82× at 16, 3.14× at 64. Two-term fit: ≈ 424 ns per call + 188 ns per page. The io_uring paper's "roughly 5–6×" at batch 16 (§2.1) is for io_uring submissions; this lane's floor includes a 4 KiB memcpy, and contiguous `preadv` is an upper bound on what syscall batching alone buys.
+
+**Lane 2 (io_uring) has no reference timings, and the notes say why.** macOS has no io_uring. A Linux container on the same Mac (Docker Desktop, kernel `7.0.14-linuxkit`) builds the crate with `-D warnings` and runs lanes 1 and 3, but `io_uring_setup` fails with **EPERM** under Docker's default seccomp profile (the bench prints it as a stub note; running unconfined was not done), and the container's own lane 1 fails the sanity check: QD-1 p50 35.8 µs and a sequential "ceiling" of **16,872 MiB/s**, 2.8× the physical SSD — the VM disk is served from the host page cache. A reference `uring_reads` was written and compiled for Linux against `io-uring` 0.7.15, never run; the two Linux-gated tests are the contract (same bytes as `pread`; at most n/batch + qd + 1 enters).
+
+**Lane 3 — write amplification on a simulated FTL (labelled a model everywhere).** 1,000 addressable 1 MiB erase blocks of 256 × 4 KiB pages + 100 over-provisioned, greedy GC, one stream; a 230,144-page database (90% fill minus a 256-page doublewrite buffer), 768,000 user writes, first half uncounted. In-place + doublewrite: DB 2.00 × SSD 4.13 = **8.25** uniform, 2.00 × 4.46 = **8.91** at Zipf(0.8) — deterministic, identical on Linux. Reference out-of-place implementation (stubbed before commit; numbers in notes.md): one erase-block zone 5.13 × **1.00** = 5.13 (uniform) and 6.36 × 1.00 = 6.36 (Zipf); half-block zones 5.00 × 2.00 = 10.00 / 6.18 × 2.13 = 13.16; two open zones 5.18 × 2.02 = 10.45 / 6.42 × 2.97 = 19.07; quarter-block zones, four open 4.83 × 4.43 = **21.39** / 5.97 × 4.45 = 26.54. Mean victim valid ratio 0.805 → 1/(1 − 0.805) = 5.13, the greedy identity to the digit. **The negative result is the paper's**: out-of-place writes are only a win when aligned and single-stream; misaligned or multiplexed they are worse than in-place, up to 2.6×. Test-sized device (64-page blocks, 200 + 20): in-place 2.00/3.78/7.57; aligned 4.44/1.00/4.44 (valid 0.775); half-block 4.01/2.51/10.09 — the four stub tests were run green against the reference before stubbing.
+
+**Paper claims, each checked against the text.** Jasny et al. (VLDB'26, arXiv 2512.04859): "swapping in io_uring alone doesn't help" **checks out** — Figure 1 1.06× (libaio 173.0 → 183.5 k tx/s) and 1.10× (epoll 12.0 → 13.2 GiB/s) naive vs 2.05× (376.4/183.5, stopping at +IOPoll) and 2.31× redesigned (§1); synchronous Posix = synchronous io_uring = 16.5 k tx/s (§3.3). Models recomputed: 1/(0.7 × 82 µs) = 17.4 k vs 16.5 k; 1/(0.7 × 70 µs) = 20.4 k vs 19.1 k; 3.7×10⁹/(8,264 + 0.7 × 15,900) = 190.8 k vs 183.5 k; with 11,100 cycles 230.8 k vs 216.6 k (Table 1). "Guidelines gave ~14% in PostgreSQL" is **only partly right**: the abstract says 14%, §5.2 and §7 say 11–15%; Figure 18 times 28.35 → 24.81 s (1 worker), 14.87 → 13.00, 7.79 → 6.96, 3.97 → 3.57 compute to 14.3 / 14.4 / 11.9 / 11.2% (labels 14.29 / 14.36 / 11.86 / 11.46%). Two discrepancies recorded rather than smoothed: §3.4.1's prose step gains (+11/+20/+21/+32%) do not match its own Figure 5 bars as new/old − 1 (+9.8/+26.4/+25.3/+45.2%); and the paper's "PostgreSQL's heuristic of enabling IO_ASYNC after four outstanding I/Os" never fires for direct I/O at the pinned PostgreSQL — `pgaio_uring_should_use_async` returns false for non-buffered I/O at `method_io_uring.c:722-723` before the `> 4` check at `:729`, and the paper names no version. Table 2 batching latency 11.51 / 24.22 / 60.62 / 116.40 / 200.85 / 317.51 µs at batch 1–256. Lee, Ziegler & Leis (VLDB'26, arXiv 2603.09927): 18.85 KiB per 4 KiB page = 4.71 = 2.00 × 2.36 ✓ (§1, §2); Table 1 4.06 × 1.94 = 7.88 vs 4.72 → 1.67× (paper "1.66×"), 4.72/0.60 = 7.87 ("7.8×"); flash-write reductions 6.2× (Solidigm) to 9.76× (Kioxia) ✓ (§7.4); TPC-C 2.45× / 7.2× ✓ (§7.6). **Not verified**: the abstract's "1.65–2.24×" throughput range appears in no table read, and Table 1's own 535/229 = 2.34× lies outside it; §1's "1 DWPD ≈ 11 MB/s" computes to 10.3 MB/s for 894 GB; §5.4's NoWA sizing (16 × 513 MB = 8 × 1,026 MB = 8,208 MB) does not equal the 8,496 MB reclaim unit it is said to match. Houlborg, Tietgen et al. (CIDR'26): "up to 50% lower query times" is supported only by prose about bar charts ("almost halves", Q12 "halved"), not a table; "comparable for non-I/O-intensive" ✓ (§5.1 SF1/SF10, §5.2 SF8/SF2); most TPC-H queries within ~10% because the OS page cache absorbs the I/O; SPDK 4–30%.
+
+**Anchors.** PostgreSQL at `701f021` (master, 2026-07-10), every anchor re-read with `pinned-source.py`: `io_method` defaults to `worker` (`aio.h:41-42`); `PGAIO_SUBMIT_BATCH_SIZE` 32 (`aio_internal.h:30`); rings created with **no setup flags** (`method_io_uring.c:367`) because any backend waits in another's ring (`:601-613`); buffered reads deliberately offloaded to io-wq when > 4 in flight or ≥ 4 blocks (`:716-740`); the worker method falls back to running a batch synchronously when its queue lock is contended (`method_worker.c:493`, `:519-523`); read-stream look-ahead doubles on I/O waits (`read_stream.c:1229-1237`) and decays by one on hits after a holdoff (`:455-480`); `effective_io_concurrency` default 16 (`bufmgr.h:170`). New clone `tokio-rs/io-uring` at `a517178` (crate 0.7.15, the version lane 2 resolves), pinned via the sticky `pin-table.py`: publish-by-Release-store on `SubmissionQueue` drop (`src/squeue.rs:377`), one `io_uring_enter(len, want, flags)` per batch with an SQPOLL early return (`src/submit.rs:171-217`), reaping with no syscall (`src/cqueue.rs:274-301`), `DEFER_TASKRUN` requiring `SINGLE_ISSUER` (`src/lib.rs:442-464`).
+
+**Tooling notes.** The pin table was regenerated with the sticky version of `tools/pin-table.py` (it only adds `io-uring` and refreshes mention counts; every existing pin kept); the copy on this branch's master is the older non-sticky one and would re-pin moved clones, so it was not used. Mermaid and book links were checked with `tools/check-mermaid.js` and `tools/check-book-links.py` from the main checkout, which are not on master either.
+
 ## 2026-08-26 — topic 44 + two topic-16 guides — e-matching is a join, and the two testing systems that were only named
 
 **New topic 44, `E-graphs as a Database: Relational E-matching & egglog`** — the sequel to topic 21, placed here because the fix for equality saturation's bottleneck came out of the database literature. Plus two guides for topic 16, which had been name-dropping Antithesis inside its FoundationDB chapter and referring to property testing without ever reading one. Package: README, four reading guides, `notes.md`, a Rust crate with lane 1 implemented and two lanes stubbed, `FINDINGS.md` row, `verify.sh` lane, `PLAN.md` §44, capstone M44, SUMMARY entries. `check-reading-depth.py --check --all` reads **234/234**.

@@ -251,9 +251,10 @@ batch is large exactly when the sync is slow: on the `F_FULLFSYNC` rung a
 same workload rides 0.45 — group commit does almost nothing there, because
 there is nothing to hide.
 
-Beware the number that used to be in this file: "at 1 ms per fsync and 32
-concurrent committers, ~1K commits/s becomes ~32K." The arithmetic is fine and
-the 1 ms is from nowhere. On the machine in `notes.md`, 32 committers on the
+Beware the version of this argument that circulates with a made-up latency:
+"at 1 ms per fsync and 32 concurrent committers, ~1K commits/s becomes ~32K."
+The arithmetic is fine and the 1 ms is from nowhere. On the machine in
+`notes.md`, 32 committers on the
 `F_FULLFSYNC` rung get 337 × 32 = **10 784** commits/s at best, and that is a
 ceiling on the *batch*, not a promise — it needs the 32 to actually overlap.
 Your `commit_throughput` experiment reimplements exactly this recheck.
@@ -323,7 +324,7 @@ checkpoint match no single instant. ARIES §5.4 is where this comes from
 (`reading-aries.md` Step 3).
 
 How postgres fixes the redo point depends on the kind of checkpoint, and this
-is the detail the guide previously got wrong. For a **shutdown** checkpoint the
+is the detail most accounts get wrong. For a **shutdown** checkpoint the
 redo point is taken while the insert locks are held (`xlog.c:7529–7562`, the
 assignment at `:7561`). For a normal **online** checkpoint the insert locks are
 released first (`:7568`) and the redo point is instead the LSN of a dedicated
@@ -373,7 +374,7 @@ The durability call is configurable via `wal_sync_method`, and
 | `open_sync` | nothing; the file was opened `O_SYNC`, so `issue_xlog_fsync` asserts unreachable (`:9399–9403`) | middle |
 | `open_datasync` | nothing; the file was opened `O_DSYNC` | middle |
 
-So the old claim that "on macOS none of them flush the drive cache without
+So the common claim that "on macOS none of them flush the drive cache without
 F_FULLFSYNC" is wrong in the specific: postgres ships that rung as
 `fsync_writethrough`. What is true is that it is never the default. The default
 is `open_datasync` where `O_DSYNC` exists and differs from `O_SYNC`, otherwise

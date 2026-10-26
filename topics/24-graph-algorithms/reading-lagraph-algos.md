@@ -11,7 +11,7 @@ rebuilds the four verbs, then walks the shelf one algorithm at a
 time.
 
 *Sources pinned (resources/codebases.md): LAGraph @`e2539e2`,
-GraphBLAS @`1fd5475`, FalkorDB @`ccb449a`; anchors re-checked with
+GraphBLAS @`7701390417` (v10.5.2), FalkorDB @`ccb449a`; anchors re-checked with
 `tools/pinned-source.py`. The triangle timings are this topic's
 `notes.md` baseline (M3 Pro).*
 
@@ -182,7 +182,8 @@ surface, and its shape names M24's real design question.
 `proc_pagerank.c`: parse args → get the delta-matrix-backed A →
 **flush/export to a GrB_Matrix** → `LAGr_PageRank` (:197) → map
 scores back to node ids → stream results. The costs to attack in
-falkordb-rs-next-gen: the export/flush boundary (can algorithms run
+the Rust engine (FalkorDB 6, on FalkorDB's `main` branch; the C engine quoted
+here is FalkorDB 4.x on `master`): the export/flush boundary (can algorithms run
 masked over DM/DP directly?) and result materialization (stream
 top-k instead of full vectors?). M24 is re-plumbing this pattern
 over the M20 core — the algorithms are solved; the boundary isn't.
@@ -302,6 +303,8 @@ Answer each before unfolding it.
   `LAGr_SingleSourceShortestPath.c`, `LAGr_Betweenness.c`,
   `LG_CC_Boruvka.c` — each file's header comment states the
   formulation before the code
-- [FalkorDB](https://github.com/FalkorDB/FalkorDB)
+- [FalkorDB](https://github.com/FalkorDB/FalkorDB) C engine at `ccb449a9a`
+  (now continued on the `master` branch as 4.x; `main` is the Rust 6.x
+  engine, which has no `src/procedures/`)
   `src/procedures/proc_pagerank.c` (:197 calls `LAGr_PageRank`),
   `proc_betweenness.c`, `proc_cdlp.c` — M24's shape, already shipping

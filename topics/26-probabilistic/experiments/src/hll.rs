@@ -1,5 +1,5 @@
 //! HyperLogLog, dense encoding — redis hyperloglog.c's shape with P=14:
-//! 16384 six-bit registers (hyperloglog.c:196-198), standard error
+//! 16384 six-bit registers (hyperloglog.c:197-199), standard error
 //! 1.04/sqrt(16384) = 0.81%. We skip redis's sparse encoding (the
 //! byte-level ZERO/XZERO/VAL opcode dance at :380-383) but the reading
 //! guide walks it — it's why a PFCOUNT key starts at ~30 bytes, not 12 KB.
@@ -8,7 +8,7 @@ pub const P: u32 = 14;
 pub const M: usize = 1 << P; // 16384 registers
 
 pub struct Hll {
-    /// One byte per register for simplicity (redis packs 6 bits — :354's
+    /// One byte per register for simplicity (redis packs 6 bits — :355's
     /// shift dance — trading 4 KB for byte-addressability here is fine).
     pub regs: Vec<u8>,
 }
@@ -28,13 +28,13 @@ impl Hll {
         todo!("index = low P bits, rank = lzcnt of the rest + 1, keep max")
     }
 
-    /// STUB — the Ertl/redis estimator (hllCount, hyperloglog.c:1058):
+    /// STUB — the Ertl/redis estimator (hllCount, hyperloglog.c:1088):
     /// build reghisto[rank] counts, then
     ///   z = m * tau((m - reghisto[q+1]) / m)
     ///   for j = q..1: z = 0.5*(z + reghisto[j])   (0.5 via ldexp)
     ///   z += m * sigma(reghisto[0] / m)
     ///   E = alpha_inf * m * m / z,  alpha_inf = 0.5 / ln(2)
-    /// with tau/sigma as in hyperloglog.c:1016-1052:
+    /// with tau/sigma as in hyperloglog.c:1046-1075:
     ///   sigma(x): x=1 -> +inf; iterate y=1: x=x², z' = z + x*y, y*=2 until
     ///             z converges (start z=x)
     ///   tau(x): x=0 or 1 -> 0; iterate y=1: x=sqrt(x), y*=0.5,
@@ -48,7 +48,7 @@ impl Hll {
 
     /// STUB — register-wise max. Union semantics: merge(A,B).count()
     /// estimates |A ∪ B|; this is why HLLs shard perfectly (PFMERGE, and
-    /// hllMergeDenseAVX2 at hyperloglog.c:1116 shows redis vectorizing it).
+    /// hllMergeDenseAVX2 at hyperloglog.c:1146 shows redis vectorizing it).
     pub fn merge(&mut self, _other: &Hll) {
         todo!("regs[i] = max(regs[i], other.regs[i])")
     }

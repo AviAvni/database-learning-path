@@ -11,10 +11,10 @@ rules, and what M22's shootout should steal.
 Every claim below is cited to a numbered section of **The LDBC Social
 Network Benchmark, version 0.3.6**
 ([arXiv:2001.02299](https://arxiv.org/abs/2001.02299), 144 pp), which
-was read to check it. Three things the previous version of this
-chapter asserted — how many workloads SNB has, what SF1 weighs, and
-what distribution the friend degrees follow — did not survive that
-check and are corrected in place.
+was read to check it. Three things commonly said about SNB — how many
+workloads it has, what SF1 weighs, and what distribution the friend
+degrees follow — are stated here as the spec gives them, which is not
+how they are usually repeated.
 
 ## Why this matters
 
@@ -64,9 +64,8 @@ one closed loophole — read the spec as a list of cheats it outlaws.
 > **Out:** the two workloads SNB actually defines, the different
 > primary metric each one reports, and the boundary where SNB stops.
 
-**Correction.** The previous version of this chapter listed *three*
-SNB workloads, with Graphalytics as one of them. The spec's abstract
-is explicit that there are two:
+SNB is often described as three workloads, with Graphalytics as one
+of them. The spec's abstract is explicit that there are two:
 
 > "LDBC SNB consists of **two workloads** that focus on different
 > functionalities: the Interactive workload (interactive transactional
@@ -134,8 +133,8 @@ The datagen produces a graph that is skewed AND correlated, because
 both properties break engines in ways uniform data can't. But be
 precise about which distribution does what.
 
-**Correction.** The previous version said the degree distribution is a
-power law. The spec does not say that. It says the knows-degree
+The knows-degree distribution is often called a power law. The spec
+does not say that. It says the knows-degree
 follows a Facebook-shaped empirical distribution, and the power law
 it *does* specify is for something else entirely — comment timing:
 
@@ -213,8 +212,8 @@ this topic grew a delta mechanism (kuzu's transient buffers,
 FalkorDB's Delta_Matrix, memgraph's MVCC): a read-only CSR would win
 every frozen-graph benchmark and be disqualified here.
 
-There is a second mechanism the previous version of this chapter
-missed entirely, and it is the cleverest thing in the spec. Because
+There is a second mechanism, easy to miss, and it is the cleverest
+thing in the spec. Because
 query cost varies wildly with the parameter you plug in — the very
 effect this topic measures at 101× — LDBC does not sample parameters
 at random. It **curates** them, to three stated properties:
@@ -282,8 +281,8 @@ count:
 > 100 GiB, and the SF10000 data set is 10000 GiB (not 10 TiB)."
 > — §3.4.1, p.25
 
-**Correction.** The previous version wrote "an SF1 (~3 GB) number".
-SF1 is 1 GiB of serialized CSV, not 3 GB. And the *composition* of
+SF1 is 1 GiB of serialized CSV — not the "~3 GB" it is sometimes
+quoted as. And the *composition* of
 that gibibyte differs by workload — Interactive counts 90% initial
 data plus the 10% update streams with the `csv-singular-merged-fk`
 serializer; BI counts a 97% initial snapshot plus refresh operations

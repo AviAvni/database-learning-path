@@ -83,7 +83,9 @@ The recurring tension: CSR-shaped structures are READ-optimal but hate
 single-edge inserts (shift everything). Every system grows a
 delta/buffer mechanism: kuzu's in-mem CSR buffers, FalkorDB's
 `Delta_Matrix` (additions/deletions matrices over the main one —
-`src/graph/delta_matrix/`), even GraphBLAS's own pending-tuples. It's
+`src/graph/delta_matrix/` in the C engine quoted here, FalkorDB 4.x on `master`
+at `ccb449a9a`; FalkorDB 6's Rust engine lives on `main`),
+even GraphBLAS's own pending-tuples. It's
 the LSM idea (topic 4) applied to adjacency: fast structure + small
 mutable overlay + background merge.
 
@@ -97,6 +99,24 @@ row = bandwidth. Where records win: single-edge-centric OLTP mutations
 and uniform record updates. Where they lose: any traversal wider than a
 few edges — which is every interesting query.
 
+The same argument extends from adjacency to properties. Schemaless
+property-graph engines store schema per tuple (row records), run
+Volcano-style operators that cannot vectorize over mixed schemas, and
+plan with thin custom optimizers. TurboLynx (Lee, Ha, Tak, Han,
+*TurboLynx: Schemaless Graph Engine Strikes Back for General-Purpose
+Analytics*, PVLDB 19(6), VLDB 2026,
+[pdf](https://www.vldb.org/pvldb/vol19/p1250-han.pdf)) groups vertices
+and edges with similar property sets into cost-based clusters called
+graphlets, stores each columnar, lets every operator consume input
+spanning several graphlets (with a shared-schema row format so
+intermediate schemas do not multiply), and plans with an extended Orca
+optimizer that merges graphlets before join enumeration to keep the
+search space bounded (§1, §4). With all systems single-threaded, its
+geometric-mean end-to-end speedup on LDBC SNB Interactive SF100 is
+183.9× over DuckPGQ and 7.74× over Umbra, while on TPC-H SF100 Umbra is
+the faster one (0.58×) (§5.3, Table 4). The capstone's attribute storage
+faces the same row-vs-columnar choice its adjacency already made.
+
 ## 4. Worst-case optimal joins (the kuzu angle)
 
 Binary join plans can be asymptotically wrong for cyclic patterns: the
@@ -108,6 +128,33 @@ for each edge (a,b), intersect N(a) ∩ N(b) for c. Kuzu ships this as an
 GraphBLAS-adjacent insight that set intersection is the whole game.
 FalkorDB's masked `A ⊙ A²` triangle counting is the matrix spelling of
 the same intersection.
+
+The `kuzudb/kuzu` repository is archived (read-only); its last commit,
+`89f0263` on 2025-10-10, is the one [reading-kuzu.md](reading-kuzu.md)
+reads. The community continuation is
+[LadybugDB](https://github.com/LadybugDB/ladybug) ("formerly known as
+Kuzu"); its history diverges before that commit, so read the code there,
+not in the fork.
+
+Cyclic patterns are one half of a real query; the other is the
+variable-length path. A Cypher/GQL pattern mixes fixed edges (subgraph
+matching) with variable-length paths (regular path queries), and engines
+plan the two parts separately and glue them in a fixed order. Pang, Zou,
+Bonifati, Özsu, Zhou, *A Unified Query Planning Framework for
+Conjunctive Regular Path Queries* (PVLDB 19(10), VLDB 2026,
+[pdf](https://www.vldb.org/pvldb/vol19/p2686-pang.pdf)) puts both in one
+algebra over a hypergraph query model with six operators —
+traverse-intersect (TI, which runs as a leapfrog-style intersection when
+several edges meet at one vertex), Kleene closure (KC), subgraph join
+(SJ, for bushy joins), UNION, inverse (INV) and SCAN — and enumerates
+equivalent plans by rewrite rules under a cost model (§1, §4).
+Implemented on MillenniumDB and inside Neo4j through its user-defined
+procedure API, single-threaded, it reports an average end-to-end speedup
+of 2.08× over MillenniumDB on WDBench and 1.68× over Neo4j on LDBC SNB,
+with about 68% fewer timeouts on WDBench (§5.1, Table 5). That joins the
+intersection above to §6's quantified path patterns: the capstone's
+planner will need a single cost-based space for `(a)-[:KNOWS*1..5]->(b)`
+inside a larger pattern, not a fixed-order splice.
 
 ## 5. LDBC (the referee)
 
@@ -151,6 +198,33 @@ GQL is the first new ISO database language since SQL (1987). Its
 quantified path patterns (`(a) (-[:KNOWS]->){1,5} (b)`) and path modes
 are the parts worth building into an AST *now* — hence M13's rule below.
 → guide: [`reading-query-languages.md`](reading-query-languages.md)
+
+The standard is ahead of most implementations. PostgreSQL 19 does not
+ship SQL/PGQ: `CREATE PROPERTY GRAPH` and `GRAPH_TABLE` were committed to
+master as `2f094e7ac69` on 2026-03-16 and reverted together with their
+follow-up fixes on 2026-09-07 — on master as `b1f106c80cb` and on
+`REL_19_STABLE` as `2b9e1aff4d3`; the `REL_19_BETA4` and `REL_19_RC1`
+tags contain the revert, and the parser grammar on both branches has no
+`GRAPH_TABLE`. Neo4j's Cypher 25 manual keeps a
+[GQL conformance appendix](https://neo4j.com/docs/cypher-manual/25/appendix/gql-conformance/)
+listing the mandatory GQL features Cypher supports and those it does
+not yet.
+
+SQL/PGQ's row of the table can also be approached from the other side —
+graph traversal as SQL syntax over declared relationships. Shute, Zheng,
+Kudtarkar, *Semantic Data Modeling, Graph Query, and SQL, Together at
+Last?* (CIDR 2026,
+[pdf](https://www.vldb.org/cidrdb/papers/2026/p11-shute.pdf)), a design
+paper from Google with no performance numbers, extends GoogleSQL with
+join columns (a foreign-key relationship becomes a column of type
+`ROW<Table>`, read with dotted paths such as `c.Nation.Region.r_name`),
+horizontal aggregation over arrays and join columns
+(`SUM(UNNEST(c.Orders.Lineitems.l_extendedprice))`), and measure columns
+that are grain-locked so a join cannot double-count them; tables plus
+join columns form a "semantic data graph" (§3, §4). The authors report
+these features are used in F1 by multiple teams (§1.1).
+[reading-query-languages.md](reading-query-languages.md) is where to
+compare it with `GRAPH_TABLE`.
 
 ## Experiments (`experiments/`)
 

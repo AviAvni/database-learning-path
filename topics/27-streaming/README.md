@@ -13,19 +13,19 @@ batches of +90/−10 edges, recomputing each view from scratch per batch:
 
 ```
 view                        full recompute per batch
-triangles                              141.6 ms
-wedge join                            1111.0 ms
-reachability (re-BFS)                   31.2 ms
+triangles                              100.5 ms
+wedge join                             923.5 ms
+reachability (re-BFS)                   25.9 ms
 ```
 
-**One hundred changes to half a million edges, and the wedge join spends 1.1
+**One hundred changes to half a million edges, and the wedge join spends 0.9
 seconds re-deriving an answer that barely moved.** The batch is 0.02% of the
 graph. The recompute is 100% of the work, every time.
 
 That ratio — change size against work size — is the only motivation incremental
 view maintenance needs, and stating it in milliseconds first is what keeps the
 rest of the topic honest. The three views are deliberately different shapes:
-reachability is cheap to redo (31 ms) so incrementalization has little room and
+reachability is cheap to redo (26 ms) so incrementalization has little room and
 mostly has to avoid regressions; the wedge join is expensive and *local*, so
 delta rules should win enormously; triangles sit between them and are where the
 bookkeeping cost of maintaining state starts to show against the recompute it
@@ -39,9 +39,9 @@ one is the interesting result, not the 100× one.
 
 | standing query | full recompute / batch | incremental target |
 |---|---|---|
-| triangle count | 141.6 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
-| 2-hop wedge join | 1111.0 ms | ~µs-ms (stub) — bilinear delta rule |
-| reachability from src | 31.2 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
+| triangle count | 100.5 ms | ~µs (stub) — batch·d̄ probes, not m·d̄ |
+| 2-hop wedge join | 923.5 ms | ~µs-ms (stub) — bilinear delta rule |
+| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* |
 
 The gap is 3-5 orders of magnitude, and none of it requires cleverness —
 just refusing to touch data that didn't change.
@@ -77,6 +77,27 @@ The chain I→Q→D is the *specification*; the engineering is pushing I and D
 through Q's structure until only nonlinear operators keep integrals —
 those integrals are Materialize's **arrangements** (shared, indexed,
 compacted update logs).
+
+How far the recursion half carries is measured by **FlowLog: Efficient and
+Extensible Datalog via Incrementality** (Hangdong Zhao, Zhenghong Yu, Srinag
+Rao, Simon Frisk, Zhiwei Fan, Paraschos Koutris; PVLDB 19(3), VLDB 2026;
+[arXiv](https://arxiv.org/abs/2511.00865)), a Datalog engine built on
+Differential Dataflow. Each rule is lowered to an explicit relational IR that
+separates recursive control (semi-naive iteration) from the rule's join plan,
+so the IR can take SQL-style rewrites (logic fusion, subplan reuse), a
+structural join planner that avoids worst-case orders, and sideways
+information passing, before being lowered to DD operators that support both
+batch and incremental evaluation (§1, §3–§7). On 4 threads it is fastest in 21
+of 41 program–dataset pairs against Soufflé, RecStep, DDlog, DuckDB and Umbra
+— losing, for example, CSPA (httpd) to Soufflé by 1.6× and the
+single-expensive-join Reach (twitter) to DuckDB's and Umbra's hash joins — and
+on 64 threads it is fastest in 36 of 41 (§10.1). Robustness is the more
+transferable result: across 91 rewritten rule orders, FlowLog with its planner
+and sideways information passing never times out or runs out of memory, while
+FlowLog without them and Soufflé fail on 25 and 23 of them (§10.4, Fig. 9). It
+is the arrangement machinery of this topic carrying recursive Datalog — read it
+after [reading-differential-dataflow.md](reading-differential-dataflow.md) —
+and the `SemiNaiveReach` stub is its smallest instance.
 
 ## Timestamps, watermarks, and why "when" is half the problem
 

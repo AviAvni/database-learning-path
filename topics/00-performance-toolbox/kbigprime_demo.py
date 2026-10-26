@@ -2,11 +2,11 @@
 """Why db_bench multiplies by 0x5bd1e995 — and what the choice actually buys.
 
 Companion to reading-rocksdb-db-bench.md, Step 5. It reimplements
-`Benchmark::GetRandomKey` (tools/db_bench_tool.cc:7103-7122 at
-facebook/rocksdb@7c80a5a) in Python, then swaps the constant on line 7117 for
+`Benchmark::GetRandomKey` (tools/db_bench_tool.cc:7952-7971 at
+facebook/rocksdb@ea3136053) in Python, then swaps the constant on line 7966 for
 other values to see what breaks.
 
-The claim under test is the comment on line 7116, "Map to a different number to
+The claim under test is the comment on line 7965, "Map to a different number to
 avoid locality". Six things fall out, and every number the script prints is
 computed by it, not asserted:
 
@@ -28,7 +28,7 @@ computed by it, not asserted:
      random scatter would*, while 2654435761 (the prime nearest 2^32/phi)
      beats chance.
   6. This constant has --num values where it collapses outright, because it
-     factors. --num=13000000 loses 12/13 of the key space, and line 7118's
+     factors. --num=13000000 loses 12/13 of the key space, and line 7967's
      64-bit overflow does not rescue it below ~12 billion keys.
 
 Stdlib only, seeded, no arguments, ~15 s:  python3 kbigprime_demo.py
@@ -39,11 +39,11 @@ import math
 import random
 from collections import Counter
 
-# --- db_bench defaults, from the pinned clone (facebook/rocksdb@7c80a5a) ------
-# tools/db_bench_tool.cc:275  DEFINE_int64(num, 1000000, ...)
-# tools/db_bench_tool.cc:388  DEFINE_int32(key_size, 16, ...)
-# tools/db_bench_tool.cc:337  DEFINE_int32(value_size, 100, ...)
-# include/rocksdb/table.h:400 uint64_t block_size = 4 * 1024;  (db_bench_tool.cc:727 defers to it)
+# --- db_bench defaults (facebook/rocksdb@ea3136053) --------------------------
+# tools/db_bench_tool.cc:318  DEFINE_int64(num, 1000000, ...)
+# tools/db_bench_tool.cc:440  DEFINE_int32(key_size, 16, ...)
+# tools/db_bench_tool.cc:380  DEFINE_int32(value_size, 100, ...)
+# include/rocksdb/table.h:400 uint64_t block_size = 4 * 1024;  (db_bench_tool.cc:804-806 defers to it)
 NUM = 1_000_000
 KEY_SIZE = 16
 VALUE_SIZE = 100
@@ -55,8 +55,8 @@ BLOCK_SIZE = 4 * 1024
 # points and prefix-compress the keys, so the true count is somewhat higher.
 ENTRIES_PER_BLOCK = BLOCK_SIZE // (KEY_SIZE + VALUE_SIZE)
 
-KBIG_PRIME = 0x5BD1E995          # db_bench_tool.cc:7117
-KBIG_INT = 1 << 62               # db_bench_tool.cc:7109
+KBIG_PRIME = 0x5BD1E995          # db_bench_tool.cc:7966
+KBIG_INT = 1 << 62               # db_bench_tool.cc:7958
 MASK64 = (1 << 64) - 1
 EXP_RANGE = 10.0                 # a --read_random_exp_range the flag help invites
 SAMPLES = 2_000_000
@@ -64,16 +64,16 @@ SEED = 20260830
 
 
 def rand_num(rand_int: int, num: int, exp_range: float) -> int:
-    """Lines 7109-7115: the exponential skew, before any multiply."""
+    """Lines 7958-7964: the exponential skew, before any multiply."""
     order = -(rand_int % KBIG_INT) / KBIG_INT * exp_range
     return int(math.exp(order) * num)
 
 
 def get_random_key(rand_int: int, num: int, exp_range: float, mult: int) -> int:
-    """Lines 7103-7121, with the constant on 7117 made a parameter.
+    """Lines 7952-7970, with the constant on 7966 made a parameter.
 
     `mult=1` is the un-mapped control: the skewed draw used directly.
-    The `& MASK64` is line 7118's "Overflow is like %(2^64)".
+    The `& MASK64` is line 7967's "Overflow is like %(2^64)".
     """
     if exp_range == 0:
         return rand_int % num
@@ -133,7 +133,7 @@ print(f"  prime?       {len(fs) == 1}")
 print("""
   It is not. 0x5bd1e995 is the mixing constant `m` of 32-bit MurmurHash2 —
   the same tree carries it at util/murmurhash.cc:97 and :153 — borrowed here
-  for its bit pattern, and the name on line 7117 is aspirational. Sections 4
+  for its bit pattern, and the name on line 7966 is aspirational. Sections 4
   and 5 show what primality would have bought and where the difference bites.""")
 
 # --- 2. what the skew alone does ---------------------------------------------
@@ -146,7 +146,7 @@ print(f"  Key space holds {math.ceil(NUM / ENTRIES_PER_BLOCK):,} data blocks"
       f" (~{NUM * (KEY_SIZE + VALUE_SIZE) / 2**20:.0f} MiB of user data),"
       f" drawn {SAMPLES:,} times.\n")
 for label, hits in (("mult=1     — the counterfactual: skew, no scatter", plain),
-                    ("mult=kBigPrime — line 7119 as written", mapped)):
+                    ("mult=kBigPrime — line 7968 as written", mapped)):
     top = [k for k, _ in hits.most_common(1000)]
     ws_keys, ws_blocks = working_set(hits, SAMPLES)
     print(f"  {label}")
@@ -166,7 +166,7 @@ print(f"""  Same hotness curve, same {p_keys:,} hot keys, and the multiply turns
   per block: unmapped, {ENTRIES_PER_BLOCK} adjacent hot keys ride in on one block read; mapped,
   each one costs its own. That is FAST'20 SS7.1's "extremely large number of
   block reads", in one number — and the paper's complaint about db_bench is
-  precisely that line 7119 does it on purpose.""")
+  precisely that line 7968 does it on purpose.""")
 
 # --- 3. what makes a multiplier work -----------------------------------------
 rule(f"3. Other multipliers, same --num={NUM:,}")
@@ -206,7 +206,7 @@ print(f"""
   larger, genuinely prime multiplier — behaves like the multiplier {1_000_000_007 % NUM}: congruent
   to {1_000_000_007 % NUM} mod {NUM:,}, its hot keys sit {1_000_000_007 % NUM} apart, {ENTRIES_PER_BLOCK // (1_000_000_007 % NUM)} to a block, and its
   working set lands at {ws[1_000_000_007]:,} blocks against kBigPrime's {ws[KBIG_PRIME]:,}. 'Big' on line
-  7117 has to mean big *after reduction mod FLAGS_num*, which for a fixed
+  7966 has to mean big *after reduction mod FLAGS_num*, which for a fixed
   constant is luck about the --num the user happened to pass.
 
   M=3 and M=37 make the same point from below, and they separate the two
@@ -381,7 +381,7 @@ print(f"    same draw, multiplier 1000000007     {len(good_hits):,} distinct key
 print(f"""
   readrandom would never touch 12/13 of the database it just filled, and
   db_bench prints no warning. What makes it a live bug rather than a
-  hypothetical is line 7118: the 64-bit overflow that would scramble the
+  hypothetical is line 7967: the 64-bit overflow that would scramble the
   residue needs rand_num >= 2^64/M = {2**64 // KBIG_PRIME:,}, i.e. --num above
   ~{2**64 // KBIG_PRIME / 1e9:.1f} billion keys. Below that the product never wraps, so the
   comment's reassurance covers a case no one reaches.""")

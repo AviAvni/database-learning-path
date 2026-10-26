@@ -5,7 +5,8 @@ parts, background merges, and — because the workload is scans, not point reads
 that is deliberately **sparse**.
 
 `src/Storages/MergeTree/` is enormous. Read only what is anchored here. Every anchor below
-was checked against **ClickHouse/ClickHouse@4d598fb2c**; confirm the pin before you start:
+was checked against **ClickHouse/ClickHouse@c6428eb** (the `v26.10.2.103-stable` release);
+confirm the revision before you start:
 
 ```
 python3 tools/pinned-source.py ref clickhouse
@@ -78,11 +79,12 @@ part formats:
 | **Wide** | one `.bin` per column, one marks file per column | part ≥ `min_bytes_for_wide_part` |
 | **Compact** | *all* columns in a single `data.bin`, all marks in `data.mrk3` | part below that threshold |
 
-`MergeTreeDataPartCompact.h:8-16` states it directly: "In compact format all columns are
+`MergeTreeDataPartCompact.h:8-14` states it directly: "In compact format all columns are
 stored in one file (`data.bin`). Data is split in granules and columns are serialized
 sequentially in one granule… It's considered to store only small parts in compact format
 (up to 10M)." The threshold is `default_min_bytes_for_wide_part = 10485760` — **10 MiB** —
-at `MergeTreeSettings.cpp:34`, wired to the `min_bytes_for_wide_part` setting at `:76`.
+at `MergeTreeSettings.cpp:37`, wired to the `min_bytes_for_wide_part` setting at `:80`. (A
+ClickHouse Cloud build swaps in 1 GiB at `:39`; the open-source build is the 10 MiB one.)
 
 The reason is file-count economics, not query performance: a thousand small inserts into a
 200-column table would otherwise create 200,000 tiny files. Compact parts are transient —
@@ -90,7 +92,7 @@ merges promote them to Wide once they exceed 10 MiB.
 
 Even inside a Compact part, ClickHouse tries to keep columnar skipping alive:
 `compress_per_column_in_compact_parts` (default `true`,
-`MergeTreeSettings.cpp:878-883`) starts a new compressed block for each column within a
+`MergeTreeSettings.cpp:1162-1168`) starts a new compressed block for each column within a
 granule so a reader can still skip columns it does not need — at the cost of compression
 ratio, exactly as the setting's own doc says.
 
@@ -108,17 +110,20 @@ A **granule** is the read quantum: the engine never reads or indexes anything sm
 **mark** is the per-granule, per-column bookmark saying where that granule's bytes begin.
 
 The number everyone quotes is 8192, and it is real —
-`MergeTreeSettings.cpp:70` declares `index_granularity` with default `8192`. But read the
+`MergeTreeSettings.cpp:74` declares `index_granularity` with default `8192`. But read the
 doc string on the next line: "**Maximum** number of data rows between the marks of an
 index." There is a second, independent cap: `index_granularity_bytes`, default
-`10 * 1024 * 1024` = **10 MiB** (`MergeTreeSettings.cpp:1676`), described as "Maximum size
+`10 * 1024 * 1024` = **10 MiB** (`MergeTreeSettings.cpp:2163`), described as "Maximum size
 of data granules in bytes", with a floor of `min_index_granularity_bytes = 1024`
-(`:1681`). Mixed (adaptive) granularity is on by default —
-`enable_mixed_granularity_parts` at `:1714`, whose doc explains it "improves ClickHouse
+(`:2168`). Mixed (adaptive) granularity is on by default —
+`enable_mixed_granularity_parts` at `:2223`, whose doc explains it "improves ClickHouse
 performance when selecting data from tables with big rows (tens and hundreds of
 megabytes)".
 
-So a granule holds `min(8192 rows, whatever fits in 10 MiB)`. Work it:
+So a granule holds `min(8192 rows, whatever fits in 10 MiB)` — the doc of the neighbouring
+`use_const_adaptive_granularity` setting spells the rule out at `:2175-2178`: "rows per
+granule is `index_granularity_bytes` divided by the average size of a row in that block,
+capped at `index_granularity`". Work it:
 
 | Average row size | Rows in 10 MiB | Granule size |
 | --- | --- | --- |
@@ -143,7 +148,7 @@ with `rows` — three orders of magnitude smaller. Step 4 spends that budget.
 
 The **sparse primary index** (`primary.idx`) stores the sort key of the **first row of each
 granule** — one entry per 8192 rows. It is loaded into memory and kept there;
-`IMergeTreeDataPart.h:424` is `getIndex()`, and `:425` is `loadIndexToCache()`, which
+`IMergeTreeDataPart.h:549` is `getIndex()`, and `:550` is `loadIndexToCache()`, which
 places it in a dedicated `PrimaryIndexCache`.
 
 ```
@@ -170,38 +175,41 @@ not an OLTP engine.
 This is the read path's payload, and it is where the popular summary of MergeTree is
 wrong. "The index is binary-searched" is true only for one class of predicate.
 `MergeTreeDataSelectExecutor::markRangesFromPKRange`
-(`MergeTreeDataSelectExecutor.cpp:1725`, called at `:189` and `:1070`) branches on
-`key_condition.matchesExactContinuousRange()` at `:2131`:
+(`MergeTreeDataSelectExecutor.cpp:2244`, reached from the call sites at `:208` and `:1216`)
+asks `key_condition.matchesExactContinuousRange()` at `:2703` and branches on the answer at
+`:2708`. (The same question is put to two optional offset conditions on `_part_offset` and
+the query-wide row offset at `:2704-2705`; with no such filter both count as exact, so for an
+ordinary `WHERE` on the sort key the key condition alone decides.)
 
 **Case A — the predicate is one continuous key interval** (`user_id = 42`,
 `user_id BETWEEN 10 AND 20` on `ORDER BY (user_id, …)`). Binary search for the left and
-right endpoints. The code says so at `:2180-2182`: "In case when SELECT's predicate defines
+right endpoints. The code says so at `:2785-2787`: "In case when SELECT's predicate defines
 a single continuous interval of keys, we can use binary search algorithm to find the left
 and right endpoint key marks of such interval. The returned value is the minimum range of
-marks, containing all keys for which KeyCondition holds." It is tagged
-`SearchAlgorithm::BinarySearch` at `:2184`.
+marks, containing all keys for which KeyCondition holds". It is tagged `SearchAlgorithm::BinarySearch` at `:2789`.
 
 **Case B — anything else** (`user_id % 2 = 0`; or a predicate on the *second* key column
 only). Binary search is meaningless because the qualifying granules are not contiguous, so
-ClickHouse runs a **generic exclusion search** (`:2136-2176`): recursively split each mark
+ClickHouse runs a **generic exclusion search** (`:2708-2782`): recursively split each mark
 range into `merge_tree_coarse_index_granularity` subranges — default **8**,
-`src/Core/Settings.cpp:1593` — and discard any subrange in which the condition provably
+`src/Core/Settings.cpp:1935` — and discard any subrange in which the condition provably
 cannot be true.
 
 ```
 // ILLUSTRATION — not quoted from ClickHouse/ClickHouse; this is the shape of the two
-// branches in MergeTreeDataSelectExecutor.cpp:2131-2200 rendered in Rust. The real
-// binary-search loop starts at :2190; the exclusion search is delegated to
-// genericExclusionSearch() at :2156 (src/Storages/MergeTree/GenericExclusionSearch.h).
+// branches in MergeTreeDataSelectExecutor.cpp:2703-2936 rendered in Rust. The real
+// binary search starts at :2795 (left endpoint loop at :2808); the exclusion search is
+// delegated to genericExclusionSearch() at :2733 / :2763
+// (src/Storages/MergeTree/GenericExclusionSearch.h).
 fn mark_ranges(idx: &[Key], cond: &KeyCondition) -> Vec<MarkRange> {
-    if cond.matches_exact_continuous_range() {          // :2131
+    if cond.matches_exact_continuous_range() {          // :2703, branch at :2708
         // one interval: find its two endpoints, return the minimal covering range
         let lo = lower_bound(idx, cond.left());
         let hi = upper_bound(idx, cond.right());
-        vec![MarkRange { begin: lo, end: hi }]          // :2184 BinarySearch
+        vec![MarkRange { begin: lo, end: hi }]          // :2789 BinarySearch
     } else {
         // no interval to bracket: split coarsely and drop what cannot match
-        generic_exclusion_search(idx, cond, /* coarse = */ 8)  // :2156
+        generic_exclusion_search(idx, cond, /* coarse = */ 8)  // :2763
     }
 }
 ```
@@ -210,16 +218,16 @@ Two details worth carrying away, because they are the difference between the ide
 production implementation:
 
 - The exclusion search has a **step budget**,
-  `merge_tree_generic_exclusion_search_max_steps` (`Settings.cpp:1600`, default `0` =
-  unlimited). Its doc at `:1603` is unusually candid about the trade: "When it is
+  `merge_tree_generic_exclusion_search_max_steps` (`Settings.cpp:1942`, default `0` =
+  unlimited). Its doc at `:1945` is unusually candid about the trade: "When it is
   exhausted, the ranges that were not fully analyzed are **accepted as a whole**, so the
   query stays correct but may read more granules than an unlimited search would select."
   Index analysis is itself a cost centre that can be capped, and the failure mode is
   reading too much, never reading too little.
 - Surviving ranges that are close together get **fused**, because a seek costs more than
-  reading through the gap. `min_marks_for_seek` is computed at `:2143` from
+  reading through the gap. `min_marks_for_seek` is computed at `:2715` from
   `merge_tree_min_rows_for_seek` / `merge_tree_min_bytes_for_seek`
-  (`Settings.cpp:1579`, `:1586`, both default `0`): "If the distance between two data
+  (`Settings.cpp:1921`, `:1928`, both default `0`): "If the distance between two data
   blocks to be read in one file is less than … then ClickHouse does not seek through the
   file but reads the data sequentially."
 
@@ -233,7 +241,7 @@ by **size**, granule boundaries by **rows**, and the two grids do not align — 
 carries two coordinates:
 
 ```c
-// ClickHouse/ClickHouse@4d598fb2c — src/Formats/MarkInCompressedFile.h:14-21
+// ClickHouse/ClickHouse@c6428eb — src/Formats/MarkInCompressedFile.h:14-21
     14  /** Mark is the position in the compressed file. The compressed file consists of adjacent compressed blocks.
     15    * Mark is a tuple - the offset in the file to the start of the compressed block, the offset in the decompressed block to the start of the data.
     16    */
@@ -248,7 +256,7 @@ Read: seek to `offset_in_compressed_file`, decompress that block, then skip
 `offset_in_decompressed_block` bytes to reach the granule's first row.
 
 The block sizes come from `src/Core/Settings.cpp`: `min_compress_block_size` = **65,536**
-(`:108`) and `max_compress_block_size` = **1,048,576** (1 MiB, `:123`). The `:108` doc
+(`:146`) and `max_compress_block_size` = **1,048,576** (1 MiB, `:161`). The `:146` doc
 contains the worked example that makes the two-offset design obvious, and it is worth
 quoting because it *is* the arithmetic:
 
@@ -270,7 +278,7 @@ Then there is a detail that rewards reading the header to the end. The in-memory
 marks is **itself compressed with the schemes this topic is about**:
 
 ```c
-// ClickHouse/ClickHouse@4d598fb2c — src/Formats/MarkInCompressedFile.h:51-63
+// ClickHouse/ClickHouse@c6428eb — src/Formats/MarkInCompressedFile.h:51-63
     51      /** We need to store a sequence of marks, each consisting of two 64-bit integers:
     52       * offset_in_compressed_file and offset_in_decompressed_block. We'll call them x and y for
     53       * convenience, since compression doesn't care what they mean. The compression exploits the
@@ -305,19 +313,19 @@ too eagerly and you rewrite the same rows repeatedly (write amplification); too 
 every scan must visit too many parts (read amplification).
 
 `MergeTreeDataMergerMutator::selectPartsToMerge`
-(`MergeTreeDataMergerMutator.cpp:272`) makes the choice. The knobs and their defaults, all
+(`MergeTreeDataMergerMutator.cpp:328`) makes the choice. The knobs and their defaults, all
 in `MergeTreeSettings.cpp`, turn the abstract dial into numbers:
 
 | Setting | Default | Line | What it bounds |
 | --- | --- | --- | --- |
-| `merge_selector_base` | 5.0 | `:860` | "Affects write amplification of assigned merges" |
-| `max_parts_to_merge_at_once` | 100 | `:637` | fan-in of a single merge |
-| `max_bytes_to_merge_at_max_space_in_pool` | 150 GiB | `:475` | largest merge ever attempted |
-| `parts_to_delay_insert` | 1000 | `:886` | inserts get an artificial sleep past this |
-| `parts_to_throw_insert` | 3000 | `:908` | inserts are **rejected** past this |
+| `merge_selector_base` | 5.0 | `:1090` | "Affects write amplification of assigned merges" |
+| `max_parts_to_merge_at_once` | 100 | `:777` | fan-in of a single merge |
+| `max_bytes_to_merge_at_max_space_in_pool` | 150 GiB | `:541` | largest merge ever attempted |
+| `parts_to_delay_insert` | 1000 | `:1171` | inserts get an artificial sleep past this |
+| `parts_to_throw_insert` | 3000 | `:1193` | inserts are **rejected** past this |
 
 The last two are the "too lazy" failure mode made concrete, and they are back-pressure, not
-tuning: `:893-894` says ClickHouse "artificially executes `INSERT` longer (adds 'sleep') so
+tuning: `:1178-1179` says ClickHouse "artificially executes `INSERT` longer (adds 'sleep') so
 that the background merge process can merge parts faster than they are added". If merges
 cannot keep up, ingest is throttled and then refused — the system chooses to stop accepting
 writes rather than let read amplification grow without bound.
@@ -339,76 +347,119 @@ brute-force scan speed (ClickHouse) versus precomputation (Pinot/Druid star-tree
 embedded convenience (DuckDB) — and it is the trick FalkorDB could steal for graph
 statistics.
 
-### Step 8 — Codec chains: the user declares, nothing analyzes
+### Step 8 — Codec chains: the user declares, the size picks the default, an opt-in analyzes
 
-> **In:** a column and a `CODEC(...)` clause in the DDL.
+> **In:** a column, its `CODEC(...)` clause in the DDL (or the lack of one), and the size of
+> the part being written.
 > **Out:** a chain of transforms applied left to right, and a self-describing header that
 > lets the reader undo them.
 
 Each column carries a declared chain of codecs. `CODEC(Delta, LZ4)` means delta-encode
 (**delta encoding**: store each value's difference from the previous one), then LZ4 the
-result. Composition is literal — `CompressionCodecMultiple::doCompressData`
-(`src/Compression/CompressionCodecMultiple.cpp:44-67`) loops the codecs in order, swapping
-its input and output buffers each time (`:60-61`), and writes a header of
-`[codec count][method byte × N]` before the data (`:49`, `:55`, `:64`). Decompression walks
-the same list **backwards** — `for (int idx = compression_methods_size - 1; idx >= 0;
---idx)` at `:86`.
+result. Composition is literal — `CompressionCodecMultiple::compressBody`
+(`src/Compression/CompressionCodecMultiple.cpp:132-180`) first writes a header of
+`[codec count][method byte × N]` (`:138-140`), then runs the codecs in order, each stage's
+output becoming the next stage's input (`:147-163`). Intermediate outputs alternate between
+two scratch buffers (`buffers[idx % 2]`, `:157-158`); the **last** stage writes straight into
+the caller's destination whenever its worst-case output fits there (`:151-152`), so the
+common chain pays no final copy. Decompression, `doDecompressData` at `:182-261`, walks the
+same list **backwards** — `for (int idx = compression_methods_size - 1; idx >= 0; --idx)` at
+`:204` — and mirrors the trick: the first stage decodes the caller's block where it lies and
+the last decodes into the caller's output, unless that codec needs padding past the end of
+its buffer (`:197-200`, `:219-249`). `LZ4` (`CompressionCodecLZ4.cpp:27`) and `ZXC`
+(`CompressionCodecZXC.h:30`) are the codecs that do: both reserve 64 bytes of slack, because
+their decoders copy in wide chunks that may read and write past the end of the data
+(`LZ4_decompress_faster.h:33-38`; for ZXC, "32-byte SIMD 'wild' loads", `:23-26`).
 
-The overhead is exactly `1 + codecs.size()` bytes per compressed block (`:66`). On a
-64 KiB block with a two-codec chain that is 3 bytes, or **0.0046%** — the reason nobody
-thinks about it.
+The header overhead is exactly `1 + codecs.size()` bytes per compressed block — the
+`payload_offset` at `:142`, and the `sizeof(UInt8) + chain.size()` in the reserve
+calculation at `:104`. On a 64 KiB block with a two-codec chain that is 3 bytes, or
+**0.0046%** — the reason nobody thinks about it.
 
-The menu (`src/Compression/`) includes the general-purpose codecs — LZ4
-(`CompressionCodecLZ4.cpp`, and the default: `CompressionFactory.cpp:257` does
-`default_codec = get("LZ4", {})`) and ZSTD — plus a set of *preprocessors* that shrink
-nothing by themselves: `Delta`, `DoubleDelta` (deltas of deltas — near-zero for regular
+The menu (`src/Compression/`) includes the general-purpose codecs — LZ4, ZSTD, and ZXC
+("Asymmetric LZ codec (zxc): slow compression, very fast decompression, ratio between LZ4
+and ZSTD", `CompressionCodecZXC.h:44`) — plus a set of *preprocessors* that shrink nothing
+by themselves: `Delta`, `DoubleDelta` (deltas of deltas — near-zero for regular
 timestamps), `Gorilla` (XOR consecutive floats — sensor values barely change), `FPC`,
 `GCD`, `T64`, and `ALP` (topic 30 material).
 
-"Preprocessor" is the codebase's own word, not a gloss. `CompressionCodecDelta.cpp:30`
-declares `bool isCompression() const override { return false; }`, and `:36` returns the
+"Preprocessor" is the codebase's own word, not a gloss. `CompressionCodecDelta.cpp:33`
+declares `bool isCompression() const override { return false; }`, and `:39` returns the
 description "Preprocessor (should be followed by some compression codec). Stores difference
 between neighboring values; good for monotonically increasing or decreasing data." This is
 the exact same idea as Parquet's `BYTE_STREAM_SPLIT`, which also does not shrink anything —
 both exist to make the *next* stage's job easier.
 
+**A column with no `CODEC` clause** gets a default, and the default depends on the part's
+size. `CompressionCodecFactory`'s own default codec is `ZSTD(3)`
+(`CompressionFactory.cpp:372`), but a MergeTree table without a `<compression>` server
+config takes its codec from `CompressionCodecSelector::choose`
+(`src/Storages/CompressionCodecSelector.h:106-122`), which uses LZ4 below
+`min_part_size_for_default_codec` = `100 * 1024 * 1024` = **100 MiB** (`:60`) and `ZSTD(3)`
+at or above it (`:113-115`). The size it compares is the one known *before* writing
+(`:45-49`): a fresh insert passes `0` and is LZ4; a merge passes the size of its source
+parts, so the big parts background merges produce cross the line and are rewritten as
+`ZSTD(3)`. The reasoning is in the header comment at `:40-43` — "This keeps compression cheap
+for small, frequently rewritten data while getting the better ratio for the bulk of the
+data." It is Step 7's merge cycle doing one more job: the cheap codec on the hot, short-lived
+parts, the dense one on the parts that will sit on disk.
+
+**And an analyzing mode exists, as an opt-in.** The MergeTree setting
+`enable_adaptive_codec_selection` (`MergeTreeSettings.cpp:2654-2661`; tier `EXPERIMENTAL`,
+default `false`, introduced in 26.8 per its history entry) makes merges and mutations
+choose a codec **per block** for columns that use the default codec (no `CODEC` clause, or
+`CODEC(Default)`). `CompressionCodecAdaptive` (`src/Compression/CompressionCodecAdaptive.h:32-65`)
+evaluates every candidate on the block and keeps the smallest output (`:44-48`; a codec that
+can report its output size without producing it is only run in full if it wins). The pool is built
+by `poolForType` (`:24-28`): `NONE` first, so an incompressible block is stored raw; the
+table's default codec second, so the result is never worse than the default; then
+type-specific codecs, each alone and — when the default is a general-purpose compressor —
+followed by it, ordered by descending decompression speed (`:26-27`) — and a tie goes to the
+earliest entry (`:45`), so it resolves to the faster read and `NONE` beats an equal-sized
+compressor. The wrapper never reaches disk (`:32-34`): each block carries the
+winner's method byte, and a reader decodes it with no knowledge that a choice was made.
+
 **Why it matters:** this is the third answer to "who picks the encoding". ClickHouse makes
-*you* declare the chain (or takes the LZ4 default); DuckDB analyses every column
-(`reading-duckdb-compression.md`); BtrBlocks samples 1% of each block
-(`reading-btrblocks-fsst.md`). Which is right depends entirely on who knows the data's
-shape, and each system's answer is really a statement about who its users are.
+*you* declare the chain — or, if you do not, picks by part size between LZ4 and `ZSTD(3)`;
+DuckDB analyses every column (`reading-duckdb-compression.md`); BtrBlocks samples 1% of each
+block (`reading-btrblocks-fsst.md`). ClickHouse's own adaptive mode is the DuckDB answer at
+block granularity, and it is off by default. Which is right depends entirely on who knows
+the data's shape, and each system's answer is really a statement about who its users are.
 
 ---
 
 ## Where each step lives in the code
 
-All paths relative to the repo root of **ClickHouse/ClickHouse@4d598fb2c**.
+All paths relative to the repo root of **ClickHouse/ClickHouse@c6428eb**
+(`v26.10.2.103-stable`).
 
 | Step | Anchor | What you will see |
 | --- | --- | --- |
-| 2 | `src/Storages/MergeTree/MergeTreeDataPartCompact.h:8-16` | the Compact layout, in a comment |
-| 2 | `src/Storages/MergeTree/MergeTreeSettings.cpp:34`, `:76` | `default_min_bytes_for_wide_part` = 10 MiB |
-| 3 | `src/Storages/MergeTree/MergeTreeSettings.cpp:70` | `index_granularity` = 8192 — note "Maximum" at `:71` |
-| 3 | `src/Storages/MergeTree/MergeTreeSettings.cpp:1676`, `:1681`, `:1714` | the 10 MiB byte cap and adaptive granularity |
-| 4 | `src/Storages/MergeTree/IMergeTreeDataPart.h:424`, `:425` | `getIndex()` / `loadIndexToCache()` |
-| 5 | `src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp:1725` | `markRangesFromPKRange`, used at `:189` and `:1070` |
-| 5 | same file, `:2131`, `:2136-2176`, `:2178-2200` | the two search algorithms and the choice between them |
-| 5 | `src/Core/Settings.cpp:1593`, `:1600`, `:1579`, `:1586` | coarse granularity 8, step budget, seek thresholds |
+| 2 | `src/Storages/MergeTree/MergeTreeDataPartCompact.h:8-14` | the Compact layout, in a comment |
+| 2 | `src/Storages/MergeTree/MergeTreeSettings.cpp:37`, `:80` | `default_min_bytes_for_wide_part` = 10 MiB |
+| 3 | `src/Storages/MergeTree/MergeTreeSettings.cpp:74` | `index_granularity` = 8192 — note "Maximum" at `:75` |
+| 3 | `src/Storages/MergeTree/MergeTreeSettings.cpp:2163`, `:2168`, `:2175-2178`, `:2223` | the 10 MiB byte cap, its floor, the rows-per-granule rule, adaptive granularity |
+| 4 | `src/Storages/MergeTree/IMergeTreeDataPart.h:549`, `:550` | `getIndex()` / `loadIndexToCache()` |
+| 5 | `src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp:2244` | `markRangesFromPKRange`, reached from `:208` and `:1216` |
+| 5 | same file, `:2703`, `:2708-2782`, `:2783-2936` | the choice, then the two search algorithms |
+| 5 | `src/Core/Settings.cpp:1935`, `:1942`, `:1921`, `:1928` | coarse granularity 8, step budget, seek thresholds |
 | 6 | `src/Formats/MarkInCompressedFile.h:14-21` | the two-offset mark |
 | 6 | same file, `:38-41`, `:51-67` | FOR + bit-packing applied to the marks themselves |
-| 6 | `src/Core/Settings.cpp:108`, `:123` | compression block sizes, with a worked example in the doc |
-| 7 | `src/Storages/MergeTree/MergeTreeDataMergerMutator.cpp:272` | `selectPartsToMerge` |
+| 6 | `src/Core/Settings.cpp:146`, `:161` | compression block sizes, with a worked example in the doc (`:151-155`) |
+| 7 | `src/Storages/MergeTree/MergeTreeDataMergerMutator.cpp:328` | `selectPartsToMerge` |
 | 7 | `src/Storages/MergeTree/MergeTask.h:78-82`, `:84` | merge priority, and the resumable task |
-| 7 | `src/Storages/MergeTree/MergeTreeSettings.cpp:475`, `:637`, `:860`, `:886`, `:908` | the merge and back-pressure limits |
-| 8 | `src/Compression/CompressionCodecMultiple.cpp:44-67`, `:86` | chain composition, and undoing it in reverse |
-| 8 | `src/Compression/CompressionCodecDelta.cpp:30`, `:36` | a codec that admits it is not a compressor |
-| 8 | `src/Compression/CompressionFactory.cpp:257` | LZ4 is the default |
+| 7 | `src/Storages/MergeTree/MergeTreeSettings.cpp:541`, `:777`, `:1090`, `:1171`, `:1193` | the merge and back-pressure limits |
+| 8 | `src/Compression/CompressionCodecMultiple.cpp:132-180`, `:182-261` | chain composition, and undoing it in reverse (`:204`) |
+| 8 | `src/Compression/CompressionCodecDelta.cpp:33`, `:39` | a codec that admits it is not a compressor |
+| 8 | `src/Storages/CompressionCodecSelector.h:40-60`, `:106-122` | the size-aware default: LZ4 below 100 MiB, `ZSTD(3)` above |
+| 8 | `src/Compression/CompressionFactory.cpp:372` | the factory default, `ZSTD(3)` |
+| 8 | `src/Compression/CompressionCodecAdaptive.h:11-65`; `MergeTreeSettings.cpp:2654` | per-block adaptive selection, and the setting that enables it |
 
-**Read order:** `MergeTreeSettings.cpp:70` and `:1676` (the two granule caps) →
-`markRangesFromPKRange` (the read path is the payload; skim to `:2131` and read both
+**Read order:** `MergeTreeSettings.cpp:74` and `:2163` (the two granule caps) →
+`markRangesFromPKRange` (the read path is the payload; skim to `:2703` and read both
 branches) → `MarkInCompressedFile.h` end to end, it is 156 lines →
-`selectPartsToMerge` → `CompressionCodecMultiple.cpp`. `ReplacingMergeTree`,
-`SummingMergeTree` and `AggregatingMergeTree` are siblings in
+`selectPartsToMerge` → `CompressionCodecMultiple.cpp` → `CompressionCodecSelector.h`.
+`ReplacingMergeTree`, `SummingMergeTree` and `AggregatingMergeTree` are siblings in
 `src/Storages/MergeTree/` if you want to see compaction-as-computation.
 
 Use `tools/pinned-source.py grep` and `show -r A:B` rather than cloning; whole-file `show`
@@ -456,18 +507,18 @@ impossible on its face. An implausible bandwidth is a bug in the benchmark, not 
 1. **Sparse index over-read.** Worst case rows decompressed for a point query with
    granularity 8192 and a 3-column read? Compute it in bytes for `UInt64` columns, then
    redo it for a table whose rows average 4 KiB (where `index_granularity_bytes` binds
-   instead — `MergeTreeSettings.cpp:1676`). Why is that fine here and fatal for OLTP?
+   instead — `MergeTreeSettings.cpp:2163`). Why is that fine here and fatal for OLTP?
 2. **Two offsets per mark: why can't it be one?** Use the `min_compress_block_size` worked
-   example at `src/Core/Settings.cpp:109-117`: for a `UInt32` column at 8192 rows/granule,
+   example at `src/Core/Settings.cpp:151-155`: for a `UInt32` column at 8192 rows/granule,
    which marks have a non-zero `offset_in_decompressed_block`, and what is its value? Then
    explain why `MarkInCompressedFile.h:55` can say "y is usually zero".
 3. **`ORDER BY (user_id, ts)` vs `(ts, user_id)`** — which queries does each serve? Now
-   connect it to Step 5: `Settings.cpp:1601` says the generic exclusion search runs "when
+   connect it to Step 5: `Settings.cpp:1943` says the generic exclusion search runs "when
    it uses key columns other than the first one". Which of your two orderings forces which
    algorithm, for `WHERE ts > now() - 1h`?
 4. **Merge heuristics.** What goes wrong with too-eager merging (write amp) versus too-lazy
    (read amp)? Put numbers on the lazy end using `parts_to_delay_insert` = 1000 and
-   `parts_to_throw_insert` = 3000 (`MergeTreeSettings.cpp:886`, `:908`): what does a client
+   `parts_to_throw_insert` = 3000 (`MergeTreeSettings.cpp:1171`, `:1193`): what does a client
    observe as the part count crosses each? Compare with topic 4's leveled-vs-tiered dial.
 5. **M12/M22.** FalkorDB stores matrices per relationship type. What is the "part"
    equivalent if property columns become mergeable segments — and could a merge
@@ -484,7 +535,8 @@ make ingest sequential; an index at 1/8192 resolution stays in RAM at any table 
 granules make the read quantum big enough that vectorized code amortises every per-call
 cost; two-offset marks pay the small, unavoidable tax for layering block compression
 underneath; merges are both garbage collection and a compute opportunity; and codecs are
-declared by the person who actually knows the data. Each decision is legible only in terms
+declared by the person who actually knows the data — with a size-aware default, cheap LZ4
+for young parts and `ZSTD(3)` for merged ones, for everyone who does not. Each decision is legible only in terms
 of the workload — which is the general lesson worth carrying to the next system.
 
 ---
@@ -499,10 +551,10 @@ Answer each before unfolding it.
 <details><summary>Answer</summary>
 
 Whenever the rows are wide. `index_granularity` = 8192 is a **maximum** — its own doc
-string at `MergeTreeSettings.cpp:71` reads "Maximum number of data rows between the marks
+string at `MergeTreeSettings.cpp:75` reads "Maximum number of data rows between the marks
 of an index". A second cap, `index_granularity_bytes`, defaults to 10 MiB
-(`:1676`), and adaptive granularity is on by default via `enable_mixed_granularity_parts`
-(`:1714`). A granule is `min(8192 rows, ~10 MiB)`.
+(`:2163`), and adaptive granularity is on by default via `enable_mixed_granularity_parts`
+(`:2223`). A granule is `min(8192 rows, ~10 MiB)`.
 
 Concretely: at 100 B/row the row cap binds (8192 rows ≈ 800 KiB). At 4 KiB/row the byte cap
 binds and a granule is 2560 rows. At 1 MiB/row it is 10 rows. Without the byte cap, a
@@ -516,19 +568,19 @@ binds and a granule is 2560 rows. At 1 MiB/row it is 10 rows. Without the byte c
 <details><summary>Answer</summary>
 
 The switch is `key_condition.matchesExactContinuousRange()` at
-`MergeTreeDataSelectExecutor.cpp:2131`.
+`MergeTreeDataSelectExecutor.cpp:2703`, branched on at `:2708`.
 
 `user_id = 42` is a single continuous key interval, so ClickHouse binary-searches for the
-left and right endpoint marks (`:2178-2200`, tagged `SearchAlgorithm::BinarySearch` at
-`:2184`). The comment at `:2180-2182` describes exactly this.
+left and right endpoint marks (`:2783-2936`, tagged `SearchAlgorithm::BinarySearch` at
+`:2789`). The comment at `:2785-2787` describes exactly this.
 
 `user_id % 2 = 0` is not an interval — qualifying granules are scattered — so there is
-nothing to bracket. ClickHouse runs a **generic exclusion search** (`:2136-2176`),
+nothing to bracket. ClickHouse runs a **generic exclusion search** (`:2708-2782`),
 recursively splitting each mark range into `merge_tree_coarse_index_granularity` subranges
-(default 8, `src/Core/Settings.cpp:1593`) and discarding subranges where the condition
+(default 8, `src/Core/Settings.cpp:1935`) and discarding subranges where the condition
 provably cannot hold. It is bounded by `merge_tree_generic_exclusion_search_max_steps`
-(`Settings.cpp:1600`); when the budget runs out, unanalysed ranges are "accepted as a
-whole" (`:1603`) — correct, but reading more granules than necessary.
+(`Settings.cpp:1942`); when the budget runs out, unanalysed ranges are "accepted as a
+whole" (`:1945`) — correct, but reading more granules than necessary.
 
 </details>
 
@@ -558,9 +610,9 @@ O(1) (`:33-34`).
 <details><summary>Answer</summary>
 
 Active parts in one partition accumulate. At **1000** (`parts_to_delay_insert`,
-`MergeTreeSettings.cpp:886`) inserts are artificially slowed — the doc at `:893-894` says
+`MergeTreeSettings.cpp:1171`) inserts are artificially slowed — the doc at `:1178-1179` says
 ClickHouse "adds 'sleep' so that the background merge process can merge parts faster than
-they are added". At **3000** (`parts_to_throw_insert`, `:908`) inserts are rejected
+they are added". At **3000** (`parts_to_throw_insert`, `:1193`) inserts are rejected
 outright.
 
 It is protecting read amplification. Every query must consult every active part's index and
@@ -577,8 +629,8 @@ topic 4's write-vs-read amplification dial with the thresholds written down.
 <details><summary>Answer</summary>
 
 Because they are **preprocessors** for the stage that follows. ClickHouse says so in its own
-type system: `CompressionCodecDelta.cpp:30` is `bool isCompression() const override
-{ return false; }`, and the description at `:36` is "Preprocessor (should be followed by
+type system: `CompressionCodecDelta.cpp:33` is `bool isCompression() const override
+{ return false; }`, and the description at `:39` is "Preprocessor (should be followed by
 some compression codec)."
 
 `Delta` turns a monotonically increasing sequence into a run of small, similar numbers,
@@ -588,8 +640,30 @@ next to each other. Same move, different axis: neither removes information, both
 *local* similarity so a general-purpose compressor finds more matches.
 
 The practical consequence is that `CODEC(Delta)` alone is close to a no-op — the chain
-mechanism (`CompressionCodecMultiple.cpp:44-67`) exists precisely so these can be composed
-with a real compressor, and decompression undoes them in reverse order (`:86`).
+mechanism (`CompressionCodecMultiple.cpp:132-180`) exists precisely so these can be composed
+with a real compressor, and decompression undoes them in reverse order (`:204`).
+
+</details>
+
+- [ ] A table declares no `CODEC` anywhere and runs on a server with no `<compression>`
+      config. Which codec compresses a freshly inserted part, which compresses the 5 GB part
+      a merge later produces from it, and why does ClickHouse bother to differ?
+
+<details><summary>Answer</summary>
+
+The fresh insert is **LZ4**; the merged part is **`ZSTD(3)`**. `CompressionCodecSelector::choose`
+(`src/Storages/CompressionCodecSelector.h:106-122`) picks LZ4 when the size it is given is
+below `min_part_size_for_default_codec` = 100 MiB (`:60`, `:113-115`), and otherwise the
+factory default, which is `ZSTD(3)` (`CompressionFactory.cpp:372`). The size is the one
+known before writing (`:45-49`): an insert has none yet and passes `0`, a merge passes the
+total size of its source parts — 5 GB is far above 100 MiB.
+
+The reason is Step 7's merge cycle. Small parts are short-lived: they are read soon and
+rewritten by the next merge, so paying ZSTD's slower compression on them buys a ratio that
+is thrown away minutes later. Large merged parts are where the bytes live for a long time,
+so the better ratio pays for itself. The header comment at `:40-43` says exactly this. The
+per-block adaptive alternative (`enable_adaptive_codec_selection`,
+`MergeTreeSettings.cpp:2654`) is experimental and off by default, so it plays no part here.
 
 </details>
 
@@ -603,16 +677,17 @@ with a real compressor, and decompression undoes them in reverse order (`:86`).
   [reading-clickhouse-paper.md](reading-clickhouse-paper.md) — read it after this code
   walk; it supplies the *why* for every *what* above.
 
-**Code** — all at `ClickHouse/ClickHouse@4d598fb2c`
+**Code** — all at `ClickHouse/ClickHouse@c6428eb` (`v26.10.2.103-stable`)
 
 - `src/Storages/MergeTree/` — `MergeTreeSettings.cpp`, `IMergeTreeDataPart.h`,
   `MergeTreeDataPartCompact.h`, `MergeTreeDataSelectExecutor.cpp`,
   `MergeTreeDataMergerMutator.cpp`, `MergeTask.h`
 - `src/Formats/MarkInCompressedFile.h` — 156 lines, read all of it
-- `src/Core/Settings.cpp` — the query-level knobs (`:108`, `:123`, `:1579`, `:1586`,
-  `:1593`, `:1600`)
+- `src/Core/Settings.cpp` — the query-level knobs (`:146`, `:161`, `:1921`, `:1928`,
+  `:1935`, `:1942`)
 - `src/Compression/` — `CompressionCodecMultiple.cpp`, `CompressionCodecDelta.cpp`,
-  `CompressionFactory.cpp`
+  `CompressionFactory.cpp`, `CompressionCodecAdaptive.h`
+- `src/Storages/CompressionCodecSelector.h` — the size-aware default codec
 
 **In this topic**
 

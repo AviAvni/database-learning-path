@@ -27,19 +27,10 @@ argument is entirely in the p99 column.** Two things to sit with:
 
 ## Predictions (fill BEFORE implementing raft.rs)
 
-repl_lag baseline (provided, measured 2026-07-10, macOS
-F_FULLFSYNC): 2000 × 128 B entries, WAIT-1-style ack per entry:
-
-| follower fsync | entries/s | ack p50 µs | ack p99 µs |
-|---|---|---|---|
-| every 1 | 339 | 2972.7 | 3506.5 |
-| every 8 | 2431 | 18.5 | 3706.3 |
-| every 64 | 9665 | 13.6 | 2880.1 |
-| never | 18568 | 6.2 | 32.5 |
-
-Topic 5's fsync ladder, now visible as *replication lag*: the p50
-drops 160× from every-1 to every-8 (most acks ride a group), but the
-p99 stays ~3 ms — someone always pays the F_FULLFSYNC.
+Topic 5's fsync ladder, now visible as *replication lag*: in the
+baseline above the p50 drops 134× from every-entry to every-8
+(2967.0 → 22.2 µs — most acks ride a group), but the p99 stays at 2–3
+ms — someone always pays the F_FULLFSYNC.
 
 | question | prediction | actual |
 |---|---|---|

@@ -101,8 +101,8 @@ overwrite.
 ```
 // ILLUSTRATION — not quoted from cwida/fsst; this is FSST §3.1 in Rust-shaped
 // pseudocode. The real decoder is fsst.h `fsst_decompress` in cwida/fsst, and the
-// production integration this repo pins is duckdb/duckdb@6c0c1a68
-// src/storage/compression/fsst.cpp:470 (`duckdb_fsst_decompress`).
+// production integration this repo reads is duckdb/duckdb@d54cbbe3df, where
+// src/include/duckdb/common/fsst.hpp:50 calls `duckdb_fsst_decompress`.
 let mut out = 0;
 for &code in codes {
     if code == 255 {              // escape: next input byte is a literal
@@ -120,7 +120,7 @@ Two numbers worth holding onto. The symbol table's worst-case serialised size is
 `8 × 255 + 255` = **2295 bytes** (§3.4: 8 bytes per symbol plus one length byte each);
 typical tables are a few hundred bytes because the average symbol length is about 2
 (§3.4). And a table is per-block, so it is amortised over the whole block — DuckDB's
-integration sizes this explicitly at `src/storage/compression/fsst.cpp:198-199`, dividing
+integration sizes this explicitly at `src/storage/compression/fsst.cpp:201-202`, dividing
 the estimated payload by the block size to count how many symbol tables it will pay for.
 
 ### Step 3 — "Static" is the whole trick
@@ -365,16 +365,16 @@ Read **BtrBlocks** in this order:
 3. §6.7 — the T_u / T_c argument. Read it even if you skip the rest of the evaluation.
 4. §4 (Pseudodecimal) only if you care about floats; it is self-contained.
 
-For the code, this repo pins **duckdb/duckdb@6c0c1a68**, which contains a production FSST
+For the code, this repo reads **duckdb/duckdb@d54cbbe3df** (v2.0.0), which contains a production FSST
 integration you can read against the paper:
 
 | Idea from the papers | Where to look |
 | --- | --- |
-| Train a symbol table on a sample | `src/storage/compression/fsst.cpp:170` (`duckdb_fsst_create`) — the sample rate is `ANALYSIS_SAMPLE_SIZE = 0.25` at `:38`, applied at `:119` |
-| Estimate the compressed size before committing | `src/storage/compression/fsst.cpp:149-203` (`StringFinalAnalyze`) |
-| Refuse the scheme unless it clearly wins | `src/storage/compression/fsst.cpp:37` — `MINIMUM_COMPRESSION_RATIO = 1.2`, applied to the returned score at `:202` |
-| Pay for one symbol table per block | `src/storage/compression/fsst.cpp:198-199` |
-| Decode | `src/storage/compression/fsst.cpp:470` (`duckdb_fsst_decompress`) |
+| Train a symbol table on a sample | `src/storage/compression/fsst.cpp:171` (`duckdb_fsst_create`) — the sample rate is `ANALYSIS_SAMPLE_SIZE = 0.25` at `:39`, drawn once per vector at `:115` |
+| Estimate the compressed size before committing | `src/storage/compression/fsst.cpp:145-206` (`StringFinalAnalyze`) — it compresses the sample for real at `:180` and scales the result by `1 / ANALYSIS_SAMPLE_SIZE` at `:200` |
+| Refuse the scheme unless it clearly wins | `src/storage/compression/fsst.cpp:38` — `MINIMUM_COMPRESSION_RATIO = 1.2`, applied to the returned score at `:205` |
+| Pay for one symbol table per block | `src/storage/compression/fsst.cpp:201-202` |
+| Decode one row | `src/storage/compression/fsst.cpp:793-828` (`StringFetchRow`) → `FSSTPrimitives::DecompressValue` at `:826` → `duckdb_fsst_decompress` at `src/include/duckdb/common/fsst.hpp:50` |
 | FSST layered on a dictionary (BtrBlocks' `Dict+FSST`) | `src/storage/compression/dict_fsst/compression.cpp` |
 
 Confirm the pin before you read: `python3 tools/pinned-source.py ref duckdb`.
@@ -393,8 +393,8 @@ other direction — the first training iteration uses the empty table and "the r
 be twice the input size". Compare with Parquet's RLE-hybrid worst case of about
 1.0055× overhead (see `reading-arrow-parquet.md`, which works the same arithmetic on a
 concrete column): FSST bets much more aggressively, and its safety net is *selection* —
-DuckDB simply refuses to use FSST unless the sample shows at least a 1.2× win
-(`fsst.cpp:37`).
+DuckDB reports FSST's estimate 1.2× larger than it is, so FSST is chosen only when it beats
+every other candidate by more than 20% (`fsst.cpp:38`, applied at `:205`).
 
 **The symbol table's fixed cost.** Serialised worst case `8 × 255 + 255` = **2295 bytes**
 (§3.4); in-memory decode state `256 × 8 + 256` = **2304 bytes** (§3.1). On a 64 KB block
@@ -450,7 +450,7 @@ write down which bytes you counted.
    argument in §3 ("precludes cheap point access") and the branch-free decode loop of
    §3.1.
 3. BtrBlocks samples (§3.1: 640 values, 1.2% of CPU, 77% correct), DuckDB analyses a
-   fraction of everything (`fsst.cpp:38`, `:119`), and ClickHouse makes you declare the
+   random quarter of the vectors (`fsst.cpp:39`, `:115`), and ClickHouse makes you declare the
    codec in DDL. Place the three on an ingest-cost / ratio-quality / operator-burden
    triangle, and say which one you would want on a column whose distribution changes
    monthly.
@@ -517,9 +517,9 @@ thing from the training side: the first iteration compresses with the empty tabl
 "the result will be twice the input size".
 
 What stops it shipping is *scheme selection*, not the scheme. DuckDB analyses a 25% sample
-(`src/storage/compression/fsst.cpp:38`, applied at `:119`), estimates the compressed size
-(`:149-203`), and multiplies the estimate by `MINIMUM_COMPRESSION_RATIO = 1.2` (`:37`,
-applied at `:202`) so FSST only wins the comparison when it is clearly better. BtrBlocks
+of the vectors (`src/storage/compression/fsst.cpp:39`, drawn at `:115`), estimates the
+compressed size (`:145-206`), and multiplies the estimate by `MINIMUM_COMPRESSION_RATIO = 1.2`
+(`:38`, applied at `:205`) so FSST only wins the comparison when it is clearly better. BtrBlocks
 does the equivalent by testing every viable scheme on a 640-value sample and keeping the
 best observed ratio (§3.1).
 
@@ -597,7 +597,7 @@ channel byte expands into more work.
   <https://doi.org/10.1145/3589263>
 - FSST reference implementation: <https://github.com/cwida/fsst>
 - BtrBlocks implementation: <https://github.com/maxi-k/btrblocks>
-- DuckDB's FSST integration, pinned at `duckdb/duckdb@6c0c1a68`:
+- DuckDB's FSST integration, read at `duckdb/duckdb@d54cbbe3df` (v2.0.0):
   `src/storage/compression/fsst.cpp`, `src/storage/compression/dict_fsst/`
 - `FINDINGS.md` row 12 — this topic's measured scan floor (24–57 GB/s on a ~150 GB/s
   machine) and the 19,047,619 GB/s hoisted-loop bug.

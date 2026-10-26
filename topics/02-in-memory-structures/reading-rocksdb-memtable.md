@@ -9,17 +9,17 @@ chapter builds up to both — what a memtable is, why it is a skiplist, the
 layout trick, then the lock-free insert — before pointing you at the lines.
 Budget: 1–2 h.
 
-Everything below is read against **facebook/rocksdb at `7c80a5a`**, where
-`memtable/inlineskiplist.h` is 1422 lines. Line numbers move between releases;
-re-check yours with:
+Everything below is read against **facebook/rocksdb at `ea3136053`** (`main`,
+carrying the 11.13 release), where `memtable/inlineskiplist.h` is 1428 lines.
+Open any range at that revision with:
 
 ```
 tools/pinned-source.py ref rocksdb
-tools/pinned-source.py show rocksdb memtable/inlineskiplist.h -r 350:422
+tools/pinned-source.py show rocksdb memtable/inlineskiplist.h -r 354:426
 ```
 
-If a number below does not match what you see, trust your checkout and record
-the drift in `notes.md` — that is the exercise, not an error report.
+If you read a different checkout and a number below does not match, record
+the offset in `notes.md`; the line numbers here are the ones at `ea3136053`.
 
 ## The problem in one sentence
 
@@ -42,15 +42,15 @@ disk as a sorted file, and then dropped wholesale. The full threshold is
 `write_buffer_size`, default **64 MiB**:
 
 ```
-// include/rocksdb/options.h — write_buffer_size, 175-191
-   175    // Amount of data to build up in memory (backed by an unsorted log
-   176    // on disk) before converting to a sorted on-disk file.
-   177    //
-   178    // Larger values increase performance, especially during bulk loads.
-   ... 179-187: max_write_buffer_number, recovery time, per-column-family note ...
-   188    // Default: 64MB
-   ... 189-190: dynamically changeable through SetOptions() ...
-   191    size_t write_buffer_size = 64 << 20;
+// include/rocksdb/options.h — write_buffer_size, 176-192
+   176    // Amount of data to build up in memory (backed by an unsorted log
+   177    // on disk) before converting to a sorted on-disk file.
+   178    //
+   179    // Larger values increase performance, especially during bulk loads.
+   ... 180-188: max_write_buffer_number, recovery time, per-column-family note ...
+   189    // Default: 64MB
+   ... 190-191: dynamically changeable through SetOptions() ...
+   192    size_t write_buffer_size = 64 << 20;
 ```
 
 Two requirements follow from "converting to a sorted on-disk file": the
@@ -58,13 +58,13 @@ structure must support **sorted iteration**, and it must absorb **concurrent
 inserts** from many writer threads — RocksDB turns those on by default:
 
 ```
-// include/rocksdb/options.h — allow_concurrent_memtable_write, 1421-1429
-  1421    // If true, allow multi-writers to update mem tables in parallel.
-  1422    // Only some memtable_factory-s support concurrent writes; currently it
-  1423    // is implemented only for SkipListFactory.  Concurrent memtable writes
-  1424    // are not compatible with inplace_update_support or filter_deletes.
-  ...
-  1429    bool allow_concurrent_memtable_write = true;
+// include/rocksdb/options.h — allow_concurrent_memtable_write, 1459-1467
+  1459    // If true, allow multi-writers to update mem tables in parallel.
+  1460    // Only some memtable_factory-s support concurrent writes; currently it
+  1461    // is implemented only for SkipListFactory.  Concurrent memtable writes
+  1462    // are not compatible with inplace_update_support or filter_deletes.
+  ... 1463-1466: enable_write_thread_adaptive_yield advice, "Default: true" ...
+  1467    bool allow_concurrent_memtable_write = true;
 ```
 
 One **non**-requirement matters just as much: the structure never needs to
@@ -133,96 +133,96 @@ The comment above `Node` says how, and it is the single most surprising line
 in the file:
 
 ```
-// memtable/inlineskiplist.h — Node layout comment, 352-356
-   352  // The Node data type is more of a pointer into custom-managed memory than
-   353  // a traditional C++ struct.  The key is stored in the bytes immediately
-   354  // after the struct, and the next_ pointers for nodes with height > 1 are
-   355  // stored immediately _before_ the struct.  This avoids the need to include
-   356  // any pointer or sizing data, which reduces per-node memory overheads.
+// memtable/inlineskiplist.h — Node layout comment, 356-360
+   356  // The Node data type is more of a pointer into custom-managed memory than
+   357  // a traditional C++ struct.  The key is stored in the bytes immediately
+   358  // after the struct, and the next_ pointers for nodes with height > 1 are
+   359  // stored immediately _before_ the struct.  This avoids the need to include
+   360  // any pointer or sizing data, which reduces per-node memory overheads.
 ```
 
 So one allocation, three regions, `Node*` aimed at the middle:
 
 ```
- raw allocation (AllocateNode, line 868):
+ raw allocation (AllocateNode, line 874):
 
  ┌───────────────────────────┬───────────────┬──────────────────┐
  │ tower: next_[-(h-1)]…[-1] │ Node: next_[0]│ key bytes inline │
  └───────────────────────────┴───────────────┴──────────────────┘
    prefix = 8*(h-1) bytes      ▲ Node* points HERE
                                │
-   level n reached by NEGATIVE index (&next_[0] - n)     line 383
-   key reached as (&next_[1])                            line 374
+   level n reached by NEGATIVE index (&next_[0] - n)     line 387
+   key reached as (&next_[1])                            line 378
 ```
 
 Both tricks are one line each, and the struct that makes them legal is a
 one-element array:
 
 ```
-// memtable/inlineskiplist.h — Node accessors, 374-396 and 417-420
-   374    const char* Key() const { return reinterpret_cast<const char*>(&next_[1]); }
-   375
-   376    // Accessors/mutators for links.  Wrapped in methods so we can add
-   377    // the appropriate barriers as necessary, and perform the necessary
-   378    // addressing trickery for storing links below the Node in memory.
-   379    Node* Next(int n) {
-   380      assert(n >= 0);
-   381      // Use an 'acquire load' so that we observe a fully initialized
-   382      // version of the returned Node.
-   383      return ((&next_[0] - n)->Load());
-   384    }
-   385
-   386    void SetNext(int n, Node* x) {
-   387      assert(n >= 0);
-   388      // Use a 'release store' so that anybody who reads through this
-   389      // pointer observes a fully initialized version of the inserted node.
-   390      (&next_[0] - n)->Store(x);
-   391    }
-   392
-   393    bool CASNext(int n, Node* expected, Node* x) {
-   394      assert(n >= 0);
-   395      return (&next_[0] - n)->CasStrong(expected, x);
-   396    }
-   ... 397-416: no-barrier variants and InsertAfter ...
-   417   private:
-   418    // next_[0] is the lowest level link (level 0).  Higher levels are
-   419    // stored _earlier_, so level 1 is at next_[-1].
-   420    Atomic<Node*> next_[1];
+// memtable/inlineskiplist.h — Node accessors, 378-400 and 421-424
+   378    const char* Key() const { return reinterpret_cast<const char*>(&next_[1]); }
+   379
+   380    // Accessors/mutators for links.  Wrapped in methods so we can add
+   381    // the appropriate barriers as necessary, and perform the necessary
+   382    // addressing trickery for storing links below the Node in memory.
+   383    Node* Next(int n) {
+   384      assert(n >= 0);
+   385      // Use an 'acquire load' so that we observe a fully initialized
+   386      // version of the returned Node.
+   387      return ((&next_[0] - n)->Load());
+   388    }
+   389
+   390    void SetNext(int n, Node* x) {
+   391      assert(n >= 0);
+   392      // Use a 'release store' so that anybody who reads through this
+   393      // pointer observes a fully initialized version of the inserted node.
+   394      (&next_[0] - n)->Store(x);
+   395    }
+   396
+   397    bool CASNext(int n, Node* expected, Node* x) {
+   398      assert(n >= 0);
+   399      return (&next_[0] - n)->CasStrong(expected, x);
+   400    }
+   ... 401-420: no-barrier variants and InsertAfter ...
+   421   private:
+   422    // next_[0] is the lowest level link (level 0).  Higher levels are
+   423    // stored _earlier_, so level 1 is at next_[-1].
+   424    Atomic<Node*> next_[1];
 ```
 
-Line 374 is the payoff: `&next_[1]` is the byte just past the struct, which is
+Line 378 is the payoff: `&next_[1]` is the byte just past the struct, which is
 where the key was written. No key pointer exists, so no key pointer can be
-missed on. Line 383 is the other half: `&next_[0] - n` walks *backwards* into
+missed on. Line 387 is the other half: `&next_[0] - n` walks *backwards* into
 the prefix.
 
 The allocation that sets this up does the arithmetic explicitly:
 
 ```
-// memtable/inlineskiplist.h — AllocateNode, 858-880
-   858  template <class Comparator>
-   859  typename InlineSkipList<Comparator>::Node*
-   860  InlineSkipList<Comparator>::AllocateNode(size_t key_size, int height) {
-   861    auto prefix = sizeof(Atomic<Node*>) * (height - 1);
-   862
-   863    // prefix is space for the height - 1 pointers that we store before
-   864    // the Node instance (next_[-(height - 1) .. -1]).  Node starts at
-   865    // raw + prefix, and holds the bottom-mode (level 0) skip list pointer
-   866    // next_[0].  key_size is the bytes for the key, which comes just after
-   867    // the Node.
-   868    char* raw = allocator_->AllocateAligned(prefix + sizeof(Node) + key_size);
-   869    Node* x = reinterpret_cast<Node*>(raw + prefix);
-   ... 870-877: comment explaining why height need not be stored ...
-   878    x->StashHeight(height);
-   879    return x;
-   880  }
+// memtable/inlineskiplist.h — AllocateNode, 864-886
+   864  template <class Comparator>
+   865  typename InlineSkipList<Comparator>::Node*
+   866  InlineSkipList<Comparator>::AllocateNode(size_t key_size, int height) {
+   867    auto prefix = sizeof(Atomic<Node*>) * (height - 1);
+   868
+   869    // prefix is space for the height - 1 pointers that we store before
+   870    // the Node instance (next_[-(height - 1) .. -1]).  Node starts at
+   871    // raw + prefix, and holds the bottom-mode (level 0) skip list pointer
+   872    // next_[0].  key_size is the bytes for the key, which comes just after
+   873    // the Node.
+   874    char* raw = allocator_->AllocateAligned(prefix + sizeof(Node) + key_size);
+   875    Node* x = reinterpret_cast<Node*>(raw + prefix);
+   ... 876-883: comment explaining why height need not be stored ...
+   884    x->StashHeight(height);
+   885    return x;
+   886  }
 ```
 
-Line 868 is one allocation for tower + node + key. Line 878 is a second trick
+Line 874 is one allocation for tower + node + key. Line 884 is a second trick
 worth naming: the height is not a field. It is written *into* `next_[0]`
-(`StashHeight`, lines 361-364) and read back by `Insert` (`UnstashHeight`,
-lines 368-372) before that slot is used as a pointer — so a node carries no
+(`StashHeight`, lines 365-368) and read back by `Insert` (`UnstashHeight`,
+lines 372-376) before that slot is used as a pointer — so a node carries no
 height field at all, because a search that arrived at level *h* already knows
-*h* is valid for this node (the comment at 870-877 says exactly this).
+*h* is valid for this node (the comment at 876-883 says exactly this).
 
 **Work the saving.** On a 64-bit build `sizeof(void*)` = 8. Node height is
 geometric with p = 1/4, so E[height] = 1/(1 − p) = 1/0.75 = **1.333 levels**,
@@ -312,14 +312,13 @@ pointer also observes those bytes. No reader can see a half-built node.
 here needs and which costs a full barrier on x86 stores and a `dmb ish` on
 ARM. Acquire/release is exactly the pairing the invariant requires.
 
-And now the subtlety that the pseudocode version of this chapter used to get
-wrong. Look at lines 404-407: `NoBarrier_SetNext` is a **relaxed** store. It
-is used at line 1152 to set the *new node's* outgoing pointer just before the
-CAS at 1153 publishes it. That is safe because the new node is not yet
+And now the subtlety that is easiest to get wrong. Look at lines 408-411:
+`NoBarrier_SetNext` is a **relaxed** store. It is used at line 1158 to set the
+*new node's* outgoing pointer just before the CAS at 1159 publishes it. That is safe because the new node is not yet
 reachable by any reader — there is nothing to order against — and the CAS at
-1153 is itself `acq_rel`, so it orders the relaxed store ahead of the moment
+1159 is itself `acq_rel`, so it orders the relaxed store ahead of the moment
 the node becomes visible. The release is on the CAS, not on the node's own
-pointer write. `InsertAfter` (lines 410-415) states the rule in a comment:
+pointer write. `InsertAfter` (lines 414-419) states the rule in a comment:
 "NoBarrier_SetNext() suffices since we will add a barrier when we publish a
 pointer to `this` in prev."
 
@@ -335,88 +334,88 @@ flag; the concurrent one differs only in putting the splice on the stack
 instead of reusing the cached one:
 
 ```
-// memtable/inlineskiplist.h — Insert entry points, 907-920
-   907  template <class Comparator>
-   908  bool InlineSkipList<Comparator>::Insert(const char* key) {
-   909    return Insert<false>(key, seq_splice_, false);
-   910  }
-   911
-   912  template <class Comparator>
-   913  bool InlineSkipList<Comparator>::InsertConcurrently(const char* key) {
-   914    Node* prev[kMaxPossibleHeight];
-   915    Node* next[kMaxPossibleHeight];
-   916    Splice splice;
-   917    splice.prev_ = prev;
-   918    splice.next_ = next;
-   919    return Insert<true>(key, &splice, false);
-   920  }
+// memtable/inlineskiplist.h — Insert entry points, 913-926
+   913  template <class Comparator>
+   914  bool InlineSkipList<Comparator>::Insert(const char* key) {
+   915    return Insert<false>(key, seq_splice_, false);
+   916  }
+   917
+   918  template <class Comparator>
+   919  bool InlineSkipList<Comparator>::InsertConcurrently(const char* key) {
+   920    Node* prev[kMaxPossibleHeight];
+   921    Node* next[kMaxPossibleHeight];
+   922    Splice splice;
+   923    splice.prev_ = prev;
+   924    splice.next_ = next;
+   925    return Insert<true>(key, &splice, false);
+   926  }
 ```
 
 The single-threaded `Insert` reuses `seq_splice_` — a splice cached on the
-list itself (line 842) — because a sequential writer can trust the splice it
+list itself (line 848) — because a sequential writer can trust the splice it
 computed last time. A concurrent writer cannot, so it gets a fresh stack one.
-Note `kMaxPossibleHeight` = 32 (line 70) makes those stack arrays a fixed
+Note `kMaxPossibleHeight` = 32 (line 71) makes those stack arrays a fixed
 512 bytes; that constant exists so this allocation-free path is legal.
 
 Here is the loop itself:
 
 ```
-// memtable/inlineskiplist.h — Insert<UseCAS>, CAS path, 1134-1172
-  1134    if (UseCAS) {
-  1135      for (int i = 0; i < height; ++i) {
-  1136        while (true) {
-  1137          // Checking for duplicate keys on the level 0 is sufficient
-  1138          if (UNLIKELY(i == 0 && splice->next_[i] != nullptr &&
-  1139                       compare_(splice->next_[i]->Key(), key_decoded) <= 0)) {
-  1140            // duplicate key
-  1141            return false;
-  1142          }
-  1143          if (UNLIKELY(i == 0 && splice->prev_[i] != head_ &&
-  1144                       compare_(splice->prev_[i]->Key(), key_decoded) >= 0)) {
-  1145            // duplicate key
-  1146            return false;
-  1147          }
-  ... 1148-1151: two asserts that the splice still brackets the key ...
-  1152          x->NoBarrier_SetNext(i, splice->next_[i]);
-  1153          if (splice->prev_[i]->CASNext(i, splice->next_[i], x)) {
-  1154            // success
-  1155            break;
-  1156          }
-  1157          // CAS failed, we need to recompute prev and next. It is unlikely
-  1158          // to be helpful to try to use a different level as we redo the
-  1159          // search, because it should be unlikely that lots of nodes have
-  1160          // been inserted between prev[i] and next[i]. No point in using
-  1161          // next[i] as the after hint, because we know it is stale.
-  1162          FindSpliceForLevel<false>(key_decoded, splice->prev_[i], nullptr, i,
-  1163                                    &splice->prev_[i], &splice->next_[i]);
-  1164
-  1165          // Since we've narrowed the bracket for level i, we might have
-  1166          // violated the Splice constraint between i and i-1.  Make sure
-  1167          // we recompute the whole thing next time.
-  1168          if (i > 0) {
-  1169            splice_is_valid = false;
-  1170          }
-  1171        }
-  1172      }
+// memtable/inlineskiplist.h — Insert<UseCAS>, CAS path, 1140-1178
+  1140    if (UseCAS) {
+  1141      for (int i = 0; i < height; ++i) {
+  1142        while (true) {
+  1143          // Checking for duplicate keys on the level 0 is sufficient
+  1144          if (UNLIKELY(i == 0 && splice->next_[i] != nullptr &&
+  1145                       compare_(splice->next_[i]->Key(), key_decoded) <= 0)) {
+  1146            // duplicate key
+  1147            return false;
+  1148          }
+  1149          if (UNLIKELY(i == 0 && splice->prev_[i] != head_ &&
+  1150                       compare_(splice->prev_[i]->Key(), key_decoded) >= 0)) {
+  1151            // duplicate key
+  1152            return false;
+  1153          }
+  ... 1154-1157: two asserts that the splice still brackets the key ...
+  1158          x->NoBarrier_SetNext(i, splice->next_[i]);
+  1159          if (splice->prev_[i]->CASNext(i, splice->next_[i], x)) {
+  1160            // success
+  1161            break;
+  1162          }
+  1163          // CAS failed, we need to recompute prev and next. It is unlikely
+  1164          // to be helpful to try to use a different level as we redo the
+  1165          // search, because it should be unlikely that lots of nodes have
+  1166          // been inserted between prev[i] and next[i]. No point in using
+  1167          // next[i] as the after hint, because we know it is stale.
+  1168          FindSpliceForLevel<false>(key_decoded, splice->prev_[i], nullptr, i,
+  1169                                    &splice->prev_[i], &splice->next_[i]);
+  1170
+  1171          // Since we've narrowed the bracket for level i, we might have
+  1172          // violated the Splice constraint between i and i-1.  Make sure
+  1173          // we recompute the whole thing next time.
+  1174          if (i > 0) {
+  1175            splice_is_valid = false;
+  1176          }
+  1177        }
+  1178      }
 ```
 
-Read line 1135 first: `i` counts **up**, so level 0 is linked before any
+Read line 1141 first: `i` counts **up**, so level 0 is linked before any
 express lane. That direction is the correctness argument. Level 0 contains
 *every* node, so a search that descends to level 0 finds everything; the upper
 levels are only shortcuts. A node that is linked at level 0 but not yet at
 level 3 is merely *slower to find* — never missing. That asymmetry is what
 lets each level be CAS'd independently, with no multi-word atomicity anywhere.
 
-Line 1153 is the publish, and the retry at 1162-1163 is deliberately narrow:
+Line 1159 is the publish, and the retry at 1168-1169 is deliberately narrow:
 on a lost race it re-finds the bracket for **level i only**, starting from the
 `prev_[i]` it already has, rather than restarting the whole search. The
-comment at 1157-1161 justifies it — the window between `prev[i]` and `next[i]`
+comment at 1163-1167 justifies it — the window between `prev[i]` and `next[i]`
 is small, so a local re-scan almost always finds the new neighbour in a hop or
-two. Lines 1168-1169 pay for that shortcut: a narrowed bracket at level i may
+two. Lines 1174-1175 pay for that shortcut: a narrowed bracket at level i may
 no longer nest inside level i−1's, so the cached splice is marked invalid for
 next time rather than silently reused.
 
-Lines 1137-1147 are the last piece: duplicate detection runs **only at level
+Lines 1143-1153 are the last piece: duplicate detection runs **only at level
 0**, guarded by `i == 0`, because level 0 is where every key lives. That is
 the same fact used twice — once for correctness of partial linking, once to
 avoid three redundant comparisons per insert.
@@ -455,26 +454,26 @@ RocksDB pays no lock and gives up rank queries it never needed.
 Heights come from a coin flip with no loop-carried allocation:
 
 ```
-// memtable/inlineskiplist.h — RandomHeight, 558-573
-   558  template <class Comparator>
-   559  int InlineSkipList<Comparator>::RandomHeight() {
-   560    auto rnd = Random::GetTLSInstance();
-   561
-   562    // Increase height with probability 1 in kBranching
-   563    int height = 1;
-   564    while (height < kMaxHeight_ && height < kMaxPossibleHeight &&
-   565           rnd->Next() < kScaledInverseBranching_) {
-   566      height++;
-   567    }
-   ... 568-571: sync point and asserts ...
-   572    return height;
-   573  }
+// memtable/inlineskiplist.h — RandomHeight, 562-577
+   562  template <class Comparator>
+   563  int InlineSkipList<Comparator>::RandomHeight() {
+   564    auto rnd = Random::GetTLSInstance();
+   565
+   566    // Increase height with probability 1 in kBranching
+   567    int height = 1;
+   568    while (height < kMaxHeight_ && height < kMaxPossibleHeight &&
+   569           rnd->Next() < kScaledInverseBranching_) {
+   570      height++;
+   571    }
+   ... 572-575: sync point and asserts ...
+   576    return height;
+   577  }
 ```
 
 `kScaledInverseBranching_` is `(Random::kMaxNext + 1) / kBranching_` (line
-837), so the comparison at line 565 is a p = 1/`kBranching_` coin without a
+843), so the comparison at line 569 is a p = 1/`kBranching_` coin without a
 division. The defaults are in the constructor signature: `max_height = 12`,
-`branching_factor = 4` (lines 77-78), and `kMaxPossibleHeight = 32` (line 70)
+`branching_factor = 4` (lines 78-79), and `kMaxPossibleHeight = 32` (line 71)
 is the compile-time cap that sizes the stack arrays in Step 5.
 
 **Work the numbers.** With p = 1/4, the expected search cost is
@@ -500,7 +499,7 @@ Nodes come from a **concurrent arena**, and its class comment is more precise
 than "lock-free":
 
 ```
-// memory/concurrent_arena.h — ConcurrentArena, 35-41 and 57-68
+// memory/concurrent_arena.h — ConcurrentArena, 35-41 and 58-69
     35  // ConcurrentArena wraps an Arena.  It makes it thread safe using a fast
     36  // inlined spinlock, and adds small per-core allocation caches to avoid
     37  // contention for small allocations.  To avoid any memory waste from the
@@ -509,13 +508,13 @@ than "lock-free":
     40  // adjust their size so that there is no fragmentation waste when the
     41  // shard blocks are allocated from the underlying main arena.
     ...
-    57    char* AllocateAligned(size_t bytes, size_t huge_page_size = 0,
-    58                          Logger* logger = nullptr) override {
-    59      size_t rounded_up = ((bytes - 1) | (sizeof(void*) - 1)) + 1;
-    ... 60-62: assert that rounding is correct and pointer-aligned ...
-    63      return AllocateImpl(rounded_up, huge_page_size != 0 /*force_arena*/,
-    ... 64-67: lambda falling back to arena_.AllocateAligned ...
-    68    }
+    58    char* AllocateAligned(size_t bytes, size_t huge_page_size = 0,
+    59                          Logger* logger = nullptr) override {
+    60      size_t rounded_up = ((bytes - 1) | (sizeof(void*) - 1)) + 1;
+    ... 61-63: assert that rounding is correct and pointer-aligned ...
+    64      return AllocateImpl(rounded_up, huge_page_size != 0 /*force_arena*/,
+    ... 65-68: lambda falling back to arena_.AllocateAligned ...
+    69    }
 ```
 
 It is a bump allocator behind a **spinlock**, with per-core shards that are
@@ -523,12 +522,12 @@ created lazily only once contention is observed (lines 38-39) — not a
 lock-free allocator. That is enough: the common path takes a shard-local bump
 and never reaches the spinlock, so `malloc` does not become the next
 bottleneck behind the lock-free list. `MemTable` holds one directly
-(`db/memtable.h:914`, `ConcurrentArena arena_;`), which is also why freeing
+(`db/memtable.h:953`, `ConcurrentArena arena_;`), which is also why freeing
 the memtable is a single arena teardown — the other half of Step 6's bargain.
 
 Finally, the skiplist is only *one* implementation of the `MemTableRep`
 interface (`memtable/skiplistrep.cc:17`, `class SkipListRep : public
-MemTableRep`, in a 425-line file). Its siblings ship in the same directory:
+MemTableRep`, in a 426-line file). Its siblings ship in the same directory:
 `hash_skiplist_rep.cc` (hash → per-bucket skiplists, for point-heavy
 workloads), `hash_linklist_rep.cc`, and `vectorrep.cc` (bulk load: append,
 sort on flush). The memtable is *pluggable* because the RUM position differs
@@ -543,56 +542,56 @@ All in `memtable/inlineskiplist.h` unless another file is named.
 
 | Lines | What | Step |
 |-------|------|------|
-| `options.h:175-191` | `write_buffer_size = 64 << 20` | 1 |
-| `options.h:1421-1429` | `allow_concurrent_memtable_write = true` | 1 |
+| `options.h:176-192` | `write_buffer_size = 64 << 20` | 1 |
+| `options.h:1459-1467` | `allow_concurrent_memtable_write = true` | 1 |
 | 10-18 | header: "saves 1 pointer per skip list node" | 3 |
 | 20-27 | thread-safety contract | 4 |
 | 31-33 | invariant (1): nodes are never deleted | 6 |
 | 35-38 | invariant (2): release-stores publish nodes | 4 |
-| 70 | `kMaxPossibleHeight = 32` | 5, 7 |
-| 77-78 | ctor defaults `max_height = 12`, `branching_factor = 4` | 7 |
-| 352-356 | Node layout comment — key after, tower before | 3 |
-| 361-372 | `StashHeight` / `UnstashHeight` — height in `next_[0]` | 3 |
-| 374 | `Key()` = `&next_[1]` | 3 |
-| 379-396 | `Next` acquire / `SetNext` release / `CASNext` | 4 |
-| 404-407, 410-415 | `NoBarrier_SetNext` and the comment justifying it | 4 |
-| 417-420 | `Atomic<Node*> next_[1]` and the negative-index comment | 3 |
+| 71 | `kMaxPossibleHeight = 32` | 5, 7 |
+| 78-79 | ctor defaults `max_height = 12`, `branching_factor = 4` | 7 |
+| 356-360 | Node layout comment — key after, tower before | 3 |
+| 365-376 | `StashHeight` / `UnstashHeight` — height in `next_[0]` | 3 |
+| 378 | `Key()` = `&next_[1]` | 3 |
+| 383-400 | `Next` acquire / `SetNext` release / `CASNext` | 4 |
+| 408-411, 414-419 | `NoBarrier_SetNext` and the comment justifying it | 4 |
+| 421-424 | `Atomic<Node*> next_[1]` and the negative-index comment | 3 |
 | `util/atomic.h:104-121` | the actual orderings behind Load/Store/CasStrong | 4 |
-| 558-573 | `RandomHeight` | 7 |
-| 837 | `kScaledInverseBranching_` — the division-free coin | 7 |
-| 853-856 | `AllocateKey` — the caller's entry point | 3 |
-| 858-880 | `AllocateNode` — one allocation, `Node*` at `raw + prefix` | 3 |
-| 907-920 | `Insert` vs `InsertConcurrently` | 5 |
-| 1030-1044 | recover `Node*` from key, unstash height, grow `max_height_` | 5 |
-| 1047-1131 | splice validation and `RecomputeSpliceLevels` | 5 |
-| 1134-1172 | the CAS path — the heart of the file | 5 |
-| 1173-1199 | the non-CAS path, for contrast | 5 |
-| `concurrent_arena.h:35-41, 57-68` | spinlock + per-core shards | 7 |
-| `db/memtable.h:914` | `ConcurrentArena arena_;` | 7 |
+| 562-577 | `RandomHeight` | 7 |
+| 843 | `kScaledInverseBranching_` — the division-free coin | 7 |
+| 859-862 | `AllocateKey` — the caller's entry point | 3 |
+| 864-886 | `AllocateNode` — one allocation, `Node*` at `raw + prefix` | 3 |
+| 913-926 | `Insert` vs `InsertConcurrently` | 5 |
+| 1036-1050 | recover `Node*` from key, unstash height, grow `max_height_` | 5 |
+| 1053-1137 | splice validation and `RecomputeSpliceLevels` | 5 |
+| 1140-1178 | the CAS path — the heart of the file | 5 |
+| 1179-1205 | the non-CAS path, for contrast | 5 |
+| `concurrent_arena.h:35-41, 58-69` | spinlock + per-core shards | 7 |
+| `db/memtable.h:953` | `ConcurrentArena arena_;` | 7 |
 | `skiplistrep.cc:17` | `SkipListRep : public MemTableRep` | 7 |
 
 A route through it that builds rather than jumps:
 
 1. Read the header, lines 10-38, in one pass. It is a design document: the
    layout rationale, the thread-safety contract, and both invariants.
-2. `Node`, lines 352-420. Find line 374 and line 383 and satisfy yourself that
+2. `Node`, lines 356-424. Find line 378 and line 387 and satisfy yourself that
    they address opposite sides of the same pointer.
-3. `AllocateNode`, 858-880. Confirm line 868 allocates all three regions at
-   once and line 869 aims `Node*` at the middle.
+3. `AllocateNode`, 864-886. Confirm line 874 allocates all three regions at
+   once and line 875 aims `Node*` at the middle.
 4. `util/atomic.h:104-121`. Write down which ordering each of `Load`, `Store`,
    `CasStrong` carries; you will need them in the next step.
-5. The CAS loop, 1134-1172. Follow one insert of a height-3 node: which level
+5. The CAS loop, 1140-1178. Follow one insert of a height-3 node: which level
    is linked first, what happens on a failed CAS at level 2, and why the
    duplicate checks are guarded by `i == 0`.
-6. **Aha:** line 1152 is a *relaxed* store immediately before the CAS at 1153
+6. **Aha:** line 1158 is a *relaxed* store immediately before the CAS at 1159
    that publishes the node. Once you see why that is not a bug — the node is
-   unreachable until 1153 succeeds, and the `acq_rel` CAS orders the relaxed
+   unreachable until 1159 succeeds, and the `acq_rel` CAS orders the relaxed
    store ahead of publication — you have understood the file's memory model.
    Every other ordering decision follows from the same rule.
 
-**Contrast case.** Read the non-CAS path at lines 1173-1199 straight after the
+**Contrast case.** Read the non-CAS path at lines 1179-1205 straight after the
 CAS path. Same loop, same bottom-up direction, but the link is a plain
-`SetNext` at line 1197 with no retry and no `splice_is_valid` bookkeeping,
+`SetNext` at line 1203 with no retry and no `splice_is_valid` bookkeeping,
 because external synchronisation guarantees the splice is still accurate. The
 diff between the two branches is precisely the cost of lock-freedom in this
 design: one retry loop, one narrow re-find, and one invalidation flag. That is
@@ -602,14 +601,14 @@ small — and it is small *because* of invariant (1). Compare with redis's
 ## Questions to answer in notes.md
 
 1. Redis's skiplist has spans and backward pointers; this one has neither. For
-   each, say exactly which line of the CAS loop (1134-1172) would have to
+   each, say exactly which line of the CAS loop (1140-1178) would have to
    become a multi-word atomic, and why no CAS can provide it.
 2. Why acquire/release rather than `SeqCst` on the links? Name the specific
-   reorder prevented at line 383, and say what `SeqCst` would add that nothing
+   reorder prevented at line 387, and say what `SeqCst` would add that nothing
    here consumes.
-3. Line 1152 is `NoBarrier_SetNext` — a relaxed store — inside a lock-free
+3. Line 1158 is `NoBarrier_SetNext` — a relaxed store — inside a lock-free
    insert. Explain why it is safe, then construct the variant that *would* be
-   a bug (hint: move the relaxed store after line 1153).
+   a bug (hint: move the relaxed store after line 1159).
 4. Redo Step 7's arithmetic for your own workload: at branching factor 4 and
    your `write_buffer_size`, how many levels does log₄(entries) want, and how
    much headroom does `kMaxHeight_ = 12` leave? At what memtable size does 12
@@ -642,17 +641,17 @@ Answer each before unfolding it.
 <details>
 <summary>Answer</summary>
 
-From `AllocateNode` (858-869): `prefix = sizeof(Atomic<Node*>) * (height - 1)`
+From `AllocateNode` (864-875): `prefix = sizeof(Atomic<Node*>) * (height - 1)`
 = 8 × 2 = 16 bytes, and `Node* x = raw + prefix`, so the `Node` starts at
 offset 16. `next_[0]` is at offset **16** (it is the first and only declared
-member, line 420). `next_[-2]` — level 2 — is 2 words *earlier*: offset
+member, line 424). `next_[-2]` — level 2 — is 2 words *earlier*: offset
 16 − 16 = **0**, the very start of the allocation. The key is `&next_[1]`
-(line 374), one word past `next_[0]`: offset **24**. Level 1 sits at offset 8.
+(line 378), one word past `next_[0]`: offset **24**. Level 1 sits at offset 8.
 
 </details>
 
 - [ ] Why can duplicate keys be detected by checking level 0 alone (lines
-      1137-1147), and what would break if the check ran at every level?
+      1143-1153), and what would break if the check ran at every level?
 
 <details>
 <summary>Answer</summary>
@@ -663,20 +662,20 @@ check at every level would not be *incorrect*, just wasteful: three extra key
 comparisons per height-4 insert, each a potential cache miss on
 `splice->next_[i]->Key()`. Worse, an upper level could miss a duplicate that
 level 0 would catch, so the check would still be needed at level 0 — the extra
-work buys nothing. The comment at line 1137 says exactly this: "Checking for
+work buys nothing. The comment at line 1143 says exactly this: "Checking for
 duplicate keys on the level 0 is sufficient."
 
 </details>
 
 - [ ] A reader is walking level 0 while a writer is midway through the loop at
-      line 1135, having linked its node at level 0 but not yet at level 2.
+      line 1141, having linked its node at level 0 but not yet at level 2.
       What does the reader observe, and is it correct?
 
 <details>
 <summary>Answer</summary>
 
 The reader finds the new node — level 0 is linked, and the `acq_rel` CAS at
-1153 paired with the acquire `Load` at line 383 guarantees the node's key
+1159 paired with the acquire `Load` at line 387 guarantees the node's key
 bytes are visible to it. A *different* reader descending from level 2 will
 step past the new node at that level and land on it after descending to level
 0 or 1. So the node is findable by every search, just via a slightly longer
@@ -694,7 +693,7 @@ correctness — that is the property that makes per-level CAS legal.
 Removed: safe memory reclamation — hazard pointers, epoch-based reclamation,
 or RCU, plus the reclamation thread and the per-read overhead of announcing a
 hazard. Without deletes there is never an unlinked-but-still-referenced node,
-so freeing is a single arena teardown (`db/memtable.h:914`) when the frozen
+so freeing is a single arena teardown (`db/memtable.h:953`) when the frozen
 memtable is dropped. Cost: no in-place delete (a user `Delete` becomes a
 tombstone *insert*, which the compaction layer must later resolve), and no
 spans or backward pointers, since both need several words updated as one step.
@@ -723,23 +722,23 @@ bytes = 2.88 MiB, i.e. **4.5% more user data per flush**.
 
 **Code**
 
-- [rocksdb](https://github.com/facebook/rocksdb) at `7c80a5a` — verify with
+- [rocksdb](https://github.com/facebook/rocksdb) at `ea3136053` — verify with
   `tools/pinned-source.py ref rocksdb`.
 
 | File | Lines | What |
 |------|-------|------|
 | `memtable/inlineskiplist.h` | 10-38 | header: layout rationale, thread safety, both invariants |
-| `memtable/inlineskiplist.h` | 352-420 | `Node` — negative tower index, inline key, stashed height |
-| `memtable/inlineskiplist.h` | 558-573 | `RandomHeight` — p = 1/4 coin, capped at `kMaxHeight_` |
-| `memtable/inlineskiplist.h` | 853-880 | `AllocateKey` / `AllocateNode` — one allocation, three regions |
-| `memtable/inlineskiplist.h` | 907-920 | `Insert` vs `InsertConcurrently` |
-| `memtable/inlineskiplist.h` | 1134-1172 | the CAS path — bottom-up, level-0 duplicate check, narrow retry |
-| `memtable/inlineskiplist.h` | 1173-1199 | the non-CAS path — the contrast case |
+| `memtable/inlineskiplist.h` | 356-424 | `Node` — negative tower index, inline key, stashed height |
+| `memtable/inlineskiplist.h` | 562-577 | `RandomHeight` — p = 1/4 coin, capped at `kMaxHeight_` |
+| `memtable/inlineskiplist.h` | 859-886 | `AllocateKey` / `AllocateNode` — one allocation, three regions |
+| `memtable/inlineskiplist.h` | 913-926 | `Insert` vs `InsertConcurrently` |
+| `memtable/inlineskiplist.h` | 1140-1178 | the CAS path — bottom-up, level-0 duplicate check, narrow retry |
+| `memtable/inlineskiplist.h` | 1179-1205 | the non-CAS path — the contrast case |
 | `util/atomic.h` | 104-121 | release `Store`, acquire `Load`, `acq_rel` `CasStrong` |
-| `memory/concurrent_arena.h` | 35-41, 57-68 | spinlock-guarded bump arena with lazy per-core shards |
-| `db/memtable.h` | 914 | `ConcurrentArena arena_;` — the memtable owns one |
+| `memory/concurrent_arena.h` | 35-41, 58-69 | spinlock-guarded bump arena with lazy per-core shards |
+| `db/memtable.h` | 953 | `ConcurrentArena arena_;` — the memtable owns one |
 | `memtable/skiplistrep.cc` | 17 | `SkipListRep : public MemTableRep` — the plug-in point |
-| `include/rocksdb/options.h` | 175-191, 1421-1429 | 64 MiB memtable; concurrent writes on by default |
+| `include/rocksdb/options.h` | 176-192, 1459-1467 | 64 MiB memtable; concurrent writes on by default |
 
 Siblings in `memtable/`: `hash_skiplist_rep.cc`, `hash_linklist_rep.cc`,
 `vectorrep.cc` — three other RUM positions for the same interface.

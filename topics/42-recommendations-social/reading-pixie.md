@@ -96,15 +96,14 @@ side:
 ```
 lane 1 (provided) — 3000 users x 6000 items, 30 communities, 60000 training edges
    recommender     hit-rate@50   personalization   overlap w/ bestsellers
-   popularity         0.340          0.155               0.923
-   basic walk         0.403          0.820               0.451
+   popularity         0.353          0.157               0.922
+   basic walk         0.403          0.815               0.457
 ```
 
 The `popularity` row is this topic's headline: recommending the global bestseller list to everyone
-scores **0.340 hit-rate@50** with **0.923 overlap** with the bestseller list. That is the result
-[`FINDINGS.md`](../../FINDINGS.md) row 42 headlines as "35.3% hit-rate@50 with 92.2% overlap" — the
-crate lane here reports 0.340 / 0.923, agreeing to within about a percentage point. Popularity is
-not a weak baseline; the walk has to *beat* it.
+scores **0.353 hit-rate@50** with **0.922 overlap** with the bestseller list — the result
+[`FINDINGS.md`](../../FINDINGS.md) row 42 headlines as "35.3% hit-rate@50 with 92.2% overlap".
+Popularity is not a weak baseline; the walk has to *beat* it.
 
 Two definitions are needed to read that block, and both are computed by `experiments/src/graphs.rs`:
 
@@ -119,7 +118,7 @@ Two definitions are needed to read that block, and both are computed by `experim
   micro-example, k = 5, bestsellers `{A,B,C,D,E}`: a user who owns none of them gets the list
   `{A,B,C,D,E}` → overlap 5/5 = 1.0; a user who already owns `E` has it filtered out and gets
   `{A,B,C,D,F}` (F the 6th bestseller) → overlap 4/5 = 0.80. Average a population where most users
-  own zero or one top item and you land near 0.92 — which is why popularity's overlap is 0.923, not
+  own zero or one top item and you land near 0.92 — which is why popularity's overlap is 0.922, not
   a flat 1.0.
 
 So the basic walk gets 40.3% of users right — but **45.1% of every list it returns is the global

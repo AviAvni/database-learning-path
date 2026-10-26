@@ -285,8 +285,8 @@ The whole thesis fits in one loop — a filtered `SUM` over RLE that never mater
 ```rust
 // ILLUSTRATION — pseudocode, not quoted from any repo. The paper's own version is
 // the Count aggregator in Figure 2 of Abadi et al., SIGMOD 2006. For a real
-// implementation of the same idea see duckdb/duckdb@6c0c1a68
-// src/storage/compression/rle.cpp:113 (RLEFinalAnalyze) and rle.cpp:99.
+// implementation of the same idea see duckdb/duckdb@d54cbbe3df
+// src/storage/compression/rle.cpp:130-134 (RLEFinalAnalyze) and rle.cpp:560-664 (RLEFilter).
 struct Run { value: u64, len: u32 }
 
 // decompress-then-process is O(rows); this is O(runs).
@@ -303,7 +303,7 @@ fn sum_where_gt(runs: &[Run], threshold: u64) -> u64 {
 
 Note one difference from the paper: C-Store's RLE record is a *triple* `(value, start_pos,
 run_length)`, because positions have to be addressable for Step 4's `Mask` to work. DuckDB's
-is a pair — `rle.cpp:113-116` sizes a compressed segment as
+is a pair — `rle.cpp:130-134` sizes a compressed segment as
 `(sizeof(rle_count_t) + sizeof(T)) * seen_count` — because DuckDB reconstructs positions by
 running prefix sums instead of storing them. Step 6 prices both.
 
@@ -803,8 +803,8 @@ about 127,000× a 150 GB/s bus — it is a hoisted loop, not a discovery.
 
 **Code**
 
-- [duckdb/duckdb](https://github.com/duckdb/duckdb) @ `6c0c1a68` —
-  `src/storage/compression/rle.cpp:113` sizes an RLE segment as
+- [duckdb/duckdb](https://github.com/duckdb/duckdb) @ `d54cbbe3df` (v2.0.0) —
+  `src/storage/compression/rle.cpp:133` sizes an RLE segment as
   `(sizeof(rle_count_t) + sizeof(T)) * seen_count`, the two-field pair to C-Store §3.1's
   three-field triple. Covered properly in
   [reading-duckdb-compression.md](reading-duckdb-compression.md).

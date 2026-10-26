@@ -1,15 +1,39 @@
 # Topic 35 notes — overload control & resource governance
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: 280 QPS after 10 s outage | goodput 0 forever (storm 560 > 300) | **goodput 0 at t=199 s, offered locked at 560 QPS**; outage ended t=40 s |
-| lane 1: 140 QPS after same outage | heals (storm 280 < 300) | **heals at t=161 s**; partial window (251) at t=160 |
-| lane 1: hidden capacity, 1 retry | capacity/2 = 150 QPS | consistent: 280 dies, 140 heals (bisect in exercise 2) |
-| lane 2: budget 15 vs 25 QPS | 15 heals (fits 20 QPS headroom), 25 never | (stub — implement tokenbucket.rs) |
-| lane 3: goodput at 2× overload, no control | → 0 (FIFO queue grows, all miss 1 s timeout) | (stub) |
-| lane 3: goodput with DAGOR-lite | ≈ capacity, prio 0-1 near 100% | (stub) |
+`cargo run --release --bin overload_bench`:
+
+```
+== lane 1: metastable failure — one trigger, two loads ==
+   capacity 300 QPS, timeout 1 s, 1 retry, 10 s outage at t=30 s
+           ── load 280 QPS ──   ── load 140 QPS ──
+   t(s)    offered  goodput      offered  goodput
+      0        281      280          141      140
+     20        280      280          140      140
+     29        280      280          140      140
+     35        560        0          280        0
+     45        560        0          280        0
+     60        560        0          280        0
+     90        560        0          280        0
+    120        560        0          280        0
+    160        560        0          140      251
+    199        560        0          140      140
+   280 QPS: goodput never recovers — the outage ended at t=40 s
+   140 QPS heals at t=161 s
+
+== lane 2: retry budget on the 280 QPS scenario ==
+   headroom = 300 − 280 = 20 QPS; budgets straddle it:
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: DAGOR-lite under sustained 2x overload ==
+   600 QPS offered, 300 QPS capacity, 4 priorities, no retries
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Lane 1 is a seeded virtual-clock simulation, so every figure — 280 QPS never
+recovers; 140 QPS heals at t=161 s with a partial window of 251 at t=160 — is
+identical on every run.
 
 The lane-1 mechanics, worth memorizing: the 10 s outage queues
 10 s × 280 = 2,800 requests ≈ 9.3 s of work. Every request arriving
@@ -21,6 +45,36 @@ nothing because the storm is now self-sustaining. At 140 QPS the storm
 is 280 < 300: the backlog (1,400 + retries) drains at the 20 QPS
 surplus, which is why healing takes ~2 minutes for a 10 s outage —
 recovery time is backlog / headroom, and headroom is thin by design.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: 280 QPS after 10 s outage | | **goodput 0 at t=199 s, offered locked at 560 QPS**; outage ended t=40 s |
+| lane 1: 140 QPS after same outage | | **heals at t=161 s**; partial window (251) at t=160 |
+| lane 1: hidden capacity, 1 retry | | consistent: 280 dies, 140 heals (bisect in exercise 2) |
+| lane 2: budget 15 vs 25 QPS | | |
+| lane 3: goodput at 2× overload, no control | | |
+| lane 3: goodput with DAGOR-lite | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: 280 QPS after 10 s outage | goodput 0 forever (storm 560 > 300) |
+| lane 1: 140 QPS after same outage | heals (storm 280 < 300) |
+| lane 1: hidden capacity, 1 retry | capacity/2 = 150 QPS |
+| lane 2: budget 15 vs 25 QPS | 15 heals (fits 20 QPS headroom), 25 never |
+| lane 3: goodput at 2× overload, no control | → 0 (FIFO queue grows, all miss 1 s timeout) |
+| lane 3: goodput with DAGOR-lite | ≈ capacity, prio 0-1 near 100% |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 
@@ -57,15 +111,16 @@ recovery time is backlog / headroom, and headroom is thin by design.
 ## Infra notes
 
 - No new clones: redis and cockroach already under ~/repos.
-- Redis anchors verified by grep this session: evict.c:36
-  (EVPOOL_SIZE 16), :134 (evictionPoolPopulate), :384
-  (getMaxmemoryState), :425 (overMaxmemoryAfterAlloc), :532
-  (performEvictions); server.c:4391 (is_denyoom_command), :4485
-  (out_of_memory = performEvictions() == EVICT_FAIL), :4498
-  (rejectCommand oomerr), :2130 (-BUSY), :825
-  (isInsideYieldingLongCommand), :4850 (pauseActions during shutdown);
-  networking.c:5151/:5215 (output buffer limits), :4482
-  (unpauseActions); config.c:3223 (maxmemory-samples default 5);
+- Redis anchors (`e87dda2a4`): evict.c:36 (EVPOOL_SIZE 16), :42
+  (EVICTION_OVERUSE_DIVISOR), :139 (evictionPoolPopulate), :395
+  (getMaxmemoryState), :436 (overMaxmemoryAfterAlloc), :543
+  (performEvictions), :813 (bounded overshoot when only blessed keys
+  remain); server.c:4785 (is_denyoom_command), :4880
+  (out_of_memory = performEvictions() == EVICT_FAIL), :4893
+  (rejectCommand oomerr), :2278 (-BUSY), :882
+  (isInsideYieldingLongCommand), :5245 (pauseActions during shutdown);
+  networking.c:5487/:5551 (output buffer limits), :4794
+  (unpauseActions); config.c:3629 (maxmemory-samples default 5);
   script.c:150 (busy_reply_threshold).
 - Cockroach anchors verified: admission.go:1 (package doc), :54
   (grantKind comment), :178 (requester), :198 (granter);

@@ -9,7 +9,7 @@ is the hard part, what a pin promises, where retired memory waits, what the
 epoch clock actually counts, and what the whole thing costs — then maps
 each piece onto the crate's three source files.
 
-Everything below is read at the pinned commit
+Everything below is read at commit
 **`crossbeam-rs/crossbeam@6b7458d`**
 (`python3 tools/pinned-source.py ref crossbeam`); `crossbeam-epoch/src/internal.rs`
 is 636 lines there.

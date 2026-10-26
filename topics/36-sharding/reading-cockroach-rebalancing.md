@@ -7,7 +7,7 @@ the range boundaries *move*. Ranges split when they get too big **or too hot**, 
 they get small and cold, and get shuffled between stores by a two-level placement machine
 (per-range **allocator** + store-level **rebalancer**). This guide walks the code that makes
 those four decisions, in `~/repos/cockroach/pkg` at the SHA in the topic's pin table; every
-`file:line` below was checked against that pinned tree this session.
+`file:line` below was checked against that pinned tree.
 
 The payoff for topic 36 is the hot-key story. Lane 1's Zipf experiment showed hashing's dead
 end: with Zipf(1.0) on 16 hash shards, the hottest shard takes 14.7% of traffic (2.4× its fair

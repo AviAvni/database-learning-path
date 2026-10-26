@@ -1,27 +1,77 @@
 # Topic 32 notes — HTAP architectures
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
+
+`cargo run --release --bin htap_bench` — lane 1 runs a fixed 2 s window per
+mode:
+
+```
+=== lane 1: OLTP/OLAP interference on one copy ===
+                  mode     p50 ns     p99 ns     p99.9 ns  writes/2s   scans
+          writes alone         84        209          292   14052932       0
+   writes + full scans        167    2247875      2369166      21543     889
+(coarse lock on purpose: every full scan is a write outage — the HTAP problem)
+
+=== lane 2: columnar replica — scan speedup + freshness ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+
+=== lane 3: learner reads — the price of freshness ===
+[stub — implement the todo!()s in src/ to unlock this lane]
+```
+
+Every figure is a timing or a count of work done in a fixed window, so none
+is seeded; three consecutive runs gave p99 2.24–2.25 ms and 21,349–21,946
+writes with scans, i.e. one outage per scan of ~2.25 ms (2 s / 889 scans).
+
+**Why the lock is fair.** The store sits behind `parking_lot::FairMutex`,
+which hands the lock to waiters in FIFO order. That is what makes each full
+scan exactly one write outage, as long as the scan, and nothing else. With an
+unfair lock — `std::sync::Mutex` is `os_unfair_lock` on macOS — the scanner
+finishes a scan and re-acquires the lock before the parked writer wakes, so
+one write starves for as long as the scheduler allows: the lane would then
+report p99s of seconds, different on every run, and longer than its own 2 s
+window (the deadline is only checked between writes). A p99 longer than the
+measurement window is the repo's "implausible number" rule; exercise 2 makes
+you produce one on purpose.
+
+**Why a fixed window.** A fixed number of writes would serialize behind the
+scanner's lock holds into minutes; a fixed 2 s window per mode makes the
+writes-completed collapse the headline instead of the runtime.
+
+## Predictions (fill BEFORE implementing the stubs)
 
 | question | predicted | measured |
 |---|---|---|
-| lane 1: write p99, scans on vs off | 10–100x worse | **333 ns → 7.49 s** (2.2e7x); not slowdown — *starvation* |
-| lane 1: write throughput hit | ~2–5x fewer writes | 11,438,647 → **69** writes in 2 s |
-| lane 1: scans completed in 2 s | ~100 | 3261 (~0.6 ms/scan; scanner re-grabs the unfair lock back-to-back) |
-| lane 2: merged vs delta-heavy scan | 5–10x | (stub — measure after implementing replica.rs) |
-| lane 2: max lsn gap vs batch | ≈ batch size | (stub) |
-| lane 3: wait p50 at interval 100 | ~50 ticks | (stub) |
+| lane 1: write p99, scans on vs off | | **209 ns → 2.25 ms** |
+| lane 1: write throughput hit | | 14,052,932 → **21,543** writes in 2 s (652×) |
+| lane 1: scans completed in 2 s | | 889 |
+| lane 2: merged vs delta-heavy scan | | |
+| lane 2: max lsn gap vs batch | | |
+| lane 3: wait p50 at interval 100 | | |
 
-The lane-1 surprise: I expected degradation, got **writer starvation**.
-std::sync::Mutex is unfair; the scanner finishes a ~0.6 ms scan and wins
-the lock again before the parked writer wakes. p50 stayed 125 ns because
-the handful of writes that got through ran uncontended. Interference at
-its worst isn't slower writes — it's *no* writes. (Exercise 2: RwLock
-changes fairness, not the fight.)
+<details>
+<summary>Author's prediction</summary>
 
-Methodology note: lane 1 originally did a fixed 200K writes; with the
-scanner holding ~0.6 ms locks that serializes into minutes. Switched to a
-fixed 2 s window per mode — the writes-completed collapse became the
-headline number instead of the runtime.
+| question | author's prediction |
+|---|---|
+| lane 1: write p99, scans on vs off | 10–100x worse |
+| lane 1: write throughput hit | ~2–5x fewer writes |
+| lane 1: scans completed in 2 s | ~100 |
+| lane 2: merged vs delta-heavy scan | 5–10x |
+| lane 2: max lsn gap vs batch | ≈ batch size |
+| lane 3: wait p50 at interval 100 | ~50 ticks |
+
+The lane-1 predictions were wrong in kind, not degree: the author expected
+degradation and, under the old unfair lock, got writer starvation (see the
+paragraph under the baseline). With a fair lock, throughput still falls
+~650× — far beyond the predicted 2–5×.
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 

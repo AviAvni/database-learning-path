@@ -149,7 +149,7 @@ SDDMM, the softmax's max pass, its exp-sum pass, and the SpMM — the
 sparse-softmax is a segmented reduction over CSR rows, same shape as
 topic 20's row-wise SpMV, run twice. Call it ~3 extra passes over the
 edges per layer (question 2 turns this into a forward-time estimate
-against the **16.82 GFLOP/s** SpMM lane, FINDINGS.md row 25).
+against the **21.2 GFLOP/s** SpMM lane, FINDINGS.md row 25).
 **Multi-head attention** (K independent attention weightings — the
 standard variance-reduction trick) multiplies everything by K: it's
 K SpMMs with shared structure, different values. The paper concatenates
@@ -251,15 +251,15 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can count edge passes per GAT layer against per GCN layer on this topic's 566 K-edge SBM, whose SpMM measures 4.31 ms at 16.82 GFLOP/s.
+- [ ] You can count edge passes per GAT layer against per GCN layer on this topic's 566 K-edge SBM, whose SpMM measures 3.42 ms at 21.2 GFLOP/s.
 
   <details><summary>Answer</summary>
 
   GCN is one edge pass (the SpMM). GAT is roughly four: SDDMM, softmax-max,
   softmax-expsum, SpMM — about 4× the sparse traffic per layer, before the
-  ×K for multi-head. Anchoring to the measured SpMM (4.31 ms at 16.82
+  ×K for multi-head. Anchoring to the measured SpMM (3.42 ms at 21.2
   GFLOP/s, FINDINGS.md row 25) as the unit edge pass, a single-head GAT layer
-  lands near 4×4.31 ≈ 17 ms of sparse work; do the full estimate against your
+  lands near 4×3.42 ≈ 14 ms of sparse work; do the full estimate against your
   own bench in notes.md, and remember the SDDMM/softmax passes move less data
   per edge than the 64-wide SpMM, so the true ratio is below 4.
 

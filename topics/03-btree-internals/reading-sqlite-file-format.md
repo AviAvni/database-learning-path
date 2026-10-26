@@ -290,16 +290,15 @@ value ends.
 | *T* ≥ 12, even | (*T*−12)/2 | BLOB of that length |
 | *T* ≥ 13, odd | (*T*−13)/2 | text of that length, **no NUL terminator** |
 
-Three points the older edition of this chapter got loose, and one it omitted:
+Four points that are easy to get wrong:
 
 - **The header-length varint counts itself.** §2.1: "The varint value is the
   size of the header in bytes *including the size varint itself*." Off-by-one
   here is the single most common error in the exercise.
 - **Name the variable.** Going *up*, a text value of length `n` gets serial
   type `T = 2n + 13`; going *down*, a serial type `T` yields length
-  `(T − 13)/2`. Those are inverses of each other, not two rules — and the
-  previous edition wrote both with the same letter `n`, which makes them look
-  contradictory. For `'hello'`, `n = 5`, so `T = 2·5 + 13 = 23 = 0x17`.
+  `(T − 13)/2`. Those are inverses of each other, not two rules — writing
+  both with the same letter `n` makes them look contradictory. For `'hello'`, `n = 5`, so `T = 2·5 + 13 = 23 = 0x17`.
 - **Types 8 and 9 have a version floor.** §2.1 marks both "(Only available for
   schema format 4 and higher.)" — the schema format number is at file offset
   44 (§1.3.10). A booleans-heavy table on an older schema format pays a byte
@@ -390,8 +389,8 @@ free a chain before it frees a cell.
 ## How to read the document (with the concepts in hand)
 
 Section numbers below are the real ones on
-<https://www.sqlite.org/fileformat.html>; the previous edition of this
-chapter had three of them wrong, listed under "corrections" at the end.
+<https://www.sqlite.org/fileformat.html>; three are easy to mis-cite, and are
+listed under the table.
 
 | Read | Section | For | Step |
 |---|---|---|---|
@@ -402,11 +401,11 @@ chapter had three of them wrong, listed under "corrections" at the end.
 | skim | **§1.5 The Freelist**, **§1.8 Pointer Map Pages** | free-page reuse and the reverse index; the ptrmap cost model is in [`reading-sqlite-btree.md`](reading-sqlite-btree.md) Step 6 | — |
 | skim | **§3 The Rollback Journal**, **§4 The Write-Ahead Log** | how any of this becomes durable — topic 5 does it properly | — |
 
-**Corrections to the previous edition of this chapter**, all verified against
-the live document's table of contents: the record format is **§2.1**, not §2
-(§2 is "Schema Layer"); pointer maps are **§1.8**, not §1.5 (§1.5 is "The
-Freelist"); the rollback journal is **§3** and the WAL is **§4**, so "§4.1 WAL
-vs rollback journal" was two sections conflated (§4.1 is "WAL File Format").
+**Section numbers that are easy to mis-cite**, all verified against the live
+document's table of contents: the record format is **§2.1**, not §2 (§2 is
+"Schema Layer"); pointer maps are **§1.8**, not §1.5 (§1.5 is "The Freelist");
+the rollback journal is **§3** and the WAL is **§4**, so "WAL vs rollback
+journal" spans two sections rather than one (§4.1 is "WAL File Format").
 The canonical URL is `fileformat.html`; `fileformat2.html` also resolves but
 is not the name the document uses for itself.
 

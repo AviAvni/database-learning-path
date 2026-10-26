@@ -266,8 +266,7 @@ Answer each before unfolding it.
   schema (§4.6). It does *not* force a new version format — "every change
   committed to Lightning retains its original commit timestamp" (§3), because
   both F1 DB and Spanner are timestamp-MVCC. The version currency is shared;
-  only the schema/format is translated. (An earlier draft of this guide had
-  this backwards.)
+  only the schema/format is translated.
 
   </details>
 

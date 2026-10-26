@@ -9,8 +9,8 @@ half, and the cost-model gate whose four failure modes are the
 lesson — then maps every step to the ~3 files under
 `src/backend/jit/llvm/`.
 
-**Version.** Anchors are against postgres at the pin in
-`resources/codebases.md`, **`701f021`** — which is **PostgreSQL
+**Version.** Anchors are against postgres at **`701f021`** (the commit
+recorded in `resources/codebases.md`) — which is **PostgreSQL
 20devel**, not a released branch. That matters for one headline
 number: see Step 4. Retrieve any anchor with
 `python3 tools/pinned-source.py show postgres src/backend/jit/jit.c -r 32:42`.
@@ -173,10 +173,9 @@ constant — the interpreter loads it from the step struct every row;
 the JIT bakes it in. Multiply that by 121 opcode kinds and you have
 most of the win that is not dispatch.
 
-**Anchor correction.** The giant `switch (opcode)` is at
-**`llvmjit_expr.c:324`** (first case `EEOP_DONE_RETURN` at `:326`),
-not "326+"; and the FETCHSOME group is at **`:344-348`**, not
-"354+".
+The giant `switch (opcode)` is at **`llvmjit_expr.c:324`** (first
+case `EEOP_DONE_RETURN` at `:326`), and the FETCHSOME group is at
+**`:344-348`**.
 
 ```rust
 // ILLUSTRATION — not quoted from postgres. The C at
@@ -253,7 +252,7 @@ it. Question 4.
 > that is fixed for the whole query before any row is read. This is
 > the step the chapter exists for.
 
-**The headline correction: at this pin, `jit` defaults to OFF.**
+**The headline: in PostgreSQL 20devel, `jit` defaults to OFF.**
 
 ```c
 // postgres/src/backend/jit/jit.c — every JIT GUC's C default, 32-42
@@ -268,7 +267,7 @@ it. Question 4.
   42	double		jit_optimize_above_cost = 500000;
 ```
 
-Line 33 is the news. Upstream Postgres has flipped the default: the
+Line 33 is the one to focus on. Postgres has flipped the default: the
 same value appears in the generated GUC table
 (`src/backend/utils/misc/guc_parameters.dat:1451-1456`,
 `boot_val => 'false'`), in the shipped config sample

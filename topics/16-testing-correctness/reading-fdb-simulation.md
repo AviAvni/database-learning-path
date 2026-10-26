@@ -408,9 +408,10 @@ universes) decides which random branches to push deeper.
 
 turso runs there, and you can check it rather than take it on faith:
 `Dockerfile.antithesis` at the repo root and
-`.github/workflows/antithesis.yml` (a scheduled run with a
-240-minute default duration and an optional `diff_base` for
-targeted coverage), driving the workloads in
+`.github/workflows/antithesis.yml` (240 minutes by default, with an
+optional `diff_base` for targeted coverage), which
+`.github/workflows/antithesis-schedule.yml` runs every night — four
+hours Sunday to Friday, 24 hours on Saturday — driving the workloads in
 `testing/antithesis/bank-test/` and
 `testing/antithesis/stress-composer/`, with
 `scripts/antithesis/diff_to_targeted_coverage.py` turning a diff into
@@ -679,11 +680,12 @@ Answer each before unfolding it.
 | `flow/include/flow/DeterministicRandom.h` | — | the seeded PRNG every coin above draws from |
 | `flow/README.md` | — | Flow: actors + futures compiled to deterministic state machines |
 
-**Code** — [turso](https://github.com/tursodatabase/turso) @ `dd775bc`
+**Code** — [turso](https://github.com/tursodatabase/turso) @ `a820079e8` (v0.9.0-pre.1)
 
 | File | What |
 |---|---|
 | `Dockerfile.antithesis` | the image Antithesis runs |
-| `.github/workflows/antithesis.yml` | scheduled run, 240-minute default, optional `diff_base` |
+| `.github/workflows/antithesis.yml` | the run: 240-minute default, optional `diff_base` |
+| `.github/workflows/antithesis-schedule.yml` | nightly cron: 240 minutes Sun–Fri, 1,440 on Saturday |
 | `testing/antithesis/bank-test/`, `stress-composer/` | the workloads, i.e. Step 6's oracles |
 | `scripts/antithesis/diff_to_targeted_coverage.py` | turns a diff into a coverage target |

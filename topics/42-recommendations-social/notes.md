@@ -1,23 +1,88 @@
 # Topic 42 notes — Recommendations & social graphs
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
+
+`cargo run --release --bin social_bench` — lane 1:
+
+```
+== lane 1: the popularity trap ==
+   3000 users x 6000 items, 30 communities, 60000 training edges, 6000 held out
+   recommender          hit-rate@50   personalization   overlap w/ bestsellers
+   popularity               0.353             0.157                   0.922
+   basic walk               0.403             0.815                   0.457
+```
+
+Every figure is seeded and identical across runs. Two design choices make
+that true, and both are the same rule — anything a seeded choice depends on
+must have a fixed order. `personalization()` samples the lowest user ids, not
+the first users a std `HashMap` yields; and the collaboration generator picks
+triadic-closure neighbours by index into a *sorted* copy of the neighbour set,
+because the seeded rng chooses an index and a std `HashSet`'s iteration order
+changes every process. With either one left in hash order, the personalization
+column (and lane 3's graph) would differ run to run.
+
+## Predictions (fill BEFORE implementing the stubs)
 
 | question | predicted | measured |
 |---|---|---|
-| lane 1: popularity hit-rate@50 | weak, maybe 0.05 | **0.340** — the bestseller list is a real baseline |
-| lane 1: popularity personalization | 0.000 | **0.155**, and only because own-items are filtered out |
-| lane 1: basic walk hit-rate@50 | much better than popularity | **0.403** — only marginally better |
-| lane 1: basic walk overlap with bestsellers | ~0.2 | **0.451** — half of it is the bestseller list |
-| lane 2: 8 query pins vs 1 | +0.1 | (stub — reference: 0.403 → **0.823**, the biggest single win) |
-| lane 2: multi-hit boost | +0.05 | (stub — reference: **−0.02**. No gain. See below.) |
-| lane 2: early-stop step saving | ~50% | (stub — reference: **35% of full steps, 2.2× faster**) |
-| lane 2: early-stop top-50 overlap | ≥0.7 | (stub — reference: **0.793**, hit rate unchanged) |
-| lane 2: walk latency | ~1 ms | (stub — reference: 2.12 ms full, **0.97 ms early-stopped**) |
-| lane 3: random baseline accuracy | ~0.3% | (stub — reference: **0.314%**, right in the paper's 0.147–0.475% band) |
-| lane 3: common neighbours | 20× | (stub — reference: **20.7×**) |
-| lane 3: Jaccard | ~common | (stub — reference: **25.6×** — best on this generator) |
-| lane 3: Adamic/Adar | best | (stub — reference: **22.3×**, above common neighbours as in the paper) |
-| lane 3: preferential attachment | worst | (stub — reference: **1.9×** — barely above chance) |
+| lane 1: popularity hit-rate@50 | | 0.353 |
+| lane 1: popularity personalization | | 0.157 |
+| lane 1: basic walk hit-rate@50 | | 0.403 |
+| lane 1: basic walk overlap with bestsellers | | 0.457 |
+| lane 2: 8 query pins vs 1 | | |
+| lane 2: multi-hit boost | | |
+| lane 2: early-stop step saving | | |
+| lane 2: early-stop top-50 overlap | | |
+| lane 2: walk latency | | |
+| lane 3: random baseline accuracy | | 0.313% |
+| lane 3: common neighbours | | |
+| lane 3: Jaccard | | |
+| lane 3: Adamic/Adar | | |
+| lane 3: preferential attachment | | |
+
+<details><summary>Author's prediction</summary>
+
+| question | predicted |
+|---|---|
+| lane 1: popularity hit-rate@50 | weak, maybe 0.05 |
+| lane 1: popularity personalization | 0.000 |
+| lane 1: basic walk hit-rate@50 | much better than popularity |
+| lane 1: basic walk overlap with bestsellers | ~0.2 |
+| lane 2: 8 query pins vs 1 | +0.1 |
+| lane 2: multi-hit boost | +0.05 |
+| lane 2: early-stop step saving | ~50% |
+| lane 2: early-stop top-50 overlap | ≥0.7 |
+| lane 2: walk latency | ~1 ms |
+| lane 3: random baseline accuracy | ~0.3% |
+| lane 3: common neighbours | 20× |
+| lane 3: Jaccard | ~common |
+| lane 3: Adamic/Adar | best |
+| lane 3: preferential attachment | worst |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Lane 2 (Pixie ablation, reference implementation, measured 2026-07-27):
+
+| measure | reference |
+|---|---|
+| 8 query pins vs 1 | hit rate 0.403 → **0.823**, the biggest single win |
+| multi-hit boost | **−0.02** — no gain (0.823 → 0.803; 0.563 → 0.547 at three interests) |
+| early-stop step saving | **35% of full steps, 2.2× faster** |
+| early-stop top-50 overlap | **0.793**, hit rate unchanged |
+| walk latency | 2.12 ms full, **0.97 ms early-stopped** |
+
+Lane 3 (link prediction, measured 2026-10-26, from a straightforward
+implementation of the four measures that passes the stub tests):
+
+| predictor | hits / n | factor over random |
+|---|---|---|
+| random baseline | — | **0.313%** correct, inside the paper's 0.147–0.475% band |
+| preferential attachment | 3 / 985 | **1.0×** — no better than chance |
+| common neighbours | 67 / 985 | **21.7×** |
+| Jaccard | 86 / 985 | **27.9×** — best on this generator |
+| Adamic/Adar | 74 / 985 | **24.0×**, above common neighbours as in the paper |
 
 Three mechanics worth memorizing.
 
@@ -25,7 +90,7 @@ Three mechanics worth memorizing.
 the bestseller list gets a third of users right, so a recommender that
 "beats popularity on hit rate" may simply *be* popularity. Lane 1's
 third column is the one to watch: an unbiased random walk personalizes
-(0.820) yet still fills 45% of every list with globally popular items,
+(0.815) yet still fills 46% of every list with globally popular items,
 because its stationary distribution goes as degree. Any evaluation
 without a popularity-overlap column is missing the failure mode.
 

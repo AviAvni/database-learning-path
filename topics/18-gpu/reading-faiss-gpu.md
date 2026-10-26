@@ -96,8 +96,8 @@ lane at 16 M elements, `notes.md:16`:
 
 Resident, you pay 0.88 s once. Non-resident, you pay it per batch — 1562× the
 traffic of the thing you actually needed to send. This topic's own headline is
-the same lesson without the index: at 16 M elements upload alone costs 7197 µs
-against a 2723 µs CPU total (`FINDINGS.md:36`).
+the same lesson without the index: at 16 M elements upload alone costs 7384.7 µs
+against a 2257.7 µs CPU total (`notes.md:16`).
 
 ### Step 3 — why a heap is the wrong data structure on a warp
 
@@ -122,8 +122,7 @@ mattered: Batcher's classic formulation *"would require that 32t = k and is a
 power-of-2; thus if k = 1024, t must be 32. We found that the optimal t is way
 smaller"* (§4.3). So the paper builds `merge-odd` and `sort-odd` (Algorithms 1
 and 2), which merge arrays of unequal, non-power-of-two lengths in
-`⌈log₂(max(ℓL, ℓR))⌉ + 1` parallel steps. Calling them "odd-even merge networks"
-— as an earlier version of this guide did — names the wrong thing: odd-*even* is
+`⌈log₂(max(ℓL, ℓR))⌉ + 1` parallel steps. Calling them "odd-even merge networks" names the wrong thing: odd-*even* is
 Batcher's, and avoiding its size constraint is the contribution.
 
 ### Step 4 — WarpSelect: two queues, both in registers
@@ -216,7 +215,7 @@ thread-queue length as the last macro argument:
   faiss/gpu/utils/warpselect/WarpSelectFloatF2048.cu:15 WARP_SELECT_IMPL(float, false, 2048, 8)
 ```
 
-The last line is a correction to make: the paper's ceiling was 1024, and the
+The last line is the one to notice: the paper's ceiling was 1024, and the
 shipped ceiling is **2048**, conditional on the compiler:
 
 ```cpp
@@ -608,7 +607,7 @@ Answer each before unfolding it.
 - `topics/18-gpu/notes.md:9-16` — the 9.09 GB/s upload and 29.7 GB/s CPU rates
   Step 2's residency arithmetic uses. A sum kernel on Apple unified memory, not
   a search, and not PCIe.
-- `FINDINGS.md:36` — no crossover to 2²⁴; 7197 µs upload against a 2723 µs CPU
+- `FINDINGS.md:36` — no crossover to 2²⁴; 7384.7 µs upload against a 2257.7 µs CPU
   total at 16 M.
 
 **Related guides**

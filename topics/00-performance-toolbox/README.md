@@ -221,7 +221,9 @@ flowchart LR
       (node/edge inserts, point reads, 2-hop traversal patterns)
 - [x] criterion harness wired up (generator smoke bench)
 - [x] Baseline numbers from the reference `falkordb-rs-next-gen` recorded in
-      `capstone/BASELINES.md` (run its bench suite; numbers to chase later)
+      `capstone/BASELINES.md` (run its bench suite; numbers to chase later).
+      That repo is now archived; its Rust engine continues as FalkorDB's
+      `main` branch and 6.x releases (FalkorDB/FalkorDB#2279).
 
 ## Done when
 

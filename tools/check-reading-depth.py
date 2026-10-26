@@ -6,7 +6,7 @@ Why this exists
 The depth rules were written after studying one chapter and finding that its
 failures — borrowed jargon, unstated data lineage, a snippet anchored forty lines
 from the code it quoted — were properties of the format rather than of that
-chapter. There are 230 chapters. Rules that are only enforced by care do not
+chapter. There are well over two hundred of them. Rules that are only enforced by care do not
 survive that many files, so the mechanical part of each rule is enforced here.
 
 What it checks (and what it deliberately does not)

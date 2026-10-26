@@ -4,7 +4,7 @@ Dynamo (DeCandia et al., SOSP 2007) is the paper that made consistent hashing th
 
 For this topic, read the paper as a partitioning-and-rebalancing story. The ring, virtual nodes, and especially the strategy 1 → 2 → 3 evolution in §6.2 are the main plot — that evolution ends at "fixed equal partitions, moved as whole files", which is the same destination Redis Cluster hard-coded as 16384 slots (see [reading-redis-cluster.md](reading-redis-cluster.md)) and the destination the capstone's M36 milestone copies. Vector clocks, quorums, and hinted handoff are supporting cast here; each gets one step, with topic 21 as the deeper home for replication.
 
-Every section, figure and table cited below is from the SOSP 2007 paper as text-extracted this session; the numbers were checked against it rather than repeated from memory.
+Every section, figure and table cited below is from the SOSP 2007 paper as text-extracted from the PDF; the numbers were checked against it rather than repeated from memory.
 
 ## The problem in one sentence
 

@@ -13,17 +13,17 @@ a stale heartbeat: its RCS log ends at *Revision 1.212, 2006/09/02*, and the
 hand-written changelog has one later entry, *2011/07/21 — Added nginx.org*. So it
 is a 1999 essay revised through 2006, and anything it says about "current" kernels
 is twenty years old. The valkey claims come from two dated posts, 2024-08-05 and
-2024-09-13. The redis code is the repo's pin:
+2024-09-13. The redis code is `redis/redis@e87dda2a4` (`unstable`,
+2026-10-26), the revision the repo's pin table records:
 
 ```sh
-tools/pinned-source.py ref redis          # a176d1225
+tools/pinned-source.py ref redis          # e87dda2a4
 tools/pinned-source.py show redis src/ae.c -r 30:44
-tools/pinned-source.py check redis src/config.h:86 --contains 'HAVE_EPOLL'
+tools/pinned-source.py check redis src/config.h:91 --contains 'HAVE_EPOLL'
 ```
 
-Every `file:line` below was re-checked against that pin. Where this chapter used
-to state a number with no source, it now either cites one or says the number was
-removed.
+Every `file:line` below is true at that revision, and every number in the
+chapter cites its source; where no source exists, no number is given.
 
 ## The problem in one sentence
 
@@ -73,13 +73,11 @@ That is the real 1999 constraint, and it is worth being precise about it: the
 wall was **address space**, not physical memory. 2^30 bytes of user-accessible
 virtual address space divided by a 2^21-byte stack is 512 threads, and the
 stacks are mostly untouched — an idle connection's thread does not fault in 2 MB.
-(An earlier version of this chapter said "10,000 stacks, ~80 MB at 8 KB minimum
-each". That number had no source, and it also argues the wrong quantity. It is
-gone; Kegel's own division replaces it.)
+Counting resident kilobytes per stack argues the wrong quantity; Kegel's
+division is the one that mattered.
 
-The second cost is the context switch, and this chapter no longer quotes a
-per-switch figure — the "~1–10 µs" it used to print was unsourced. What this
-repo *can* say is measured. Topic 7's own lane does nothing at all: a 32-byte
+The second cost is the context switch. This chapter quotes no per-switch figure,
+because none is sourced here; what this repo *can* say is measured. Topic 7's own lane does nothing at all: a 32-byte
 request, an 8-byte reply, no parsing, no store, over loopback. At pipeline depth
 1 it runs at **44,088 ops/s, 22.68 µs per request**
 ([FINDINGS.md](../../FINDINGS.md) row 7; full table in [notes.md](notes.md)).
@@ -94,8 +92,8 @@ batched with anyone else's. Hold that thought until Step 5.
 ### Step 2 — Kegel's five strategies, in his order and his words
 
 > **In:** the per-connection costs from Step 1.
-> **Out:** the actual 1999 menu — five strategies, not four, and in an order
-> that is not the one this chapter used to print.
+> **Out:** the actual 1999 menu — five strategies, not four, in Kegel's own
+> order rather than the historical order they are usually retold in.
 
 Kegel lists exactly five, under the heading *I/O Strategies*, introduced as "The
 following five combinations seem to be popular":
@@ -113,12 +111,10 @@ following five combinations seem to be popular":
 
 Two things about that list are worth more than the list itself.
 
-**First, this chapter used to get the order wrong.** It said "the fourth entry in
-Kegel's menu was asynchronous I/O". Async I/O is the *third*; the fourth is
-thread-per-client. The old ordering — thread-per-connection, select/poll,
-readiness notification, async I/O — was a retelling in historical order, not
-Kegel's taxonomy, and presenting it as his was simply wrong. It is corrected
-above.
+**First, the order is a taxonomy, not a history.** Async I/O is the *third*
+entry; the fourth is thread-per-client. The familiar sequence —
+thread-per-connection, select/poll, readiness notification, async I/O — is a
+retelling in historical order, and it is not Kegel's.
 
 **Second, kqueue appears in both 1 and 2, and that is the real lesson.**
 Level-triggered against edge-triggered is a *mode* you select, not a property an
@@ -161,12 +157,12 @@ An **event loop** is the shape those APIs imply: a single thread that blocks in
 one "which of my fds are ready?" call, dispatches a callback per ready fd, and
 goes round again.
 
-### Step 3 — which strategy the pinned redis code is (and on which machine)
+### Step 3 — which strategy redis's code is (and on which machine)
 
 > **In:** Kegel's five strategies from Step 2.
 > **Out:** the exact strategy and the exact mode redis chose, read out of
-> `src/ae.c` at the pin — including which backend file compiles on the machine
-> that produced this topic's numbers.
+> `src/ae.c` — including which backend file compiles on the machine that
+> produced this topic's numbers.
 
 `ae.c` picks its backend at compile time, in a nested `#ifdef` ladder with a
 comment that states the intended ranking:
@@ -193,18 +189,20 @@ comment that states the intended ranking:
 Those three macros are set by platform, not by configuration:
 
 ```c
-// redis src/config.h — "Test for polling API", 84-99 (accept4 test elided)
-    84  /* Test for polling API */
-    85  #ifdef __linux__
-    86  #define HAVE_EPOLL 1
-    87  #endif
-   // ... 89-95: HAVE_ACCEPT4 ...
-    97  #if (defined(__APPLE__) && defined(MAC_OS_10_6_DETECTED)) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined (__NetBSD__)
-    98  #define HAVE_KQUEUE 1
-    99  #endif
+// redis src/config.h — the polling-API tests, 89-92 and 111-115
+    89  /* Test for polling API */
+    90  #ifdef __linux__
+    91  #define HAVE_EPOLL 1
+    92  #endif
+// ... 93-110: the accept4() and pipe2() detection blocks ...
+   111  /* Detect for kqueue */
+   112  #if (defined(__APPLE__) && defined(MAC_OS_10_6_DETECTED)) || defined(__FreeBSD__) || \
+   113      defined(__OpenBSD__) || defined (__NetBSD__) || defined(__DragonFly__)
+   114  #define HAVE_KQUEUE 1
+   115  #endif
 ```
 
-Line 85 is the one to internalize before writing anything about `epoll` in this
+Line 90 is the one to internalize before writing anything about `epoll` in this
 repo: **`ae_epoll.c` is compiled only on Linux.** The measurements in
 [notes.md](notes.md) were taken on an Apple M3 Pro, so the loop that produced
 them was `ae_kqueue.c`. Anything this repo says about "how the event loop
@@ -235,15 +233,15 @@ you get nothing. So:
 > **Redis is Kegel's strategy 1 on both platforms — many clients per thread,
 > nonblocking I/O, *level-triggered* readiness notification — not strategy 2.**
 
-This chapter previously implied the opposite by calling Step 3 "readiness
-notification: epoll/kqueue, the line that won" and describing strategy 2's
-semantics. The family is right; the mode was wrong. Level-triggered is the
-forgiving mode — Kegel again: edge-triggered "is a bit less forgiving of
-programming mistakes, since if you miss just one event, the connection that event
-was for gets stuck forever" — and redis, which reads a bounded 16 KB per wakeup
+This is easy to get backwards, because "epoll/kqueue, the line that won" is
+usually told alongside strategy 2's edge-triggered semantics. The family is the
+one that won; the mode is strategy 1's. Level-triggered is the forgiving mode —
+Kegel again: edge-triggered "is a bit less forgiving of programming mistakes,
+since if you miss just one event, the connection that event was for gets stuck
+forever" — and redis, which does one bounded read per wakeup (16 KiB to start)
 and comes back later for the rest, *depends* on being told again.
 
-There is one more platform difference visible in the pinned code, and it is a
+There is one more platform difference visible in the code, and it is a
 nice example of an abstraction leaking. `epoll` merges a fd's interests into one
 registration (`mask |= eventLoop->events[fd].mask` at `ae_epoll.c:63`, one
 `epoll_ctl` at `:67`) and returns one event per fd. kqueue registers up to two
@@ -368,7 +366,7 @@ of the server faster.
 **Valkey 8's answer** is the conservative one: keep one execution thread — no
 locks in the data structures, commands atomic by construction — and parallelize
 only I/O. The discipline worth copying is that they profiled first, and their
-published profile is not what this chapter used to claim:
+published profile is specific:
 
 - "Socket polling system calls, such as `epoll_wait`, are expensive procedures.
   When executed solely by the main thread, `epoll_wait` consumes more than 20
@@ -388,13 +386,12 @@ published profile is not what this chapter used to claim:
   commands using AWS EC2 C7g.16xlarge". — part 1, § *Major Upgrade to Valkey
   Performance*
 
-Three corrections come out of that list, and they are the reason to read sources
-rather than summaries. This chapter used to say "commands themselves ~30%" — that
-figure appears in neither post; the profiled figures are `epoll_wait` > 20% and
-`lookupKey` > 40%, and both are *I/O and memory*, not command logic. It used to
-say "~2–3× redis 7"; the comparison is against **valkey 7.2**, and it is
-approximately 3.3× (1.19M / 360K), stated by its authors as ~230% *increase*. And
-it used to attribute the whole gain to threading: 780K of it is threading, and the
+Three things come out of that list, and they are the reason to read sources
+rather than summaries. Neither post assigns a share of time to command logic:
+the profiled figures are `epoll_wait` > 20% and `lookupKey` > 40%, and both are
+*I/O and memory*. The comparison base is **valkey 7.2**, not redis, and the
+ratio is approximately 3.3× (1.19M / 360K), stated by its authors as a ~230%
+*increase*. And the gain is not all threading: 780K of it is threading, and the
 step from 780K to 1.19M is the prefetcher, which is a memory-latency trick
 (topic 0's territory) that only became possible *because* the I/O threads deliver
 commands in batches.
@@ -493,8 +490,8 @@ story is module-level locking rather than partitioning.
   after [reading-valkey-iothreads.md](reading-valkey-iothreads.md), because the
   posts describe the code that guide reads. Copy down every number *with its
   configuration attached* — the 1.19M is 8 I/O threads on a c7g.16xlarge with
-  512-byte values and 650 clients running sequential SET, and quoting it without
-  that is how "~2–3× redis 7" got into this file.
+  512-byte values and 650 clients running sequential SET; quoted without that,
+  it turns into a claim ("~2–3× redis 7") that neither post makes.
 - **Glauber Costa on thread-per-core** — the Glommio announcement on the Datadog
   engineering blog is the readable entry point; seastar.io's home page and
   DragonflyDB's README give the same design in two other codebases' words. Read
@@ -527,7 +524,7 @@ story is module-level locking rather than partitioning.
 Answer each before unfolding it.
 
 - [ ] You can list Kegel's five I/O strategies in his order, and say which one
-      the pinned redis code implements.
+      redis's event loop implements.
 
   <details><summary>Answer</summary>
 
@@ -551,9 +548,9 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `ae_kqueue.c`. `config.h:85` guards `HAVE_EPOLL` with `#ifdef __linux__`, and
-  `config.h:97` guards `HAVE_KQUEUE` with `__APPLE__ && MAC_OS_10_6_DETECTED` (or
-  a BSD). The ladder at `ae.c:32-44` therefore falls through `HAVE_EVPORT` and
+  `ae_kqueue.c`. `config.h:90` guards `HAVE_EPOLL` with `#ifdef __linux__`, and
+  `config.h:112-113` guards `HAVE_KQUEUE` with `__APPLE__ && MAC_OS_10_6_DETECTED`
+  (or a BSD, or DragonFly). The ladder at `ae.c:32-44` therefore falls through `HAVE_EVPORT` and
   `HAVE_EPOLL` to `#include "ae_kqueue.c"` on the Apple M3 Pro of
   [notes.md](notes.md). Consequence: on that machine `aeApiPoll` runs the
   two-pass read/write merge at `ae_kqueue.c:149-170`, which has no counterpart in
@@ -611,7 +608,8 @@ Answer each before unfolding it.
 
   The I/O-thread rework alone reached 780K (part 2, § *Back to Valkey*). The step
   from 780K to 1.19M is the **prefetcher**: `lookupKey` was over 40% of main-thread
-  time, `dictPrefetch` interleaves the hash-chain walks for a whole batch and cuts
+  time, and valkey's batch prefetcher (`prefetchCommands`, valkey
+  `src/memory_prefetch.c:288`) interleaves the hash-chain walks for a whole batch and cuts
   it by more than 80%, worth "almost 50%" overall. That is a memory-latency win,
   not a concurrency win — and it is only available because the I/O threads hand
   over *batches*.
@@ -657,9 +655,7 @@ Answer each before unfolding it.
   `lookupKey` > 40%); *Batching and interleaving* (>80%, ~50%, 1.19M).
 - Glauber Costa — "Introducing Glommio, a thread-per-core crate for Rust and
   Linux", Datadog engineering blog. Sections used: *What is thread-per-core?*,
-  *Using Sharding*. (An earlier version of this chapter cited an essay titled
-  "The reactor pattern is dead, long live the reactor". That title could not be
-  verified against any primary source and has been removed.)
+  *Using Sharding*.
 - Glommio README, github.com/DataDog/glommio — § *What is Glommio?*
 - seastar.io home page — § *Shared-nothing design*, § *Message passing*.
 - DragonflyDB README, github.com/dragonflydb/dragonfly — the shared-nothing and
@@ -671,9 +667,11 @@ Answer each before unfolding it.
 - tokio blog — "Making the Tokio Scheduler 10x Faster", § *Work-stealing
   scheduler*.
 
-**Code, at this repo's pins** (`tools/pinned-source.py ref redis` → `a176d1225`)
+**Code, at this repo's pins** (`tools/pinned-source.py ref redis` → `e87dda2a4`;
+valkey at `668d875ca`)
 - `src/ae.c:30-44` — the backend ladder.
-- `src/config.h:84-99` — `HAVE_EPOLL` is `__linux__`; `HAVE_KQUEUE` is Apple/BSD.
+- `src/config.h:89-92`, `:111-115` — `HAVE_EPOLL` is `__linux__`; `HAVE_KQUEUE`
+  is Apple/BSD/DragonFly.
 - `src/ae_kqueue.c:102-111` — `EV_ADD`, no `EV_CLEAR`: level-triggered.
 - `src/ae_kqueue.c:142-170` — the two-pass read/write merge kqueue forces.
 - `src/ae_epoll.c:54-69` — one merged registration per fd; no `EPOLLET`.

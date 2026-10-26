@@ -60,6 +60,25 @@ Write skew, the one everyone forgets (and your test suite will demonstrate):
  the write SETS are disjoint; the danger is in the read→write overlap.
 ```
 
+If isolation levels are defined by the anomalies they permit, then checking a
+database's isolation is a search for those anomalies in its histories — and
+that search is hard. **Fast Verification of Strong Database Isolation**
+(VeriStrong; Zhiheng Cai, Si Liu, Hengfeng Wei, Yuxing Chen, Anqun Pan, PVLDB
+19(4), 2025; [paper](https://www.vldb.org/pvldb/vol19/p563-wei.pdf) ·
+[extended version](https://arxiv.org/abs/2511.14067)) states why: checking a
+black-box history for serializability or snapshot isolation means guessing the
+hidden version order, which is NP-hard, and prior checkers also assume every
+write stores a unique value so each read maps to one writer — false for real
+workloads where many transactions write the same value (§1). VeriStrong encodes
+certain and uncertain dependencies in one structure ("hyper-polygraphs") and
+solves it with an SMT search tailored to database histories (§3, §6). On
+histories of up to 100k transactions and 2 million operations, serializability
+checking completed in under 5 hours using less than 64 GB of memory (§7.2.3,
+Fig. 12), and it reproduced a known MariaDB isolation anomaly in the
+then-latest stable release (11.5.2), which the developers confirmed (§7.4).
+The write-skew history in the box above is exactly what such a checker must
+find, and it is the kind of checker to aim at M8's versioned reads.
+
 ## 2. Three schools of concurrency control
 
 | | 2PL (pessimistic) | OCC (optimistic) | MVCC |
@@ -105,8 +124,9 @@ flowchart TD
 ```
 
 HOT updates: if no indexed column changed and the new version fits on the
-same page, skip all index updates — index points at the chain head, readers
-walk t_ctid within the page. This is why "UPDATE = INSERT+DELETE" is only
+same page, skip the index updates — index points at the chain head, readers
+walk t_ctid within the page. (Summarizing indexes such as BRIN are still
+maintained; `reading-postgres-heapam.md` Step 7 shows the line.) This is why "UPDATE = INSERT+DELETE" is only
 *half* true in postgres.
 
 The debt: vacuum. Dead versions accumulate; `heap_page_prune_opt` does
@@ -123,6 +143,22 @@ cooperative — every thread cleans as it walks.
 Wu/Pavlo VLDB'17 measured the design space (version storage: append-only vs
 delta vs time-travel; ordering: newest-to-oldest wins; GC: cooperative wins)
 — read it as a menu with benchmark-backed prices.
+
+The same menu applies to an LSM, where the question is where *uncommitted*
+versions live. Keeping them in memory makes visibility checks cheap but breaks
+on large write transactions; spilling them to disk saves memory but makes every
+visibility check consult commit-status structures. **Swan: Hybrid MVCC
+Management for Efficient Transaction Processing in LSM-Tree-Based Key-Value
+Stores** (Yang Guo, Jin Xue, Zili Shao, PVLDB 19(9), VLDB 2026;
+[paper](https://www.vldb.org/pvldb/vol19/p1977-guo.pdf) ·
+[code](https://github.com/LAccordeur/swan)) measures RocksDB's update
+throughput dropping by up to 20% under concurrency for that reason (§2.3,
+Fig. 1b). Swan keeps normal transactions in memory and moves only large write
+transactions' uncommitted versions to an on-disk stash that is promoted to L0
+on commit or deleted on abort (§1); compared with the in-memory MVCC scheme it
+improves insertion throughput by up to 19% (§1). Read it next to
+[`reading-rocksdb-transactions.md`](reading-rocksdb-transactions.md): it is the
+case M8 would meet if a bulk graph load committed as one transaction.
 
 ## 5. Code to read (guides in this dir)
 

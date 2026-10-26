@@ -1,14 +1,30 @@
 # Topic 33 notes — temporal graphs
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| lane 1: false positives at 2K nodes / 4K contacts | ~30–50% | **99.5%** — static reach 25,031 pairs, temporal 137 |
-| lane 1: density where the lie vanishes | never fully | **0.0% at 64K contacts** (temporal saturates to all 39,980 static pairs) |
-| lane 2: one-pass vs fixpoint oracle speedup | ~10x | (stub — measure after implementing temporal_reach.rs) |
-| lane 3: p99 AT TIME, anchors every 1K vs none | ~100x | (stub) |
-| lane 3: avg replay len ≈ every/2 | yes | (stub) |
+`cargo run --release --bin temporal_bench`:
+
+```
+=== lane 1: static condensation vs temporal reachability ===
+     nodes   contacts   static-reach temporal-reach  false positives
+      2000       3999          25031            137            99.5%
+      2000       7998          36956            925            97.5%
+      2000      15996          39980          17229            56.9%
+      2000      63969          39980          39980             0.0%
+(every false positive is a path that exists in space but not in time)
+
+=== lane 2: one-pass earliest-arrival vs fixpoint oracle ===
+  contacts       oracle     one-pass   speedup
+[stub — implement the todo!()s in src/ to unlock this lane]
+
+=== lane 3: AT TIME latency vs checkpoint spacing ===
+  anchor every   anchors     p50 read     p99 read avg replay len
+[stub — implement the todo!()s in src/ to unlock this lane]
+```
+
+Lane 1 is a seeded count, so every figure — static reach 25,031 vs temporal
+137 = 99.5% false positives; 56.9% at 16K contacts; 0.0% at 64K, saturating
+at 39,980 pairs — is identical on every run.
 
 The lane-1 surprise: I expected the static condensation to be a loose
 upper bound; at realistic sparsity it is *pure noise* — 99.5% of its
@@ -21,6 +37,34 @@ Methodology note: the oracle is a deliberate Bellman-Ford-shaped
 fixpoint (no ordering assumptions, obviously correct) so the one-pass
 implementation has independent ground truth; lane 2's speedup is then
 the measured value of the sorted-stream insight, not a tautology.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| lane 1: false positives at 2K nodes / 4K contacts | | **99.5%** — static reach 25,031 pairs, temporal 137 |
+| lane 1: density where the lie vanishes | | **0.0% at 64K contacts** (temporal saturates to all 39,980 static pairs) |
+| lane 2: one-pass vs fixpoint oracle speedup | | |
+| lane 3: p99 AT TIME, anchors every 1K vs none | | |
+| lane 3: avg replay len ≈ every/2? | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| lane 1: false positives at 2K nodes / 4K contacts | ~30–50% |
+| lane 1: density where the lie vanishes | never fully |
+| lane 2: one-pass vs fixpoint oracle speedup | ~10x |
+| lane 3: p99 AT TIME, anchors every 1K vs none | ~100x |
+| lane 3: avg replay len ≈ every/2 | yes |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic; the stub tests
+are the specification.
 
 ## Guide-question checklist
 

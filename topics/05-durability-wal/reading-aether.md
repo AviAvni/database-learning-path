@@ -4,8 +4,7 @@ On a multicore, the log is ONE shared object every transaction must append to
 and flush — so how does it not become the bottleneck? Aether's answer is four
 independent fixes that compose, and two of them are the ancestors of how
 postgres inserts WAL today. Before the paper, this chapter builds the four
-bottlenecks one at a time — in the authors' own lettering, which is not the one
-this chapter used to give — and then each fix in order of increasing cleverness,
+bottlenecks one at a time — in the authors' own lettering — and then each fix in order of increasing cleverness,
 ending with the measurement that says which one actually mattered.
 
 Every claim below was checked against the paper as published: **Ryan Johnson,
@@ -90,9 +89,8 @@ only *waiting*.
 > **Out:** four distinct waits with four distinct causes — a disk, a lock table,
 > a scheduler, and a mutex — each with its own fix and its own measurement.
 
-The paper's abstract names them, and this chapter now uses the paper's letters.
-(An earlier version of this file assigned A–D in a different order; if you
-remember "A = the buffer mutex", relabel.) Quoting the abstract:
+The paper's abstract names them, and this chapter uses the paper's letters.
+Quoting the abstract:
 
 > "(a) the high volume of small-sized I/O requests may saturate the disk, (b)
 > transactions hold locks while waiting for the log flush, (c) extensive context
@@ -153,8 +151,8 @@ Top rung — macOS F_FULLFSYNC, T = 2.967 ms
 Middle rung — fdatasync / macOS fsync, T = 22.67 µs
     100 000/s          2.27             44 109/s
 
-The old claim in this file was "1 ms per fsync and 32 waiting committers
-⇒ ~32K commits/s". Neither number came from anywhere. The honest local
+The usual back-of-envelope is "1 ms per fsync and 32 waiting committers
+⇒ ~32K commits/s"; neither number is measured. The honest local
 form of the same sentence:
     32 committers riding one F_FULLFSYNC = 32 × 337  =  10 784 commits/s
     32 committers riding one fdatasync   = 32 × 44109 = 1 411 488 commits/s
@@ -206,8 +204,7 @@ The catch is condition 1 read carefully: it only covers effects that escape
 through *the log*. A read-only transaction writes no commit record, so it has no
 place in the total order and can leak unflushed state to a user.
 
-**Why nobody shipped it.** The paper's own answer (§3.1) is better than the
-vague one this chapter used to give: "modern database engines do not implement
+**Why nobody shipped it.** The paper gives its own answer (§3.1): "modern database engines do not implement
 ELR and to our knowledge this is the first paper to analyze empirically ELR's
 performance. We hypothesize that this is largely due to the effectiveness of
 asynchronous commit, which obviates ELR and which nearly all major systems do
@@ -310,8 +307,8 @@ The underlying principle is one sentence: decouple *sequencing* (assigning log
 offsets — must be serial, so make it tiny) from *copying* (moving bytes —
 needn't be serial, so make it parallel).
 
-**Which one is postgres?** §5.2, not §5.1 — and this chapter used to say the
-opposite. `ReserveXLogInsertLocation` (`xlog.c:1172–1184`) holds a spinlock for
+**Which one is postgres?** §5.2, not §5.1 — it is easy to guess the opposite.
+`ReserveXLogInsertLocation` (`xlog.c:1172–1184`) holds a spinlock for
 one addition and four field moves, then releases it and copies outside; the
 format conversions happen at `:1182–1184`, deliberately after the release. That
 is decoupled buffer fill exactly. Postgres's answer to §5.2's release-in-order

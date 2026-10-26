@@ -94,8 +94,7 @@ size the output — every parent contributes exactly *d* children, so the output
 size is `p × d` before you look (`search_single_cta.cuh:108`). Regularity bought
 at build time, spent at every search.
 
-The defaults are bigger than most descriptions of CAGRA (including this guide's
-previous version, which said "e.g. 32") suggest:
+The defaults are bigger than most descriptions of CAGRA suggest:
 
 ```cpp
 // cpp/include/cuvs/neighbors/cagra.hpp:149-153 — build defaults.
@@ -187,11 +186,11 @@ between 1 and 26 — reordering alone never does. Reordering raises the 2-hop
 count; reverse edges make the graph strongly connected. Two surgeries, two
 different jobs.
 
-**The build headline, correctly stated.** The abstract's number is *"2.2–27×
+**The build headline.** The abstract's number is *"2.2–27×
 faster than HNSW, which is one of the CPU SOTA implementations"* — measured on a
 DGX A100 with an AMD EPYC 7742 (64 cores) and an A100 80 GB, with dataset and
-graph resident in device memory (§V-A). This guide previously said "~10×"; that
-figure is in neither the abstract nor §V. And read the residency clause the way
+graph resident in device memory (§V-A). Quote the range, not a midpoint: no
+single "~10×" figure appears in the abstract or §V. And read the residency clause the way
 `reading-crystal-sigmod20.md` teaches: a GPU number quoted without saying where
 the data lives is not a number.
 
@@ -283,7 +282,7 @@ the buffer is too big for registers:
 > 512, while we use a radix-based sort using within a single CTA when it is
 > larger than 512."* (§IV-B2)
 
-The pinned code switches at a different number. Twice, in the same function:
+The code switches at a different number. Twice, in the same function:
 
 ```cpp
 // cpp/src/neighbors/detail/cagra/search_single_cta.cuh:134 and 161-169 — the
@@ -347,8 +346,8 @@ few queries the device would otherwise sit idle.
 > **Out:** an *exact* open-addressing table small enough for shared memory,
 > periodically wiped — and a computed reset interval.
 
-The old version of this guide asked, next to this table, "check: is it lossy or
-exact?" Here is the answer, from the code:
+The question to ask of this table is whether it is lossy or exact. Here is the
+answer, from the code:
 
 ```cpp
 // cpp/src/neighbors/detail/cagra/hashmap.hpp:15 and 37-60 — insert(). Linear
@@ -600,10 +599,6 @@ Answer each before unfolding it.
   DGX A100 — AMD EPYC 7742, 64 cores, against an A100 80 GB — with *"both the
   dataset and graph on the device memory of the GPU"* (§V-A). Large-batch search
   is 33–77× at 90-95 % recall, and 3.8–8.8× against other GPU implementations.
-
-  Not "~10×", which this guide previously claimed and which appears nowhere in
-  the paper.
-
   </details>
 
 - [ ] You can explain warp splitting with the arithmetic that motivates it.

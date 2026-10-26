@@ -11,11 +11,11 @@ You are NOT reading all ~120 pages now; budget 2 h.
 
 Every section number below was checked against the PDF of *Foundations and
 Trends® in Databases* Vol. 1, No. 2 (2007), pp. 141–259 — the version linked in
-the References. **The previous version of this chapter had the section map
-wrong**: storage management is §5, not §6, and §6 is transactions. The
-corrected routing table is in "How to read the paper" below, and it matters,
-because §6 is the section you would land in if you followed the old table
-looking for the buffer pool.
+the References. Mind one trap in the section map: storage management is §5,
+not §6, and §6 is transactions. The routing table is in "How to read the
+paper" below, and it matters, because §6 is the section you would land in if
+you guessed "storage comes after the query processor" while looking for the
+buffer pool.
 
 ## The problem in one sentence
 
@@ -132,9 +132,8 @@ complex":
   the processes in the process pool" (§2.1.3). Bounded, often fixed size; a
   request arriving when every process is busy waits.
 
-The third entry is the one an earlier version of this chapter got wrong: it
-listed "event/async" as the paper's third model. It is not. The paper's third
-model is the **process pool**, and its modern descendant is named in §2.3 as
+The third entry is the one most often misremembered as "event/async". It is
+not. The paper's third model is the **process pool**, and its modern descendant is named in §2.3 as
 the pool's thread-based variant: "DBMS workers multiplexed over a thread
 pool — Microsoft SQL Server defaults to this model and over 99% of the SQL
 Server installations run this way." An event loop over a small thread pool
@@ -416,9 +415,9 @@ milestone.
 
 ## How to read the paper (with the concepts in hand)
 
-**The section numbers below are the corrected ones.** §5 is Storage
-Management; §6 is Transactions; §3 is Parallel Architecture, which the old
-version of this table did not mention at all.
+**The section numbers below were checked against the PDF.** §5 is Storage
+Management; §6 is Transactions; §3 is Parallel Architecture, which is easy to
+skip past but is where shared-nothing and shared-disk are defined.
 
 Read NOW (topic 1):
 
@@ -529,7 +528,7 @@ Answer each before unfolding it.
 
   It is **§5.2, Temporal Control: Buffering** — not §6, which is transactions.
   Getting this wrong costs you an hour in the wrong chapter, which is why the
-  routing table above was corrected.
+  routing table above spells the section numbers out.
 
   The three: (1) *correctness* — WAL requires log writes to precede data
   writes and commits to return only after the commit record is on the log

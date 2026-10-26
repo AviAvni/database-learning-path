@@ -6,19 +6,31 @@ Why this exists
 The reading guides quote `file:line` anchors into real codebases — a few
 thousand of them. An anchor is only meaningful next to the commit it was read
 at, because line numbers move. CONTRIBUTING asks for that commit to be
-recorded; recording it in each of the 230 guides would mean thousands of SHAs
-drifting independently, so it is recorded once, here, for every clone the
-guides reference.
+recorded; recording it in each guide would mean thousands of SHAs drifting
+independently, so it is recorded once, here, for every clone the guides
+reference.
 
 Usage
 -----
-    python3 tools/pin-table.py            # rewrite the table in place
-    python3 tools/pin-table.py --check    # exit 1 if the table is stale
+    python3 tools/pin-table.py                 # refresh counts, add new clones
+    python3 tools/pin-table.py --bump redis    # re-pin named clones to HEAD
+    python3 tools/pin-table.py --bump qdrant=v1.20.0   # ...or to a tag/SHA
+    python3 tools/pin-table.py --check         # exit 1 if the table is stale
+
+A pin is sticky. A repo already in the table keeps the SHA it was read at no
+matter where its clone's HEAD has wandered since, because the guides were
+written against that SHA — not against whatever branch happens to be checked
+out today. Topic 44's regeneration ran with ~/repos/FalkorDB on the Rust
+engine and silently re-pinned every C anchor in topics 7, 13, 20 and 24 to a
+tree with no src/graph/; that is the failure this rule exists to stop.
+Re-pinning is a deliberate act: `--bump NAME`, after the guides citing NAME
+have been re-checked against the new HEAD.
 
 It reads the clones under ~/repos (override with DLP_CLONES) and only emits a
 row for a repo it can actually verify: a real git checkout, with a resolvable
-HEAD and an origin URL. Repos it cannot verify are reported and left out
-rather than guessed at.
+pinned commit and an origin URL. Repos it cannot verify are reported and left
+out rather than guessed at. Clones whose HEAD is not the pin are listed as a
+note, never rewritten.
 """
 
 import os
@@ -64,27 +76,79 @@ def corpus() -> str:
     return "\n".join(text)
 
 
+def git_ok(repo: Path, *args: str) -> bool:
+    """For the git commands that answer through their exit status."""
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True).returncode == 0
+
+
+def pinned_rows(text: str) -> dict:
+    """Every row of the table as it stands: name -> (sha, date, url)."""
+    pins = {}
+    for m in re.finditer(
+        r"^\| `([^`]+)` \| `([0-9a-f]+)` \| (\S+) \| \d+ \| \[([^\]]+)\]", text, re.M
+    ):
+        pins[m.group(1)] = (m.group(2), m.group(3), m.group(4))
+    return pins
+
+
 def main() -> int:
-    check = "--check" in sys.argv
+    args = sys.argv[1:]
+    check = "--check" in args
+    bump = set()
+    if "--bump" in args:
+        # NAME re-pins to the clone's HEAD; NAME=REV to any tag or SHA the
+        # clone has fetched, so re-pinning never needs a checkout.
+        bump_rev = {}
+        for a in args[args.index("--bump") + 1 :]:
+            if a.startswith("--"):
+                break
+            name, _, rev = a.partition("=")
+            bump_rev[name] = rev or "HEAD"
+        bump = set(bump_rev)
+        if not bump:
+            print("--bump needs at least one clone name", file=sys.stderr)
+            return 2
     if not CLONES.is_dir():
         print(f"no clone directory at {CLONES} — set DLP_CLONES", file=sys.stderr)
         return 2
 
     blob = corpus()
-    rows, unverified = [], []
-    for d in sorted(os.listdir(CLONES)):
-        if d in IGNORE or not (CLONES / d / ".git").exists():
-            continue
+    current = TARGET.read_text(encoding="utf8")
+    pins = pinned_rows(current)
+    local = {d for d in os.listdir(CLONES) if (CLONES / d / ".git").exists()} - IGNORE
+    missing = bump - local
+    if missing:
+        print("cannot bump without a local clone:", ", ".join(sorted(missing)), file=sys.stderr)
+        return 2
+
+    rows, unverified, drifted, absent = [], [], [], []
+    for d in sorted(local | set(pins), key=str.lower):
         mentions = len(re.findall(rf"(?<![\w/-]){re.escape(d)}(?![\w-])", blob, re.I))
         if mentions < MIN_MENTIONS:
             continue
-        sha = git(CLONES / d, "rev-parse", "--short", "HEAD")
-        date = git(CLONES / d, "log", "-1", "--format=%cs")
-        url = git(CLONES / d, "remote", "get-url", "origin")
-        if not (sha and date and url):
-            unverified.append(d)
-            continue
-        url = re.sub(r"\.git$", "", url)
+        repo = CLONES / d
+        if d in pins and d not in bump:
+            sha, date, url = pins[d]
+            if d not in local:
+                # A clone deleted from this machine does not un-pin the guides
+                # that were read against it; pinned-source.py can still fetch it.
+                absent.append(d)
+            elif not git_ok(repo, "cat-file", "-e", f"{sha}^{{commit}}"):
+                unverified.append(f"{d} (pin {sha} not in the clone — git fetch?)")
+            else:
+                head = git(repo, "rev-parse", "HEAD")
+                if head != git(repo, "rev-parse", sha):
+                    how = "ahead of" if git_ok(repo, "merge-base", "--is-ancestor", sha, "HEAD") \
+                        else "not descended from"
+                    drifted.append(f"{d} (HEAD {head[:9]} is {how} pin {sha})")
+        else:
+            rev = bump_rev.get(d, "HEAD") if bump else "HEAD"
+            sha = git(repo, "rev-parse", "--short", f"{rev}^{{commit}}")
+            date = git(repo, "log", "-1", "--format=%cs", rev)
+            url = re.sub(r"\.git$", "", git(repo, "remote", "get-url", "origin"))
+            if not (sha and date and url):
+                unverified.append(d)
+                continue
         rows.append((d, mentions, sha, date, url))
 
     rows.sort(key=lambda r: (-r[1], r[0].lower()))
@@ -100,13 +164,18 @@ def main() -> int:
     lines += ["", END]
     table = "\n".join(lines)
 
-    current = TARGET.read_text(encoding="utf8")
     if START in current and END in current:
         updated = re.sub(
             re.escape(START) + r".*?" + re.escape(END), table, current, flags=re.S
         )
     else:
         updated = current.rstrip() + "\n\n" + table + "\n"
+
+    if drifted:
+        print(f"note: {len(drifted)} clone(s) have moved off their pin (not rewritten;"
+              " --bump NAME to re-pin):")
+        for line in drifted:
+            print("  " + line)
 
     if check:
         if updated != current:
@@ -117,8 +186,10 @@ def main() -> int:
 
     TARGET.write_text(updated, encoding="utf8")
     print(f"wrote {len(rows)} pinned clones to {TARGET.relative_to(REPO)}")
+    if absent:
+        print(f"kept {len(absent)} pin(s) with no local clone:", ", ".join(absent))
     if unverified:
-        print("could not verify (left out):", ", ".join(unverified))
+        print("could not verify (pin kept):", "; ".join(unverified))
     return 0
 
 

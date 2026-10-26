@@ -10,13 +10,12 @@
 //! encoded scan faster or slower than raw, and why (bytes moved vs decode
 //! work vs shortcuts)?
 //!
-//! Note on the timing loop (topic 0's lesson, learned the hard way here):
-//! every timed closure runs its input through `black_box`. Without it LLVM
-//! hoists these pure folds *out* of the repetition loop — it computes the
-//! sum once, reuses it for the remaining reps, and the fastest rep clocks
-//! in at 0.000 s. This benchmark used to print 19,047,619 GB/s for the raw
-//! lane, which is roughly 20,000× the machine's memory bandwidth and was
-//! entirely a measurement artifact.
+//! Note on the timing loop (topic 0's lesson): every timed closure runs its
+//! input through `black_box`. Without it LLVM hoists these pure folds *out*
+//! of the repetition loop — it computes the sum once, reuses it for the
+//! remaining reps, and the fastest rep clocks in at 0.000 s, so the raw lane
+//! prints 19,047,619 GB/s: roughly 127,000× the machine's 150 GB/s peak
+//! memory bandwidth, and entirely a measurement artifact.
 
 use std::hint::black_box;
 use std::time::Instant;

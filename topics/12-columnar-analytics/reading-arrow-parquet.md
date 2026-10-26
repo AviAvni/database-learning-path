@@ -118,9 +118,8 @@ The line to look at is 233: `buffers: Vec<Buffer>`. Everything else in the
 struct is metadata *about* those bytes — type (210), element count (213), a
 starting offset (219), children for nested types (244), and nulls (253).
 
-One correction to make while the struct is open, because an earlier version of
-this chapter got it wrong: `ArrayData` does **not** store a null *count*. It
-stores `nulls: Option<NullBuffer>` (253), and `None` is the encoding of "no
+One thing the struct does *not* have is worth noticing while it is open:
+`ArrayData` stores no null *count*. It stores `nulls: Option<NullBuffer>` (253), and `None` is the encoding of "no
 nulls at all" (248). A count is derivable from the buffer; it is not a field.
 
 A 1M-row `Int64Array` is therefore exactly two allocations: 1,000,000 × 8 B =
@@ -509,8 +508,8 @@ what DuckDB refuses for its own storage, for the `fetch_row` reason set out in
 On top of both, Parquet keeps min/max statistics — **zone maps**, also called
 min-max indexes: a per-region summary of the values in that region, used to
 prove that no row in it can match a predicate, so the region is never read.
-Parquet keeps them at two granularities, in two different structures, and this
-chapter previously conflated them:
+Parquet keeps them at two granularities, in two different structures, and the
+two are easy to conflate:
 
 ```rust
 // parquet/src/file/metadata/mod.rs — the per-chunk statistics, inside

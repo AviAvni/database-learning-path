@@ -222,7 +222,7 @@ rare case where that order pays.
 
 ## Questions to answer in notes.md
 
-1. Our motivation table: BTreeMap miss = 218 ns *in memory*. A postgres
+1. Our motivation table: BTreeMap miss = 240 ns *in memory*. A postgres
    btree probe on a cold cache is 3-4 *page* reads. Where does the
    learned index's "the top of the tree is predictable" claim break for
    postgres? (Hint: pages move; TIDs aren't positions in a sorted array;

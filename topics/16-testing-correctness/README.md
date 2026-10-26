@@ -71,10 +71,14 @@ by a seeded RNG in test.
 
 turso's simulator (testing/simulator/) generates *interaction plans*
 (workload-distributed SQL + property assertions), executes them over
-fault-injecting IO (pread/pwrite/sync faults, seeded latency), and
-double-checks by running the same plan twice. Fault coverage the
-kernel will never give you on demand: torn writes, short reads,
-fsync failures (topic 5's crash matrix, automated).
+fault-injecting IO (seeded pread/pwrite faults and latency), and
+double-checks by running the same plan twice. Its in-memory backend
+adds power loss: every block reverts to its last *synced* state, and
+the `FsyncNoWait` property cuts the power while an fsync is pending —
+fault coverage the kernel will never give you on demand (topic 5's
+crash matrix, automated). What it does not do is make `sync` itself
+return an error: that fault is wired up and deliberately ignored
+([reading-turso-simulator.md](reading-turso-simulator.md), Step 3).
 
 ## 2. Metamorphic oracles: SQLancer
 
@@ -102,6 +106,39 @@ query whose result must RELATE to the first:
   counts exactly the rows `WHERE p` would return.
   Finds: predicate-pushdown/index bugs.
 
+The same idea carries to graph query languages, where it is harder:
+Cypher clauses change the graph while the query runs (a node created by
+one `CREATE` is visible to the next `DELETE`), so random generators
+either emit shallow queries or invalid ones. **Dinkel** (Wüst, Jiang,
+Su, *Dinkel: State-Aware and Granular Framework for Validating Graph
+Databases*, VLDB 2026 (PVLDB 19(6)),
+[paper](https://www.vldb.org/pvldb/vol19/p1198-jiang.pdf) ·
+[code](https://github.com/CelineWuest/dinkel)) tracks query context and
+graph schema clause by clause to generate deep, valid queries, and uses
+clause- and expression-level rewrites that preserve semantics as its
+oracle. On Neo4j, RedisGraph and Memgraph it found 127 bugs, 113
+confirmed and 84 fixed; 62 of them were in RedisGraph — FalkorDB's
+direct ancestor — of which 48 were confirmed, 29 fixed, and 34 were
+crashes (§5, Tables 5–6). It is a ready harness to point at the
+capstone's Cypher front end next to the TCK runner in M16.
+**PATHTest** (Gui, Lan, Lu, Lu, Pan, *Testing Graph Databases via
+Transformations Between Fixed-Length and Variable-Length Queries*, VLDB
+2026 (PVLDB 19(9)),
+[paper](https://www.vldb.org/pvldb/vol19/p2234-gui.pdf) ·
+[code](https://github.com/VLDB2026/VLDB2026_PATHTest)) is TLP's
+partition-and-recombine trick specialized to path semantics.
+Variable-length patterns such as `(a)-[*1..2]->(b)` go through different
+operators and optimizations than the fixed-length patterns they must
+agree with, so PATHTest rewrites one into the other — folding a chain of
+fixed hops into a bounded variable-length path and re-imposing the
+original label constraints as predicates — and compares results. Across
+seven systems (Neo4j, Memgraph, AgensGraph, NebulaGraph, JanusGraph,
+HugeGraph, TinkerGraph) it found "41 previously unknown bugs … among
+which 24 are logic bugs, and 17 correspond to unexpected errors", 29
+confirmed and 11 fixed (Abstract, Table 2). FalkorDB was not among the
+systems tested; the transformation is a direct test for the capstone's
+variable-length traversal.
+
 ## 3. Fuzzing
 
 Coverage-guided byte mutation (libFuzzer/AFL via cargo-fuzz) for
@@ -120,6 +157,23 @@ elle finds cycles in the serialization graph (G0/G1c/G-single...)
 in polynomial time by exploiting known list-append semantics.
 The redis-raft analysis is the cautionary tale: acked writes lost on
 failover — exactly our `stale_leader` test, found in production code.
+
+Finding the anomaly is half the job; a concurrent test case that
+triggers an isolation bug is large and nondeterministic, so it cannot be
+shrunk by rerunning it the way
+[`reading-hypothesis.md`](reading-hypothesis.md) shrinks a
+single-threaded case. **Pisco** (Weng, Yang, Hu, Zhang, Pan, Yang, Zhou,
+Chen, He, Pan, *Pisco: An Isolation Bug Case Reduction and
+Deduplication Framework*, VLDB 2026 (PVLDB 19(6)),
+[paper](https://www.vldb.org/pvldb/vol19/p1413-weng.pdf) ·
+[code](https://github.com/DBHammer/Pisco)) simulates the DBMS's lock and
+version state to fix the order of conflicting operations, then shrinks
+with a dependency-aware divide-and-conquer that never drops an operation
+the anomaly depends on, and deduplicates reports with a multi-agent LLM
+framework. It reached minimal cases in 20.0% of C-Reduce's time and
+33.3% of DDMin's (§7.3.1), with a deduplication ratio of up to 91.6%
+(§7.4) — the shrinking problem, for the anomalies
+[`reading-jepsen.md`](reading-jepsen.md) finds.
 
 ## 5. SMT: proving instead of testing
 

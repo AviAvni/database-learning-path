@@ -8,14 +8,14 @@ mechanism step by step, then maps every step to its anchors. Budget: 2–3 h
 across `core/storage/btree.rs`, `core/storage/sqlite3_ondisk.rs`,
 `core/storage/pager.rs`, and `core/types.rs`.
 
-Every anchor below is turso at `tursodatabase/turso@dd775bc`. Confirm the pin
+Every anchor below is turso at `tursodatabase/turso@a820079e8` (v0.9.0-pre.1). Confirm the pin
 with `tools/pinned-source.py ref turso` before you start; if it prints a
 different SHA, the line numbers in this guide are for a different tree and you
 should navigate by the symbol names, which are given for every anchor. Read a
 range with, for example:
 
 ```
-tools/pinned-source.py show turso core/storage/btree.rs -r 7592:7687
+tools/pinned-source.py show turso core/storage/btree.rs -r 9009:9104
 ```
 
 Turso is a Rust rewrite of SQLite that is byte-compatible with the SQLite file
@@ -61,8 +61,8 @@ header, and the **cell content area** — the records themselves — growing
 leftward from the end. The unallocated gap between the two is what is left.
 A **cell** is one record's on-disk container: for a table leaf, one row.
 
-Turso names every header offset in one module, `btree.rs:84–124`, with the
-layout drawn in the doc comment above it at `btree.rs:76–83`:
+Turso names every header offset in one module, `btree.rs:108–148`, with the
+layout drawn in the doc comment above it at `btree.rs:100–107`:
 
 | offset | width | field | meaning |
 |---|---|---|---|
@@ -78,12 +78,12 @@ the last field exists only where there is an extra child to point at. Turso
 gives both, plus the two other geometry constants, real names:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/sqlite3_ondisk.rs
+// core/storage/sqlite3_ondisk.rs at tursodatabase/turso@a820079e8, lines 84-87
 // the four constants every page-arithmetic formula in this guide is built from
-    80  pub const CELL_PTR_SIZE_BYTES: usize = 2;
-    81  pub const INTERIOR_PAGE_HEADER_SIZE_BYTES: usize = 12;
-    82  pub const LEAF_PAGE_HEADER_SIZE_BYTES: usize = 8;
-    83  pub const LEFT_CHILD_PTR_SIZE_BYTES: usize = 4;
+    84  pub const CELL_PTR_SIZE_BYTES: usize = 2;
+    85  pub const INTERIOR_PAGE_HEADER_SIZE_BYTES: usize = 12;
+    86  pub const LEAF_PAGE_HEADER_SIZE_BYTES: usize = 8;
+    87  pub const LEFT_CHILD_PTR_SIZE_BYTES: usize = 4;
 ```
 
 Two of those constants are easy to skip past and both matter below. Every cell
@@ -132,9 +132,9 @@ F = floor((U − H_int) / slot_int_table)
   = 453 children per interior page
 ```
 
-That 453 is the number to remember, and it is why the original guide's
-hand-wave — "table interior cells are ~13 bytes, so table trees have enormous
-fanout" — is worth replacing with a figure. (13 is the *worst case*: 4 bytes of
+That 453 is the number to remember, and it is why the usual hand-wave —
+"table interior cells are ~13 bytes, so table trees have enormous fanout" — is
+worth replacing with a figure. (13 is the *worst case*: 4 bytes of
 child plus a 9-byte rowid varint, which only occurs above rowid 2⁵⁶. At that
 point `F` falls to `floor(4084/15) = 272`.)
 
@@ -165,25 +165,25 @@ step.
 Turso encodes the same arithmetic as a corruption check:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/btree.rs
+// core/storage/btree.rs at tursodatabase/turso@a820079e8, lines 150-163
 // the depth bound, and the two balance-width constants used in Step 7
-   126  /// Maximum depth of an SQLite B-Tree structure. Any B-Tree deeper than
-   127  /// this will be declared corrupt. This value is calculated based on a
-   128  /// maximum database size of 2^31 pages a minimum fanout of 2 for a
-   129  /// root-node and 3 for all other internal nodes.
-   130  ///
-   131  /// If a tree that appears to be taller than this is encountered, it is
-   132  /// assumed that the database is corrupt.
-   133  pub const BTCURSOR_MAX_DEPTH: usize = 20;
-   134
-   135  /// Maximum number of sibling pages that balancing is performed on.
-   136  pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
-   137
-   138  /// We only need maximum 5 pages to balance 3 pages, because we can guarantee that cells from 3 pages will fit in 5 pages.
-   139  pub const MAX_NEW_SIBLING_PAGES_AFTER_BALANCE: usize = 5;
+   150  /// Maximum depth of an SQLite B-Tree structure. Any B-Tree deeper than
+   151  /// this will be declared corrupt. This value is calculated based on a
+   152  /// maximum database size of 2^31 pages a minimum fanout of 2 for a
+   153  /// root-node and 3 for all other internal nodes.
+   154  ///
+   155  /// If a tree that appears to be taller than this is encountered, it is
+   156  /// assumed that the database is corrupt.
+   157  pub const BTCURSOR_MAX_DEPTH: usize = 20;
+   158
+   159  /// Maximum number of sibling pages that balancing is performed on.
+   160  pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
+   161
+   162  /// We only need maximum 5 pages to balance 3 pages, because we can guarantee that cells from 3 pages will fit in 5 pages.
+   163  pub const MAX_NEW_SIBLING_PAGES_AFTER_BALANCE: usize = 5;
 ```
 
-Check the 20 against its own stated premises — worst case, not the 453 above:
+The line that carries the argument is 157. Check the 20 against its own stated premises — worst case, not the 453 above:
 
 ```text
 root fanout 2, internal fanout 3, so with `k` edges from root to leaf:
@@ -222,32 +222,32 @@ itself*. Each freeblock's first 4 bytes are a 2-byte offset of the next
 freeblock (0 = end) and a 2-byte size **that includes those 4 header bytes**.
 The list head is `BTREE_FIRST_FREEBLOCK` in the page header, and the chain is
 kept in **ascending offset order** — `find_free_slot` treats a non-ascending
-next-pointer as corruption (`btree.rs:7629–7631`).
+next-pointer as corruption (`btree.rs:9046–9048`).
 
 Two rules keep the bookkeeping inside 4 bytes. A freeblock must be at least
 **4 bytes**, because anything smaller cannot hold its own next-pointer and
-size (`CELL_SIZE_MIN` at `btree.rs:7597`). And leftovers below that threshold
+size (`CELL_SIZE_MIN` at `btree.rs:9014`). And leftovers below that threshold
 are instead counted in the header's 1-byte fragment counter — bytes that are
 free but unaddressable, because nothing can point at them.
 
 Allocation is first-fit down the chain, in `find_free_slot`
-(`btree.rs:7592–7687`). The interesting branch is what happens when the
+(`btree.rs:9009–9104`). The interesting branch is what happens when the
 request *almost* fills a block:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/btree.rs — find_free_slot
-  7636          let new_size = size - amount;
-  7637          // If the freeblock's new size is < CELL_SIZE_MIN, the freeblock is deleted and the remaining bytes
-  7638          // become fragmented free bytes.
-  7639          if new_size < CELL_SIZE_MIN {
-  7640              if page_ref.num_frag_free_bytes() > 57 {
-  7641                  // SQLite has a fragmentation limit of 60 bytes.
-  7642                  // check sqlite docs https://www.sqlite.org/fileformat.html#:~:text=A%20freeblock%20requires,not%20exceed%2060
-  7643                  return Ok(None);
-  7644              }
+// core/storage/btree.rs at tursodatabase/turso@a820079e8 — find_free_slot, lines 9053-9061
+  9053          let new_size = size - amount;
+  9054          // If the freeblock's new size is < CELL_SIZE_MIN, the freeblock is deleted and the remaining bytes
+  9055          // become fragmented free bytes.
+  9056          if new_size < CELL_SIZE_MIN {
+  9057              if page_ref.num_frag_free_bytes() > 57 {
+  9058                  // SQLite has a fragmentation limit of 60 bytes.
+  9059                  // check sqlite docs https://www.sqlite.org/fileformat.html#:~:text=A%20freeblock%20requires,not%20exceed%2060
+  9060                  return Ok(None);
+  9061              }
 ```
 
-Read the guard at 7640 carefully, because the constant is **57, not 60**. The
+Read the guard at 9057 carefully, because the constant is **57, not 60**. The
 format's invariant is that the fragment counter never exceeds 60. The leftover
 about to be absorbed here is `new_size`, which this branch has just established
 is 1, 2, or 3 bytes. So refusing at `> 57` guarantees `57 + 3 = 60` at worst:
@@ -256,15 +256,15 @@ largest legal increment. Refusing returns `None`, which sends the caller to
 Step 3.
 
 Otherwise the block is carved and — this is the neat part —
-`btree.rs:7669–7682` shrinks the block in place and returns
+`btree.rs:9086–9099` shrinks the block in place and returns
 `Ok(Some(cur + new_size))`, i.e. the allocation is taken from the block's
 **tail**. The freeblock's 4-byte header stays at its original offset, so
 neither the chain's ascending order nor its predecessor's next-pointer needs
 touching. A first-fit allocation that hits this branch relinks nothing at all.
 
-The mirror operation is `free_cell_range` (`btree.rs:8097–…`), which may
+The mirror operation is `free_cell_range` (`btree.rs:9514–…`), which may
 coalesce the freed range into the next freeblock, the previous one, or both.
-It also has a case worth noticing at `btree.rs:8118–8125`: if the chain is
+It also has a case worth noticing at `btree.rs:9535–9542`: if the chain is
 empty *and* the freed range starts exactly at the content-area boundary, no
 freeblock is created — the content-area pointer simply moves right and the
 bytes rejoin the unallocated gap. Deleting the most recently inserted cell
@@ -288,20 +288,20 @@ scattered holes into one usable gap. It is the answer to the question Step 2
 leaves open: total free space can exceed a request while *no single freeblock*
 does.
 
-The entry point is `defragment_page` (`btree.rs:8422`), and it chooses between
-two algorithms at `btree.rs:8435–8440`:
+The entry point is `defragment_page` (`btree.rs:9842`), and it chooses between
+two algorithms at `btree.rs:9855–9860`:
 
-- the **fast path**, `defragment_page_fast` (`btree.rs:8273`), used when there
+- the **fast path**, `defragment_page_fast` (`btree.rs:9693`), used when there
   are **at most 2 freeblocks** and the fragment count is within the caller's
-  `max_frag_bytes` budget. Its doc comment (`btree.rs:8268–8272`) gives the
+  `max_frag_bytes` budget. Its doc comment (`btree.rs:9688–9692`) gives the
   reasoning: with one or two holes it is cheaper to `memmove` the two or three
   surviving runs of cells and add a fixed delta to each affected pointer than
   to rebuild the page. Note the last line of that comment — the fast path
   **does not reduce the fragment count**, it only moves cells.
 - the **full path**, reached otherwise, which reconstructs the page cell by
-  cell. `defragment_page_full` (`btree.rs:8399–8401`) forces it by passing
+  cell. `defragment_page_full` (`btree.rs:9819–9821`) forces it by passing
   `max_frag_bytes = -1`: since `num_frag_free_bytes()` is unsigned and
-  compared as `isize`, `x <= -1` is never true, so the fast-path test at 8436
+  compared as `isize`, `x <= -1` is never true, so the fast-path test at 9856
   always fails. A sentinel, not a budget.
 
 Question to hold while reading: what triggers defrag, and why is it correct to
@@ -329,25 +329,39 @@ short lengths, low rowids — cost 1 byte instead of 8, which is precisely why
 integers would give.
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/sqlite3_ondisk.rs — read_varint
-  1304  pub fn read_varint(buf: &[u8]) -> Result<(u64, usize)> {
-  1305      let mut v: u64 = 0;
-  1306      for i in 0..8 {
-  1307          match buf.get(i) {
-  1308              Some(c) => {
-  1309                  v = (v << 7) + (c & 0x7f) as u64;
-  1310                  if (c & 0x80) == 0 {
-  1311                      return Ok((v, i + 1));
-  1312                  }
-  1313              }
+// core/storage/sqlite3_ondisk.rs at tursodatabase/turso@a820079e8 — read_varint, lines 1353-1375
+  1353  pub fn read_varint(buf: &[u8]) -> Result<(u64, usize)> {
+  1354      match buf {
+  1355          [b0, ..] if *b0 < 0x80 => return Ok((*b0 as u64, 1)),
+  1356          [b0, b1, ..] if *b1 < 0x80 => {
+  1357              return Ok(((((*b0 & 0x7f) as u64) << 7) | *b1 as u64, 2));
+  1358          }
+  ... 1359-1364: the same for three bytes ...
+  1365          _ => {}
+  1366      }
+  1367      let mut v: u64 = 0;
+  1368      for i in 0..8 {
+  1369          match buf.get(i) {
+  1370              Some(c) => {
+  1371                  v = (v << 7) + (c & 0x7f) as u64;
+  1372                  if (c & 0x80) == 0 {
+  1373                      return Ok((v, i + 1));
+  1374                  }
+  1375              }
 ```
 
-Eight iterations of 7 bits, then a separate ninth-byte case at
-`sqlite3_ondisk.rs:1320–1331` that shifts by 8 rather than 7. That case also
-carries a canonicalization check at `:1326`: a 9-byte encoding whose top 8 bits
-are zero is rejected as corrupt, because such a value had a shorter encoding
-and a well-formed writer would have used it. The encoder is `write_varint`
-(`sqlite3_ondisk.rs:1379`).
+The function is two decoders. Lines 1354–1366 are an unrolled fast path for
+the encodings that dominate real pages: the line to focus on is 1355, a 1-byte
+varint (high bit clear, so `b0 < 0x80`) returned with no loop and no shift.
+1356–1358 and 1359–1364 do the same for 2- and 3-byte varints, which covers
+every value below 2²¹ = 2,097,152 — every payload length on a 4 KB page and
+every rowid in Step 1's million-row table. Everything longer falls through to
+the general loop at 1367–1375: eight iterations of 7 bits, then a separate
+ninth-byte case at `sqlite3_ondisk.rs:1382–1393` that shifts by 8 rather than
+7. That case also carries a canonicalization check at `:1388`: a 9-byte
+encoding whose top 8 bits are zero is rejected as corrupt, because such a
+value had a shorter encoding and a well-formed writer would have used it. The
+encoder is `write_varint` (`sqlite3_ondisk.rs:1470`).
 
 On top of varints sits the **record** — the encoding of one row. Its shape is:
 a header-size varint, then one **serial type** varint per column, then the raw
@@ -362,23 +376,23 @@ Turso's record header walk is in `core/types.rs`, and it pins down the one
 detail everyone gets wrong on the first read:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/types.rs — record header parse
-  1651          let (header_size, header_varint_len) = read_varint(payload)?;
-  1652          let header_size = header_size as usize;
-  1653
-  1654          if header_size > payload.len()
-  1655              || header_varint_len > payload.len()
-  1656              || header_varint_len > header_size
-  1657          {
+// core/types.rs at tursodatabase/turso@a820079e8 — record header parse, lines 2107-2113
+  2107          let (header_size, header_varint_len) = read_varint(payload)?;
+  2108          let header_size = header_size as usize;
+  2109
+  2110          if header_size > payload.len()
+  2111              || header_varint_len > payload.len()
+  2112              || header_varint_len > header_size
+  2113          {
 ```
 
 The slice taken from this is `&payload[header_varint_len..header_size]` (the
-same computation at `types.rs:1196`). Both bounds are measured from the *start
+same computation at `types.rs:1597`). Both bounds are measured from the *start
 of the record*, which means **the header-size varint counts itself**. The check
-at 1656 — `header_varint_len > header_size` is corrupt — is exactly the
+at 2112 — `header_varint_len > header_size` is corrupt — is exactly the
 statement that the header must be at least big enough to contain its own length
 field. Per-serial-type decoding is `read_value_serial_type`
-(`sqlite3_ondisk.rs:1101`) and `read_value` (`sqlite3_ondisk.rs:973`).
+(`sqlite3_ondisk.rs:1143`) and `read_value` (`sqlite3_ondisk.rs:1016`).
 
 Why it matters: serial types are why pages are schema-less — any page can be
 fully decoded with no catalogue in hand, which is what lets the b-tree layer,
@@ -395,19 +409,19 @@ them.
 There are two b-tree flavours — **table** trees keyed by rowid, **index** trees
 keyed by column values — times two page levels, giving exactly four cell
 layouts. Turso declares them as four structs at
-`sqlite3_ondisk.rs:774–812`, and the field lists *are* the format:
+`sqlite3_ondisk.rs:812–843`, and the field lists *are* the format:
 
 | cell | layout | struct |
 |---|---|---|
-| table interior | `child u32 ∥ rowid varint` | `:782–785` |
-| table leaf | `size varint ∥ rowid varint ∥ payload` | `:788–795` |
-| index interior | `child u32 ∥ size varint ∥ payload` | `:798–804` |
-| index leaf | `size varint ∥ payload` | `:807–812` |
+| table interior | `child u32 ∥ rowid varint` | `:813–816` |
+| table leaf | `size varint ∥ rowid varint ∥ payload` | `:819–826` |
+| index interior | `child u32 ∥ size varint ∥ payload` | `:829–835` |
+| index leaf | `size varint ∥ payload` | `:838–843` |
 
 Three of the four structs also carry `first_overflow_page: Option<u32>` — the
 tail of Step 6's chain. The table-interior cell is the exception and carries no
 payload at all, so it can never overflow. Parsing is `read_btree_cell`
-(`sqlite3_ondisk.rs:816`).
+(`sqlite3_ondisk.rs:847`).
 
 Two consequences fall straight out of the table:
 
@@ -441,18 +455,18 @@ When a payload is too big for its page, the excess **overflows** into a chain
 of dedicated overflow pages, each holding a 4-byte next-page number (0
 terminates) followed by `U − 4` payload bytes. Only a prefix stays "local" in
 the cell, and the last 4 bytes of that local region are the first overflow
-page number — verified at `sqlite3_ondisk.rs:951–957`, which reads
+page number — verified at `sqlite3_ondisk.rs:994–1000`, which reads
 `unread[cell_len-4 .. cell_len]` as a big-endian `u32` and hands back
 `&unread[..cell_len-4]` as the local payload.
 
-Two thresholds govern the decision, both at `btree.rs:9010–9043`:
+Two thresholds govern the decision, both at `btree.rs:10514–10549`:
 
 - `max_local` — the largest payload that stays entirely local.
   - index pages: `(U − 12) · 64/255 − 23`
   - table pages: `U − 35`
 - `min_local` — the smallest local prefix a spilled payload may keep:
   `(U − 12) · 32/255 − 23`, the **same formula for all four page types**
-  (`btree.rs:9040–9042`; the `page_type` parameter is `_page_type`, unused).
+  (`btree.rs:10546–10548`; the `page_type` parameter is `_page_type`, unused).
 
 At `U = 4096`:
 
@@ -477,7 +491,7 @@ formulas are file-format constants, not implementation choices, and a rewrite
 that changed them would produce unreadable files.
 
 **Why 64/255 and 32/255?** The doc comment states the design goal outright at
-`btree.rs:9015`: "Give a minimum fanout of 4 for index b-trees". Check it. Four
+`btree.rs:10521`: "Give a minimum fanout of 4 for index b-trees". Check it. Four
 index-interior cells at the maximum local size cost
 
 ```text
@@ -491,37 +505,46 @@ per cell:  max_local(index) + p + c + size_varint(1002 is 2 bytes)
 So four maximal cells fit and five cannot — the fraction 64/255 = 0.25098 is
 "just over a quarter", and the −23 is a conservative allowance for cell
 overhead (the real overhead here is 8). The second stated goal at
-`btree.rs:9016–9017` is the one usually forgotten: keep enough payload local
+`btree.rs:10522–10523` is the one usually forgotten: keep enough payload local
 that **the record header of Step 4 can normally be read without following the
 chain**, so a query that only needs column types never touches an overflow
 page.
 
 Now the spill rule itself, which the doc comment states at
-`btree.rs:9034–9036` and the code implements:
+`btree.rs:10540–10542` and the code implements:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/sqlite3_ondisk.rs — payload_overflows
-  2138      if payload_size <= payload_overflow_threshold_max {
-  2139          return (false, 0);
-  2140      }
-  2141
-  2142      let mut space_left = payload_overflow_threshold_min
-  2143          + (payload_size - payload_overflow_threshold_min) % (usable_size - 4);
-  2144      if space_left > payload_overflow_threshold_max {
-  2145          space_left = payload_overflow_threshold_min;
-  2146      }
-  2147      (true, space_left + 4)
+// core/storage/sqlite3_ondisk.rs at tursodatabase/turso@a820079e8 — payload_overflows, lines 2262-2278
+  2262  pub fn payload_overflows(
+  2263      payload_size: usize,
+  2264      max_local_bytes: usize,
+  2265      min_local_bytes: usize,
+  2266      usable_size: usize,
+  2267  ) -> Option<usize> {
+  2268      // See https://github.com/sqlite/sqlite/blob/9591d3fe93936533c8c3b0dc4d025ac999539e11/src/dbstat.c#L371
+  2269      if payload_size <= max_local_bytes {
+  2270          return None;
+  2271      }
+  2272
+  2273      let mut space_left = min_local_bytes + (payload_size - min_local_bytes) % (usable_size - 4);
+  2274      if space_left > max_local_bytes {
+  2275          space_left = min_local_bytes;
+  2276      }
+  2277      Some(space_left + 4)
+  2278  }
 ```
 
-Naming the symbols: `P_size` is the total payload, `M = min_local`,
-`X = max_local`, and `K = M + (P_size − M) mod (U − 4)` is the candidate local
-size at 2142–2143. The rule is **two-branch**, and the second branch at
-2144–2145 is the one usually left out of summaries:
+Naming the symbols: `P_size` is the total payload (`payload_size`),
+`M = min_local` (`min_local_bytes`), `X = max_local` (`max_local_bytes`), and
+`K = M + (P_size − M) mod (U − 4)` is the candidate local size at 2273. The
+return type carries the first decision: `None` at 2270 means the payload fits
+and nothing spills. The rule for the spilled case is **two-branch**, and the
+second branch at 2274–2275 is the one usually left out of summaries:
 
 - if `K ≤ X`, keep `K` bytes local;
 - **otherwise keep exactly `M` bytes local.**
 
-The `+ 4` at 2147 is the overflow page pointer, which the cell must also hold.
+The `+ 4` at 2277 is the overflow page pointer, which the cell must also hold.
 
 The point of the `K` branch is that `P_size − K` is then an exact multiple of
 `U − 4`, so **every overflow page including the last is completely full** — no
@@ -574,46 +597,46 @@ twist on SQLite is that balancing is a **resumable state machine** returning
 `IOResult` rather than synchronous recursion, because every page touch may
 yield for async IO.
 
-The dispatcher is `balance` (`btree.rs:2793`), whose match arms at
-`btree.rs:2895–2904` route to three routines:
+The dispatcher is `balance` (`btree.rs:3291`), whose match arms at
+`btree.rs:3341–3403` route to three routines:
 
-- `balance_quick` (`btree.rs:2895–2897`) — the append fast path, when the
+- `balance_quick` (arm at `btree.rs:3394–3396`, body at `:3416`) — the append fast path, when the
   overflowing page is the rightmost leaf of its subtree. Its doc comment at
-  `btree.rs:2909–2915` spells out the four steps: allocate a new right sibling,
+  `btree.rs:3408–3414` spells out the four steps: allocate a new right sibling,
   put the overflow cell in it alone, insert one divider into the parent, and
   move the parent's rightmost pointer. No cells are redistributed at all.
   `reading-sqlite-btree.md` measures what this saves on a sequential load.
-- `balance_root` (`btree.rs:4774`) — root overflow. Allocate a child, copy the
+- `balance_root` (arm at `btree.rs:3341–3346`, body at `:5300`) — root overflow. Allocate a child, copy the
   root's contents into it, and the root becomes an interior page pointing at
   it. This is the *only* operation that increases tree height, which is why
-  B-trees grow at the root rather than the leaves. Note `btree.rs:4789–4790`:
+  B-trees grow at the root rather than the leaves. Note `btree.rs:5315–5316`:
   when the root is page 1 the copy must skip the 100-byte file header, which is
   the whole reason root splits copy rather than simply reusing the page.
-- `balance_non_root` (`btree.rs:2995–4309`) — everything else.
+- `balance_non_root` (arm at `btree.rs:3397–3403`, body at `:3494–4827`) — everything else.
 
 `balance_non_root` is a five-phase state machine, and knowing the phase
 boundaries is the difference between reading it and drowning in it:
 
 | sub-state | lines | what it does |
 |---|---|---|
-| `NonRootPickSiblings` | 3014–3271 | choose up to `MAX_SIBLING_PAGES_TO_BALANCE` = 3 neighbours |
-| `NonRootDoBalancing` | 3272–3814 | pool cells, size the output pages, decide the split points |
-| `NonRootDoBalancingAllocate` | 3815–3855 | allocate any new sibling pages needed |
-| `NonRootDoBalancingFinish` | 3856–4281 | write cells into the new pages, rewrite parent dividers |
-| `FreePages` | 4282–4309 | return now-empty siblings to Step 8's freelist |
+| `NonRootPickSiblings` | 3513–3761 | choose up to `MAX_SIBLING_PAGES_TO_BALANCE` = 3 neighbours |
+| `NonRootDoBalancing` | 3762–4317 | pool cells, size the output pages, decide the split points |
+| `NonRootDoBalancingAllocate` | 4318–4358 | allocate any new sibling pages needed |
+| `NonRootDoBalancingFinish` | 4359–4799 | write cells into the new pages, rewrite parent dividers |
+| `FreePages` | 4800–4827 | return now-empty siblings to Step 8's freelist |
 
 Inside the pooling phase there is a distinction that is easy to miss and is one
-of the more elegant things in the format. At `btree.rs:3507–3517`, **for table
+of the more elegant things in the format. At `btree.rs:4005–4015`, **for table
 leaves the divider cells are not pooled at all** — they stay in the parent as
 bookkeeping — while for index and interior pages they *are* pooled. The reason
 is Step 5's table: a table-interior divider is only `(child, rowid)`, and after
 redistribution the correct rowid is simply the largest one on the page to its
 left, so the divider can be *regenerated* rather than moved. An index divider
 carries a real key that exists nowhere else and must be redistributed like any
-other cell. The assertions at 3518–3529 exist to catch getting this backwards.
+other cell. The assertions at 4016–4027 exist to catch getting this backwards.
 
 The output width is bounded by `MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5`
-(`btree.rs:139`), asserted at `btree.rs:3597–3600` with the message "it is
+(`btree.rs:163`), asserted at `btree.rs:4100–4103` with the message "it is
 corrupt to require more than 5 pages to balance 3 siblings". So the contract is
 **≤3 pages in, ≤5 pages out**, and every balance is O(1) pages regardless of
 tree size.
@@ -622,22 +645,22 @@ The sizing itself happens in two passes, and turso quotes SQLite verbatim for
 the second:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/btree.rs — balance_non_root, sizing pass 2
-  3689                      // Comment borrowed from SQLite src/btree.c
-  3690                      // The packing computed by the previous block is biased toward the siblings
-  3691                      // on the left side (siblings with smaller keys). The left siblings are
-  3692                      // always nearly full, while the right-most sibling might be nearly empty.
-  3693                      // The next block of code attempts to adjust the packing of siblings to
-  3694                      // get a better balance.
-  3695                      //
-  3696                      // This adjustment is more than an optimization.  The packing above might
-  3697                      // be so out of balance as to be illegal.  For example, the right-most
-  3698                      // sibling might be completely empty.  This adjustment is not optional.
+// core/storage/btree.rs at tursodatabase/turso@a820079e8 — balance_non_root, sizing pass 2, lines 4192-4201
+  4192                      // Comment borrowed from SQLite src/btree.c
+  4193                      // The packing computed by the previous block is biased toward the siblings
+  4194                      // on the left side (siblings with smaller keys). The left siblings are
+  4195                      // always nearly full, while the right-most sibling might be nearly empty.
+  4196                      // The next block of code attempts to adjust the packing of siblings to
+  4197                      // get a better balance.
+  4198                      //
+  4199                      // This adjustment is more than an optimization.  The packing above might
+  4200                      // be so out of balance as to be illegal.  For example, the right-most
+  4201                      // sibling might be completely empty.  This adjustment is not optional.
 ```
 
-Pass one (`btree.rs:3588–3676`) greedily packs cells left until each page is
-full, spilling into a new page when needed. Pass two (`btree.rs:3699–3793`)
-walks the pages right-to-left moving cells back. The comment is worth taking at
+Pass one (`btree.rs:4091–4179`) greedily packs cells left until each page is
+full, spilling into a new page when needed. Pass two (`btree.rs:4202–4296`)
+walks the pages right-to-left moving cells back. The lines to focus on are 4199–4201. The comment is worth taking at
 its word: the first pass can produce an *illegal* page, not merely an ugly one,
 so the second pass is a correctness step. This is the same comment
 `reading-sqlite-btree.md` anchors at `sqlite/sqlite@951de30`
@@ -651,7 +674,7 @@ so the second pass is a correctness step. This is the same comment
         [sib L]   [OVERFULL]   [sib R]
         └──────── pool: L + D1 + full + D2 + R ────────┘
              redistribute ⇒ up to 5 pages, new dividers up
-             (table leaves: D1, D2 stay in the parent — btree.rs:3511)
+             (table leaves: D1, D2 stay in the parent — btree.rs:4009)
 ```
 
 Why it matters: pooling ≤3 siblings bounds the work per balance while leaving
@@ -671,21 +694,21 @@ The "leaves" are just page IDs; their contents are never read. Turso documents
 the layout in a comment and four constants:
 
 ```rust
-// tursodatabase/turso@dd775bc — core/storage/sqlite3_ondisk.rs
-    85  // Freelist trunk page layout:
-    86  // - Bytes 0-3: Page number of next freelist trunk page (0 if none)
-    87  // - Bytes 4-7: Number of leaf page pointers on this trunk page
-    88  // - Bytes 8+: Array of 4-byte leaf page pointers
-    89  pub const FREELIST_TRUNK_OFFSET_NEXT_TRUNK_PTR: usize = 0;
-    90  pub const FREELIST_TRUNK_OFFSET_LEAF_COUNT: usize = 4;
-    91  pub const FREELIST_TRUNK_OFFSET_FIRST_LEAF_PTR: usize = 8;
-    92  pub const FREELIST_TRUNK_HEADER_SIZE: usize = 8;
-    93  pub const FREELIST_LEAF_PTR_SIZE: usize = 4;
+// core/storage/sqlite3_ondisk.rs at tursodatabase/turso@a820079e8, lines 89-97
+    89  // Freelist trunk page layout:
+    90  // - Bytes 0-3: Page number of next freelist trunk page (0 if none)
+    91  // - Bytes 4-7: Number of leaf page pointers on this trunk page
+    92  // - Bytes 8+: Array of 4-byte leaf page pointers
+    93  pub const FREELIST_TRUNK_OFFSET_NEXT_TRUNK_PTR: usize = 0;
+    94  pub const FREELIST_TRUNK_OFFSET_LEAF_COUNT: usize = 4;
+    95  pub const FREELIST_TRUNK_OFFSET_FIRST_LEAF_PTR: usize = 8;
+    96  pub const FREELIST_TRUNK_HEADER_SIZE: usize = 8;
+    97  pub const FREELIST_LEAF_PTR_SIZE: usize = 4;
 ```
 
-Freeing is `Pager::free_page` (`pager.rs:5019–5154`) — note the name, because
+Freeing is `Pager::free_page` (`pager.rs:5534–5670`) — note the name, because
 there is no `add_page_to_freelist` in this tree. Its capacity test is at
-`pager.rs:5103–5104`:
+`pager.rs:5619–5620`:
 
 ```text
 max_free_list_entries = U / FREELIST_LEAF_PTR_SIZE − RESERVED_SLOTS
@@ -694,19 +717,19 @@ max_free_list_entries = U / FREELIST_LEAF_PTR_SIZE − RESERVED_SLOTS
                       = 1022 leaf pointers per trunk page
 ```
 
-The `RESERVED_SLOTS = 2` (`pager.rs:5022`) are the next-trunk and leaf-count
+The `RESERVED_SLOTS = 2` (`pager.rs:5537`) are the next-trunk and leaf-count
 `u32`s. If there is room, the page number is appended to the current trunk
-(`pager.rs:5106–5126`); if not, the page being freed **becomes a new trunk**
-pointing at the old one (`pager.rs:5130–5148`). So the freelist's own index
+(`pager.rs:5622–5642`); if not, the page being freed **becomes a new trunk**
+pointing at the old one (`pager.rs:5646–5664`). So the freelist's own index
 structure costs nothing extra — it is built out of the pages it is tracking.
 One trunk per 1,022 free pages is an overhead of `1/1023` ≈ **0.098%** of the
 freed space.
 
-Allocation is `Pager::allocate_page` (`pager.rs:5250`), which prefers reuse:
-read the first trunk (`pager.rs:5301–5314`), and if it has leaves, pop one
-(`ReuseFreelistLeaf`, `pager.rs:5390–5447`). Only when the freelist is empty
-(`pager.rs:5302–5303`) does it fall through to `AllocateNewPage`
-(`pager.rs:5450`) and grow the file. When a trunk runs out of leaves the trunk
+Allocation is `Pager::allocate_page` (`pager.rs:5793`), which prefers reuse:
+read the first trunk (`pager.rs:5844–5857`), and if it has leaves, pop one
+(`ReuseFreelistLeaf`, `pager.rs:5939–5996`). Only when the freelist is empty
+(`pager.rs:5845–5846`) does it fall through to `AllocateNewPage`
+(`pager.rs:5999`) and grow the file. When a trunk runs out of leaves the trunk
 page ITSELF is handed out as the allocation — the list consumes its own
 skeleton.
 
@@ -718,46 +741,47 @@ whole-file operation.
 
 ## Where each step lives in the code
 
-All anchors are `tursodatabase/turso@dd775bc`. Symbol names are given so the
+All anchors are `tursodatabase/turso@a820079e8`. Symbol names are given so the
 anchors survive a re-pin.
 
-- **Step 1 — slotted page geometry**: header offset module `btree.rs:84–124`
-  with the layout diagram at `:76–83`; the four size constants
-  `sqlite3_ondisk.rs:80–83`; `BTCURSOR_MAX_DEPTH` and the two balance-width
-  constants `btree.rs:126–139`.
-- **Step 2 — freeblocks**: `find_free_slot` `btree.rs:7592–7687` (ascending-order
-  check `:7629–7631`; the 57-byte fragment guard `:7640`; tail-carve return
-  `:7669–7682`); `free_cell_range` `btree.rs:8097–…` with the
-  no-freeblock-needed case at `:8118–8125`; `compute_free_space`
-  `btree.rs:8689`.
-- **Step 3 — defragment**: dispatcher `defragment_page` `btree.rs:8422`, path
-  choice `:8435–8440`; `defragment_page_fast` `btree.rs:8273` (rationale
-  `:8268–8272`); `defragment_page_full` `btree.rs:8399–8401`;
-  `defragment_page_for_insert` `btree.rs:8412`.
-- **Step 4 — varints + records**: `read_varint` `sqlite3_ondisk.rs:1304–1337`
-  (9-byte case `:1320–1331`, canonicalization check `:1326`); `write_varint`
-  `sqlite3_ondisk.rs:1379`; record header parse `core/types.rs:1650–1660` and
-  `:1187–1196`; `read_value_serial_type` `sqlite3_ondisk.rs:1101`; `read_value`
-  `sqlite3_ondisk.rs:973`.
-- **Step 5 — cell formats**: `BTreeCell` enum `sqlite3_ondisk.rs:774–779`, the
-  four structs `:782–812`, parser `read_btree_cell` `:816`.
-- **Step 6 — overflow**: `payload_overflow_threshold_max` `btree.rs:9019–9028`
-  and `payload_overflow_threshold_min` `btree.rs:9040–9043`, with the design
-  rationale in the doc comments at `:9010–9018` and `:9030–9038`; the spill
-  rule `payload_overflows` `sqlite3_ondisk.rs:2132–2148` (fallback branch
-  `:2144–2145`); chain pointer extraction `sqlite3_ondisk.rs:951–957`.
-- **Step 7 — balance**: dispatcher `balance` `btree.rs:2793`, arms `:2895–2904`;
-  `balance_quick` doc `:2909–2915`; `balance_root` `btree.rs:4774` (page-1
-  header offset `:4789–4790`); `balance_non_root` `btree.rs:2995–4309` with
-  sub-states `NonRootPickSiblings` `:3014`, `NonRootDoBalancing` `:3272`,
-  `NonRootDoBalancingAllocate` `:3815`, `NonRootDoBalancingFinish` `:3856`,
-  `FreePages` `:4282`; table-leaf divider rule `:3507–3517`; five-page assert
-  `:3597–3600`; the borrowed SQLite comment and rebalancing pass `:3689–3793`.
-- **Step 8 — freelist**: trunk layout `sqlite3_ondisk.rs:85–93`;
-  `Pager::free_page` `pager.rs:5019–5154` (capacity `:5103–5104`, append
-  `:5106–5126`, new trunk `:5130–5148`); `Pager::allocate_page` `pager.rs:5250`
-  (trunk read `:5301–5314`, `ReuseFreelistLeaf` `:5390–5447`,
-  `AllocateNewPage` `:5450`).
+- **Step 1 — slotted page geometry**: header offset module `btree.rs:108–148`
+  with the layout diagram at `:100–107`; the four size constants
+  `sqlite3_ondisk.rs:84–87`; `BTCURSOR_MAX_DEPTH` and the two balance-width
+  constants `btree.rs:150–163`.
+- **Step 2 — freeblocks**: `find_free_slot` `btree.rs:9009–9104` (ascending-order
+  check `:9046–9048`; the 57-byte fragment guard `:9057`; tail-carve return
+  `:9086–9099`); `free_cell_range` `btree.rs:9514–…` with the
+  no-freeblock-needed case at `:9535–9542`; `compute_free_space`
+  `btree.rs:10150`.
+- **Step 3 — defragment**: dispatcher `defragment_page` `btree.rs:9842`, path
+  choice `:9855–9860`; `defragment_page_fast` `btree.rs:9693` (rationale
+  `:9688–9692`); `defragment_page_full` `btree.rs:9819–9821`;
+  `defragment_page_for_insert` `btree.rs:9832`.
+- **Step 4 — varints + records**: `read_varint` `sqlite3_ondisk.rs:1353–1399`
+  (1–3-byte fast path `:1354–1366`, 9-byte case `:1382–1393`,
+  canonicalization check `:1388`); `write_varint` `sqlite3_ondisk.rs:1470`;
+  record header parse `core/types.rs:2106–2116` and `:1588–1597`;
+  `read_value_serial_type` `sqlite3_ondisk.rs:1143`; `read_value`
+  `sqlite3_ondisk.rs:1016`.
+- **Step 5 — cell formats**: `BTreeCell` enum `sqlite3_ondisk.rs:794–799`, the
+  four structs `:812–843`, parser `read_btree_cell` `:847`.
+- **Step 6 — overflow**: `payload_overflow_threshold_max` `btree.rs:10525–10534`
+  and `payload_overflow_threshold_min` `btree.rs:10546–10549`, with the design
+  rationale in the doc comments at `:10514–10523` and `:10536–10544`; the spill
+  rule `payload_overflows` `sqlite3_ondisk.rs:2262–2278` (fallback branch
+  `:2274–2275`); chain pointer extraction `sqlite3_ondisk.rs:994–1000`.
+- **Step 7 — balance**: dispatcher `balance` `btree.rs:3291`, arms `:3341–3403`;
+  `balance_quick` doc `:3408–3414`; `balance_root` `btree.rs:5300` (page-1
+  header offset `:5315–5316`); `balance_non_root` `btree.rs:3494–4827` with
+  sub-states `NonRootPickSiblings` `:3513`, `NonRootDoBalancing` `:3762`,
+  `NonRootDoBalancingAllocate` `:4318`, `NonRootDoBalancingFinish` `:4359`,
+  `FreePages` `:4800`; table-leaf divider rule `:4005–4015`; five-page assert
+  `:4100–4103`; the borrowed SQLite comment and rebalancing pass `:4192–4296`.
+- **Step 8 — freelist**: trunk layout `sqlite3_ondisk.rs:89–97`;
+  `Pager::free_page` `pager.rs:5534–5670` (capacity `:5619–5620`, append
+  `:5622–5642`, new trunk `:5646–5664`); `Pager::allocate_page` `pager.rs:5793`
+  (trunk read `:5844–5857`, `ReuseFreelistLeaf` `:5939–5996`,
+  `AllocateNewPage` `:5999`).
 
 ## Questions to answer in notes.md
 
@@ -785,7 +809,7 @@ Answer each before unfolding it.
 <details>
 <summary>Answer</summary>
 
-Header, 8 bytes (`btree.rs:84–124`): byte 0 page type (`0x0d` = table leaf);
+Header, 8 bytes (`btree.rs:108–148`): byte 0 page type (`0x0d` = table leaf);
 bytes 1–2 first freeblock offset; bytes 3–4 cell count = 2; bytes 5–6 cell
 content area start; byte 7 fragment count. No rightmost pointer — that field
 exists only on interior pages, which is what makes the leaf header 8 rather
@@ -813,11 +837,11 @@ It pools the cells of the overfull page plus up to two neighbouring siblings,
 plus the divider cells separating them in the parent — except for table leaves,
 where dividers stay in the parent because a `(child, rowid)` divider can be
 regenerated from the largest rowid on the page to its left
-(`btree.rs:3507–3517`).
+(`btree.rs:4005–4015`).
 
-The bound is `MAX_SIBLING_PAGES_TO_BALANCE = 3` (`btree.rs:136`), with output
-bounded by `MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` (`btree.rs:139`), asserted
-at `:3597–3600`. Three is the smallest window that lets an underfull page draw
+The bound is `MAX_SIBLING_PAGES_TO_BALANCE = 3` (`btree.rs:160`), with output
+bounded by `MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` (`btree.rs:163`), asserted
+at `:4100–4103`. Three is the smallest window that lets an underfull page draw
 from *both* neighbours, so it can usually be fixed without changing the
 parent's cell count; and holding the window at a constant makes every balance
 O(1) pages no matter how big the tree is. Wider windows pack pages better but
@@ -853,7 +877,7 @@ And the point of Step 1's caveat: that 3 does not predict latency. This topic's
 <summary>Answer</summary>
 
 `if page_ref.num_frag_free_bytes() > 57 { return Ok(None) }`
-(`btree.rs:7640`). The branch it guards absorbs a leftover of 1, 2, or 3 bytes
+(`btree.rs:9057`). The branch it guards absorbs a leftover of 1, 2, or 3 bytes
 into the fragment counter, and the format's invariant is that the counter never
 exceeds 60. Testing the pre-state against 57 leaves headroom for the largest
 legal increment: `57 + 3 = 60`. Refusing returns `None`, which sends the caller
@@ -871,9 +895,10 @@ is corrupt — not a threshold that triggers anything by itself.
 <summary>Answer</summary>
 
 With `M = min_local`, `X = max_local`, `P_size` the payload and
-`K = M + (P_size − M) mod (U − 4)` (`sqlite3_ondisk.rs:2142–2143`): if `K ≤ X`
-keep `K` local; otherwise keep exactly `M` (`:2144–2145`). Either way the cell
-also holds a 4-byte overflow pointer (`:2147`).
+`K = M + (P_size − M) mod (U − 4)` (`sqlite3_ondisk.rs:2273`): if `K ≤ X`
+keep `K` local; otherwise keep exactly `M` (`:2274–2275`). Either way the cell
+also holds a 4-byte overflow pointer (`:2277`), and `payload_overflows` returns
+`None` instead when `P_size ≤ X` and nothing spills (`:2269–2270`).
 
 The first branch makes `P_size − K` an exact multiple of `U − 4`, so every
 overflow page including the last is full. The **second** branch is the one that
@@ -889,15 +914,15 @@ falls back to 489 local bytes, and its 25th and last overflow page holds
 <details>
 <summary>Answer</summary>
 
-`balance_non_root`'s `FreePages` sub-state (`btree.rs:4282–4309`) calls
-`Pager::free_page` (`pager.rs:5019`), which appends the page number to the
+`balance_non_root`'s `FreePages` sub-state (`btree.rs:4800–4827`) calls
+`Pager::free_page` (`pager.rs:5534`), which appends the page number to the
 current freelist trunk if it has room — 1,022 leaf pointers at `U = 4096`,
-from `U/4 − 2` at `pager.rs:5103–5104` — or turns the freed page into a new
-trunk pointing at the old one (`:5130–5148`).
+from `U/4 − 2` at `pager.rs:5619–5620` — or turns the freed page into a new
+trunk pointing at the old one (`:5646–5664`).
 
 The file does not shrink because nothing ever truncates it: `allocate_page`
-(`pager.rs:5250`) reuses freelist pages first and only extends the file when
-the list is empty (`:5302–5303` → `AllocateNewPage` `:5450`). Reclaiming the
+(`pager.rs:5793`) reuses freelist pages first and only extends the file when
+the list is empty (`:5845–5846` → `AllocateNewPage` `:5999`). Reclaiming the
 space to the filesystem is a separate explicit operation, `VACUUM`.
 
 </details>
@@ -905,7 +930,7 @@ space to the filesystem is a separate explicit operation, `VACUUM`.
 ## References
 
 **Code**
-- [turso](https://github.com/tursodatabase/turso), pinned at `dd775bc` —
+- [turso](https://github.com/tursodatabase/turso), pinned at `a820079e8` (v0.9.0-pre.1) —
   `core/storage/btree.rs` (slotted-page ops, overflow thresholds, balance state
   machines), `core/storage/sqlite3_ondisk.rs` (cell formats, varints, spill
   rule, freelist trunk layout), `core/storage/pager.rs` (page allocation and
@@ -916,12 +941,13 @@ space to the filesystem is a separate explicit operation, `VACUUM`.
   which covers the cursor/seek/insert surface this guide descends beneath.
 - [sqlite](https://github.com/sqlite/sqlite), pinned at `951de30` — the C
   original. `src/btree.c:3471–3474` carries the same overflow formulas and
-  `:8636–8646` the same rebalancing comment turso quotes at `btree.rs:3689`.
+  `:8636–8646` the same rebalancing comment turso quotes at `btree.rs:4192`.
 
 **In this topic**
 - [reading-sqlite-btree.md](reading-sqlite-btree.md) — the same algorithms in
-  C, including `balance_quick` and the page-number-ordering optimization turso
-  has not adopted.
+  C, including `balance_quick` and the "about 25% faster" page-number
+  renumbering, which turso carries over in `balance_non_root`
+  (`btree.rs:4381–4405`, a `sort_unstable` of the new siblings' page numbers).
 - [reading-sqlite-file-format.md](reading-sqlite-file-format.md) — the on-disk
   field definitions, byte offset by byte offset; it defers the spill arithmetic
   to Step 6 here.
@@ -934,4 +960,4 @@ space to the filesystem is a separate explicit operation, `VACUUM`.
 **Docs**
 - [SQLite file format](https://www.sqlite.org/fileformat.html) — §1.6 for the
   b-tree page header and the 60-byte fragment bound turso cites verbatim at
-  `btree.rs:7641–7642`.
+  `btree.rs:9058–9059`.

@@ -71,7 +71,7 @@ Surprises / dead ends:
 
 1. Pratt parsing: precedence climb for `a = 1 AND b < 2 OR c` — draw the tree:
 2. DataFusion fixpoint vs DuckDB ordered passes — which bug class each risks:
-3. Why polars can skip join reordering and a Cypher engine can't:
+3. When polars keeps the user's join order, and why a Cypher engine has no such fallback:
 
 ### Selinger vs Cascades (reading-selinger-cascades.md)
 
@@ -93,7 +93,8 @@ Surprises / dead ends:
   applied to the optimizer itself: inject ground truth per layer to isolate blame.
 - DuckDB cost_model.cpp:40 = Cout = "sum of intermediate cardinalities" —
   the cost model IS the cardinality estimate. My `estimate` is the whole game.
-- Greedy fallback (:234) = the amortize-and-escape-hatch pattern again:
+- Greedy fallback (`plan_enumerator.cpp:243-247`, the 10,000-pair budget) = the
+  amortize-and-escape-hatch pattern again:
   exact until the state space explodes, then heuristic.
 
 ## M10 log (Cypher parser + binder + planner)

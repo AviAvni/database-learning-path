@@ -320,9 +320,9 @@ This repo, Apple M3 Pro, the same comparison in nanoseconds:
 ```
 
 Two machines nineteen years apart, and the sequential-vs-random gap is 50× on
-one and 46× on the other. This is the correction to a folk figure the earlier
-version of this chapter repeated: the gap is **not** "about 10×". It is about
-**50×**, and it has been about 50× since 2007.
+one and 46× on the other. The folk figure — "random is about 10× slower" — is
+wrong by a factor of five: the gap is about **50×**, and it has been about 50×
+since 2007.
 
 Note what Drepper says about *why* random loses even when both are going to
 DRAM: §3.3.2 attributes it to three stacked causes — no prefetch, a rising L2
@@ -929,7 +929,8 @@ payload. The section numbers below were checked against the PDF's own headings.
   skim. §6.3.1 is worth reading in full — it is the only place the paper states
   the prefetcher's actual rules (Step 4).
 - **§6.4.1 — read carefully.** False sharing, Figs 6.10 and 6.11. This is
-  Step 10, *not* §3.5 — a mistake this chapter used to make.
+  Step 10, *not* §3.5 — §3.5 is the bandwidth and critical-word material
+  above; false sharing lives in §6's programming advice.
 - **§7** — memory performance tools: §7.1 (oprofile) and §7.2 (cachegrind) are
   the 2007 ancestors of the instrument list in the next section. The tool names
   aged; the two-instrument discipline did not.
@@ -1150,7 +1151,7 @@ Answer each before unfolding it.
   450+ cycles per element against sequential's ~9 — a **50×** gap. This repo's
   equivalent pair is 2.24 ns per 128-byte line streaming (topic 12's 57.1 GB/s)
   against 104 ns per line chased (`cache_ladder` at 128 MB), a **46×** gap.
-  Not the "~10×" this chapter used to claim.
+  Not the "~10×" of folklore.
 
   </details>
 

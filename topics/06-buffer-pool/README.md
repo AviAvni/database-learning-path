@@ -69,6 +69,17 @@ flowchart LR
     G --> C
 ```
 
+The "write it out FIRST" box is synchronous I/O on the miss path, and it is
+where submission cost hides. **High-Performance DBMSs with io_uring: When and How
+to Use It** (Matthias Jasny, Muhammad El-Hindi, Tobias Ziegler, Viktor Leis,
+Carsten Binnig; VLDB 2026, PVLDB 19; [arXiv:2512.04859](https://arxiv.org/abs/2512.04859)
+· [code](https://github.com/mjasny/vldb26-iouring)) measures it in a buffer
+manager: collecting several eviction victims and submitting their writes with
+one `io_uring_enter()` call — still synchronous, no read/write overlap yet —
+improved throughput by about 14%, to 19 k tx/s (§3.3.1, Fig. 5), because the
+per-eviction submission cost is amortized across the batch. Topic 45 covers the
+rest of that paper.
+
 ## 2. Eviction: three shapes of approximate-LRU
 
 - **postgres CLOCK** — one `nextVictimBuffer` atomic ticks around a fixed
@@ -84,6 +95,24 @@ flowchart LR
   get *unswizzled* into a cooling FIFO (~10% of pool). A cool page touched
   again is re-swizzled cheaply (second chance); reach the FIFO's end and
   you're evicted. Randomness replaces bookkeeping.
+
+All three approximate *recency*, and recency is exactly what concurrent
+analytical scans make useless: every scan touches every page once, so usage
+counts say nothing about which page is needed next. **Sampling-based Predictive
+Database Buffer Management** (Mohammad Khalaji, Theo Vanderkooy, Runsheng Benson
+Guo, Khuzaima Daudjee; PVLDB 18(13), 2025;
+[paper](https://www.vldb.org/pvldb/vol18/p5569-khalaji.pdf) ·
+[code](https://github.com/serene-lamport/postgresql-test-scripts)) uses the
+progress of the running scans to estimate when each page will next be accessed
+— approximating the optimal policy, which would need to know future accesses —
+and keeps eviction cheap by scoring only a small random sample of buffers per
+eviction (Abstract). Implemented in PostgreSQL, with 32 query streams each
+scanning 10% of a table, it reduced I/O volume by 30% to 40% relative to both
+Clock-sweep and the earlier priority-queue predictive policy at a 12 GiB cache
+(§6.2.1, Fig. 6); the gap closes as the cache grows. It is postgres's CLOCK
+([`reading-postgres-bufmgr.md`](reading-postgres-bufmgr.md)) with the victim
+chosen by forecast instead of by recency, and the random sample plays the role
+random cooling plays in LeanStore — it replaces global bookkeeping.
 
 ## 3. Pointer swizzling (LeanStore) in one diagram
 
@@ -120,8 +149,9 @@ address space, but the DB keeps explicit control of residency and eviction.
 ## 5. redis: the other memory management
 
 No pages — redis manages *allocations*. `zmalloc` wraps jemalloc with
-per-thread cache-line-aligned `used_memory` counters (the maxmemory
-enforcement input), and active defrag literally re-allocates values whose
+cache-line-aligned `used_memory` counters — a private slot for each of the
+first eight threads, eight shared slots for the rest — that are the maxmemory
+enforcement input, and active defrag literally re-allocates values whose
 jemalloc bins are underutilized and updates every pointer. FalkorDB's
 matrices live inside this world: GraphBLAS blocks are zmalloc'd, counted
 against maxmemory, and *opaque* to redis defrag.

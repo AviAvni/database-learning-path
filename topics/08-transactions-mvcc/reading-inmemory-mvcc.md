@@ -294,13 +294,13 @@ as the *physical pointer* scheme and names Hekaton as a user of it; Wu
 Table 1's Hekaton row reads *Physical* under Index Management. Step 11
 prices that choice.
 
-> **Correction to a claim this guide used to make.** An earlier version of
-> this guide said Hekaton's "index entries point at *chains*, not individual
-> versions, so a new version doesn't churn the index." That is the *logical
-> pointer* scheme (Wu §6.1), which Hekaton does not use — §4.2 shows new
-> versions being inserted into the index buckets, and Wu Table 1 files
-> Hekaton under Physical. The churn is real, and Step 11 measures what it
-> costs.
+> **Do not confuse this with the logical-pointer scheme.** A common summary
+> of Hekaton says its "index entries point at *chains*, not individual
+> versions, so a new version doesn't churn the index." That describes the
+> *logical pointer* scheme (Wu §6.1), which Hekaton does not use — §4.2
+> shows new versions being inserted into the index buckets, and Wu Table 1
+> files Hekaton under Physical. The churn is real, and Step 11 measures what
+> it costs.
 
 Why it matters: this is the axis where "no pages" does *not* buy a free
 lunch — deleting the buffer pool made lookups cheap and made updates

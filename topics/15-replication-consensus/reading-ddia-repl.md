@@ -250,7 +250,7 @@ ticks (`experiments/src/raft.rs:33-34`) against
 
 **Process pauses**: a GC or VM pause makes a live leader
 dead-then-alive — it wakes *believing it still leads*. Scale it: at
-qdrant's `tick_period_ms: 100` (`config/config.yaml:359`) a 2-second
+qdrant's `tick_period_ms: 100` (`config/config.yaml:511`, v1.20.0) a 2-second
 stop-the-world pause is 20 ticks, past `ELECTION_TIMEOUT_MAX`, so the
 pause *alone* elects someone else and the sleeper wakes stale. The
 defense is a **fencing token**: a monotonically increasing number

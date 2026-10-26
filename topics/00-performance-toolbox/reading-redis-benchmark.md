@@ -2,7 +2,7 @@
 
 The load generator you'll imitate — and the mistake you'll avoid. In one
 dependency-free file, redis-benchmark shows a masterclass in cheap pipelining
-(one pre-built buffer, patched in place) and, in the same 2028 lines, the
+(one pre-built buffer, patched in place) and, in the same 2052 lines, the
 canonical case of coordinated omission: a closed loop that measures service
 time and calls it latency. This chapter builds the load-generation concepts
 from zero — throughput against latency, closed loops, pipelining, where the
@@ -11,9 +11,9 @@ hands you the line-by-line map of the C file. Two questions drive the read:
 *how does it implement pipelining, and what does it get wrong about
 coordinated omission?*
 
-Every anchor below is Redis **8.6.2** (`src/version.h:1`), the commit
-`a176d1225` this repo pins, quoted with the line numbers the code occupies in
-that version.
+Every anchor below is Redis `unstable` at commit `e87dda2a4`, the revision
+this repo pins, quoted with the line numbers the code occupies in that
+revision.
 
 ## The problem in one sentence
 
@@ -273,7 +273,7 @@ forks in two:
 ```
 
 `latency_histogram` accumulates the whole run and is what `showLatencyReport`
-(830) reads for the final percentiles (833-838). `current_sec_latency_histogram`
+(830) reads for the final percentiles (846-851). `current_sec_latency_histogram`
 is reset every second and drives the live progress line. Same samples, two
 consumers — so a claim about "the p99 redis-benchmark printed" is a claim
 about the first one.
@@ -309,7 +309,7 @@ Line 530 adds a second distortion: `CONFIG_LATENCY_HISTOGRAM_MAX_VALUE` is
 worst outliers are truncated, not lost — which flatters the maximum.
 
 `showLatencyReport` (830) then computes p50, p95, p99 and the max off this
-histogram (834-837) and prints them to two decimal places. The display is
+histogram (847-850) and prints them to two decimal places. The display is
 state of the art. The samples are one clock read per batch, duplicated.
 
 Why it matters: good percentiles of a biased sample are still biased, and
@@ -403,7 +403,7 @@ never taken.
 
 ## Where each step lives in the code
 
-One file, `src/redis-benchmark.c` (2028 lines at `a176d1225`), readable top to
+One file, `src/redis-benchmark.c` (2052 lines at `e87dda2a4`), readable top to
 bottom in an evening:
 
 | Lines | What | Step |
@@ -417,11 +417,11 @@ bottom in an evening:
 | 442-553 | `readHandler` — latency capture (452), prefix trim (510-521), histogram recording (528-541) | 4, 5 |
 | 555-602 | `writeHandler` — batch start, `c->start = ustime()` at 574 | 4 |
 | 625-812 | `createClient` — pipelining by buffer replication (726-727) | 3 |
-| 830-921 | `showLatencyReport` — percentiles off the cumulative histogram (833-838) | 5 |
-| 946-982 | `benchmark()` — allocates both histograms (954-963), runs the event loop, calls the report (976) | 2, 5 |
-| 1696 | `main` — the test loop over SET/GET/INCR/… | 1 |
+| 830-934 | `showLatencyReport` — percentiles off the cumulative histogram (846-851); with no samples at all it prints zeros and returns (831-843) | 5 |
+| 959-995 | `benchmark()` — allocates both histograms (967-976), runs the event loop, calls the report (989) | 2, 5 |
+| 1720 | `main` — the test loop over SET/GET/INCR/… | 1 |
 
-Suggested route: `main` (1696) → `benchmark()` (946) → `createClient` (625,
+Suggested route: `main` (1720) → `benchmark()` (959) → `createClient` (625,
 for Step 3's buffer trick at 726-727) → then the Step 2 cycle in order,
 `writeHandler` (555) → `readHandler` (442) → `clientDone` (420) →
 `resetClient` (368). As you trace it, confirm for yourself that no
@@ -494,7 +494,7 @@ Answer each before unfolding it.
 
   Because HdrHistogram is a recording and rendering structure, and the defect
   is in the sampling. It buys constant-space storage at fixed relative error
-  and lets `showLatencyReport` (830) compute exact percentiles at 833-838 —
+  and lets `showLatencyReport` (830) compute exact percentiles at 846-851 —
   of whatever it was given. What it was given is one clock read per batch
   (452), replicated `config.pipeline` times (528-541), with the 10,000
   requests a stall would have delayed simply absent. Correcting it needs an
@@ -547,9 +547,8 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [redis](https://github.com/redis/redis) `src/redis-benchmark.c` (2028 lines,
-  pinned at Redis 8.6.2 / `a176d1225` — version confirmed in
-  `src/version.h:1`) — one file, no dependencies beyond hiredis and the `ae`
+- [redis](https://github.com/redis/redis) `src/redis-benchmark.c` (2052 lines,
+  pinned at `unstable` / `e87dda2a4`) — one file, no dependencies beyond hiredis and the `ae`
   event loop; readable top to bottom in an evening.
 
 | File | Lines | What |
@@ -562,7 +561,7 @@ Answer each before unfolding it.
 | `src/redis-benchmark.c` | 528-541 | one sample recorded once per reply |
 | `src/redis-benchmark.c` | 574 | `c->start = ustime()` — where the clock starts |
 | `src/redis-benchmark.c` | 726-727 | pipelining, by appending the same bytes k times |
-| `src/redis-benchmark.c` | 833-838 | the percentiles that get printed |
+| `src/redis-benchmark.c` | 846-851 | the percentiles that get printed |
 
 **Background**
 - Gil Tene, *How NOT to Measure Latency* — the talk that named coordinated

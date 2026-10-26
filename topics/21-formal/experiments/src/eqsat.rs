@@ -8,7 +8,7 @@
 //!   egraph.rs:1416 EGraph::rebuild / :1346 process_unions —
 //!                  deferred congruence closure, THE egg contribution
 //!   run.rs:138     Runner (iter/node/time limits, StopReason :237)
-//!   extract.rs:41  Extractor, :116 CostFunction, :157 AstSize
+//!   extract.rs:42  Extractor, :117 CostFunction, :158 AstSize
 //!   machine.rs:8   pattern-matching VM (Bind/Scan/Compare)
 
 use crate::expr::Expr;

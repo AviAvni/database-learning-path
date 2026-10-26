@@ -12,7 +12,7 @@ come from.
 
 Every anchor below is **LAGraph at commit `e2539e2`** (the pin in
 `resources/codebases.md`), quoted with the line numbers the code
-occupies at that commit. The pinned tree's `src/algorithm/`
+occupies at that commit. Its `src/algorithm/`
 directory contains exactly these algorithms: `LAGr_Betweenness`,
 `LAGr_BreadthFirstSearch`, `LAGr_ConnectedComponents`,
 `LAGr_PageRank`, `LAGr_PageRankGAP`,
@@ -20,7 +20,7 @@ directory contains exactly these algorithms: `LAGr_Betweenness`,
 `LAGraph_TriangleCount`, `LG_BreadthFirstSearch_SSGrB`,
 `LG_BreadthFirstSearch_vanilla`, `LG_CC_Boruvka`, `LG_CC_FastSV6`
 and `LG_CC_FastSV7` — plus the two BFS templates. If you go looking
-for k-truss or Louvain at this pin, they are not there.
+for k-truss or Louvain in this tree, they are not there.
 
 ## The problem in one sentence
 
@@ -59,7 +59,7 @@ the whole vocabulary of this chapter:
   mask has no entry".
 - **The descriptor.** `GrB_DESC_RSC` = **R**eplace the output +
   use the **S**tructure of the mask (ignore its values) + **C**
-  omplement it. `Include/GraphBLAS.h:666` in SuiteSparse defines it
+  omplement it. `Include/GraphBLAS.h:672` in SuiteSparse defines it
   as exactly `GrB_REPLACE + GrB_STRUCTURE + GrB_COMP`. So
   `GrB_DESC_RSC` on a BFS frontier reads: *write only where the
   vertex has not yet been visited, and discard whatever was in the
@@ -110,7 +110,7 @@ immediately if either operand is bitmap or full, so `LG_BITMAP` at
 `:312` is what steers the pull into the dot engine.
 
 And note what the pull does *not* reach.
-`GB_AxB_dot3_control` (`GB_mxm.h:235-243`) requires
+`GB_AxB_dot3_control` (`GB_mxm.h:236-244`) requires
 `M != NULL && !Mask_comp && (M sparse or hypersparse)`. The pull's
 descriptor is `GrB_DESC_RSC`, so `Mask_comp` is **true** — dot3 is
 structurally ineligible here. A complemented-mask product on a
@@ -230,7 +230,7 @@ indices, not values.
     27  // One of 6 methods are used, defined below where L and U are the strictly
     28  // lower and strictly upper triangular parts of the symmetrix matrix A,
     29  // respectively.  Each method computes the same result, ntri:
-    30  //
+    30
     31  //  0:  default:    use the default method (currently method Sandia_LUT)
     32  //  1:  Burkhardt:  ntri = sum (sum ((A^2) .* A)) / 6
     33  //  2:  Cohen:      ntri = sum (sum ((L * U) .* A)) / 2
@@ -251,9 +251,9 @@ engine runs and how much the mask prunes:
 
 - **`.* L` masks the OUTPUT to the lower triangle.** In
   SuiteSparse, a non-complemented sparse mask on `C = A*B'` is
-  precisely dot3's case (`GB_mxm.h:235-243`), and dot3 allocates
+  precisely dot3's case (`GB_mxm.h:236-244`), and dot3 allocates
   `C` with exactly `nnz(M)` entries —
-  `GB_AxB_dot3.c:126` computes `mnz = GB_nnz(M)` and `:171` sets
+  `GB_AxB_dot3.c:131` computes `mnz = GB_nnz(M)` and `:176` sets
   `cnz = mnz`. The mask is not a filter applied afterwards; it is
   the loop bound.
 - **`L*L` versus `L*U'`** is saxpy versus dot, and the comment at
@@ -268,7 +268,7 @@ engine runs and how much the mask prunes:
   nothing, because the triangular masks already fix an orientation.
   That factor is the whole reason the Sandia forms are faster.
 
-Note what the pinned source does *not* say. The comment claims a
+Note what the source does *not* say. The comment claims a
 performance ordering; it does not quantify it, and this repo has
 not measured triangle counting through GraphBLAS. Do not carry a
 "dot3 is 3× faster" number out of this step — carry the ordering
@@ -362,15 +362,9 @@ That 2.6× is the thing to remember. A PageRank iteration is not
 random walk through the vector, and on a scale-free graph the
 second term dominates.
 
-One honesty note before you quote a headline number. This topic
-reports the SpMV decay two ways: `FINDINGS.md` row 20 says
-**20.7 → 12.3 GB/s**, and `notes.md:11-14`'s table says
-**19.1 → 15.8 GB/s** over the same scale 14 → 20 span. They are not
-the same measurement and this guide does not blend them: the
-per-scale arithmetic above uses `notes.md`, and any headline
-citation should say `FINDINGS.md:38`. Reconciling the two is real
-work someone should do; see the note in the report at the end of
-this topic.
+The SpMV decay over the scale 14 → 20 span is **19.1 → 15.8 GB/s**
+(`notes.md:11-14`), the same figure FINDINGS.md row 20 quotes; the
+per-scale arithmetic above uses that table.
 
 Finally, what the GAP variant deliberately gets wrong — read the
 header before you trust the output:
@@ -379,7 +373,7 @@ header before you trust the output:
 // LAGr_PageRankGAP.c — the disclaimer, 20-29
     20  // PageRank for the GAP benchmark (only).  Do not use in production.
     ...
-    24  // ...  The GAP specification
+    24  // already available, as are the row and column degrees.  The GAP specification
     25  // ignores dangling nodes (nodes with no outgoing edges, also called sinks),
     26  // and thus shouldn't be used in production.  This method is for the GAP
     27  // benchmark only.  See LAGr_PageRank for a method that
@@ -502,7 +496,7 @@ loop. Leave `LG_CC_FastSV7.c` until M24. Note the pin ships both
 3. Sandia_LUT uses `L*U'` with `U' = L` — so it is `L*L` with the
    second operand transposed, turning saxpy into dot. Spell out why
    dot3 plus a lower-triangular mask visits each wedge exactly once,
-   using `GB_AxB_dot3.c:126` and `:171` as the evidence.
+   using `GB_AxB_dot3.c:131` and `:176` as the evidence.
 4. PageRankGAP vs textbook PR: what does prescaling `d/damping`
    (`:112`) save per iteration, and why is the teleport handled as
    a scalar assign (`:133`) rather than a vector add?
@@ -543,7 +537,7 @@ Answer each before unfolding it.
   `GB_AxB_dot2_control.c:26-30` returns true immediately when
   either operand is bitmap or full. It cannot be dot3 — dot3
   requires a *non*-complemented sparse mask
-  (`GB_mxm.h:235-243`), and `GrB_DESC_RSC` sets `Mask_comp`.
+  (`GB_mxm.h:236-244`), and `GrB_DESC_RSC` sets `Mask_comp`.
   Sparse steers push into **saxpy3** (`GB_AxB_saxpy3.c`), which is
   what LAGraph's own comment at `:305` calls it.
 
@@ -609,10 +603,6 @@ Answer each before unfolding it.
   topic 0/13's ~30 GB/s streaming baseline to the random x-gathers,
   because RMAT column indices spray across the vector.
 
-  Note the topic reports the decay two ways — `FINDINGS.md:38` says
-  20.7 → 12.3 GB/s, `notes.md:11-14` says 19.1 → 15.8 — and they
-  should not be blended. Cite whichever you used.
-
   </details>
 
 - [ ] You can say what LAGraph makes the caller decide, and what changes when the storage layer has already decided it.
@@ -669,7 +659,7 @@ Answer each before unfolding it.
   `LG_CC_FastSV7.c` (M24 material — read later), and
   `include/LAGraph.h` for the semiring families.
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475` — the engine-dispatch anchors this guide points at
+  v10.5.2, at `7701390417` — the engine-dispatch anchors this guide points at
   (`Source/mxm/GB_AxB_dot2_control.c`, `GB_AxB_dot3.c`,
   `GB_mxm.h`) are walked in
   [reading-suitesparse-internals.md](reading-suitesparse-internals.md).
@@ -691,6 +681,5 @@ Answer each before unfolding it.
   arithmetic on, and the gather explanation for the shortfall.
 - `topics/20-graphblas/notes.md:35` — the BFS scalar oracle,
   rmat18 3308 µs.
-- `FINDINGS.md:38` — the topic headline. Note it and `notes.md`
-  report the SpMV decay differently (20.7 → 12.3 versus
-  19.1 → 15.8); cite one, do not average them.
+- `FINDINGS.md:40` — the topic headline: SpMV decay 19.1 → 15.8 GB/s,
+  the same run as `notes.md`.

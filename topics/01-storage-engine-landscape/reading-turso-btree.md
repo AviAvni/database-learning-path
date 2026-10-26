@@ -8,10 +8,10 @@ row, how one page stores variable-length rows, what one insert does, and how the
 whole thing survives a crash. Then it hands you the file and line anchors to
 watch each step happen.
 
-Everything below is anchored at `tursodatabase/turso@dd775bc`, this repo's pin
-(`python3 tools/pinned-source.py ref turso`). Read any file at that commit with
-`python3 tools/pinned-source.py show turso core/storage/btree.rs -r A:B` — that
-is more reliable than a local clone, because these files move fast.
+Everything below is anchored at `tursodatabase/turso@a820079e8` (v0.9.0-pre.1),
+this repo's pin (`python3 tools/pinned-source.py ref turso`). Read any file at
+that commit with `python3 tools/pinned-source.py show turso core/storage/btree.rs -r A:B`
+— that is more reliable than a local clone, because these files move fast.
 
 ## The problem in one sentence
 
@@ -39,7 +39,7 @@ sized in pages, not bytes: turso's default is
 `DEFAULT_PAGE_CACHE_SIZE_IN_PAGES = 2000` (`core/storage/page_cache.rs:14`, with
 a separate 100,000 for wasm at `:16`) — 8.2 MB at 4 KB pages. Second, the tree
 has a hard depth bound derived from page arithmetic:
-`BTCURSOR_MAX_DEPTH = 20` (`core/storage/btree.rs:133`), justified in the comment
+`BTCURSOR_MAX_DEPTH = 20` (`core/storage/btree.rs:157`), justified in the comment
 above it as "a maximum database size of 2^31 pages, a minimum fanout of 2 for a
 root-node and 3 for all other internal nodes". Anything deeper is declared
 corrupt rather than traversed.
@@ -57,8 +57,8 @@ keys — not 2, like a binary tree node — the tree is extremely flat: the heig
 is log-base-*fanout*, not log-base-2.
 
 "Hundreds" is not a hand-wave; it falls out of the page header layout turso
-documents at `core/storage/btree.rs:76–124`. Write **P** for page size, **H**
-for header bytes (12 interior, 8 leaf — stated on line 76), **s = 2** for a cell
+documents at `core/storage/btree.rs:100–148`. Write **P** for page size, **H**
+for header bytes (12 interior, 8 leaf — stated on line 100), **s = 2** for a cell
 pointer, and **c** for a cell's own bytes. Then
 
 ```text
@@ -125,7 +125,7 @@ after it. The fix is one level of indirection — a **slotted page**:
 ```
 
 - The rows ("**cells**") are written wherever there's room, from the right. The
-  source says why in as many words at `core/storage/btree.rs:112–114`: "SQLite
+  source says why in as many words at `core/storage/btree.rs:136–138`: "SQLite
   strives to place cells as far toward the end of the b-tree page as it can, in
   order to leave space for future growth of the cell pointer array."
 - A small array of 2-byte offsets at the front — the **cell pointer array** — is
@@ -138,28 +138,45 @@ turso spells the header out field by field, with an ASCII diagram, in the
 `offset` module — read it, it is the file format in twenty lines:
 
 ```rust
-// core/storage/btree.rs at tursodatabase/turso@dd775bc, lines 76-124
+// core/storage/btree.rs at tursodatabase/turso@a820079e8, lines 100-148
 // (constants only; the doc comments on each are worth reading in full)
-76  /// The B-Tree page header is 12 bytes for interior pages and 8 bytes for leaf pages.
-84  pub mod offset {
-86      pub const BTREE_PAGE_TYPE: usize = 0;               // u8
-98      pub const BTREE_FIRST_FREEBLOCK: usize = 1;         // u16 — head of the freeblock chain
-101     pub const BTREE_CELL_COUNT: usize = 3;              // u16 — how many pointers in the array
-115     pub const BTREE_CELL_CONTENT_AREA: usize = 5;       // u16 — where content starts (moves LEFT)
-120     pub const BTREE_FRAGMENTED_BYTES_COUNT: usize = 7;  // u8
-123     pub const BTREE_RIGHTMOST_PTR: usize = 8;           // u32 — interior pages only
-124 }
+   100  /// The B-Tree page header is 12 bytes for interior pages and 8 bytes for leaf pages.
+   ... 101-107: the ASCII diagram of the 12 header bytes ...
+   108  pub mod offset {
+   109      /// Type of the B-Tree page (u8).
+   110      pub const BTREE_PAGE_TYPE: usize = 0;
+   ... 111-121: doc comment — the freeblock definition ...
+   122      pub const BTREE_FIRST_FREEBLOCK: usize = 1;
+   ... 123:     blank ...
+   124      /// The number of cells in the page (u16).
+   125      pub const BTREE_CELL_COUNT: usize = 3;
+   ... 126-138: doc comment — the content-area pointer, and why it moves left ...
+   139      pub const BTREE_CELL_CONTENT_AREA: usize = 5;
+   ... 140-143: doc comment — the fragment definition ...
+   144      pub const BTREE_FRAGMENTED_BYTES_COUNT: usize = 7;
+   ... 145:     blank ...
+   146      /// The right-most pointer (saved separately from cells) (u32)
+   147      pub const BTREE_RIGHTMOST_PTR: usize = 8;
+   148  }
 ```
+
+The six constants are byte offsets into the header, and their widths are in
+the doc comments: the page type is one byte at 0; the first-freeblock pointer
+(head of the freeblock chain), the cell count (how many pointers the array
+holds) and the content-area start (where the leftward-growing content begins)
+are `u16`s at 1, 3 and 5; the fragment count is one byte at 7; and the
+rightmost child pointer, a `u32` at 8 (line 147), exists only on interior
+pages — which is why interior headers are 12 bytes and leaf headers 8.
 
 Two of those fields exist purely to manage the dead space deletes leave behind,
 and the doc comments define them precisely. A **freeblock**
-(`BTREE_FIRST_FREEBLOCK`, comment at `:90–97`) is a run of **at least 4 bytes**
+(`BTREE_FIRST_FREEBLOCK`, comment at `:112–121`) is a run of **at least 4 bytes**
 inside the cell content area that is no longer in use, chained to the next one —
 explicitly *not* the regular free gap in the middle of the page. **Fragments**
-(`BTREE_FRAGMENTED_BYTES_COUNT`, `:119`) are "isolated groups of 1, 2, or 3
+(`BTREE_FRAGMENTED_BYTES_COUNT`, `:143`) are "isolated groups of 1, 2, or 3
 unused bytes" — too small to be worth chaining, so they are merely counted.
 When the counter or the chain gets bad enough, `defragment_page()`
-(`core/storage/btree.rs:8422`) compacts the content area.
+(`core/storage/btree.rs:9842`) compacts the content area.
 
 This layout is also why B-trees have space amplification: the free gap in the
 middle of every page, plus the freeblocks and fragments, is the price of
@@ -181,8 +198,8 @@ With Steps 1–3, an insert into a leaf is four small moves:
 
 ```rust
 // ILLUSTRATION — the shape of turso's insert, not its source. The real path is
-// insert() core/storage/btree.rs:5779 → insert_into_page() :2568 →
-// insert_into_cell() :8669; the overflow branch is balance() :2793.
+// insert() core/storage/btree.rs:6927 → insert_into_page() :3052 →
+// insert_into_cell() :10130; the overflow branch is balance() :3291.
 1  fn insert_cell(page: &mut Page, idx: usize, cell: &[u8]) -> Result<(), Full> {
 2      let ptrs_end = page.header_len() + 2 * (page.ncells + 1); // ptr array grows →
 3      let content_start = page.content_start - cell.len();      // content grows ←
@@ -197,8 +214,8 @@ With Steps 1–3, an insert into a leaf is four small moves:
 12     Ok(())
 13 }
 14 // delete = remove the u16 pointer, LEAVE the bytes → freeblocks + fragments,
-15 // reclaimed only by defragment_page() (btree.rs:8422) — cheap deletes,
-16 // deferred cleanup. The mirror of line 8 is shift_pointers_left() (:9067),
+15 // reclaimed only by defragment_page() (btree.rs:9842) — cheap deletes,
+16 // deferred cleanup. The mirror of line 8 is shift_pointers_left() (:10582),
 17 // which is a single copy_within over the 2-byte pointers.
 ```
 
@@ -218,22 +235,22 @@ The textbook answer is: split the full page into two half-full pages and add a
 separator key to the parent. That works, but it leaves pages 50% full — space
 amplification and a deeper tree.
 
-SQLite, and turso in `balance_non_root()` (`core/storage/btree.rs:2995`), does
+SQLite, and turso in `balance_non_root()` (`core/storage/btree.rs:3494`), does
 better: take the full page **and up to two siblings**, pool all their cells, and
 redistribute them evenly across the resulting pages. The bound is a named
 constant — `MAX_SIBLING_PAGES_TO_BALANCE: usize = 3`
-(`core/storage/btree.rs:136`) — and so is its consequence:
+(`core/storage/btree.rs:160`) — and so is its consequence:
 
 ```rust
-// core/storage/btree.rs at tursodatabase/turso@dd775bc, lines 135-139
-135 /// Maximum number of sibling pages that balancing is performed on.
-136 pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
-137
-138 /// We only need maximum 5 pages to balance 3 pages, because we can guarantee that cells from 3 pages will fit in 5 pages.
-139 pub const MAX_NEW_SIBLING_PAGES_AFTER_BALANCE: usize = 5;
+// core/storage/btree.rs at tursodatabase/turso@a820079e8, lines 159-163
+   159  /// Maximum number of sibling pages that balancing is performed on.
+   160  pub const MAX_SIBLING_PAGES_TO_BALANCE: usize = 3;
+   161
+   162  /// We only need maximum 5 pages to balance 3 pages, because we can guarantee that cells from 3 pages will fit in 5 pages.
+   163  pub const MAX_NEW_SIBLING_PAGES_AFTER_BALANCE: usize = 5;
 ```
 
-Line 138 is a proof obligation stated as a comment, and it is worth checking
+Line 162 is a proof obligation stated as a comment, and it is worth checking
 against Step 2's numbers: three full leaves hold at most 3 × 38 = 114 cells;
 after balancing, those 114 cells plus the incoming one spread over at most 5
 pages, i.e. 23 per page, comfortably inside the 38 a page can take. The reason
@@ -243,7 +260,7 @@ the parent.
 Fewer, fuller pages ⇒ a shallower tree and less slack per page. The costs to
 notice: a balance dirties ~3 pages instead of 1, and in the rare worst case a
 split propagates upward until the root itself splits — `balance_root()`
-(`core/storage/btree.rs:4774`), the only operation that makes the tree taller.
+(`core/storage/btree.rs:5300`), the only operation that makes the tree taller.
 
 So one insert dirties:
 
@@ -251,7 +268,7 @@ So one insert dirties:
   1 page          common case — cell fits (Step 4, line 4 takes the happy path)
   ~3–5 pages      balance_non_root: 3 siblings pooled into ≤5, parent updated
   O(height)       balance_root: propagation reaches the root, tree grows a level
-                  bounded above by BTCURSOR_MAX_DEPTH = 20 (btree.rs:133)
+                  bounded above by BTCURSOR_MAX_DEPTH = 20 (btree.rs:157)
 ```
 
 Hold that gradient — it is question 2 below, and it is the B-tree half of the
@@ -262,112 +279,121 @@ from the other end.
 
 > **In:** an engine that writes pages in place, and a machine that can lose
 > power between two of those writes.
-> **Out:** the two components that fix it, the actual call sites, and one
-> correction to the folk version of "the write-ahead rule".
+> **Out:** the two components that fix it, the actual call sites, and the
+> difference between the two journals a page passes through.
 
 Writing pages in place is exactly what makes crashes dangerous: die mid-write
 and the old version is *gone*. Two components fix this.
 
-The **pager** (`Pager`, `core/storage/pager.rs:1335`) owns all page IO: it caches
+The **pager** (`Pager`, `core/storage/pager.rs:1610`) owns all page IO: it caches
 pages in memory, hands them to the B-tree, and tracks which are **dirty**
 (modified but not yet written). Reads go through `read_page()`
-(`core/storage/pager.rs:3240`, cache first) or `read_page_no_cache()` (`:3185`);
-`add_dirty()` (`:3412`) marks a page modified.
+(`core/storage/pager.rs:3648`, a one-line wrapper over `read_page_into()` at
+`:3654`, which tries the page cache first) and fall through to
+`read_page_no_cache()` (`:3586`) on a miss; `add_dirty()` (`:3888`) marks a page
+modified.
 
-The **WAL** (write-ahead log, `WalFile` at `core/storage/wal.rs:2593`) is an
+The **WAL** (write-ahead log, `WalFile` at `core/storage/wal.rs:2798`) is an
 append-only file. The rule that gives it its name: a page's new version is
 appended to the WAL *before* the database file is ever touched. Commit = the WAL
-append is durable. Later, a **checkpoint** (`core/storage/wal.rs:3795`) copies
+append is durable. Later, a **checkpoint** (`core/storage/wal.rs:4126`) copies
 WAL frames back into the main file — which is the only time the main file is
 written at all.
 
-One correction worth making, because the previous version of this guide got it
-wrong and the mistake is instructive. `add_dirty()` does *not* write to the WAL.
-Read it:
+It is tempting to read `add_dirty()` as the write-ahead rule made visible —
+the page is about to change, so log it. It does *not* write to the WAL. Read it:
 
 ```rust
-// core/storage/pager.rs at tursodatabase/turso@dd775bc, lines 3412-3420
-3412     pub fn add_dirty(&self, page: &Page) -> Result<()> {
-3413         turso_assert!(
-3414             page.is_loaded(),
-3415             "page must be loaded in add_dirty() so its contents can be subjournaled",
-3416             { "page_id": page.get().id }
-3417         );
-3418         self.subjournal_page_if_required(page)?;
-3419         let mut dirty_pages = self.dirty_pages.write();
-3420         dirty_pages.insert(page.get().id as u32);
+// core/storage/pager.rs at tursodatabase/turso@a820079e8, lines 3888-3896
+  3888      pub fn add_dirty(&self, page: &Page) -> Result<()> {
+  3889          turso_assert!(
+  3890              page.is_loaded(),
+  3891              "page must be loaded in add_dirty() so its contents can be subjournaled",
+  3892              { "page_id": page.get().id() }
+  3893          );
+  3894          self.subjournal_page_if_required(page)?;
+  3895          let mut dirty_pages = self.dirty_pages.write();
+  3896          dirty_pages.insert(page.get().id() as u32);
 ```
 
-Line 3418 writes the page's *pre-image* to a **subjournal**
-(`core/storage/subjournal.rs`, held at `pager.rs:1357`), which exists so a
+The line to focus on is 3894: it writes the page's *pre-image* to a
+**subjournal** (`core/storage/subjournal.rs`, held at `pager.rs:1637`), which exists so a
 `SAVEPOINT` or a failed statement can be rolled back *within* an open
 transaction. That is a different mechanism from the WAL, with a different
 lifetime. The WAL frames are appended later, on the commit path: `cacheflush()`
-(`core/storage/pager.rs:3451`) collects the dirty set and calls
-`wal.append_frames_vectored(pages, page_sz)` at `pager.rs:3704` (and again at
-`:3901`), landing in `core/storage/wal.rs:4333`. So there are *two* journals
+(`core/storage/pager.rs:3927`) collects the dirty set into batches and hands
+each to `flush_page_batch()` (`:4175`), which calls
+`wal.append_frames_vectored(pages, page_sz)` at `pager.rs:4186`; the
+cache-spill path, `spill_append_frames_to_wal()` (`:4362`), appends at `:4378`.
+Both land in `core/storage/wal.rs:4666`. So there are *two* journals
 here — one for intra-transaction rollback, one for crash recovery — and reading
 `add_dirty()` as "the write-ahead rule, visible in code" conflates them.
 
-The punchline for the topic's B-tree-vs-LSM framing survives the correction, and
-is in fact sharper for it: even the in-place family writes out-of-place *first*,
+The punchline for the topic's B-tree-vs-LSM framing is sharper for the
+distinction: even the in-place family writes out-of-place *first*,
 then reconciles. The difference is what is **authoritative** — here the B-tree
 file is (the WAL is a temporary patch that `checkpoint()` folds back in); in an
 LSM the log-structured files *are* the database and nothing is ever folded back.
 
 ## Where each step lives in the code
 
-All at `tursodatabase/turso@dd775bc`. Line counts are that commit's; these files
+All at `tursodatabase/turso@a820079e8`. Line counts are that commit's; these files
 move fast, so navigate by symbol name if you read a different revision.
 
 | File | Lines | Role (steps) |
 |------|-------|------|
-| `core/storage/btree.rs` | 13,186 | cursor, slotted pages, balance (2–5) |
-| `core/storage/wal.rs` | 10,064 | WAL frames + checkpoint (6) |
-| `core/storage/pager.rs` | 6,614 | page cache, dirty tracking, IO (1, 6) |
-| `core/storage/sqlite3_ondisk.rs` | 2,449 | cell parsing — the byte format (3) |
-| `core/storage/page_cache.rs` | 1,872 | SIEVE-eviction page cache (1, 6) |
+| `core/storage/btree.rs` | 15,479 | cursor, slotted pages, balance (2–5) |
+| `core/storage/wal.rs` | 11,276 | WAL frames + checkpoint (6) |
+| `core/storage/pager.rs` | 7,271 | page cache, dirty tracking, IO (1, 6) |
+| `core/storage/sqlite3_ondisk.rs` | 2,748 | cell parsing — the byte format (3) |
+| `core/storage/page_cache.rs` | 1,964 | SIEVE-eviction page cache (1, 6) |
 
 - **Step 1**: `DEFAULT_PAGE_CACHE_SIZE_IN_PAGES = 2000` —
-  `page_cache.rs:14`; `BTCURSOR_MAX_DEPTH = 20` — `btree.rs:133`.
-- **Step 3**: the header field map and its ASCII diagram — `btree.rs:76–124`;
-  cell parsing in `read_btree_cell()` — `sqlite3_ondisk.rs:816`; delete
-  fragmentation fixed by `defragment_page()` — `btree.rs:8422` (with
-  `defragment_page_fast` at `:8273`, `_full` at `:8399`, `_for_insert` at
-  `:8412`); pointer-array maintenance via `copy_within` in
-  `shift_pointers_left()` — `btree.rs:9067`.
+  `page_cache.rs:14`; `BTCURSOR_MAX_DEPTH = 20` — `btree.rs:157`.
+- **Step 3**: the header field map and its ASCII diagram — `btree.rs:100–148`;
+  cell parsing in `read_btree_cell()` — `sqlite3_ondisk.rs:847`; delete
+  fragmentation fixed by `defragment_page()` — `btree.rs:9842` (with
+  `defragment_page_fast` at `:9693`, `_full` at `:9819`, `_for_insert` at
+  `:9832`); pointer-array maintenance via `copy_within` in
+  `shift_pointers_left()` — `btree.rs:10582`.
 - **Steps 2 + 4 — the cursor**: every operation moves via `BTreeCursor`
-  (`btree.rs:714`), with `CursorContext` (`btree.rs:539`, key enum at `:530`)
-  and `PinGuard` (`btree.rs:375` — pins a page in the cache while the cursor
-  points at it). Trace one descent in `seek()` (`btree.rs:5681`; trait
-  declaration at `:653`): root → binary search the cell pointer array → child
-  page number → pager fetch → leaf. Insert: `insert()` (`btree.rs:5779`) →
-  `insert_into_page()` (`btree.rs:2568`) → `insert_into_cell()` (`btree.rs:8669`).
+  (`btree.rs:873`), with `CursorContext` (`btree.rs:576`, key enum at `:567`)
+  and `PinGuard` (`btree.rs:410` — pins a page in the cache while the cursor
+  points at it). Trace one descent in `seek()` (`btree.rs:6812`; declared in
+  `CursorTrait` at `:807`): root → binary search the cell pointer array → child
+  page number → pager fetch → leaf. Insert: `insert()` (`btree.rs:6927`) →
+  `insert_into_page()` (`btree.rs:3052`) → `insert_into_cell()` (`btree.rs:10130`).
+  Every one of these returns `IOResultOr<T>` (`core/types.rs:3723`, a `Result`
+  over `IOResult::Done(T)` or `IOResult::IO(..)` — "finished", or "here is the
+  IO to wait on before calling again") because turso's cursor is a resumable
+  state machine, not a blocking call.
 
 ```mermaid
 flowchart LR
-    S["seek(key)<br/>btree.rs:5681"] --> D["descend: binary search cells,<br/>follow child ptr"]
-    D --> PG["pager.read_page<br/>pager.rs:3240"]
-    PG --> L["leaf: insert_into_page<br/>btree.rs:2568"]
-    L -- page overflows --> B["balance<br/>btree.rs:2793"]
-    B --> BNR["balance_non_root<br/>btree.rs:2995<br/>≤3 siblings → ≤5 pages"]
-    BNR -- propagates to root --> BR["balance_root<br/>btree.rs:4774<br/>tree grows a level"]
+    S["seek(key)<br/>btree.rs:6812"] --> D["descend: binary search cells,<br/>follow child ptr"]
+    D --> PG["pager.read_page<br/>pager.rs:3648"]
+    PG --> L["leaf: insert_into_page<br/>btree.rs:3052"]
+    L -- page overflows --> B["balance<br/>btree.rs:3291"]
+    B --> BNR["balance_non_root<br/>btree.rs:3494<br/>≤3 siblings → ≤5 pages"]
+    BNR -- propagates to root --> BR["balance_root<br/>btree.rs:5300<br/>tree grows a level"]
 ```
 
-- **Step 5**: `MAX_SIBLING_PAGES_TO_BALANCE = 3` — `btree.rs:136`;
-  `MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` — `btree.rs:139`; `balance()` —
-  `btree.rs:2793`; `balance_non_root()` — `btree.rs:2995`; `balance_root()` —
-  `btree.rs:4774`.
-- **Step 6**: `Pager` — `pager.rs:1335`; `read_page()` — `pager.rs:3240`;
-  `read_page_no_cache()` — `pager.rs:3185`; `add_dirty()` — `pager.rs:3412`
+- **Step 5**: `MAX_SIBLING_PAGES_TO_BALANCE = 3` — `btree.rs:160`;
+  `MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` — `btree.rs:163`; `balance()` —
+  `btree.rs:3291`; `balance_non_root()` — `btree.rs:3494`; `balance_root()` —
+  `btree.rs:5300`.
+- **Step 6**: `Pager` — `pager.rs:1610`; `read_page()` — `pager.rs:3648`;
+  `read_page_no_cache()` — `pager.rs:3586`; `add_dirty()` — `pager.rs:3888`
   (**subjournal**, not WAL — see Step 6); the subjournal handle itself —
-  `pager.rs:1357`. Commit path: `cacheflush()` — `pager.rs:3451`, which calls
-  `append_frames_vectored` at `pager.rs:3704`. WAL: `WalFile` — `wal.rs:2593`
-  (shared state `WalFileShared` — `wal.rs:2781`); `append_frames_vectored()`
-  impl — `wal.rs:4333` (trait declaration `wal.rs:708`); `checkpoint()` impl —
-  `wal.rs:3795` (trait declaration `wal.rs:715`). Page cache: `PageCache` —
-  `page_cache.rs:99`, SIEVE eviction described at `:90–98`, `spill_threshold`
-  at `:109` (buffer-pool preview, topic 6).
+  `pager.rs:1637`. Commit path: `cacheflush()` — `pager.rs:3927`, which calls
+  `flush_page_batch()` (`pager.rs:4175`) → `append_frames_vectored` at
+  `pager.rs:4186`. WAL: `WalFile` — `wal.rs:2798` (shared state
+  `WalFileShared` — `wal.rs:3009`); `append_frames_vectored()` impl —
+  `wal.rs:4666` (trait declaration `wal.rs:741`); `checkpoint()` impl —
+  `wal.rs:4126` (trait declaration `wal.rs:752`); `CheckpointMode` —
+  `wal.rs:160`. Page cache: `PageCache` — `page_cache.rs:100`, SIEVE eviction
+  described at `:90–98`, `spill_threshold` at `:111` (buffer-pool preview,
+  topic 6).
 
 ## Questions to answer in notes.md
 
@@ -380,21 +406,21 @@ core/storage/btree.rs -r A:B` is the fastest way in.
    of turso's default 2000-page cache does it consume? Then say which of those
    two numbers — height or cached fraction — topic 3 found actually predicts
    lookup latency.
-2. Why does `balance_non_root()` (`btree.rs:2995`) prefer redistribution over
-   splitting? Check the claim on `btree.rs:138` — that cells from 3 pages always
+2. Why does `balance_non_root()` (`btree.rs:3494`) prefer redistribution over
+   splitting? Check the claim on `btree.rs:162` — that cells from 3 pages always
    fit in 5 — against your Step 2 cell sizes, and say what the choice does to
    write amplification (≈3–5 dirty pages per balance versus 2 for a naive
    split) *and* to space amplification.
 3. During a checkpoint, what blocks writers? Read `checkpoint()`
-   (`core/storage/wal.rs:3795`) far enough to name the mode enum
-   (`CheckpointMode`, declared at `wal.rs:715`) and say which of its variants
+   (`core/storage/wal.rs:4126`) far enough to name the mode enum
+   (`CheckpointMode`, declared at `wal.rs:160`) and say which of its variants
    waits for readers.
-4. `add_dirty()` (`pager.rs:3412`) subjournals a page; `cacheflush()`
-   (`pager.rs:3451`) appends WAL frames. Write down, for a transaction that
+4. `add_dirty()` (`pager.rs:3888`) subjournals a page; `cacheflush()`
+   (`pager.rs:3927`) appends WAL frames. Write down, for a transaction that
    modifies one page and then hits a statement error, exactly which bytes each
    of the two journals holds and when each is discarded. Which one would you
    have to disable to get an honest write-amplification measurement?
-5. `BTCURSOR_MAX_DEPTH = 20` (`btree.rs:133`) is justified by "2^31 pages,
+5. `BTCURSOR_MAX_DEPTH = 20` (`btree.rs:157`) is justified by "2^31 pages,
    minimum fanout of 2 for a root and 3 for other internal nodes". Work that
    bound: what tree size does depth 20 at fanout 3 actually cover, and how far
    is that from the 2^31-page limit? What does the slack tell you about how
@@ -409,20 +435,20 @@ Answer each before unfolding it.
 <details>
 <summary>Answer</summary>
 
-Header (12 bytes interior, 8 leaf — `btree.rs:76`), then a rightward-growing
+Header (12 bytes interior, 8 leaf — `btree.rs:100`), then a rightward-growing
 array of 2-byte cell pointers in key order, then free space, then the cell
 content area growing leftward from the end of the page.
 
-The six fields (`btree.rs:84–124`): `BTREE_PAGE_TYPE` (0, u8),
+The six fields (`btree.rs:108–148`): `BTREE_PAGE_TYPE` (0, u8),
 `BTREE_FIRST_FREEBLOCK` (1, u16), `BTREE_CELL_COUNT` (3, u16),
 `BTREE_CELL_CONTENT_AREA` (5, u16), `BTREE_FRAGMENTED_BYTES_COUNT` (7, u8),
 `BTREE_RIGHTMOST_PTR` (8, u32, interior pages only).
 
 The two dead-space fields are `BTREE_FIRST_FREEBLOCK` — head of a chain of
 unused runs of **at least 4 bytes** *inside* the content area, explicitly not
-the free gap in the middle (`:90–97`) — and `BTREE_FRAGMENTED_BYTES_COUNT`,
-which merely counts "isolated groups of 1, 2, or 3 unused bytes" (`:119`) too
-small to chain. `defragment_page()` (`btree.rs:8422`) is what reclaims them.
+the free gap in the middle (`:112–121`) — and `BTREE_FRAGMENTED_BYTES_COUNT`,
+which merely counts "isolated groups of 1, 2, or 3 unused bytes" (`:143`) too
+small to chain. `defragment_page()` (`btree.rs:9842`) is what reclaims them.
 
 </details>
 
@@ -454,15 +480,15 @@ interior pages are 245.8 KB, **0.23%** of the file, so they stay resident in the
 so the write is `copy_from_slice` into the content area plus a `copy_within` over
 the 2-byte pointers.
 
-**3–5 pages**: the regions met, so `balance_non_root()` (`btree.rs:2995`) pools
+**3–5 pages**: the regions met, so `balance_non_root()` (`btree.rs:3494`) pools
 the full page with up to two siblings — `MAX_SIBLING_PAGES_TO_BALANCE = 3`,
-`btree.rs:136` — and redistributes into at most
-`MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` pages (`btree.rs:139`), updating the
+`btree.rs:160` — and redistributes into at most
+`MAX_NEW_SIBLING_PAGES_AFTER_BALANCE = 5` pages (`btree.rs:163`), updating the
 parent's divider cells too.
 
 **O(height)**: the balance propagates upward until `balance_root()`
-(`btree.rs:4774`) splits the root, which is the only operation that makes the
-tree taller. Bounded above by `BTCURSOR_MAX_DEPTH = 20` (`btree.rs:133`).
+(`btree.rs:5300`) splits the root, which is the only operation that makes the
+tree taller. Bounded above by `BTCURSOR_MAX_DEPTH = 20` (`btree.rs:157`).
 
 </details>
 
@@ -491,39 +517,40 @@ random-order inserts. Same direction, harsher constant.
 <details>
 <summary>Answer</summary>
 
-The **subjournal** (`core/storage/subjournal.rs`, handle at `pager.rs:1357`,
+The **subjournal** (`core/storage/subjournal.rs`, handle at `pager.rs:1637`,
 written by `subjournal_page_if_required()` inside `add_dirty()`,
-`pager.rs:3418`) holds page *pre-images* so a `SAVEPOINT` or a failed statement
+`pager.rs:3894`) holds page *pre-images* so a `SAVEPOINT` or a failed statement
 can be undone **within** an open transaction. It is discarded when the
 transaction ends.
 
-The **WAL** (`WalFile`, `wal.rs:2593`) holds page *post-images* for crash
+The **WAL** (`WalFile`, `wal.rs:2798`) holds page *post-images* for crash
 recovery. Frames are appended on the commit path — `cacheflush()`
-(`pager.rs:3451`) → `append_frames_vectored` (`pager.rs:3704` → `wal.rs:4333`)
-— and folded back into the main database file only by `checkpoint()`
-(`wal.rs:3795`).
+(`pager.rs:3927`) → `flush_page_batch()` → `append_frames_vectored`
+(`pager.rs:4186` → `wal.rs:4666`) — and folded back into the main database
+file only by `checkpoint()` (`wal.rs:4126`).
 
 The write-ahead rule is the WAL's: the new version of a page reaches the log
 before the main file is touched at all. Reading `add_dirty()` as the write-ahead
-site conflates the two — a mistake this guide previously made.
+site conflates the two: `add_dirty()` saves the *old* bytes for undo, and the
+WAL receives the *new* bytes only at commit.
 
 </details>
 
 ## References
 
-**Code** (all at `tursodatabase/turso@dd775bc` — this repo's pin table entry;
-confirm with `python3 tools/pinned-source.py ref turso`)
+**Code** (all at `tursodatabase/turso@a820079e8`, v0.9.0-pre.1 — this repo's
+pin table entry; confirm with `python3 tools/pinned-source.py ref turso`)
 - [turso](https://github.com/tursodatabase/turso) — `core/storage/btree.rs`
-  (13,186 lines: header map `76–124`, `BTCURSOR_MAX_DEPTH:133`,
-  `MAX_SIBLING_PAGES_TO_BALANCE:136`, `PinGuard:375`, `CursorContext:539`,
-  `BTreeCursor:714`, `insert_into_page:2568`, `balance:2793`,
-  `balance_non_root:2995`, `balance_root:4774`, `seek:5681`, `insert:5779`,
-  `insert_into_cell:8669`, `defragment_page:8422`, `shift_pointers_left:9067`),
-  `core/storage/wal.rs` (10,064 — `WalFile:2593`, `checkpoint:3795`,
-  `append_frames_vectored:4333`), `core/storage/pager.rs` (6,614 —
-  `Pager:1335`, `read_page:3240`, `add_dirty:3412`, `cacheflush:3451`),
-  `core/storage/sqlite3_ondisk.rs` (2,449 — `read_btree_cell:816`),
-  `core/storage/page_cache.rs` (1,872 — SIEVE, default 2000 pages at `:14`)
+  (15,479 lines: header map `100–148`, `BTCURSOR_MAX_DEPTH:157`,
+  `MAX_SIBLING_PAGES_TO_BALANCE:160`, `PinGuard:410`, `CursorContext:576`,
+  `BTreeCursor:873`, `insert_into_page:3052`, `balance:3291`,
+  `balance_non_root:3494`, `balance_root:5300`, `seek:6812`, `insert:6927`,
+  `defragment_page:9842`, `insert_into_cell:10130`, `shift_pointers_left:10582`),
+  `core/storage/wal.rs` (11,276 — `CheckpointMode:160`, `WalFile:2798`,
+  `checkpoint:4126`, `append_frames_vectored:4666`), `core/storage/pager.rs`
+  (7,271 — `Pager:1610`, `read_page:3648`, `add_dirty:3888`, `cacheflush:3927`),
+  `core/storage/sqlite3_ondisk.rs` (2,748 — `read_btree_cell:847`),
+  `core/storage/page_cache.rs` (1,964 — SIEVE, default 2000 pages at `:14`)
 
 **This repo**
 - [reading-fjall.md](reading-fjall.md) — the LSM protagonist opposite this one;

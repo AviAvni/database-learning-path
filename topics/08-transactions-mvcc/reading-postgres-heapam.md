@@ -9,7 +9,7 @@ the spec of snapshot isolation, a worked example on real numbers, the write
 paths, and the debt collectors — then hands you the file:line anchors to
 watch each piece work.
 
-**Every line number in this guide was re-verified against
+**Every line number in this guide is from
 `postgres/postgres@701f021`** (check with `python3 tools/pinned-source.py
 ref postgres`). Postgres's heap files are large — `heapam.c` is 9264 lines,
 `heapam_visibility.c` is 1753 — so use
@@ -508,8 +508,7 @@ to the caller at `heapam.c:4159-4167`:
   4167  		*update_indexes = TU_All;
 ```
 
-**A correction to a claim this guide used to make**: HOT does *not* always
-skip all index updates. `TU_Summarizing` at line 4162 means a HOT update
+**HOT does *not* always skip all index updates.** `TU_Summarizing` at line 4162 means a HOT update
 still has to maintain summarizing indexes (BRIN), because per the comment
 at `heapam.c:4154-4157` a summary such as a "minmax bounds of the block may
 change with this update". Only `TU_None` skips everything.

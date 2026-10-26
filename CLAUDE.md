@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A self-paced database-internals learning path, rendered as an mdBook (`book.toml`, content in `topics/`, exercises in `capstone/`). `PLAN.md` is the curriculum plan — 45 topics, the source of truth. `PROGRESS.md` tracks status and capstone milestones; `SESSION-LOG.md` is the detailed build log, one entry per topic, newest first. `CONTRIBUTING.md` documents the topic package format and the conventions below.
+A self-paced database-internals learning path, rendered as an mdBook (`book.toml`, content in `topics/`, exercises in `capstone/`). `PLAN.md` is the curriculum plan — 46 topics, the source of truth. `PROGRESS.md` tracks status and capstone milestones; `SESSION-LOG.md` is the detailed build log, one entry per topic, newest first. `CONTRIBUTING.md` documents the topic package format and the conventions below.
 
 ## Working rules
 
-- After editing content, build the book and verify it renders: diagrams (mermaid) must render without syntax errors and internal links must resolve. Do not report content work done without this check.
+- After editing content, build the book and verify it renders: diagrams (mermaid) must render without syntax errors and internal links must resolve. Do not report content work done without this check. Both halves are scripted and run in CI: `node tools/check-mermaid.js mermaid.min.js <files>` parses every diagram with the bundle the book ships, and `python3 tools/check-book-links.py <build dir>` checks every internal link and anchor in the rendered HTML.
 - For changes that apply across many topics, do 1-2 topics first and ask for review before applying to all (then parallelize).
 - The user cares primarily about performance-oriented depth; keep material practical and tied to real database implementations.
 
@@ -44,4 +44,4 @@ Each `topics/NN-name/` contains: `README.md` (study guide, opening with *the pro
 
 When adding a topic: PLAN.md section, the package above, a `FINDINGS.md` row, a `verify.sh` lane, a capstone `M`NN milestone row in PROGRESS.md, SUMMARY.md entries whose link titles match the on-disk H1s exactly, a SESSION-LOG.md entry (with a `## date — topic NN — title` heading) carrying every measured number, and one commit.
 
-Reference clones live in `~/repos`; the commit each was read at is recorded once in the pin table at the end of `resources/codebases.md` — regenerate with `python3 tools/pin-table.py`, never hand-edit it.
+Reference clones live in `~/repos`; the commit each was read at is recorded once in the pin table at the end of `resources/codebases.md` — regenerate with `python3 tools/pin-table.py`, never hand-edit it. Pins are sticky: regenerating refreshes counts and adds new clones but never moves an existing pin, whatever branch the clone has on checkout. Re-pin with `--bump NAME` only after re-checking the guides that cite NAME.

@@ -239,8 +239,9 @@ ranking — and the neighbour ids — used to extend the frontier.
 // Rust. There is no DiskANN clone in resources/codebases.md, so the
 // authority is the paper (Alg. 1, §3.3, §3.5). The nearest real code
 // you can read is the same beam WITHOUT the disk parts, in qdrant:
-// lib/segment/src/index/hnsw_index/graph_layers.rs:109
-// (search_on_level) and search_context.rs:32 (process_candidate).
+// lib/segment/src/index/hnsw_index/graph_layers.rs:114
+// (search_on_level) and search_context.rs:49 (process_candidate),
+// qdrant v1.20.0 (222b2e44a).
 fn search(q: &[f32], k: usize, w: usize) -> Vec<(f32, Id)> {
     let mut cands = MinHeap::from([(pq_dist(q, MEDOID), MEDOID)]);
     let mut seen = HashSet::from([MEDOID]);

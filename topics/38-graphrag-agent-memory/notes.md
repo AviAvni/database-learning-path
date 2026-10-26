@@ -1,15 +1,33 @@
 # Topic 38 notes — GraphRAG & agent memory
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| mention-count rank, h=1 | ~1 (answer named by both seeds) | **1.00** (400 trials, seed 42) |
-| mention-count rank, h=2 | chance = (1+17)/2 = 9 | **9.21** (h=3: 8.71) |
-| BFS-distance rank, any h | chance — all candidates equidistant | **9.51 / 8.95 / 9.15** at h=1/2/3 |
-| lane 2: PPR rank at h=2,3 | 1 — mass sums at the meet node | (stub — reference run: **1.00/1.00/1.00**) |
-| lane 2: PPR on 100k nodes / ~400k edges, 30 iters | tens of ms | (stub — reference: **56.6 ms**/query) |
-| lane 3: 10k entities × 10 changes | 100k kept, 10k current | (stub — reference: **100,000 / 10,000**, as-of scan **0.09 ms**; 1k×10: 10,000 / 1,000 / 0.01 ms) |
+`cargo run --release --bin graphrag_bench` — lane 1 runs 400 trials per row, seed 42:
+
+```
+== lane 1: path-finding collapse — mean rank of the true answer ==
+   (17 candidates, 8 distractor chains per seed; chance = 9.0, perfect = 1.0)
+   hops   mention-count   bfs-distance
+   1          1.00            9.51
+   2          9.21            8.95
+   3          8.71            9.15
+
+   mention ranking = vector RAG's shape: score each passage against
+   the query independently. At 1 hop the answer is named next to both
+   seeds and wins; at 2+ hops no passage mentions a query entity and
+   ranking is chance. BFS covers everything but every candidate sits
+   at the same depth — coverage without association.
+
+== lane 2: personalized PageRank — association as arithmetic ==
+   hops   mention-count   ppr (damping 0.5, 30 iters)
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: bi-temporal store — nothing deleted, any moment answerable ==
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+Every figure in lane 1 is seeded and identical on every run: mention-count 1.00 / 9.21 / 8.71, BFS-distance
+9.51 / 8.95 / 9.15.
 
 The lane-1 mechanic, worth memorizing: vector RAG scores each passage
 *independently* against the query, so it can only find answers whose
@@ -19,6 +37,43 @@ break that shape at 2 hops — every candidate scores zero and rank is
 chance. PPR fixes it with arithmetic, not iteration: restart mass at
 the seeds, walk; the answer is the only node that *sums* mass from two
 sources. At damping 0.5 the meet node gets ~2× a dead-end's mass.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| mention-count rank, h=1 | | **1.00** |
+| mention-count rank, h=2 | | **9.21** (h=3: 8.71) |
+| BFS-distance rank, any h | | **9.51 / 8.95 / 9.15** at h=1/2/3 |
+| lane 2: PPR rank at h=2,3 | | |
+| lane 2: PPR on 100k nodes / ~400k edges, 30 iters | | |
+| lane 3: 10k entities × 10 changes — edges kept / current | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| mention-count rank, h=1 | ~1 (answer named by both seeds) |
+| mention-count rank, h=2 | chance = (1+17)/2 = 9 |
+| BFS-distance rank, any h | chance — all candidates equidistant |
+| lane 2: PPR rank at h=2,3 | 1 — mass sums at the meet node |
+| lane 2: PPR on 100k nodes / ~400k edges, 30 iters | tens of ms |
+| lane 3: 10k entities × 10 changes | 100k kept, 10k current |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(measured 2026-07-26, Apple M3 Pro):
+
+- **Lane 2 — PPR rank** at h = 1/2/3: **1.00 / 1.00 / 1.00**.
+- **Lane 2 — PPR cost**: one query on 100k nodes / ~400k directed edges,
+  30 power iterations: **56.6 ms**.
+- **Lane 3 — bi-temporal store**, 10k entities × 10 changes: **100,000**
+  edges kept, **10,000** current, as-of scan **0.09 ms**; at 1k × 10:
+  10,000 / 1,000 / 0.01 ms.
 
 ## Guide-question checklist
 
@@ -87,7 +142,7 @@ sources. At damping 0.5 the meet node gets ~2× a dead-end's mass.
   115k→1.6k; temporal +38.4%; single-session-preference +184%;
   regression single-session-assistant −17.7%.
 - GraphRAG-SDK (~/repos/GraphRAG-SDK @ f42ab3d) anchors verified by
-  grep/read this session — full list in README table plus:
+  grep/read — full list in README table plus:
   pipeline.py:94 run; graph_extraction.py:438 _aggregate_entities /
   :479 _aggregate_relations; exact_match.py:21, description_merge.py:30,
   semantic_resolution.py:33 (:122 _fuzzy_merge); graph_store.py:21/:56/

@@ -6,7 +6,7 @@
 //! walked as a graph (`backtrack.rs`) and read as a set of tables
 //! (`relational.rs`) with nothing hidden between the two.
 //!
-//! egg anchors for the same three pieces, at the pinned commit:
+//! egg anchors for the same three pieces (egg `73975c9`, the pin table's commit):
 //!   unionfind.rs:30   UnionFind::find      — no path compression on the & path
 //!   egraph.rs:970     EGraph::add          — hashcons lookup-or-insert
 //!   egraph.rs:1147    EGraph::union        — merge now, repair later

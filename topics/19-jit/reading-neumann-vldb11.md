@@ -75,9 +75,9 @@ integer in a register *is* a coroutine's whole resumption state,
 generated loop does not have to be resumable — it runs to
 completion.
 
-**Corrected pointer.** This material is in **§1 (Introduction)**,
-not §2. §2 of the paper is RELATED WORK. The old version of this
-guide sent you to the wrong section for its own headline argument.
+**Where to read it.** This material is in **§1 (Introduction)**.
+§2 of the paper is RELATED WORK, so do not look for the headline
+argument there.
 
 ### Step 2 — the deeper cost: operator boundaries are DATA boundaries
 
@@ -143,8 +143,7 @@ restrictive than in standard database systems"):
 - A **full pipeline breaker** is one that "**materializes all**
   incoming tuples from this side before continuing processing."
 
-Standard database usage — and the previous version of this guide —
-uses "pipeline breaker" to mean the *full* one: a hash-join build, a
+Standard database usage uses "pipeline breaker" to mean the *full* one: a hash-join build, a
 sort, a group-by table. Neumann's weaker definition deliberately
 also catches spilling a tuple to memory at all. That is why the
 paper can say, in the same section, that "the block-oriented
@@ -282,7 +281,7 @@ LLVM.**" Calling C++ occasionally (a new page, an allocation) is
 fine; the cost is spilling registers to a cache-hot stack, negligible
 once but "if this is done millions of times it becomes noticeable."
 
-**The compile-latency number, corrected.** §4.1 says LLVM "usually
+**The compile-latency number.** §4.1 says LLVM "usually
 requires only a few milliseconds for query compilation, while C or
 C++ compilers would need seconds." The measurement backing that is
 Table 2, and it is stronger than the prose: for TPC-CH Q1–Q5,
@@ -290,10 +289,9 @@ Table 2, and it is stronger than the prose: for TPC-CH Q1–Q5,
 compile times of **1556, 2367, 1976, 2214, and 2592 ms** — 1.6 to
 2.6 *seconds* per query.
 
-The previous version of this guide said "LLVM -O3 on big queries
-costs 10–100 ms". Two things are wrong with it: the paper never runs
-LLVM at `-O3` (HyPer used LLVM 2.8's JIT), and 10–100 ms is not a
-figure in the paper. The honest sentence is: **on 2011 hardware with
+Two figures often attached to this paper are not in it: the paper
+never runs LLVM at `-O3` (HyPer used LLVM 2.8's JIT), and "10–100 ms
+per query" is not a figure it reports. The honest sentence is: **on 2011 hardware with
 LLVM 2.8, HyPer's LLVM compile times on TPC-CH Q1–Q5 were 16–41 ms
 (Table 2), and C++ was 40–140× slower to compile.** The number that
 grows into a crisis is not this one — it is what happens to LLVM
@@ -333,9 +331,9 @@ one. That is the whole seed of topics 19's second half.
 | MonetDB 1.36.5 | 72 | 218 | 112 | 8168 | 12028 |
 | "DB X" (commercial, disk-based) | 4221 | 6555 | 16410 | 3830 | 15212 |
 
-**Corrected headline.** The previous version of this guide said
+**The headline, computed.** The speed-up is often summarized as
 "~2-10× faster per query" against "Volcano-style". There is no
-Volcano-style baseline in this paper, and the range is wrong in both
+Volcano-style baseline in this paper, and that range is wrong in both
 directions. Do the division yourself:
 
 ```

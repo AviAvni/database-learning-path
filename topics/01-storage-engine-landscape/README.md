@@ -92,6 +92,17 @@ For a logical write of `B` bytes / logical read of one key:
   ~30% average page slack. LSM: obsolete versions awaiting compaction (tiered can sit
   at 2x+; leveled ~1.1x).
 
+Write amplification has a second layer below the engine: the SSD rewrites data
+internally, so the flash sees DB write amplification × SSD write amplification.
+Lee, Ziegler and Leis, **"How to Write to SSDs"** (VLDB 2026,
+[arXiv:2603.09927](https://arxiv.org/abs/2603.09927)) put a number on it: on
+YCSB-A against a 90%-full Samsung PM9A3, an in-place LeanStore wrote 18.85 KiB
+of flash per 4 KiB page write (Fig. 1); writing out-of-place plus the paper's
+optimizations improves throughput by 1.65–2.24× and reduces flash writes per
+operation by 6.2–9.8× (Abstract). That is why the WA column above should be
+measured at the flash, not at the `write()` call. Topic 45 covers the paper in
+depth.
+
 ## 3. The RUM conjecture
 
 > For Read, Update, and Memory (space) overhead: optimizing any two makes the third
@@ -115,6 +126,23 @@ The conjecture's sharpest claim: engines are not "good" or "bad", they are *posi
 Tuning knobs (compaction style, page fill factor, bloom bits/key) move you along the
 edges continuously. Monkey (topic 4) is literally a Lagrange-multiplier walk on this
 triangle.
+
+Most engines pick a corner when they choose their on-disk structure, then claw
+back the other sides with caches and filters. **TurtleKV** (Astolfi, Silai,
+Huye, Liu, Sambasivan, Bater, "Dynamic read & write optimization with
+TurtleKV", VLDB 2026 / PVLDB 19,
+[arXiv:2509.10714](https://arxiv.org/abs/2509.10714)) makes the walk along the
+edges a runtime decision: it uses an on-disk structure without that bias (the
+TurtleTree, derived from a Bε-tree, §2–3) and exposes a knob that moves memory
+into whichever of reads or writes the workload currently needs. The paper's
+Fig. 1 draws RUM as a three-dimensional resource space. The abstract reports
+"up to 8× the write throughput of industry-leader RocksDB and up to 5× the
+read throughput while incurring similar space amplification" (Abstract); the
+evaluation is more careful than that line — §5.2.1 notes SplinterDB still wins
+the cache-constrained write-heavy runs and that TurtleKV's performance on scans
+(YCSB-E) "shows room for improvement". The triangle bends; it does not break.
+[`reading-rum-conjecture.md`](reading-rum-conjecture.md) supplies the
+vocabulary the paper assumes.
 
 ## 4. Where each family wins
 

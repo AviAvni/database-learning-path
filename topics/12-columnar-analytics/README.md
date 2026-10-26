@@ -46,13 +46,13 @@ repeat runs put this lane anywhere from 24 to 76 GB/s depending on machine
 state. A bandwidth-bound single number wants an error bar; take the high end as
 the target.
 
-Second, **this lane used to print 19 047 619 GB/s** — 19,047,619 / 150 ≈
-**127 000×** the machine's peak memory bandwidth, and ~250 000× the 76 GB/s this
-lane actually reaches. The timing loop let LLVM hoist the pure fold out of its own
-repetition loop, so two of three reps timed nothing and best-of-3 reported
-0.000 s. A `black_box` on the input fixed it. Topic 0's first failure mode,
-found in this repo's own code, which is the best argument going for why the
-numbers here are printed rather than asserted.
+Second, the input goes through `black_box` for a reason that shows up the moment
+it is removed: the fold is pure, so LLVM hoists it out of the repetition loop, two
+of three reps time nothing, best-of-3 reports 0.000 s, and the lane prints
+**19 047 619 GB/s** — 19,047,619 / 150 ≈ **127 000×** the machine's peak memory
+bandwidth, and ~250 000× the 76 GB/s this lane actually reaches. That is topic 0's
+first failure mode, and the reason every number here is printed by code and
+checked against the hardware's limit rather than asserted.
 
 ## 1. The lightweight encoding zoo
 
@@ -74,12 +74,31 @@ recursive and picks per-block by SAMPLING each encoder.
 
 ## 2. How a system picks: analyze → score → compress
 
-DuckDB's compression framework (`compression_function.hpp:130–141`):
-every candidate encoder gets an `analyze` pass over the column data,
+DuckDB's compression framework (`compression_function.hpp:131–139`, DuckDB
+v2.0.0): every candidate encoder gets an `analyze` pass over the column data,
 returns a SCORE (estimated compressed size); the cheapest wins, per
-row-group per column. Forced via `PRAGMA force_compression` for your
-experiments. This is the benchmark-before-choosing discipline built into
-the storage engine.
+row-group per column. `PRAGMA force_compression` (or a declared
+`USING COMPRESSION`) narrows the menu to that one type plus `UNCOMPRESSED`
+for your experiments — the analyze pass still runs, because the winner
+compresses from its analyze state. This is the benchmark-before-choosing
+discipline built into the storage engine. ClickHouse sits at the other end:
+the user declares a codec per column, and with no declaration the default is
+chosen by part size — LZ4 for parts under 100 MiB, `ZSTD(3)` above
+([reading-clickhouse-mergetree.md](reading-clickhouse-mergetree.md), Step 8).
+
+The score can carry more than bytes. A language model that predicts the next
+token can drive an arithmetic coder, and on Wikipedia text that beats
+traditional compressors' ratio by more than 2× (§1 of Kipf, Schmidt, Kuo,
+Krid, Rengert, Heller, Zimmerer, Stoian, Pandey, van Renen, *Waiting to
+Decompress: The Economics of LLM-Based Compression*, CIDR 2026,
+[pdf](https://www.cidrdb.org/cidr2026/papers/p34-kipf.pdf)). Price the
+encode: with a cost model of S3 storage ($240 per TiB per year) plus GPU
+rental for compression, LLM-based compression takes 10 years of storage to
+amortize its compute against storing uncompressed, and 120 years to break
+even against CPU compressors (abstract, Fig. 1). That is the same
+analyze → score → compress decision with encode cost in dollars as a new
+axis — and the opposite end from the encodings this topic scans over
+directly: nothing it produces can be evaluated without decoding first.
 
 ## 3. Zone maps (min/max pruning)
 
@@ -95,7 +114,7 @@ Per-segment min/max stats let the scan SKIP segments that can't match:
 Effective ONLY if data is clustered on the filter column — zone maps on
 random data prune nothing (every zone spans the whole domain). That's
 why ClickHouse makes you declare ORDER BY at table creation. DuckDB:
-`ColumnData::CheckZonemap` (column_data.cpp:423), stats per segment.
+`ColumnData::CheckZonemap` (column_data.cpp:482), stats per segment.
 Parquet: min/max per column chunk + page.
 
 ## 4. The formats: Arrow (memory) vs Parquet (disk)
@@ -113,6 +132,30 @@ Parquet: min/max per column chunk + page.
   Arrow optimizes compute. Decode once at the boundary — unless the
   engine can execute ON the encoding (DuckDB scans over compressed
   segments; late materialization below).
+
+Parquet is a decade-old layout whose newer encodings are optional, so a
+writer cannot assume a reader supports them. **F3** (Zeng, Meng, Prammer,
+McKinney, Patel, Pavlo, Zhang, *F3: The Open-Source Data File Format for
+the Future*, Proc. ACM Manag. Data 3(4) (SIGMOD), Article 245, 2025,
+[doi](https://doi.org/10.1145/3749163) ·
+[code](https://github.com/future-file-format/f3)) keeps the columnar shape
+but decouples the physical I/O unit from the logical row group (§5.1), lets
+a column's dictionary scope differ from the row group — many small
+dictionaries for one column, one large one for another (§5.2) — stores
+metadata in FlatBuffers that can be read per column without deserializing
+the rest, and embeds WebAssembly decoders in each file so a reader without
+a native decoder can still decode (§6.2); the built-in encodings come from
+the Rust BtrBlocks and FastLanes implementations (§7.3). In a wide-table
+projection test, "even with thousands of columns, the metadata parsing
+overhead is still around 10ms in F3, an order of magnitude faster than
+Parquet" (§7.2, Fig. 9), and the Wasm binaries for two custom encodings add
+about 150 KB (§7.7); compression ratio is slightly worse than Parquet
+because F3 applies no block compression (§7.3). Vortex is one of the
+baselines, at v0.21.1, with a footnote that its encodings and layout have
+changed since (§7.1) — so read that comparison as a snapshot of Vortex
+v0.21.1. The point for this topic: §1's cascaded lightweight encodings
+([reading-btrblocks-fsst.md](reading-btrblocks-fsst.md)) are now the
+building block of a file format, not an engine-internal detail.
 
 ## 5. Late materialization
 

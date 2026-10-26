@@ -9,8 +9,8 @@ one-sided answer buys, the bloom math you must own, the two sins, and the
 two very different fixes — then hands you the file anchors to watch each
 one in production code.
 
-Every code anchor below is RocksDB at commit `7c80a5a`, the revision this
-repo pins (`util/bloom_impl.h` is 489 lines; `util/ribbon_impl.h` is 1137
+Every code anchor below is RocksDB at commit `ea3136053` (`main`, carrying the 11.13 release), the revision this
+repo pins (`util/bloom_impl.h` is 493 lines; `util/ribbon_impl.h` is 1137
 lines), quoted with the line numbers the code occupies in that version.
 The bloom-math figures are worked out on the spot from the formulas the
 code uses.

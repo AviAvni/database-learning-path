@@ -156,7 +156,7 @@ pub fn push_down(plan: Plan) -> Plan {
 /// connected pair remains.
 ///
 /// This is smallest-intermediate-result-first — compare with DuckDB's
-/// SolveJoinOrderApproximately (plan_enumerator.cpp:398).
+/// SolveJoinOrderApproximately (plan_enumerator.cpp:408 at DuckDB v2.0.0).
 pub fn reorder_joins(plan: Plan, catalog: &Catalog) -> Plan {
     let _ = (plan, catalog);
     todo!("greedy smallest-estimated-pair-first")

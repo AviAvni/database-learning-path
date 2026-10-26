@@ -143,9 +143,9 @@ file, e.g. `GraphDatabaseSettings.java:794-795` marks a setting "Not
 applicable for the block format". Do not carry the number outside the
 family it belongs to.
 
-**Correction.** The previous version of this chapter said the address
-is `id × RECORD_SIZE`. It is not — the store is paged, and a record
-never straddles a page, so the id is split:
+The address is not simply `id × RECORD_SIZE`, the tempting reading
+of "fixed-size records". The store is paged, and a record never
+straddles a page, so the id is split:
 
 ```java
 // RecordPageLocationCalculator.java
@@ -221,9 +221,9 @@ into the second node's:
 One physical record, two logical list memberships — so both endpoints
 can enumerate their edges without storing the edge twice.
 
-**Correction.** The previous version's layout diagram ended at
-`nextProp` and omitted the trailing byte. It is there, it is
-load-bearing, and the source documents its four flags:
+A layout drawn from the field list alone ends at `nextProp` and
+misses the trailing byte. It is there, it is load-bearing, and the
+source documents its four flags:
 
 ```java
 // format/standard/RelationshipRecordFormat.java, inside read()
@@ -246,7 +246,7 @@ load-bearing, and the source documents its four flags:
    104              byte extraByte = cursor.getByte();
 ```
 
-The corrected diagrams, with the real field widths:
+The diagrams, with the real field widths:
 
 ```
  Node (15 B):  header(1) | nextRel(4) | nextProp(4) | labels(5) | extra(1)
@@ -482,7 +482,7 @@ at `eccd584a`.
 | 3 | `format/standard/NodeRecordFormat.java:55-70` | the decode: 35-bit nextRel, 36-bit nextProp, 40-bit labels, dense flag |
 | 3 | `format/standard/RelationshipRecordFormat.java:63-104` | the decode, the bit map comments, and the extra byte |
 | 3 | `format/standard/StandardFormatSettings.java:29-31, 38-39, 49-51` | the id-width ceilings and `bitsToMaxId` |
-| 3–4 | `record/RelationshipRecord.java:39-42` | the four chain fields (was cited as `:39-44`) |
+| 3–4 | `record/RelationshipRecord.java:39-42` | the four chain fields |
 | 3–4 | `record/RelationshipRecord.java:43-44` | `firstInFirstChain`, `firstInSecondChain` — the extra byte's first two flags |
 | 5 | `format/standard/RelationshipGroupRecordFormat.java:31-33, 38` | the group layout comment and `RECORD_SIZE = 25` |
 | 5 | `community/configuration/.../GraphDatabaseSettings.java:796-797` | `db.relationship_grouping_threshold`, default 50 |

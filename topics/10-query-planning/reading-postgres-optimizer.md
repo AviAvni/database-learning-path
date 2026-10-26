@@ -615,5 +615,5 @@ Answer each before unfolding it.
 **In this topic**
 - `reading-selinger-cascades.md` — where the DP and interesting orders come
   from, and the rule-driven alternative.
-- `reading-duckdb-optimizer.md` — the same job, done in 2024, with a different
-  enumeration order and the same threshold of 12.
+- `reading-duckdb-optimizer.md` — the same job in a modern engine, with a
+  different enumeration order and the same threshold of 12.

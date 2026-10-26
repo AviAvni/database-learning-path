@@ -14,11 +14,12 @@ standing rule applies below: **every performance number carries its
 source**, either a line of pinned code, a table in a paper, or a
 measurement in this repo's own `notes.md`. Anything that is a
 teaching sketch rather than a measurement is fenced and labelled
-`ILLUSTRATION`. Three claims in the previous version of this
-chapter were folklore; each is corrected where it lands.
+`ILLUSTRATION`. Several pieces of common folklore — what skew
+costs, where B is sliced, how far rayon splits — do not survive
+contact with the source; each is taken apart where it lands.
 
-Anchors are **SuiteSparse:GraphBLAS at `1fd5475`** (version 10.3.1)
-and **rayon at `6d9e94b`**, the pins in `resources/codebases.md`.
+Anchors are **SuiteSparse:GraphBLAS v10.5.2, at `7701390417`** and
+**rayon at `6d9e94b`**, the pins in `resources/codebases.md`.
 
 ## The problem in one sentence
 
@@ -139,10 +140,10 @@ output. `:66` is the flop definition: column j's cost is the sum of
 The pre-pass is itself parallel, and note *which* OpenMP schedule:
 
 ```c
-// GB_AxB_saxpy3_flopcount.c — the pre-pass parallelises itself, 219-221
-   219      #pragma omp parallel for num_threads(B_nthreads) schedule(dynamic,1) \
-   220          reduction(+:total_Mwork)
-   221      for (taskid = 0 ; taskid < B_ntasks ; taskid++)
+// GB_AxB_saxpy3_flopcount.c — the pre-pass parallelises itself, 222-224
+   222      #pragma omp parallel for num_threads(B_nthreads) schedule(dynamic,1) \
+   223          reduction(+:total_Mwork)
+   224      for (taskid = 0 ; taskid < B_ntasks ; taskid++)
 ```
 
 `schedule(dynamic,1)` over **pre-sliced tasks** — one task handed
@@ -154,54 +155,57 @@ when someone claims SuiteSparse "has no dynamic scheduling".
 Then the plan is derived from the measurement:
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — the pre-pass and its outputs, 308-311
-   308      GB_OK (GB_AxB_saxpy3_flopcount (&Mwork, Bflops, M, Mask_comp, A, B, Werk)) ;
-   309      double total_flops = (double) Bflops [bnvec] ;
-   310      double axbflops = total_flops - Mwork ;
-   311      GBURBLE ("axbwork %g ", axbflops) ;
+// GB_AxB_saxpy3_slice_balanced.c — the pre-pass and its outputs, 313-317
+   313      GB_OK (GB_AxB_saxpy3_flopcount (&Mwork, Bflops, M, Mask_comp, A, B,
+   314          data_arena, Werk)) ;
+   315      double total_flops = (double) Bflops [bnvec] ;
+   316      double axbflops = total_flops - Mwork ;
+   317      GBURBLE ("axbwork %g ", axbflops) ;
 ```
 
-(The previous version of this chapter labelled `:309` "entry".
-`:309` reads `total_flops` out of the last cell of `Bflops`; the
-call is `:308`, and the flopcount function's own entry point is
-`GB_AxB_saxpy3_flopcount.c:80`.)
+The call is `:313-314`; `:315` reads `total_flops` out of the last
+cell of `Bflops`, which the pre-pass returns as a cumulative sum;
+`:316` subtracts the mask-scatter work to leave the multiply's own
+flops. The flopcount function's entry point is
+`GB_AxB_saxpy3_flopcount.c:80`.
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — thread count and task count, 418-420
-   418      (*nthreads) = GB_nthreads (total_flops, chunk, nthreads_max) ;
-   419      int ntasks_initial = ((*nthreads) == 1) ? 1 :
-   420          (GB_NTASKS_PER_THREAD * (*nthreads)) ;
+// GB_AxB_saxpy3_slice_balanced.c — thread count and task count, 424-426
+   424      (*nthreads) = GB_nthreads (total_flops, chunk, nthreads_max) ;
+   425      int ntasks_initial = ((*nthreads) == 1) ? 1 :
+   426          (GB_NTASKS_PER_THREAD * (*nthreads)) ;
 ```
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — target task size, 456-459
-   456      double target_task_size = total_flops / ((double) ntasks_initial) ;
-   457      target_task_size = GB_IMAX (target_task_size, chunk) ;
-   458      double target_fine_size = target_task_size / GB_FINE_WORK ;
-   459      target_fine_size = GB_IMAX (target_fine_size, chunk) ;
+// GB_AxB_saxpy3_slice_balanced.c — target task size, 462-465
+   462      double target_work_per_task = total_flops / ((double) ntasks_initial) ;
+   463      target_work_per_task = GB_IMAX (target_work_per_task, chunk) ;
+   464      double target_work_per_fine_task = target_work_per_task / GB_FINE_WORK ;
+   465      target_work_per_fine_task = GB_IMAX (target_work_per_fine_task, chunk) ;
 ```
 
-Read `:456` carefully: the target is **flops per task**, not
-columns per task. Tasks are sized by cost. That is the whole static
-philosophy in one line.
+Read `:462` carefully — the variable's name says it: the target is
+**work (flops) per task**, not columns per task. Tasks are sized by
+cost. That is the whole static philosophy in one line.
 
-One more line, because the previous version of this chapter cited
-it wrongly. `:434` is *not* where B is sliced:
+One more block, because it sits between the thread count and the
+slicing and is easy to mistake for the slicing. `:440` is *not*
+where B is sliced:
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — the intensity heuristic, 432-438
-   432          double abnz = GB_nnz (A) + GB_nnz (B) + 1 ;
-   433          double workspace = (double) ntasks_initial * (double) cvlen ;
-   434          double intensity = total_flops / abnz ;
+// GB_AxB_saxpy3_slice_balanced.c — the intensity heuristic, 438-444
+   438          double abnz = GB_nnz (A) + GB_nnz (B) + 1 ;
+   439          double workspace = (double) ntasks_initial * (double) cvlen ;
+   440          double intensity = total_flops / abnz ;
    ...
-   437          if (((*nthreads) <= 8 && intensity >= 8  && workspace < abnz)
-   438          ||  (                    intensity >= 16 && workspace < abnz))
+   443          if (((*nthreads) <= 8 && intensity >= 8  && workspace < abnz)
+   444          ||  (                    intensity >= 16 && workspace < abnz))
 ```
 
-`:434` computes *arithmetic intensity* — flops per input nonzero —
-and `:437-438` uses it to force Gustavson for every task when the
+`:440` computes *arithmetic intensity* — flops per input nonzero —
+and `:443-444` uses it to force Gustavson for every task when the
 multiply is dense enough that dense-accumulator workspace is repaid.
-Note `nthreads` appears in the condition at `:437`: **the thread
+Note `nthreads` appears in the condition at `:443`: **the thread
 count feeds back into the algorithm choice**, because
 `ntasks_initial` copies of an m-length accumulator is the workspace
 bill. Fewer threads, cheaper Gustavson.
@@ -269,12 +273,12 @@ The memory bill is tabulated in the same comment:
     70  //                                      uint64_t Hi [s] ;
 ```
 
-Price it, because this is what `:433`'s `workspace` variable is
+Price it, because this is what `:439`'s `workspace` variable is
 counting:
 
 ```
  inputs: C is m × n with m = 1,048,576 (scale 20); ctype = f64 (8 B)
-         ntasks_initial = GB_NTASKS_PER_THREAD × nthreads   (:419-420)
+         ntasks_initial = GB_NTASKS_PER_THREAD × nthreads   (:425-426)
          GB_NTASKS_PER_THREAD = 2                           (:18)
 
  coarse Gustavson, per task:  8 B (uint64 Hf) + 8 B (Hx) = 16 B/row
@@ -364,8 +368,7 @@ The scheduler is `join_context`, `:115-173`. Its core:
 ```
 
 Four behaviours, each on a line: **push** B onto the local deque
-(`:139` — the previous version of this chapter cited `:115` for the
-push; `:115` is the function signature), **run** A inline (`:142`),
+(`:139`; `:115` above it is only the function signature), **run** A inline (`:142`),
 **pop and run B inline** if nobody took it (`:154`, `:165`), and —
 the part people forget — **do other people's work** while waiting
 (`:168`), rather than blocking. A `join` where nothing is stolen
@@ -425,9 +428,9 @@ is where the third piece of folklore dies.
 > **Out:** the actual number of leaves rayon creates, and
 > SuiteSparse's equivalent floor.
 
-**The correction.** The previous version of this chapter claimed
-that without `with_min_len`, a small multiply "shatters into
-thousands of deque pushes". That is false at this pin. rayon does
+**The folklore.** The common claim is that without
+`with_min_len`, a small multiply "shatters into thousands of deque
+pushes". The source says otherwise. rayon does
 not split to one element; it uses **thief-splitting**, and the
 source says so:
 
@@ -558,7 +561,7 @@ Two readings. First, the topic's own smallest bench (scale 10) gets
 **half the machine**, by design — the guard is deliberately
 conservative. Second, `GB_nthreads` saturates at scale 12; from
 there on the thread count is pinned at `nthreads_max` and all the
-remaining tuning happens in task *sizing* (`:456`), not in thread
+remaining tuning happens in task *sizing* (`:462`), not in thread
 count.
 
 Why it matters: both worlds refuse tiny jobs — one from a cost
@@ -574,8 +577,8 @@ higher than intuition suggests.
 | axis | static (SuiteSparse) | stealing (rayon) |
 |---|---|---|
 | needs a cost model | yes — `flopcount`, O(nnz(B)+n) (`flopcount.c:44-48`) | no |
-| skew response | pre-balanced by flops (`:456`), fine-task atomics for hubs (`saxpy3.c:22-27`) | theft resets the split budget (`plumbing/mod.rs:273`) |
-| leaf count | `GB_NTASKS_PER_THREAD × nthreads` = 2 × nthreads (`:18`, `:419-420`) | ~`next_power_of_two(nthreads)` (`:254`, `:262`) |
+| skew response | pre-balanced by flops (`:462`), fine-task atomics for hubs (`saxpy3.c:22-27`) | theft resets the split budget (`plumbing/mod.rs:273`) |
+| leaf count | `GB_NTASKS_PER_THREAD × nthreads` = 2 × nthreads (`:18`, `:425-426`) | ~`next_power_of_two(nthreads)` (`:254`, `:262`) |
 | per-task overhead | ~zero at runtime; one pre-pass per multiply | one deque push + pop per `join` (`join/mod.rs:139`, `:154`) |
 | small-job guard | `GB_nthreads`, work < 2·chunk ⇒ 1 thread | Splitter budget; `with_min_len` as a hard floor |
 | determinism of schedule | high — same inputs, same tasks | none — random victim (`registry.rs:888`) |
@@ -654,12 +657,12 @@ is. Operand shape is.
 | `GB_AxB_saxpy3_flopcount.c:44-48` | 2 | the pre-pass complexity: O(nnz(B)+n), or O(nnz(B)·log h) hypersparse |
 | `GB_AxB_saxpy3_flopcount.c:50-69` | 2 | the pre-pass in pseudocode; `:57` mask pruning, `:66` the flop definition |
 | `GB_AxB_saxpy3_flopcount.c:80` | 2 | the function's actual entry point |
-| `GB_AxB_saxpy3_flopcount.c:219-221` | 2 | `schedule(dynamic,1)` — the one dynamic schedule in the path |
-| `GB_AxB_saxpy3_slice_balanced.c:308-310` | 2 | the flopcount call; `:309` is `total_flops`, `:310` is `axbflops` |
-| `GB_AxB_saxpy3_slice_balanced.c:18` | 3, 5 | `GB_NTASKS_PER_THREAD 2` — two tasks per thread, not 32 as in `GB_AxB_dot2.c:233` |
-| `GB_AxB_saxpy3_slice_balanced.c:418-420` | 2, 5 | `GB_nthreads(total_flops, …)` and `ntasks_initial` |
-| `GB_AxB_saxpy3_slice_balanced.c:432-438` | 2 | `intensity = total_flops/abnz` — **not** where B is sliced |
-| `GB_AxB_saxpy3_slice_balanced.c:456-459` | 2 | `target_task_size` in **flops**, and `target_fine_size` |
+| `GB_AxB_saxpy3_flopcount.c:222-224` | 2 | `schedule(dynamic,1)` — the one dynamic schedule in the path |
+| `GB_AxB_saxpy3_slice_balanced.c:313-316` | 2 | the flopcount call; `:315` is `total_flops`, `:316` is `axbflops` |
+| `GB_AxB_saxpy3_slice_balanced.c:18` | 3, 5 | `GB_NTASKS_PER_THREAD 2` — two tasks per thread, not 32 as in `GB_AxB_dot2.c:236` |
+| `GB_AxB_saxpy3_slice_balanced.c:424-426` | 2, 5 | `GB_nthreads(total_flops, …)` and `ntasks_initial` |
+| `GB_AxB_saxpy3_slice_balanced.c:438-444` | 2 | `intensity = total_flops/abnz` — **not** where B is sliced |
+| `GB_AxB_saxpy3_slice_balanced.c:462-465` | 2 | `target_work_per_task` in **flops**, and `target_work_per_fine_task` |
 | `GB_AxB_saxpy3.c:22-38` | 3 | coarse vs fine, 4 kinds × 3 variants = 12 task types |
 | `GB_AxB_saxpy3.c:40-48` | 3, 6 | **why a single-vector B can only parallelize via fine tasks** |
 | `GB_AxB_saxpy3.c:62-70` | 3 | the workspace table — 9 B/row shared vs 16 B/row per task |
@@ -679,7 +682,7 @@ is. Operand shape is.
 Read in this order: `GB_AxB_saxpy3.c:20-86` first (the header
 comment is a scheduling essay and it is the best-written thing in
 the directory), then `GB_AxB_saxpy3_flopcount.c:40-69`, then
-`GB_AxB_saxpy3_slice_balanced.c:300-470`. Then rayon's
+`GB_AxB_saxpy3_slice_balanced.c:301-477`. Then rayon's
 `join/mod.rs` end to end (186 lines), then `plumbing/mod.rs:246-333`
 — which is the file that tells you what rayon *actually* does, and
 where the folklore usually goes wrong.
@@ -770,15 +773,15 @@ Answer each before unfolding it.
   mask column skips the whole output column.
 
   It returns `Bflops`, the exact per-column flop vector, whose last
-  cell is `total_flops` (`slice_balanced.c:308-309`). Everything
-  downstream is derived: thread count via `GB_nthreads` at `:418`,
-  `ntasks_initial` at `:419-420`, the Gustavson-vs-hash intensity
-  test at `:432-438`, and `target_task_size = total_flops /
-  ntasks_initial` at `:456` — **flops per task, not columns per
+  cell is `total_flops` (`slice_balanced.c:313-315`). Everything
+  downstream is derived: thread count via `GB_nthreads` at `:424`,
+  `ntasks_initial` at `:425-426`, the Gustavson-vs-hash intensity
+  test at `:438-444`, and `target_work_per_task = total_flops /
+  ntasks_initial` at `:462` — **flops per task, not columns per
   task**.
 
   The pre-pass is itself parallel, with `schedule(dynamic,1)` at
-  `:219-221` — the one dynamic OpenMP schedule in the whole path,
+  `:222-224` — the one dynamic OpenMP schedule in the whole path,
   and it is there precisely because at that moment the costs are
   what is not yet known.
 
@@ -802,8 +805,8 @@ Answer each before unfolding it.
   268 MB against 9.4 MB — a 28× memory inversion, paid for with
   atomics.
 
-  That workspace total is what `slice_balanced.c:433` computes and
-  `:437-438` tests against `nnz(A)+nnz(B)`.
+  That workspace total is what `slice_balanced.c:439` computes and
+  `:443-444` tests against `nnz(A)+nnz(B)`.
 
   </details>
 
@@ -868,7 +871,7 @@ Answer each before unfolding it.
   (`:17-18`), which at `notes.md:28-31`'s ~15 ns/flop is about
   **1.97 ms** of work before a second thread is allowed. From scale
   12 on, the thread count is pinned and all remaining tuning is task
-  *sizing* at `slice_balanced.c:456`.
+  *sizing* at `slice_balanced.c:462`.
 
   </details>
 
@@ -935,10 +938,10 @@ Answer each before unfolding it.
 **Code**
 
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475` — `Source/mxm/GB_AxB_saxpy3.c:20-86` (the header
+  v10.5.2, at `7701390417` — `Source/mxm/GB_AxB_saxpy3.c:20-86` (the header
   comment is a scheduling essay and the best entry point),
-  `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:300-470`,
-  `Source/mxm/GB_AxB_saxpy3_flopcount.c:40-69` and `:219-221`,
+  `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:301-477`,
+  `Source/mxm/GB_AxB_saxpy3_flopcount.c:40-69` and `:222-224`,
   `Source/omp/include/GB_nthreads.h`,
   `Source/include/GB_defaults.h:24`. Full anchor table above.
 - [rayon](https://github.com/rayon-rs/rayon) at `6d9e94b` —

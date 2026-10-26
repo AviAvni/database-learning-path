@@ -106,14 +106,15 @@ leaves first — Google does this on *every* large fan-out query).
 ## Two production shapes
 
 **DataFusion (single process, k cores)** — `RepartitionExec` is
-exchange verbatim: `BatchPartitioner` routes batches round-robin or by
-hash (seed pinned to 0 — `REPARTITION_RANDOM_STATE` — so same key →
-same partition, always), `DistributionSender` queues carry them, and a
+exchange verbatim: `BatchPartitioner` routes batches round-robin, by
+hash (seed fixed at 0 — `REPARTITION_RANDOM_STATE` — so same key →
+same partition, always), or by a source-declared key range, `DistributionSender` queues carry them, and a
 **gate** provides flow control: senders park when *all* output buffers
 are non-empty, so one slow consumer cannot balloon memory while an
 empty channel anywhere keeps data flowing. `preserve_order` is the
-merging exchange. The old `EnforceDistribution` optimizer rule that
-inserted these was retired into `EnsureRequirements`.
+merging exchange. The optimizer rule that inserts these is
+`EnsureRequirements`, which resolves distribution and sort order in one
+pass (the separate `EnforceDistribution` rule is retired).
 
 **CockroachDB DistSQL (many nodes)** — the planner walks the plan tree
 (`checkSupportForPlanNode`), splits table spans by range ownership
@@ -128,10 +129,10 @@ halves stretched over gRPC.
 
 | repo | anchor | what to see |
 |---|---|---|
-| datafusion | `physical-plan/src/repartition/mod.rs:1150` | `RepartitionExec` — exchange as an ExecutionPlan; `:1160` preserve_order |
-| datafusion | `repartition/mod.rs:560` | `BatchPartitioner`; `:592` pinned hash seed; `:825` partition_iter |
-| datafusion | `repartition/distributor_channels.rs:55` | `channels()` — per-partition queues; `:62` the flow-control gate |
-| datafusion | `physical-expr/src/partitioning.rs:117` | `Partitioning` — RoundRobinBatch / Hash |
+| datafusion | `physical-plan/src/repartition/mod.rs:1526` | `RepartitionExec` — exchange as an ExecutionPlan; `:1536` preserve_order |
+| datafusion | `repartition/mod.rs:649` | `BatchPartitioner`; `:677` fixed hash seed; `:1234` partition_iter |
+| datafusion | `repartition/distributor_channels.rs:54` | `channels()` — per-partition queues; `:61` the flow-control gate |
+| datafusion | `physical-expr/src/partitioning.rs:126` | `Partitioning` — RoundRobinBatch / Hash / Range |
 | cockroach | `pkg/sql/distsql_physical_planner.go:971` | `PartitionSpans` — ranges → nodes → parallel plan |
 | cockroach | `pkg/sql/execinfrapb/data.proto:149` | `OutputRouterSpec` — the four router types |
 | cockroach | `pkg/sql/colflow/colrpc/outbox.go:218` / `inbox.go:333` | exchange's two halves over gRPC |

@@ -1,11 +1,23 @@
 # Topic 28 — Notes & measurements
 
-Machine: Apple M3 Pro, macOS. `cargo run --release --bin tier_bench`
-(4M keys / ~23.5K 4 KiB blocks; 200K zipf(0.99) point reads; latencies are
-*simulated & charged*, not slept — deterministic under seeds).
-Date: 2026-07-10.
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-## Measured baselines (provided lanes — the ladder, priced)
+`cargo run --release --bin tier_bench` — 4M keys / ~23.5K 4 KiB blocks; 200K
+zipf(0.99) point reads; latencies are *simulated & charged*, not slept —
+deterministic under seeds:
+
+```
+=== tier_bench: 4000000 keys, 200000 zipf(0.99) point reads ===
+
+local NVMe (all local)      : p50 0.10 ms | p95 0.12 ms | p99 0.12 ms | mean 0.10 ms
+raw S3 (no cache)           : p50 14.17 ms | p95 27.18 ms | p99 112.99 ms | mean 17.07 ms
+S3 + LRU cache: [stub — implement cache.rs]
+hedged S3: [stub — implement hedge.rs]
+CoW branching: [stub — implement branch.rs]
+```
+
+Because the latencies are simulated from seeds, every figure here is exact and
+identical on every run:
 
 | lane | p50 | p95 | p99 | mean |
 |---|---|---|---|---|
@@ -15,7 +27,19 @@ Date: 2026-07-10.
 140× at the median, **940× at p99** (2% stragglers dominate the tail).
 That's the gap the whole topic exists to close.
 
-## Predictions BEFORE implementing the stubs
+## Predictions (fill BEFORE implementing the stubs)
+
+| stub lane | predicted | measured |
+|---|---|---|
+| S3 + LRU cache (3000 blocks ≈ 1/8) — hit rate, mean, p50, p99 | | |
+| hedged at p95 — p99, hedge rate | | |
+| CoW branching — build time, tip read cost | | |
+
+(Fill the predicted column before implementing and the measured column after;
+keep wrong predictions — they're the record.)
+
+<details>
+<summary>Author's prediction</summary>
 
 | stub lane | prediction | reasoning |
 |---|---|---|
@@ -29,13 +53,14 @@ simulated latency is what's reported. If it does, that's the lesson: real
 caches (quickwit's memory_sized_cache linked-LRU, S3-FIFO) exist because
 eviction is on the miss path.
 
-## Measured (stub lanes) — TODO after implementation
+</details>
 
-| lane | measured | prediction hit? |
-|---|---|---|
-| S3 + LRU cache | — | — |
-| hedged GETs | — | — |
-| CoW branching | — | — |
+## Reference numbers for the exercise lanes
+
+No reference run of the stub lanes is recorded for this topic. The stub tests
+are the specification — 13 of them (cache 5, hedge 3, branch 5); the hedge
+contract is exact arithmetic: 50 ms primary / 1 ms backup / 10 ms deadline ⇒
+11 ms.
 
 ## Questions to answer while reading (from the guides)
 

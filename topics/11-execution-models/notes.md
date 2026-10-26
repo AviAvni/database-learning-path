@@ -56,11 +56,12 @@ per-row branch.) Predict accordingly:
 
 Surprises / dead ends:
 
-- (provided-baseline surprise, already found) LLVM DEVIRTUALIZED the
-  `Box<dyn>` operator chain when the tree was statically known —
-  202 M rows/s before black_box, 180 after. A compiler will happily turn
-  your Volcano engine into a compiled engine if you let it. Real engines
-  can't (trees built from plans at runtime).
+- Why `volcano.rs` wraps every operator in `black_box`: when the operator
+  tree is statically known, LLVM devirtualizes the `Box<dyn>` chain, and a
+  compiler will happily turn your Volcano engine into a compiled engine if
+  you let it. Real engines can't — their trees are built from plans at run
+  time — so the baseline hides the tree from the optimizer to measure the
+  dispatch a real engine pays.
 
 ## Questions from the reading guides
 

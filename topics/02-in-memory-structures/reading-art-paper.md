@@ -185,17 +185,24 @@ list. Same instruction, different contract.
 
 The paper also notes the fallback for portability: "Alternatively, binary
 search can be used if SIMD instructions are not available" (§III-F). Compare
-`rax.c:481-483`, which argues a *linear* scan beats binary search "even when
-`h->size` is large" — rax and ART reach opposite conclusions about the same
-inner loop because they are optimising different corners.
+redis's rax, which keeps its edge bytes sorted too but never binary-searches
+them: `raxLowWalk` checks the *last* edge byte first (`rax.c:660-664`), since
+sequential keys almost always land there, and otherwise hands the whole edge
+array to libc's `memchr` (`rax.c:672`), on the argument in the comment above it
+(666-671) that libc's `memchr` is SIMD-optimised (SSE2/AVX2, NEON). That is
+ART's lines 6-12 by another route — a broadcast-and-compare over every edge
+byte — with one difference in contract: `memchr` scans up to 256 edge bytes in
+one variable-size node, where ART's Node16 compares exactly 16 and switches
+node type above that. Neither structure binary-searches on the platforms it
+cares about; ART keeps binary search only as the no-SIMD fallback.
 
 ### Step 4 — lazy expansion and path compression: kill the boring levels
 
 > **In:** a tree whose height is still the key length in bytes, because every
 > byte gets a level whether or not it distinguishes anything.
 > **Out:** two independent height reductions from §III-E, the pessimistic /
-> optimistic choice for storing skipped bytes, and ART's actual hybrid — which
-> the previous version of this chapter had backwards.
+> optimistic choice for storing skipped bytes, and ART's actual hybrid — whose
+> direction is easy to invert.
 
 §III-E, titled *Collapsing Inner Nodes*, introduces two techniques:
 
@@ -648,7 +655,7 @@ than a leaf, which breaks lazy expansion (a truncated path can no longer be
 resolved by comparing the leaf's key) and breaks the definition in §IV-A, since
 `memcmp_k` compares fixed-length vectors. The terminator restores the property
 that every key ends at a leaf. Compare rax, which allows a key at any node —
-`iskey` is a bit on every node (`rax.h:79`) — and pays for it with a value
+`iskey` is a bit on every node (`rax.h:89`) — and pays for it with a value
 pointer slot in the node layout.
 
 </details>

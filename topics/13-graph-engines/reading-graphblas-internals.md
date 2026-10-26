@@ -11,14 +11,17 @@ masks, the write problem, and the delta overlay that solves it — then
 hands you the file anchors. It's also the topic-20/M20 preview: read
 for the shape now, the kernels later.
 
-Every anchor below was read at the revisions pinned in
-[`resources/codebases.md`](../../resources/codebases.md):
-**SuiteSparse:GraphBLAS at `1fd5475`** and **FalkorDB at `ccb449a9a`**.
-Line numbers move; check one with
-`python3 tools/pinned-source.py show GraphBLAS Include/GraphBLAS.h -r 1664:1667`
-before you trust it. Three claims in the previous version of this
-chapter did not survive that check, and each is called out where it
-used to be.
+Every anchor below was read at the revisions recorded in the pin table
+of [`resources/codebases.md`](../../resources/codebases.md):
+**SuiteSparse:GraphBLAS at `7701390417`** (v10.5.2) and **FalkorDB at
+`ccb449a9a`**. Check any of them with
+`python3 tools/pinned-source.py show GraphBLAS Include/GraphBLAS.h -r 1679:1682`.
+
+The FalkorDB code quoted here is its C engine (FalkorDB 4.x, the
+`master` branch); FalkorDB 6's Rust engine lives on `main` and has no
+`src/graph/`, so read these anchors with
+`python3 tools/pinned-source.py show FalkorDB <path>` rather than from
+a checkout of `main`.
 
 ## The problem in one sentence
 
@@ -125,16 +128,16 @@ this topic gets compared against.
 > **Out:** one of four physical layouts, chosen by SuiteSparse without
 > the caller asking.
 
-SuiteSparse doesn't commit to CSR. `Include/GraphBLAS.h:1664-1667`
+SuiteSparse doesn't commit to CSR. `Include/GraphBLAS.h:1679-1682`
 names four **sparsity formats**, and a matrix may be told which
 subset it is allowed to take:
 
 ```c
 // GraphBLAS.h, the sparsity-control bitmask values
-  1664  #define GxB_HYPERSPARSE 1   // store entries in a list of non-empty vectors
-  1665  #define GxB_SPARSE      2   // store entries in a compressed form (CSR/CSC)
-  1666  #define GxB_BITMAP      4   // store entries in a bitmap
-  1667  #define GxB_FULL        8   // store all entries, no need for indices
+  1679  #define GxB_HYPERSPARSE 1   // store matrix in hypersparse form
+  1680  #define GxB_SPARSE      2   // store matrix as sparse form (compressed vector)
+  1681  #define GxB_BITMAP      4   // store matrix as a bitmap
+  1682  #define GxB_FULL        8   // store matrix as full; all entries must be present
 ```
 
 Read those as: **hypersparse** keeps an explicit list of only the
@@ -144,18 +147,30 @@ costs 1 000 offsets, not 1 000 001); **sparse** is plain CSR/CSC;
 writes cost a bit-flip because there is no structure to shift; **full**
 drops the index arrays entirely because every cell is present.
 
-The switch is not vibes. `GraphBLAS.h:1715-1728` states the rule, and
-`Source/include/GB_defaults.h:20` gives the constant:
+The switch is not vibes. `GraphBLAS.h:1730-1747` states the rule, and
+`Source/include/GB_defaults.h:20` gives the constant. The lines to
+focus on are 1737 and 1741-1742, the two directions:
 
 ```c
-// GraphBLAS.h:1715-1728 — the hyper_switch rule, paraphrasing the comment
-  1715  // ... let k be the number of non-empty vectors, n the number of
-  1716  // vectors, and h the hyper_switch:
-  //  ... 1717-1722: elided — the same rule stated for GxB_Matrix_Option_set ...
-  1723  //   hypersparse -> sparse:  if  n <= 1  ||  k > 2*n*h
-  1724  //   sparse -> hypersparse:  if  n >  1  &&  k <= n*h
-  //  ... 1725-1727: elided ...
-  1728  //
+// GraphBLAS.h:1730-1747 — the hyper_switch rule
+  1730  //      Let k be the actual number of non-empty vectors (with at least one
+  1731  //      entry).  This value k is not dependent on whether or not the matrix is
+  1732  //      stored in hypersparse structure.  Let n be the number of vectors (the #
+  1733  //      of columns if CSC, or rows if CSR).  Let h be the value of the
+  1734  //      GxB_HYPER_SWITCH setting of the matrix.
+  1735  //
+  1736  //      If a matrix is currently hypersparse, it can be converted to
+  1737  //      non-hypersparse if (n <= 1  || k > 2*n*h).  Otherwise it stays
+  1738  //      hypersparse.  If (n <= 1) the matrix is always stored as
+  1739  //      non-hypersparse.
+  1740  //
+  1741  //      If currently non-hypersparse, it can be converted to hypersparse if (n
+  1742  //      > 1 && k <= n*h).  Otherwise, it stays non-hypersparse.  If (n <= 1)
+  1743  //      the matrix always remains non-hypersparse.
+  1744  //
+  1745  //      Setting GxB_HYPER_SWITCH to GxB_ALWAYS_HYPER or GxB_NEVER_HYPER ensures
+  1746  //      a matrix always stays hypersparse, or always stays non-hypersparse,
+  1747  //      respectively.
 ```
 
 ```c
@@ -205,11 +220,8 @@ Sparse matrix multiply has two classic algorithm families.
   the output implicitly, so it is the right shape when the output is
   large.
 
-**Correction.** The previous version of this chapter quoted
-`Source/mxm/GB_AxB_meta.c:20-21` as "the algorithm menu", with the
-text *"generic: for any semiring; dot2/dot3: does `C=A'*B`,
-`C<M>=A'*B` … saxpy: Gustavson + Hash"*. At pin `1fd5475` those two
-lines say something else entirely:
+`Source/mxm/GB_AxB_meta.c`, the dispatcher, names only the two
+families:
 
 ```c
 // Source/mxm/GB_AxB_meta.c
@@ -217,17 +229,18 @@ lines say something else entirely:
     21  // (Gustavson), or a dot product method.
 ```
 
-The real menu, with the real asymptotics, is at the top of
-`Source/mxm/GB_AxB_dot.c`:
+The menu, with its asymptotics, is at the top of
+`Source/mxm/GB_AxB_dot.c`; the lines to focus on are 22 and 24-25,
+the two Ω's:
 
 ```c
 // Source/mxm/GB_AxB_dot.c
-    21  // The dot product method for C=A'*B, C<M>=A'*B, or C<!M>=A'*B computes
-    22  // C(i,j) = A(:,i)'*B(:,j) for each entry C(i,j).  dot2 computes C=A'*B
-    23  // and C<!M>=A'*B, taking Omega(m*n) time ...
-    24  // ... dot3 computes C<M>=A'*B, and only examines entries in the
-    25  // mask M, taking Omega(nnz(M)) time ...
-    26  // ... dot4 computes C+=A'*B when C is full ...
+    21  // example).  GB_AxB_dot2 and GB_AxB_dot3 operate on A' without forming it.
+    22  // GB_AxB_dot2 computes C=A'*B and C<!M>=A'*B, and it takes Omega(m*n) time,
+    23  // if C is m-by-n.  It is thus only suitable for cases when A and B are large,
+    24  // and C is small.  GB_AxB_dot3 computes C<M>=A'*B, and it only needs to
+    25  // examine entries in M, taking Omega(nnz(M)) time.  It can thus be used for
+    26  // very large matrices C.  GB_AxB_dot4 computes C+=A'*B when C is full.
 ```
 
 and the saxpy side names its three variants in its own signature:
@@ -241,7 +254,7 @@ The *choice* is made per call in
 `Source/mxm/GB_AxB_meta_adotb_control.c`: saxpy is the default (`:36`
 sets `GB_USE_SAXPY`), and dot4 (`:72-77`), dot3 (`:78-82`) and dot2
 (`:83-87`) each override it under stated conditions. The dot3
-condition is spelled out in `Source/mxm/GB_mxm.h:235-243`: dot3 is
+condition is spelled out in `Source/mxm/GB_mxm.h:234-244`: dot3 is
 eligible iff there is a mask, the mask is not complemented, and the
 mask is sparse or hypersparse.
 
@@ -285,20 +298,20 @@ be applied:
 
 1. **Inside the kernel**, by dot3, which walks the mask and computes
    nothing else. That is the Ω(nnz(M)) path from Step 4.
-2. **After the fact**, by `GB_masker`, which computes Z = A·B in full
-   and then merges. `Source/mask/GB_masker.c:2` and `:10` say what it
-   does; `:14-15` says who calls it — only `GB_mask`, which is called
+2. **After the fact**, by `GB_masker`, which receives Z = A·B already
+   computed in full and then merges. `Source/mask/GB_masker.c:2` and
+   `:10` say what it does; `:14-15` says who calls it — only `GB_mask`, which is called
    only from `GB_accum_mask`. And `GB_AxB_meta.c:15-18` warns that the
    algorithm *may* choose this late path.
 
 ```c
 // Source/mask/GB_masker.c
-     2  // R = masker (C, M, Z):  compute C<M>=Z, returning the result in R.
-  //  ... 3-9: elided — argument description ...
-    10  // R, M, and Z can be sparse, hypersparse, bitmap, or full ... does R=C ; R<M>=Z
-  //  ... 11-13: elided ...
-    14  // GB_masker is only called by GB_mask, which itself is only called
-    15  // by GB_accum_mask.
+     2  // GB_masker: R = masker (C, M, Z) constructs R for C<M>=Z
+  //  ... 3-9: elided — banner and license ...
+    10  // GB_masker (R, C, M, Z), does R=C ; R<M>=Z.  No typecasting is performed.
+  //  ... 11-13: elided — "similar to both R=C+Z via GB_add and R=C.*Z" ...
+    14  // GB_masker is only called by GB_mask, which itself is only called by
+    15  // GB_accum_mask.
 ```
 
 So "I passed a mask" and "the mask saved me work" are different
@@ -346,8 +359,8 @@ latency, read overhead, AND when the expensive merge happens.
 > counted threshold.
 
 FalkorDB wraps every graph matrix in a `Delta_Matrix`. The struct is
-at `src/graph/delta_matrix/delta_matrix.h:108-115` — **not** at
-`:17-22`, which is where the accessor macros live:
+at `src/graph/delta_matrix/delta_matrix.h:108-115` (the accessor
+macros sit above it, at `:17-22`):
 
 ```c
 // src/graph/delta_matrix/delta_matrix.h
@@ -368,9 +381,9 @@ at `src/graph/delta_matrix/delta_matrix.h:108-115` — **not** at
  read(i,j) = (M(i,j) OR DP(i,j)) AND NOT DM(i,j)
 ```
 
-**Correction.** The previous version of this chapter said the deltas
-are "kept in the write-friendly bitmap/hypersparse world". They are
-not allowed to be bitmap. `delta_get_set.c:44-53` pins them:
+It is tempting to picture the deltas as living anywhere in the
+write-friendly bitmap/hypersparse world. They are not allowed to be
+bitmap. `delta_get_set.c:44-53` fixes their format:
 
 ```c
 // src/graph/delta_matrix/delta_get_set.c, inside Delta_Matrix_setElement
@@ -384,15 +397,14 @@ not allowed to be bitmap. `delta_get_set.c:44-53` pins them:
 ```
 
 M is left free to be `GxB_SPARSE | GxB_HYPERSPARSE`; DP and DM are
-pinned to hypersparse with `GxB_ALWAYS_HYPER` (Step 3's constant,
+forced to hypersparse with `GxB_ALWAYS_HYPER` (Step 3's constant,
 forced). That is the right choice for the reason Step 3 gave: a delta
 holding a few thousand entries has a few thousand non-empty rows out
 of a million, so a CSR offsets array would be 1 000 001 slots of
 almost entirely zeros.
 
-**Correction.** The previous version's `set()` pseudocode keyed the
-branch on DM ("if the entry is in DM, clear it"). The real code keys
-on **M**:
+The natural first guess for `set()` is to branch on DM ("if the
+entry is in DM, clear it"). The code branches on **M**:
 
 ```c
 // src/graph/delta_matrix/delta_set_element_bool.c
@@ -416,9 +428,8 @@ DP → DM → M (`:26`, `:32`, `:39`), and `delta_extract.c` does the same
 at `:25`, `:31`, `:38`. An entry that lives in DP costs **one** probe,
 not three.
 
-**Correction.** The previous version described `wait()` as a single
-`M = (M ∪ DP) ∖ DM` rebuild. `delta_wait.c` (218 lines) is two
-independent flushes, each gated on its own counter:
+`wait()` is not a single `M = (M ∪ DP) ∖ DM` rebuild. `delta_wait.c`
+(218 lines) is two independent flushes, each gated on its own counter:
 
 ```c
 // src/graph/delta_matrix/delta_wait.c
@@ -497,19 +508,19 @@ bill is paid on FalkorDB's schedule.
 ## Where each step lives in the code
 
 **GraphBLAS** ([SuiteSparse](https://github.com/DrTimothyAldenDavis/GraphBLAS),
-pinned at `1fd5475`):
+at `7701390417`, v10.5.2):
 
 | Step | Anchor | What is there |
 |---|---|---|
-| 3 | `Include/GraphBLAS.h:1664-1667` | the four sparsity format constants |
-| 3 | `Include/GraphBLAS.h:1556`, `:1559` | `GxB_HYPER_SWITCH`, `GxB_BITMAP_SWITCH` field ids |
-| 3 | `Include/GraphBLAS.h:1715-1728` | the exact switch rule, both directions |
-| 3 | `Include/GraphBLAS.h:1734` | `GxB_ALWAYS_HYPER` / `GxB_NEVER_HYPER` |
+| 3 | `Include/GraphBLAS.h:1679-1682` | the four sparsity format constants |
+| 3 | `Include/GraphBLAS.h:1562`, `:1565` | `GxB_HYPER_SWITCH`, `GxB_BITMAP_SWITCH` field ids |
+| 3 | `Include/GraphBLAS.h:1730-1747` | the exact switch rule, both directions |
+| 3 | `Include/GraphBLAS.h:1749` | `GxB_ALWAYS_HYPER` / `GxB_NEVER_HYPER` |
 | 3 | `Source/include/GB_defaults.h:20` | `GB_HYPER_SWITCH_DEFAULT (0.0625)` |
 | 4 | `Source/mxm/GB_AxB_dot.c:21-26` | dot2 Ω(m·n), dot3 Ω(nnz(M)), dot4 |
 | 4 | `Source/mxm/GB_AxB_saxpy.c:18` | Gustavson / Hash / Bitmap |
 | 4 | `Source/mxm/GB_AxB_meta_adotb_control.c:36`, `:72-87` | the per-call choice |
-| 4 | `Source/mxm/GB_mxm.h:235-243` | `GB_AxB_dot3_control` — when dot3 is legal |
+| 4 | `Source/mxm/GB_mxm.h:234-244` | `GB_AxB_dot3_control` — when dot3 is legal |
 | 5 | `Source/mask/GB_masker.c:2`, `:10`, `:14-15` | the *late* mask path and its only caller |
 | 5 | `Source/mxm/GB_AxB_meta.c:15-18` | the warning that masking may be deferred |
 | 6 | `Source/include/GB_defaults.h:27` | `GB_PENDING_INIT 256` — GraphBLAS's own overlay |
@@ -520,18 +531,18 @@ pinned at `1fd5475`):
 | Step | Anchor | What is there |
 |---|---|---|
 | 1 | `src/graph/graph.h:44` | `struct Graph` opens |
-| 1 | `src/graph/graph.h:48-51` | the four matrix members (was cited as `:48-52`) |
-| 7 | `src/graph/graph.h:42` | `SyncMatrixFunc` typedef (was cited as `:46`) |
-| 7 | `.../delta_matrix/delta_matrix.h:17-22` | accessor **macros**, not the struct |
+| 1 | `src/graph/graph.h:48-51` | the four matrix members |
+| 7 | `src/graph/graph.h:42` | `SyncMatrixFunc` typedef |
+| 7 | `.../delta_matrix/delta_matrix.h:17-22` | accessor macros |
 | 7 | `.../delta_matrix/delta_matrix.h:108-115` | `struct _Delta_Matrix` — the actual trio |
-| 7 | `.../delta_matrix/delta_matrix.h:26-106` | the ASCII state diagrams (was cited as `:26-80`) |
+| 7 | `.../delta_matrix/delta_matrix.h:26-106` | the ASCII state diagrams |
 | 7 | `.../delta_set_element_bool.c:31-39` | write path, branching on M |
 | 7 | `.../delta_remove_element.c:36-43` | delete path, the mirror image |
 | 7 | `.../delta_isStored.c:26,32,39` | short-circuiting DP → DM → M read |
 | 7 | `.../delta_extract.c:25,31,38` | the same order, for range extraction |
 | 7 | `.../delta_wait.c:13-34`, `:36-57`, `:89`, `:97`, `:103-105` | the two flushes and their thresholds |
 | 7 | `src/configuration/config.h:19` | `DELTA_MAX_PENDING_CHANGES_DEFAULT 10000` |
-| 7 | `.../delta_get_set.c:44-53` | DP/DM pinned hypersparse |
+| 7 | `.../delta_get_set.c:44-53` | DP/DM forced hypersparse |
 | 7 | `.../delta_mxm.c:44`, `:47`, `:74`, `:86`, `:104`, `:107` | delta-aware multiply, and the A-must-be-synced assert |
 
 Read order: `graph.h:44-53` (ten lines tell you the whole
@@ -565,7 +576,7 @@ Answer each before unfolding it.
   read-optimized main matrix (CSR or hypersparse inside); DP holds
   pending additions; DM holds pending deletions — tombstones, because
   removing an entry from M in place is Step 6's problem again. Both
-  deltas are pinned hypersparse at `delta_get_set.c:46-53`.
+  deltas are forced hypersparse at `delta_get_set.c:46-53`.
 
   A read is **not** three probes. `delta_isStored.c` tests DP first
   (`:26`), then DM (`:32`), then M (`:39`), returning early. An entry
@@ -600,7 +611,7 @@ Answer each before unfolding it.
 
   `GB_AxB_dot.c:22-25`: dot2 computes `C=A'*B` and `C<!M>=A'*B` in
   **Ω(m·n)**; dot3 computes `C<M>=A'*B` examining only entries of M,
-  in **Ω(nnz(M))**. `GB_mxm.h:235-243` says dot3 is only eligible when
+  in **Ω(nnz(M))**. `GB_mxm.h:234-244` says dot3 is only eligible when
   a non-complemented, sparse-or-hypersparse mask exists.
 
   So a small frontier gives a small sparse mask and wants dot3: on
@@ -627,7 +638,7 @@ Answer each before unfolding it.
   and a mask makes re-walking unrepresentable.
 
   The case where it saves nothing: `GB_masker.c` is the *late* path —
-  it computes Z in full and then merges `R = C ; R<M> = Z`. It is
+  it is handed Z already computed in full and merges `R = C ; R<M> = Z`. It is
   reached from `GB_accum_mask` (`GB_masker.c:14-15`), and
   `GB_AxB_meta.c:15-18` warns the algorithm may choose to defer the
   mask to it. A deferred mask costs the intermediate you were hoping
@@ -661,17 +672,17 @@ Answer each before unfolding it.
   companion; the code comments cited above cover the same ground and
   are the ones that were actually checked for this chapter.
 
-**Code** (all line numbers verified at the pins named at the top)
+**Code** (all line numbers verified at the revisions named at the top)
 
 | Repo | File | Lines | What |
 |---|---|---|---|
-| GraphBLAS | `Include/GraphBLAS.h` | 1556, 1559, 1664-1667, 1715-1728, 1734 | format constants, switch fields, the switch rule |
+| GraphBLAS | `Include/GraphBLAS.h` | 1562, 1565, 1679-1682, 1730-1747, 1749 | format constants, switch fields, the switch rule |
 | GraphBLAS | `Source/include/GB_defaults.h` | 20, 27 | hyper switch default 0.0625; pending-tuple init 256 |
 | GraphBLAS | `Source/mxm/GB_AxB_dot.c` | 21-26 | dot2/dot3/dot4 and their Ω's |
 | GraphBLAS | `Source/mxm/GB_AxB_saxpy.c` | 18 | Gustavson / Hash / Bitmap |
 | GraphBLAS | `Source/mxm/GB_AxB_meta_adotb_control.c` | 36, 72-87 | which kernel, per call |
 | GraphBLAS | `Source/mxm/GB_AxB_meta.c` | 15-18, 20-21 | saxpy-or-dot; mask may be deferred |
-| GraphBLAS | `Source/mxm/GB_mxm.h` | 235-243 | `GB_AxB_dot3_control` |
+| GraphBLAS | `Source/mxm/GB_mxm.h` | 234-244 | `GB_AxB_dot3_control` |
 | GraphBLAS | `Source/mask/GB_masker.c` | 2, 10, 14-15, 21-33 | the late mask path and its truth table |
 | FalkorDB | `src/graph/graph.h` | 42, 44, 48-53 | `SyncMatrixFunc`; the graph as four matrices |
 | FalkorDB | `src/graph/delta_matrix/delta_matrix.h` | 17-22, 26-106, 108-115 | macros; state diagrams; the struct |
@@ -680,6 +691,6 @@ Answer each before unfolding it.
 | FalkorDB | `src/graph/delta_matrix/delta_isStored.c` | 26, 32, 39 | short-circuiting read |
 | FalkorDB | `src/graph/delta_matrix/delta_extract.c` | 25, 31, 38 | same order for extraction |
 | FalkorDB | `src/graph/delta_matrix/delta_wait.c` | 13-34, 36-57, 59-113, 89, 97, 103-105 | the two flushes and their gates |
-| FalkorDB | `src/graph/delta_matrix/delta_get_set.c` | 44-53 | DP/DM pinned hypersparse |
+| FalkorDB | `src/graph/delta_matrix/delta_get_set.c` | 44-53 | DP/DM forced hypersparse |
 | FalkorDB | `src/graph/delta_matrix/delta_mxm.c` | 44, 47, 74, 86, 104, 107 | delta-aware mxm |
 | FalkorDB | `src/configuration/config.h` | 19, 33 | the flush threshold and its config enum |

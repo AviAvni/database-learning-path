@@ -11,10 +11,11 @@ production raft-rs driving loop, the *real* ordering inside
 [reading-raft-rs.md](reading-raft-rs.md), in production) and
 `lib/collection`. Assumes both the Raft paper and raft-rs chapters.
 
-Every `file:line` below is **qdrant at `44ad62f`**, the revision in
-this repo's pin table (`resources/codebases.md`). Check any of them
-with `python3 tools/pinned-source.py show qdrant src/consensus.rs -r
-926:1007`. At this pin `src/consensus.rs` is 1605 lines.
+Every `file:line` below is **qdrant v1.20.0 (`222b2e44a`)**, the
+revision in this repo's pin table (`resources/codebases.md`). Check
+any of them with `python3 tools/pinned-source.py show qdrant
+src/consensus.rs -r 1065:1146`. At this revision `src/consensus.rs` is
+1748 lines.
 
 ## The problem in one sentence
 
@@ -110,38 +111,40 @@ own hardware's numbers.
 > event sources, the batching constants, and the tick-to-milliseconds
 > conversion for qdrant's actual config.
 
-`Consensus` (consensus.rs:48) owns `type Node =
-RawNode<ConsensusStateRef>` (:36) and runs the loop the raft-rs
-chapter promised someone must write. `Consensus::start` (:481-562) is
+`Consensus` (consensus.rs:64) owns `type Node =
+RawNode<ConsensusStateRef>` (:42) and runs the loop the raft-rs
+chapter promised someone must write. `Consensus::start` (:612-693) is
 that loop:
 
 ```rust
 // ILLUSTRATION — the shape of Consensus::start, not a quote.
-// The real loop is consensus.rs:499-561; advance_node is :564-631;
-// recv_update's tokio::select! is :633-641; on_ready is :877-902.
+// The real loop is consensus.rs:630-692; advance_node is :695-766;
+// recv_update's biased tokio::select! is :768-780; on_ready is :1016-1041.
 loop {
-    let raft_messages = self.advance_node(tick_period)?;   // :501
-    // ... elapsed-tick bookkeeping, :504-529 ...
-    for _ in 0..report_ticks { self.node.tick(); }         // :532-534
-    let (stop_consensus, is_idle) = self.on_ready()?;      // :537
+    let raft_messages = self.advance_node(receiver, tick_period)?; // :632
+    // ... elapsed-tick bookkeeping and the cap, :634-660 ...
+    for _ in 0..report_ticks { self.node.tick(); }                 // :663-665
+    let (stop_consensus, is_idle) = self.on_ready()?;              // :668
     if stop_consensus { return Ok(()); }
-    // ... idle-cycle counting, :543-560 ...
+    // ... idle-cycle counting, :674-691 ...
 }
 ```
 
 Three things in that loop are worth the read rather than the summary.
 
-**Batching.** `advance_node` (:564-631) drains up to
-`RAFT_BATCH_SIZE = 128` events per iteration (:575, :625), waiting
-`tick_period` for the first and only `tick_period / 10` for each
-subsequent one (:578-585). A conf-change breaks the batch early
-(:597-608, :625) because raft-rs allows only one in flight.
+**Batching.** `advance_node` (:695-766) drains up to
+`RAFT_BATCH_SIZE = 128` events per iteration (:710, :760), waiting
+`tick_period` for the first (:713) and only `tick_period / 10` for each
+subsequent one (:717, :752-755). A conf-change breaks the batch early
+(:732-743, :760) because raft-rs allows only one in flight. Before it
+reads any event, `advance_node` first tries to promote a caught-up
+learner to voter (:700-705) and skips the batch if it did.
 
 **Tick arithmetic.** raft-rs's constants are unitless; qdrant
 supplies the unit:
 
 ```
-  qdrant  config/config.yaml:359   tick_period_ms: 100
+  qdrant  config/config.yaml:511   tick_period_ms: 100
   raft-rs config.rs:112-116        heartbeat_tick 2, election_tick 20
   raft-rs config.rs:147-163        election range [election_tick, 2 x election_tick)
   raft-rs raft.rs:2854-2866        draws uniformly from [20, 40)
@@ -153,18 +156,21 @@ supplies the unit:
   is 2.0 s — about 7x the paper's ceiling.
 ```
 
-Why so slack? Because the loop body at :537 does disk work — WAL
-appends, snapshot application, WAL compaction (:899) — and a tight
+Why so slack? Because the loop body at :668 does disk work — WAL
+appends, snapshot application, WAL compaction (:1038) — and a tight
 timeout would misfire whenever a write is slow. qdrant says so in the
-code: the comment at :509-519 explains that reported ticks are capped
-at `election_tick - 5` = 15 (:521-529) precisely so that "if last
+code: the comment at :640-651 explains that reported ticks are capped
+at `election_tick - 5` = 15 (:652-660) precisely so that "if last
 iteration of the loop took too long to complete" it does not "trigger
-unnecessary leader election."
+unnecessary leader election." The cap applies only when the batch
+contained Raft messages (:652) — evidence the leader is still
+reachable; with none, every elapsed tick is reported (:659).
 
 **What the state machine is.** The replicated state machine is the
-cluster topology map — `handle_committed_entries` (:997, :1044)
-mutates which peers exist and where shards live. Compaction is at
-:899 with `compact_wal_entries: 128` (config.yaml:365), which is what
+cluster topology map — `handle_committed_entries` (defined at :1229,
+called at :1136 and :1183) mutates which peers exist and where shards
+live. Compaction is the last call in `on_ready` (:1038), with
+`compact_wal_entries: 128` (config.yaml:517), which is what
 lets a new peer join from a snapshot rather than replaying history.
 
 ### Step 4 — on_ready: the ordering rules, as actually written
@@ -174,56 +180,59 @@ lets a new peer join from a snapshot rather than replaying history.
 > is a safety requirement, and the one that contradicts the naive
 > "persist before send" rule.
 
-`on_ready` (:877-902) is three calls: `process_ready` (:926-1007),
-then `process_light_ready` (:1015-1050), then `process_role_change`
-(:904-918). Both inner functions open with the same warning comment
-(:922, :1011): *"The order of operations in this functions is
-critical, changing it might lead to bugs."*
+`on_ready` (:1016-1041) is three calls and a compaction:
+`process_ready` (:1065-1146), then `process_light_ready`
+(:1154-1189), then `process_role_change` (:1043-1057), then
+`compact_wal` (:1038). Both inner functions carry the same warning in
+their doc comments (:1061, :1150): *"The order of operations in this
+functions is critical, changing it might lead to bugs."*
 
 Read the actual order in `process_ready`, because it is **not**
 persist-then-send:
 
 ```rust
-// consensus.rs — process_ready, 939-1005 (logging and error paths elided)
-   939          if !ready.messages().is_empty() {
-   941              self.send_messages(ready.take_messages());          // 1. SEND
-   942          }
-   944          if !ready.snapshot().is_empty() {
-   950              if let Err(err) = store.apply_snapshot(&snapshot)? {  // 2. snapshot
-   953          }
-   955          if !ready.entries().is_empty() {
-   961                  .append_entries(ready.take_entries())            // 3. log append
-   963          }
-   965          if let Some(hs) = ready.hs() {
-   971                  .set_hard_state(hs.clone())                      // 4. HardState
-   973          }
-   984          if !ready.persisted_messages().is_empty() {
-   990              self.send_messages(ready.take_persisted_messages()); // 5. SEND (gated)
-   991          }
-   993          let committed_entries = ready.take_committed_entries();
-   997          let stop_consensus = handle_committed_entries(...)       // 6. apply
-  1005          let light_rd = self.node.advance(ready);                 // 7. advance
+// consensus.rs — process_ready, 1078-1144 (logging, `is_idle`
+// bookkeeping and error paths elided; gaps in the gutter are those lines)
+  1078          if !ready.messages().is_empty() {
+  1080              self.send_messages(ready.take_messages());          // 1. SEND
+  1081          }
+  1083          if !ready.snapshot().is_empty() {
+  1089              if let Err(err) = store.apply_snapshot(&snapshot)? {  // 2. snapshot
+  1092          }
+  1094          if !ready.entries().is_empty() {
+  1100                  .append_entries(ready.take_entries())            // 3. log append
+  1102          }
+  1104          if let Some(hs) = ready.hs() {
+  1110                  .set_hard_state(hs.clone())                      // 4. HardState
+  1112          }
+// ... 1113-1122: role change captured, soft state handled at 1120 ...
+  1123          if !ready.persisted_messages().is_empty() {
+  1129              self.send_messages(ready.take_persisted_messages()); // 5. SEND (gated)
+  1130          }
+  1132          let committed_entries = ready.take_committed_entries();
+  1136          let stop_consensus = handle_committed_entries(...)       // 6. apply
+  1144          let light_rd = self.node.advance(ready);                 // 7. advance
 ```
 
-Line **941 sends before line 961 persists.** That is not a bug and it
+Line **1080 sends before line 1100 persists.** That is not a bug and it
 is not qdrant being sloppy — it is raft-rs's leader exemption,
 consumed correctly. `Ready::messages()` is non-empty only when
 `is_persisted_msg` is false, which `RawNode::ready` sets as
 `raft.state != StateRole::Leader` (raft-rs raw_node.rs:555, citing
-Ongaro's *dissertation* §10.2.1 at :554). So the list drained at 941
+Ongaro's *dissertation* §10.2.1 at :554). So the list drained at 1080
 is a leader's, and a leader may replicate before its own disk write.
 
 The safety-critical ordering is between **3/4 and 5**:
-`persisted_messages()` at 984 is drained *after* the append at 961
-and the HardState write at 971. Those are the messages a follower or
+`persisted_messages()` at 1123 is drained *after* the append at 1100
+and the HardState write at 1110. Those are the messages a follower or
 candidate sends — the acks and vote responses the leader will count —
 and they must not leave before the write. A second ordering
-constraint is spelled out in the comment at :996: committed entries
+constraint is spelled out in the comment at :1135: committed entries
 are handled after the HardState save "so that `applied` index is
 never bigger than `commit`."
 
-`process_light_ready` (:1015-1050) then does commit index (:1029-1036)
-→ send (:1038) → apply (:1040-1045) → `advance_apply` (:1048). This is
+`process_light_ready` (:1154-1189) then does commit index (:1168-1175)
+→ send (:1177) → apply (:1183-1184) → `advance_apply` (:1187). This is
 raft-rs's `advance_append`/`advance_apply` split in action: entries
 were made durable in the first phase, so the second phase's messages
 and applies do not wait on another disk round.
@@ -236,11 +245,13 @@ ends with **one** `self.wal.flush_open_segment()` at :259 — one flush
 per Ready batch, not per entry. That is group commit, and it is why
 the arithmetic in Step 2 uses the batched rung. The HardState is
 separate: `Persistent::save`
-(lib/storage/src/content_manager/consensus/persistent.rs:375-384)
-serialises `{term, vote, commit}` (the `HardStateDef` at :455-459) as
+(lib/storage/src/content_manager/consensus/persistent.rs:398-407)
+serialises `{term, vote, commit}` (the `HardStateDef` at :478-482) as
 JSON through `atomicwrites::AtomicFile`, and the only flush in
-qdrant's own code is a `BufWriter::flush` at :379 — a userspace
-flush. Whether that is durable depends on the `atomicwrites` crate's
+qdrant's own code is a `BufWriter::flush` at :402 — a userspace
+flush. A failed write only marks the state `dirty` (:405) so that
+`save_if_dirty` (:409-414) retries it later. Whether the successful
+write is durable depends on the `atomicwrites` crate's
 temp-file-and-rename policy, not on anything in this tree. That is
 question 5's real target.
 
@@ -255,14 +266,14 @@ A point upsert goes to ALL replicas of its shard;
 valkey's WAIT as a per-write policy (previous chapters' axis: WHO
 acks). The rule is `minimal_success_count =
 write_consistency_factor.min(replica_count)`
-(lib/collection/src/shards/replica_set/update.rs:460), so the factor
+(lib/collection/src/shards/replica_set/update.rs:481), so the factor
 is **clamped** to the replica count and cannot make a write fail for
 asking more acks than there are replicas.
 
 Both defaults are **1**: `default_replication_factor`
-(lib/collection/src/config.rs:223-225) and
-`default_write_consistency_factor` (:227-229), matching
-`config/config.yaml:211`. Out of the box qdrant is a single-copy
+(lib/collection/src/config.rs:344-346) and
+`default_write_consistency_factor` (:348-350), matching
+`config/config.yaml:291` and `:294`. Out of the box qdrant is a single-copy
 system; the knob only starts meaning something once you raise the
 replication factor.
 
@@ -291,14 +302,14 @@ Now the part that makes this better than plain WAIT, and the part
 that makes the two planes *not* independent. When a write succeeds on
 enough replicas but fails on others, qdrant deactivates the failed
 ones **through consensus** and blocks the client until that
-deactivation commits (update.rs:530-590). If it does not commit in
-`DEFAULT_SHARD_DEACTIVATION_TIMEOUT` = 30 s (update.rs:30) the client
+deactivation commits (update.rs:551-611). If it does not commit in
+`DEFAULT_SHARD_DEACTIVATION_TIMEOUT` = 30 s (update.rs:31) the client
 gets an error whose text is the honest summary of the whole design:
 
 ```
   "Some replica of shard N failed to apply operation and deactivation
    timed out after 30s. Consistency of this update is not guaranteed.
-   Please retry."                            — update.rs:585-586
+   Please retry."                            — update.rs:606-607
 ```
 
 So a qdrant upsert on the happy path pays no consensus cost, and a
@@ -316,38 +327,39 @@ stage 2 pushes the WAL itself through raft).
 
 ## Where each step lives in the code
 
-All anchors are qdrant at `44ad62f`.
+All anchors are qdrant v1.20.0 (`222b2e44a`).
 
 | anchor | what it is | step |
 |---|---|---|
-| src/consensus.rs:36 | `type Node = RawNode<ConsensusStateRef>` | 3 |
-| src/consensus.rs:48 | `struct Consensus` — the driving loop owner | 3 |
-| src/consensus.rs:481-562 | `start` — the loop; `on_ready` called at :537 | 3 |
-| src/consensus.rs:509-529 | why reported ticks are capped at 15 | 3 |
-| src/consensus.rs:564-631 | `advance_node` — batch of 128, conf-change breaks early | 3 |
-| src/consensus.rs:633-641 | `recv_update` — the `tokio::select!` | 3 |
-| src/consensus.rs:877-902 | `on_ready` — the three-call skeleton | 4 |
-| src/consensus.rs:899 | `compact_wal` | 3 |
-| src/consensus.rs:904-918 | `process_role_change` | 3 |
-| src/consensus.rs:922 / 1011 | "the order of operations ... is critical" | 4 |
-| src/consensus.rs:939-1005 | `process_ready` — send, snapshot, entries, HardState, persisted-send, apply, advance | 4 |
-| src/consensus.rs:996 | why apply follows the HardState save | 4 |
-| src/consensus.rs:1015-1050 | `process_light_ready` — commit index, send, apply, advance_apply | 4 |
-| config/config.yaml:359 / 365 | `tick_period_ms: 100`, `compact_wal_entries: 128` | 3 |
-| config/config.yaml:211 | `write_consistency_factor: 1` | 5 |
-| lib/collection/src/config.rs:223-229 | replication/write-consistency defaults, both 1 | 5 |
+| src/consensus.rs:42 | `type Node = RawNode<ConsensusStateRef>` | 3 |
+| src/consensus.rs:64 | `struct Consensus` — the driving loop owner | 3 |
+| src/consensus.rs:612-693 | `start` — the loop; `on_ready` called at :668 | 3 |
+| src/consensus.rs:640-660 | why reported ticks are capped at 15 | 3 |
+| src/consensus.rs:695-766 | `advance_node` — learner promotion, batch of 128, conf-change breaks early | 3 |
+| src/consensus.rs:768-780 | `recv_update` — the biased `tokio::select!` | 3 |
+| src/consensus.rs:1016-1041 | `on_ready` — three calls, then compaction | 4 |
+| src/consensus.rs:1038 | `compact_wal` | 3 |
+| src/consensus.rs:1043-1057 | `process_role_change` | 3 |
+| src/consensus.rs:1061 / 1150 | "the order of operations ... is critical" | 4 |
+| src/consensus.rs:1065-1146 | `process_ready` — send, snapshot, entries, HardState, persisted-send, apply, advance | 4 |
+| src/consensus.rs:1135 | why apply follows the HardState save | 4 |
+| src/consensus.rs:1154-1189 | `process_light_ready` — commit index, send, apply, advance_apply | 4 |
+| src/consensus.rs:1229 | `handle_committed_entries` — the state machine's apply | 3 |
+| config/config.yaml:511 / 517 | `tick_period_ms: 100`, `compact_wal_entries: 128` | 3 |
+| config/config.yaml:291 / 294 | `replication_factor: 1`, `write_consistency_factor: 1` | 5 |
+| lib/collection/src/config.rs:344-350 | replication/write-consistency defaults, both 1 | 5 |
 | .../replica_set/replica_set_state.rs:100-133 | `ReplicaState` — eleven variants | 5 |
 | .../replica_set/replica_set_state.rs:138-171 | `is_active` / `is_readable` — and where they disagree | 5 |
-| .../replica_set/update.rs:30 | `DEFAULT_SHARD_DEACTIVATION_TIMEOUT` = 30 s | 5 |
-| .../replica_set/update.rs:452-460 | `minimal_success_count` and the clamp | 5 |
-| .../replica_set/update.rs:530-590 | deactivate-through-consensus, and the client block | 5 |
+| .../replica_set/update.rs:31 | `DEFAULT_SHARD_DEACTIVATION_TIMEOUT` = 30 s | 5 |
+| .../replica_set/update.rs:473-481 | `minimal_success_count` and the clamp | 5 |
+| .../replica_set/update.rs:551-611 | deactivate-through-consensus, and the client block | 5 |
 | .../consensus/consensus_wal.rs:160-262 | `append_entries`; one `flush_open_segment` at :259 | 4 |
-| .../consensus/persistent.rs:375-384 | `save` — HardState via `AtomicFile`, `BufWriter::flush` | 4 |
-| .../consensus/persistent.rs:455-459 | `HardStateDef { term, vote, commit }` | 4 |
+| .../consensus/persistent.rs:398-407 | `save` — HardState via `AtomicFile`, `BufWriter::flush` | 4 |
+| .../consensus/persistent.rs:478-482 | `HardStateDef { term, vote, commit }` | 4 |
 
-Read order: the loop at :481 first, then `process_ready` line by line
+Read order: the loop at :612 first, then `process_ready` line by line
 against raft-rs's `raw_node.rs:553-555` open in another window (that
-is where line 941 stops looking wrong), then `update.rs:452-590` for
+is where line 1080 stops looking wrong), then `update.rs:473-611` for
 the data path. Finally hunt the two persistence sites named above —
 they are question 5, and one of them has no fsync in qdrant's own
 code.
@@ -398,7 +410,7 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `tick_period_ms: 100` (config/config.yaml:359) times raft-rs's
+  `tick_period_ms: 100` (config/config.yaml:511) times raft-rs's
   unitless constants: `heartbeat_tick` 2 and `election_tick` 20
   (raft-rs config.rs:112-116), with the randomized draw taken from
   `[election_tick, 2 × election_tick)` = `[20, 40)` (config.rs:147-163,
@@ -406,10 +418,10 @@ Answer each before unfolding it.
   election timeout, against the paper's §5.6 recommendation of
   150–300 ms.
 
-  The reason is in the code. The loop body at consensus.rs:537 does
-  disk work — WAL append, snapshot apply, `compact_wal` at :899 — so
-  a single iteration can be slow. The comment at :509-519 says
-  reported ticks are capped (at `election_tick - 5` = 15, :521-529)
+  The reason is in the code. The loop body at consensus.rs:668 does
+  disk work — WAL append, snapshot apply, `compact_wal` at :1038 — so
+  a single iteration can be slow. The comment at :640-651 says
+  reported ticks are capped (at `election_tick - 5` = 15, :652-660)
   so that a long iteration does not "trigger unnecessary leader
   election."
 
@@ -423,14 +435,15 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  consensus.rs:939-1005, in order: send `ready.messages()` (:941),
-  apply snapshot (:950), append entries (:961), set HardState (:971),
-  soft state (:981), send `ready.persisted_messages()` (:990), handle
-  committed entries (:997), `advance` (:1005). Both `process_ready`
-  and `process_light_ready` open with "The order of operations in this
-  functions is critical" (:922, :1011).
+  consensus.rs:1078-1144, in order: send `ready.messages()` (:1080),
+  apply snapshot (:1089), append entries (:1100), set HardState
+  (:1110), soft state (:1120), send `ready.persisted_messages()`
+  (:1129), handle committed entries (:1136), `advance` (:1144). Both
+  `process_ready` and `process_light_ready` carry "The order of
+  operations in this functions is critical" in their doc comments
+  (:1061, :1150).
 
-  The send at 941 precedes the append at 961, which contradicts the
+  The send at 1080 precedes the append at 1100, which contradicts the
   naive rule — and is correct. `Ready::messages()` is non-empty only
   when `is_persisted_msg` is false, and raft-rs sets that as
   `raft.state != StateRole::Leader` (raw_node.rs:555), citing
@@ -438,10 +451,10 @@ Answer each before unfolding it.
   its own disk write, because the commit needs a majority of disks and
   its own is not required to be among them.
 
-  The safety-critical order is 961/971 before 990:
+  The safety-critical order is 1100/1110 before 1129:
   `persisted_messages()` carries a follower's or candidate's acks and
   vote responses, which are the evidence the leader counts. The second
-  constraint is at :996 — apply after the HardState save, so `applied`
+  constraint is at :1135 — apply after the HardState save, so `applied`
   never exceeds `commit`.
 
   </details>
@@ -473,17 +486,20 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  update.rs:530-590. When `successes.len() >= minimal_success_count`
-  but some replicas failed, `handle_failed_replicas` (:544) proposes
-  their deactivation *through consensus*, and if the client asked for
-  a callback the request then blocks on
-  `replica_state.wait_for(...)` (:563-579) until every failed peer is
-  no longer `can_be_source_of_truth()`.
+  update.rs:551-611. When `successes.len() >= minimal_success_count`
+  (:551) but some replicas failed, `handle_failed_replicas` (:565,
+  defined at :706-780) proposes their deactivation *through
+  consensus*. It asks the caller to wait only when an error is
+  transient or the peer is `Initializing` (:752-758) — the case where
+  the failed node could come back before the others agree it is
+  dead. If the client asked for a callback, the request then blocks
+  on `replica_state.wait_for(...)` (:584-600) until every failed peer
+  is no longer `can_be_source_of_truth()` (:593).
 
   The timeout is `DEFAULT_SHARD_DEACTIVATION_TIMEOUT` = 30 s
-  (update.rs:30), and on expiry the client gets an explicit
+  (update.rs:31), and on expiry the client gets an explicit
   "Consistency of this update is not guaranteed. Please retry."
-  (:585-586).
+  (:606-607).
 
   So the two planes are not independent. The happy path pays nothing
   for consensus; the failure path pays a full Raft round trip
@@ -505,12 +521,13 @@ Answer each before unfolding it.
   Step 2's arithmetic uses the batched rung rather than the
   fsync-every-entry one.
 
-  The HardState: `Persistent::save` (persistent.rs:375-384), which
+  The HardState: `Persistent::save` (persistent.rs:398-407), which
   writes `{term, vote, commit}` plus the ConfState (the `HardStateDef`
-  at :455-459) as JSON through `atomicwrites::AtomicFile`.
+  at :478-482, `ConfStateDef` at :488-494) as JSON through
+  `atomicwrites::AtomicFile`.
 
   Only one of the two is demonstrably durable from this tree. The
-  only flush in `save` is `writer.flush()` at :379 — a `BufWriter`
+  only flush in `save` is `writer.flush()` at :402 — a `BufWriter`
   flush into the file descriptor, not an fsync. Durability there rests
   entirely on what the `atomicwrites` crate does on commit, which is
   outside qdrant's source. Given Figure 2 lists `votedFor` as
@@ -530,7 +547,7 @@ Answer each before unfolding it.
 
   What *is* linearizable is the metadata: collection existence, shard
   placement and replica state all go through the Raft log at
-  consensus.rs:997/1044. So "which replicas may answer" is agreed even
+  consensus.rs:1136/1183. So "which replicas may answer" is agreed even
   when "what those replicas contain" is not. Writing that sentence
   down is the point of the question.
 
@@ -539,7 +556,7 @@ Answer each before unfolding it.
 ## References
 
 **Code**
-- [qdrant](https://github.com/qdrant/qdrant) at `44ad62f` —
+- [qdrant](https://github.com/qdrant/qdrant) v1.20.0 (`222b2e44a`) —
   `src/consensus.rs` (the driving loop; the anchor map above),
   `lib/collection/src/shards/replica_set/` (`update.rs` for the ack
   rule and the deactivation escalation, `replica_set_state.rs` for the
@@ -553,4 +570,4 @@ Answer each before unfolding it.
 **Papers**
 - Diego Ongaro, *Consensus: Bridging Theory and Practice* (Stanford
   PhD dissertation, 2014), §10.2.1 — the authority raft-rs cites for
-  the leader's parallel disk write, and therefore for consensus.rs:941
+  the leader's parallel disk write, and therefore for consensus.rs:1080

@@ -164,9 +164,9 @@ The two lines that carry the argument are 850 and 864, and they say different
 things. **Line 850 is the acceptance test**: major must be 5 and minor at least
 1 — with *no upper bound*. **Line 864 is the answer**: `MIN(version.minor, 7)`.
 So a client proposing 5.9 is not rejected; it is accepted and told "5.7", and
-the connection then speaks 5.7. (An earlier version of this chapter said the
-server "accepts 5.1..5.7, clamped to that range". The accepted range is 5.1 and
-up; only the *reply* is clamped.)
+the connection then speaks 5.7. It is tempting to summarise this as "accepts
+5.1..5.7, clamped to that range"; the accepted range is 5.1 and up, and only
+the *reply* is clamped.
 
 Line 846 is a second surprise: a first-proposal high byte of 255 is rewritten to
 5.7. `FF` in that position is how the spec spells a *manifest*-style handshake
@@ -596,8 +596,8 @@ redis's event loop rather than a thread of its own:
 
 Line 973 is the one that matters: the Bolt socket is registered on the *same*
 `ae` loop that serves RESP. `RedisModule_EventLoopAdd` is a thin wrapper that
-ends in `aeCreateFileEvent(server.el, …)` — redis `src/module.c:10115`, at the
-`a176d1225` pin — so two protocols share one thread and one engine, and
+ends in `aeCreateFileEvent(server.el, …)` — redis `src/module.c:10843` at
+`e87dda2a4` — so two protocols share one thread and one engine, and
 everything [reading-redis-ae-networking.md](reading-redis-ae-networking.md) says
 about the loop applies to Bolt unchanged. Second, line 979: RUN turns into the
 ordinary `graph.QUERY` command with a `--bolt` marker (:980), so only the result

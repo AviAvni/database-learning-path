@@ -14,7 +14,7 @@ queries open (DuckDB vendors them — see References and
 Every clause number below is from **TPC-H Standard Specification
 revision 3.0.1**; every choke-point number is from the TPCTC 2013
 paper's Table 1; every SQL line number belongs to
-**duckdb/duckdb@6c0c1a68**, whose `extension/tpch/dbgen/queries/`
+**duckdb/duckdb@d54cbbe3df** (v2.0.0), whose `extension/tpch/dbgen/queries/`
 holds the 22 queries with the spec's validation parameters already
 substituted. Rust line numbers are this topic's `experiments/`.
 Where the paper, the spec and the shipped data disagree — and they
@@ -480,9 +480,10 @@ convolution, so our Q6 selectivity is
 close enough that the branch-prediction story transfers, and
 different enough that our absolute row counts are ours alone.
 
-The topic's headline (FINDINGS.md row 22) is **Q1 at 5.2–5.7 GB/s and
-Q6 at 9.0–14.4 GB/s effective**; notes.md's baseline table records the
-SF-0.25 end of those ranges at 5.6 and 15.7 GB/s on an M3 Pro. Q6's
+The topic's headline (FINDINGS.md row 22) is **Q1 at 4.7–5.6 GB/s and
+Q6 at 11.9–15.7 GB/s effective** across SF 0.05–0.25; notes.md's baseline
+table records the SF-0.25 end of those ranges at 5.6 and 15.7 GB/s on an
+M3 Pro. Q6's
 branchy oracle is already a large fraction of memory bandwidth *at
 this selectivity* — so predict what branchless adds before
 implementing it (topic 17's answer: at 2%, possibly nothing).
@@ -908,7 +909,7 @@ Answer each before unfolding it.
 | `experiments/src/tpch.rs` | 25-39 | `q1_oracle` — the per-row hash into six slots that CP1.3 says to delete |
 | `experiments/src/tpch.rs` | 43-56 | `q6_oracle` — the branchy scan at 1.81% selectivity |
 
-Pinned revisions: duckdb/duckdb@6c0c1a68 (regenerate the pin table
+Pinned revisions: duckdb/duckdb@d54cbbe3df (regenerate the pin table
 with `python3 tools/pin-table.py`).
 
 **Cross-topic**

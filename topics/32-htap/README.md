@@ -7,20 +7,21 @@ without the nightly ETL that made "the dashboard is a day old" normal.
 
 ## The problem, measured (bench lane 1, provided — runs today)
 
-One store, one coarse lock, 1M rows. A writer hammers point-updates while
-an analytical scanner free-runs full scans on the same copy. Fixed 2-second
-window per mode:
+One store, one coarse (fair, FIFO hand-off) lock, 1M rows. A writer hammers
+point-updates while an analytical scanner free-runs full scans on the same
+copy. Fixed 2-second window per mode (measured 2026-10-26, Apple M3 Pro):
 
 ```
                   mode     p50 ns     p99 ns     p99.9 ns  writes/2s   scans
-          writes alone        125        333          541   11438647       0
-   writes + full scans        125 7490728791   7490728791         69    3261
+          writes alone         84        209          292   14052932       0
+   writes + full scans        167    2247875      2369166      21543     889
 ```
 
-Read that again: throughput collapsed from **11.4 million writes to 69**,
-and p99 write latency went from 333 ns to **7.49 seconds** — the scanner
-starved the writer almost completely (unfair lock + ~2 ms scans back to
-back). The lock is deliberately coarse, but the shape survives every
+Read that again: throughput collapsed **652×**, from 14.1 million writes to
+21,543, and p99 write latency went from 209 ns to **2.25 ms** — which is
+exactly one full scan (2 s / 889 scans = 2.25 ms). Every scan is a write
+outage, and the outage is as long as the scan: a writer that arrives while
+a scan holds the lock waits for all of it. The lock is deliberately coarse, but the shape survives every
 mitigation short of separation: scans and writes on one copy fight over
 *something* (locks, cache lines, buffer pool, MVCC GC). HTAP architectures
 are the catalog of ways to stop the fight.
@@ -106,8 +107,13 @@ row vs delta-heavy vs merged replica + freshness lag vs batch size.
 ## Exercises
 
 1. Implement the stubs until all tests pass and lanes 2-3 print.
-2. Lane 1 starves the writer with an unfair lock. Swap in a readers-writer
-   lock — does p99 recover? What did full scans *still* cost?
+2. Lane 1 uses a *fair* lock on purpose. Swap in `std::sync::Mutex` (on
+   macOS, an unfair `os_unfair_lock`) and run it a few times: the scanner
+   re-acquires the lock before the woken writer runs, one write starves for
+   seconds, and the "2 s" window stretches to whatever the starvation
+   lasted — expect p99s of several seconds that differ on every run. Then
+   try a readers-writer lock: does p99
+   recover? What did full scans *still* cost?
 3. Lane 2's merged scan beats the delta-heavy scan. Find the delta size
    where scanning delta+main crosses over merged+fresh-delta — that
    crossover is TiFlash's delta-merge trigger heuristic.

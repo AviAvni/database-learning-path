@@ -24,11 +24,11 @@ Two honesty notes, both of which matter more than the numbers:
   Repeat runs put this lane anywhere from 24 to 76 GB/s depending on machine
   state, which is a useful reminder that a bandwidth-bound single number wants
   an error bar. Take the high end as the target to beat.
-- **This lane used to print 19 047 619 GB/s.** The timing loop hoisted the pure
-  fold out of its own repetition loop, so reps 2 and 3 timed nothing and
-  best-of-3 reported ~0.000 s. `black_box` on the input fixed it. If you write
-  your own lane here, that is the failure mode to expect (topic 0's lesson,
-  learned the hard way in this file).
+- **The input goes through `black_box` because the fold is pure.** Without it,
+  LLVM hoists the fold out of its own repetition loop, reps 2 and 3 time
+  nothing, best-of-3 reports ~0.000 s, and the lane prints 19 047 619 GB/s —
+  127 000× this machine's peak bandwidth. If you write your own lane here, that
+  is the failure mode to expect (topic 0's lesson).
 
 ## Predictions (fill BEFORE running scan_bench)
 

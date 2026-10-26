@@ -9,6 +9,12 @@ decisions; here you *make* every one — and benchmark it against the real thing
 reference implementation lives at [`~/repos/falkordb-rs-next-gen`](https://github.com/FalkorDB/falkordb-rs-next-gen); every milestone ends
 by comparing your design and numbers against the corresponding module there.
 
+> **Where the reference lives.** `falkordb-rs-next-gen` is archived (read-only;
+> its last push was 2026-07-29). Its Rust engine is FalkorDB 6: it lives on `main`
+> of FalkorDB/FalkorDB, with the full Rust history on the `main-rs` branch, while
+> the C engine — FalkorDB 4.x — is on `master`. `BASELINES.md` measures Rust
+> FalkorDB `v6.0.3` against C `v4.22.2`; compare milestones against FalkorDB `main`.
+
 ## Target architecture (mirrors the reference)
 
 ```mermaid
@@ -40,7 +46,7 @@ flowchart TD
 
 ## Milestone map
 
-Milestones M0–M43 map 1:1 to curriculum topics 0–43 in `PLAN.md`; each topic's
+Milestones M0–M45 map 1:1 to curriculum topics 0–45 in `PLAN.md`; each topic's
 "Capstone milestone" line defines the scope. Status lives in `PROGRESS.md`.
 
 M0–M31 build the engine itself, in the spine below. M32–M43 attach the later

@@ -8,12 +8,13 @@ builds the concepts each file implements, step by step, then hands
 you the anchors into `Source/` of the SuiteSparse:GraphBLAS repo to
 watch them happen.
 
-Every anchor below is **SuiteSparse:GraphBLAS at commit
-`1fd5475`** (the pin in `resources/codebases.md`), quoted with the
-line numbers the code occupies at that commit. Two of the numbers
-most often repeated about this library — the bitmap threshold and
-the `m/16` hash rule — are *stale documentation* at this pin, and
-this chapter says where the shipped code actually decides.
+Every anchor below is **SuiteSparse:GraphBLAS v10.5.2, commit
+`7701390417`** (the pin in `resources/codebases.md`), quoted with
+the line numbers the code occupies at that commit. Two of the
+numbers most often repeated about this library — the bitmap
+threshold and the `m/16` hash rule — are *stale documentation*: the
+header comments say one thing and the shipped code decides another,
+and this chapter says where the code actually decides.
 
 ## The problem in one sentence
 
@@ -144,37 +145,38 @@ does not depend on the operation. It is a table indexed by the
 matrix's *minimum dimension*:
 
 ```c
-// GB_Global.c — the bitmap_switch table, 181-189
-   181      // min dimension                    density
-   182      #define GB_BITMAP_SWITCH_1          ((float) 0.04)
-   183      #define GB_BITMAP_SWITCH_2          ((float) 0.05)
-   184      #define GB_BITMAP_SWITCH_3_to_4     ((float) 0.06)
-   185      #define GB_BITMAP_SWITCH_5_to_8     ((float) 0.08)
-   186      #define GB_BITMAP_SWITCH_9_to_16    ((float) 0.10)
-   187      #define GB_BITMAP_SWITCH_17_to_32   ((float) 0.20)
-   188      #define GB_BITMAP_SWITCH_33_to_64   ((float) 0.30)
-   189      #define GB_BITMAP_SWITCH_gt_than_64 ((float) 0.40)
+// GB_Global.c — the bitmap_switch table, 183-191
+   183      // min dimension                    density
+   184      #define GB_BITMAP_SWITCH_1          ((float) 0.04)
+   185      #define GB_BITMAP_SWITCH_2          ((float) 0.05)
+   186      #define GB_BITMAP_SWITCH_3_to_4     ((float) 0.06)
+   187      #define GB_BITMAP_SWITCH_5_to_8     ((float) 0.08)
+   188      #define GB_BITMAP_SWITCH_9_to_16    ((float) 0.10)
+   189      #define GB_BITMAP_SWITCH_17_to_32   ((float) 0.20)
+   190      #define GB_BITMAP_SWITCH_33_to_64   ((float) 0.30)
+   191      #define GB_BITMAP_SWITCH_gt_than_64 ((float) 0.40)
 ```
 
 ```c
-// GB_Global.c — which row of the table a matrix gets, 486-497
-   486  float GB_Global_bitmap_switch_matrix_get (int64_t vlen, int64_t vdim)
-   487  {
-   488      int64_t d = GB_IMIN (vlen, vdim) ;
-   489      if (d <=  1) return (GB_Global.bitmap_switch [0]) ;
+// GB_Global.c — which row of the table a matrix gets, 499-510
+   499  float GB_Global_bitmap_switch_matrix_get (int64_t vlen, int64_t vdim)
+   500  { 
+   501      int64_t d = GB_IMIN (vlen, vdim) ;
+   502      if (d <=  1) return (GB_Global.bitmap_switch [0]) ;
    ...
-   495      if (d <= 64) return (GB_Global.bitmap_switch [6]) ;
-   496      return (GB_Global.bitmap_switch [7]) ;
-   497  }
+   508      if (d <= 64) return (GB_Global.bitmap_switch [6]) ;
+   509      return (GB_Global.bitmap_switch [7]) ;
+   510  }
 ```
 
 For any graph matrix — anything with more than 64 rows and columns
-— the answer is row 7: **b = 0.40**. Work out what that means:
+— the answer is row 7 (`:509`): **b = 0.40**. Work out what that
+means:
 
 ```
  inputs: a graph adjacency matrix, n × n, n = 262,144 (notes.md:13)
          nnz = 2.0e6
-         b = 0.40 (GB_Global.c:189, since min(vlen,vdim) = 262,144 > 64)
+         b = 0.40 (GB_Global.c:191, since min(vlen,vdim) = 262,144 > 64)
 
  density = 2.0e6 / (262,144)²  = 2.0e6 / 6.87e10 = 0.0000291 = 0.0029%
 
@@ -218,30 +220,46 @@ the patterns:
 
 ```c
 // GB_AxB_saxpy3_flopcount.c — the algorithm, in the header comment, 50-69
-    50  //      Bflops = zeros (1,n)         % (set to zero in the caller)
-    51  //      for each column j in B:
-    52  //          if (B (:,j) is empty) continue
-    53  //          if (M is present and M (:,j) is empty and not Mask_comp) continue
-    54  //          for each k where (B (k,j) != 0):
-    55  //              aknz = nnz (A (:,k))
-    56  //              if (aknz == 0) continue
-    57  //              Bflops (j) += aknz          % A(:,k)*B(k,j) requires aknz flops
+    50  /*
+    51      [m n] = size (B) ;
+    52      Bflops = zeros (1,n+1) ;        % (set to zero in the caller)
+    53      Mwork = 0 ;
+    54      for each column j in B:
+    55          if (B (:,j) is empty) continue ;
+    56          mjnz = nnz (M (:,j))
+    57          if (M is present, not complemented, and M (:,j) is empty) continue ;
+    58          Bflops (j) = mjnz if M present and not dense, to scatter M(:,j)
+    59          Mwork += mjnz
+    60          for each k where B (k,j) is nonzero:
+    61              aknz = nnz (A (:,k))
+    62              if (aknz == 0) continue ;
+    63              % numerical phase will compute: C(:,j)<#M(:,j)> += A(:,k)*B(k,j)
+    64              % where #M is no mask, M, or !M.  This typically takes aknz flops,
+    65              % or with a binary search if nnz(M(:,j)) << nnz(A(:,k)).
+    66              Bflops (j) += aknz
+    67          end
+    68      end
+    69  */ 
 ```
 
 And its complexity, stated in the same file:
 
 ```c
 // GB_AxB_saxpy3_flopcount.c — the complexity claim, 44-48
-    44  // The complexity of this function is O(nnz(B)+n) if A and M are not
-    45  // hypersparse.  If A and/or M are hypersparse, then the complexity can
-    46  // increase to O(nnz(B)*log(h)) where h is the # of non-empty vectors in
-    47  // A (or M).  The log(h) factor is due to the binary search of A->h or M->h
-    48  // for each entry in B.
+    44  // The algorithm scans all nonzeros in B.  It only scans at most the min and
+    45  // max (first and last) row indices in A and M (if M is present).  If A and M
+    46  // are not hypersparse, the time taken is O(nnz(B)+n).  If all matrices are
+    47  // hypersparse, the time is O(nnz(B)*log(h)) where h = max # of vectors present
+    48  // in A and M.  Assuming B is in standard (not hypersparse) form:
 ```
 
-Read `:53` twice — the pre-pass already applies the mask, skipping
-columns whose mask column is empty. The mask is priced in before a
-single multiply happens.
+Read `:57` and `:58` twice. The pre-pass already applies the mask:
+`:57` skips any column whose (non-complemented) mask column is
+empty, and `:58` starts that column's count at `nnz(M(:,j))` — the
+cost of scattering the mask column into the workspace — before a
+single `aknz` is added at `:66`. `Mwork` (`:59`) totals that mask
+cost separately, so the caller can tell multiply work from mask
+work. The mask is priced in before a single multiply happens.
 
 Those two numbers then size *everything*: how many threads, how to
 slice the work, and how big each hash table should be. The same
@@ -261,15 +279,23 @@ downstream is arithmetic on `total_flops` and `Bflops`.
 > this repo's own measured workloads.
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — flopcount, then thread count, 308-310 and 418
-   308      GB_OK (GB_AxB_saxpy3_flopcount (&Mwork, Bflops, M, Mask_comp, A, B,
-   309          &total_flops, &axbflops, Werk)) ;
+// GB_AxB_saxpy3_slice_balanced.c — flopcount, then thread count, 313-316 and 424
+   313      GB_OK (GB_AxB_saxpy3_flopcount (&Mwork, Bflops, M, Mask_comp, A, B,
+   314          data_arena, Werk)) ;
+   315      double total_flops = (double) Bflops [bnvec] ;
+   316      double axbflops = total_flops - Mwork ;
    ...
-   418      (*nthreads) = GB_nthreads (total_flops, chunk, nthreads_max) ;
+   424      (*nthreads) = GB_nthreads (total_flops, chunk, nthreads_max) ;
 ```
 
+`:315` reads the total off the end of the cumulative `Bflops` array
+(the pre-pass returns it as a running sum, so its last entry is the
+whole multiply), and `:316` subtracts the mask work to get the
+multiply-only figure. The thread count at `:424` is sized by
+`total_flops` — mask work included.
+
 ```c
-// GB_nthreads.h — the whole rule, 17-32
+// Source/omp/include/GB_nthreads.h — the whole rule, 17-32
     17  // If work < 2*chunk, then only one thread is used.
     18  // else if work < 3*chunk, then two threads are used, and so on.
     ...
@@ -278,6 +304,7 @@ downstream is arithmetic on `total_flops` and `Bflops`.
     29      int64_t nthreads = (int64_t) floor (work / chunk) ;
     30      nthreads = GB_IMIN (nthreads, nthreads_max) ;
     31      nthreads = GB_IMAX (nthreads, 1) ;
+    32      return ((int) nthreads) ;
 ```
 
 `chunk` defaults to `GB_CHUNK_DEFAULT` = **64·1024 = 65,536**
@@ -317,7 +344,7 @@ The header comment is the scheduler spec, and it is worth reading
 in full:
 
 ```c
-// GB_AxB_saxpy3.c — the task taxonomy, 22-48
+// GB_AxB_saxpy3.c — the task taxonomy, 22-49
     22  // The matrix B is split into two kinds of tasks: coarse and fine.  A coarse
     23  // task computes C(:,j1:j2) = A*B(:,j1:j2), for a unique set of vectors j1:j2.
     24  // Those vectors are not shared with any other tasks.  A fine task works with a
@@ -335,18 +362,23 @@ in full:
     36
     37  // Each of the 4 kinds tasks are then subdivided into 3 variants, for C=A*B,
     38  // C<M>=A*B, and C<!M>=A*B, giving a total of 12 different types of tasks.
-    ...
-    42  // ... Coarse tasks are
+    39
+    40  // Fine tasks are used when there would otherwise be too much work for a single
+    41  // task to compute the single vector C(:,j).  Fine tasks share all of their
+    42  // workspace with the team of fine tasks computing C(:,j).  Coarse tasks are
     43  // prefered since they require less synchronization, but fine tasks allow for
     44  // better parallelization when B has only a few vectors.  If B consists of a
     45  // single vector (for GrB_mxv if A is in CSC format and not transposed, or
     46  // for GrB_vxm if A is in CSR format and not transpose), then the only way to
-    47  // get parallelism is via fine tasks.
+    47  // get parallelism is via fine tasks.  If a single thread is used for this
+    48  // case, a single-vector coarse task is used.
 ```
 
-Note `:44-47`. A **matrix-vector** product — the BFS pull step —
+Note `:44-48`. A **matrix-vector** product — the BFS pull step —
 has B with exactly one vector, so *the only available parallelism
-is fine tasks*, with their atomics. That is a structural fact about
+is fine tasks*, with their atomics (`:48` is the one exception: on
+a single thread there is nothing to parallelize, and one coarse
+task does the whole vector). That is a structural fact about
 SpMV, and it is the mechanism behind the parallel-scaling gap in
 [reading-openmp-vs-rayon.md](reading-openmp-vs-rayon.md).
 
@@ -416,8 +448,9 @@ The header comment states the rule as `m/16`:
 ```c
 // GB_AxB_saxpy3.c — the DOCUMENTED rule, 50-60. Read it, then read the code.
     50  // To select between the Hash method or Gustavson's method for each task, the
-    51  // hash table size is first found.  ...
-    53  // ... It is set to twice the smallest power of 2 that
+    51  // hash table size is first found.  The hash table size for a hash task depends
+    52  // on the maximum flop count for any vector in that task (which is just one
+    53  // vector for the fine tasks).  It is set to twice the smallest power of 2 that
     54  // is greater than the flop count to compute that vector (plus the # of entries
     55  // in M(:,j) for tasks that compute C<M>=A*B or C<!M>=A*B).  This size ensures
     56  // the results will fit in the hash table, and with ideally only a modest
@@ -430,42 +463,50 @@ The header comment states the rule as `m/16`:
 The shipped code says something else:
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — GB_hash_table_size, the real rule, 56-99
-    56  static inline uint64_t GB_hash_table_size
+// GB_AxB_saxpy3_slice_balanced.c — GB_hash_table_nitems, the real rule, 56-99
+    56  static inline uint64_t GB_hash_table_nitems
     57  (
     58      int64_t flmax,      // max flop count for any vector computed by this task
     59      int64_t cvlen,      // vector length of C
     60      const int AxB_method     // Default, Gustavson, or Hash
     61  )
     62  {
-    63      uint64_t hash_size ;
+    63      uint64_t hash_nitems ;
     64
     65      if (AxB_method == GxB_AxB_GUSTAVSON || flmax >= cvlen/2)
     ...
-    72          hash_size = cvlen ;
+    72          hash_nitems = cvlen ;
     ...
-    82          // hash_size = 2 * (smallest power of 2 >= flmax)
-    83          hash_size = ((uint64_t) 2) << (GB_FLOOR_LOG2 (flmax) + 1) ;
+    82          // hash_nitems = 2 * (smallest power of 2 >= flmax)
+    83          hash_nitems = ((uint64_t) 2) << (GB_FLOOR_LOG2 (flmax) + 1) ;
     84          bool use_Gustavson ;
     85          if (AxB_method == GxB_AxB_HASH)
-    86          {
-    87              // always use Hash method, unless the hash_size >= cvlen
-    88              use_Gustavson = (hash_size >= cvlen) ;
+    86          { 
+    87              // always use Hash method, unless the hash_nitems >= cvlen
+    88              use_Gustavson = (hash_nitems >= cvlen) ;
     89          }
     90          else
-    91          {
+    91          { 
     92              // default: auto selection:
-    93              // use Gustavson's method if hash_size is too big
-    94              use_Gustavson = (hash_size >= cvlen/12) ;
+    93              // use Gustavson's method if hash_nitems is too big
+    94              use_Gustavson = (hash_nitems >= cvlen/12) ;
     95          }
     96          if (use_Gustavson)
-    97          {
-    98              hash_size = cvlen ;
+    97          { 
+    98              hash_nitems = cvlen ;
     99          }
 ```
 
+The name says what the number is: `hash_nitems` counts table
+*slots*, not bytes. The library keeps the two apart by suffix —
+`*_nitems` for element counts, `*_mem` for a 64-bit word that packs
+the allocation's memory arena into its high 12 bits and its size in
+bytes into the low 52 (`Source/memory/include/GB_memory_macros.h:17-19`)
+— which is why the bytes-per-slot multiplication of Step 5 is not
+in this function.
+
 **The threshold is `cvlen/12`, at `:94` — not `m/16`.** The
-comment at `GB_AxB_saxpy3.c:57-58` has not been updated. There is
+comment at `GB_AxB_saxpy3.c:57-58` does not match it. There is
 also an earlier cutoff the comment never mentions: `:65` sends any
 vector with `flmax >= cvlen/2` straight to Gustavson without
 computing a hash size at all.
@@ -476,9 +517,9 @@ Work out where the crossover actually falls, at scale 20:
  inputs: cvlen = m = 2^20 = 1,048,576   (notes.md:14, scale 20)
          default auto-selection, so :94 applies
 
- Gustavson is chosen when hash_size >= cvlen/12 = 87,381
+ Gustavson is chosen when hash_nitems >= cvlen/12 = 87,381
 
- hash_size = 2 << (floor_log2(flmax) + 1) = 2^(floor_log2(flmax) + 2)
+ hash_nitems = 2 << (floor_log2(flmax) + 1) = 2^(floor_log2(flmax) + 2)
 
  smallest power of two >= 87,381 is 2^17 = 131,072
    → need floor_log2(flmax) + 2 >= 17
@@ -491,13 +532,13 @@ Work out where the crossover actually falls, at scale 20:
  as a fraction of m:  32,768 / 1,048,576 = 3.1%  (i.e. m/32)
 
  sanity-check against the DOCUMENTED m/16 rule:
-   hash_size >= m/16 = 65,536 → 2^(k+2) >= 65,536 → k >= 14
+   hash_nitems >= m/16 = 65,536 → 2^(k+2) >= 65,536 → k >= 14
    → flmax >= 16,384 = m/64
    the comment's rule would switch to Gustavson at HALF the flop
    count the code does. The code is more willing to hash.
 ```
 
-And a corollary worth its own line: because `hash_size` is at least
+And a corollary worth its own line: because `hash_nitems` is at least
 2× `flmax` (`:83` gives `2^(k+2)` where `2^k ≤ flmax`), and `flmax`
 is an *exact* upper bound on the number of distinct entries the
 vector can produce, **the hash table cannot overflow**. There is no
@@ -508,7 +549,7 @@ grow-on-load-factor (topic 8): SuiteSparse buys exactness with a
 whole extra pass over the patterns.
 
 Why it matters: two of the three numbers you would have quoted from
-the header comment are wrong at this pin. The `m/16` rule is stale;
+the header comment are wrong. The `m/16` rule is stale;
 the `flmax >= cvlen/2` cutoff is undocumented; only the "twice the
 smallest power of 2" sizing survives.
 
@@ -534,16 +575,16 @@ structure**. The last one is not a hint — it is a promise the code
 keeps literally:
 
 ```c
-// GB_AxB_dot3.c — C is allocated with exactly nnz(M) entries, 126 and 171
-   126      const int64_t mnz = GB_nnz (M) ;
+// GB_AxB_dot3.c — C is allocated with exactly nnz(M) entries, 131 and 176
+   131      const int64_t mnz = GB_nnz (M) ;
    ...
-   171      int64_t cnz = mnz ;
+   176      int64_t cnz = mnz ;
 ```
 
 `C` gets `nnz(M)` slots because it will have at most `nnz(M)`
 entries, one candidate per mask entry. Work is nnz(M) sparse dot
 products; the mask is not a filter applied afterwards, it is the
-outer loop. Compare `GB_AxB_dot3.c:244`, where the thread count is
+outer loop. Compare `GB_AxB_dot3.c:247`, where the thread count is
 `GB_nthreads(cnz, chunk, nthreads_max)` — even the parallelism is
 sized by the mask.
 
@@ -553,10 +594,10 @@ twelve type combinations:
 ```rust
 // ILLUSTRATION — not quoted from SuiteSparse. The real loop is generated
 // from templates; the structural claims are GB_AxB_dot3.c:10-13 (the
-// contract), :126 and :171 (C sized to nnz(M)), and :244 (threads sized
+// contract), :131 and :176 (C sized to nnz(M)), and :247 (threads sized
 // to cnz).
 fn dot3(m: &Pattern, a_t: &Csr, b: &Csc, semiring: &Semiring) -> Coo {
-    let mut c = Coo::with_capacity(m.nnz());   // :171 — cnz = mnz
+    let mut c = Coo::with_capacity(m.nnz());   // :176 — cnz = mnz
     for (i, j) in m.entries() {                // one dot per MASK entry
         // sparse dot = two-pointer intersect of the two patterns
         if let Some(v) = sparse_dot(a_t.row(i), b.col(j), semiring) {
@@ -636,11 +677,11 @@ the multiply.**
 with the two predicates it consults:
 
 ```c
-// GB_mxm.h — when dot3 is eligible, 235-243
-   235  static inline bool GB_AxB_dot3_control
+// GB_mxm.h — when dot3 is eligible, 236-244
+   236  static inline bool GB_AxB_dot3_control
    ...
-   241      return (M != NULL && !Mask_comp &&
-   242          (GB_IS_SPARSE (M) || GB_IS_HYPERSPARSE (M))) ;
+   242      return (M != NULL && !Mask_comp &&
+   243          (GB_IS_SPARSE (M) || GB_IS_HYPERSPARSE (M))) ;
 ```
 
 ```c
@@ -658,8 +699,8 @@ Trace the BFS pull step through it and you get a result that
 contradicts the usual summary. LAGraph's pull is
 `GrB_mxv(q, mask, NULL, semiring, AT, q, GrB_DESC_RSC)`
 (`LG_BreadthFirstSearch_SSGrB_template.c:313`). `GrB_DESC_RSC`
-includes `GrB_COMP` (`Include/GraphBLAS.h:666`), so `Mask_comp` is
-true, so `GB_AxB_dot3_control` at `GB_mxm.h:241` returns **false**.
+includes `GrB_COMP` (`Include/GraphBLAS.h:672`), so `Mask_comp` is
+true, so `GB_AxB_dot3_control` at `GB_mxm.h:242` returns **false**.
 **Pull cannot use dot3.** What makes a dot engine eligible is the
 line before the call — `LG_SET_FORMAT_HINT(q, LG_BITMAP)` at
 `:312` — which makes `GB_AxB_dot2_control.c:26-30` return true on
@@ -691,21 +732,21 @@ mask".
 | `Source/convert/GB_convert_bitmap_to_sparse_test.c:44` | 2 | `nnz <= (bitmap_switch/2) × nnz_dense` |
 | `Source/convert/GB_convert_sparse_to_hyper_test.c:33` | 2 | `n > 1 && k <= n × hyper_switch` |
 | `Source/convert/GB_convert_hyper_to_sparse_test.c:33` | 2 | `n <= 1 \|\| k > n × hyper_switch × 2` |
-| `Source/global/GB_Global.c:181-189`, `:486-497` | 2 | the bitmap_switch table, **indexed by min dimension** — 0.40 for graphs |
+| `Source/global/GB_Global.c:183-191`, `:499-510` | 2 | the bitmap_switch table, **indexed by min dimension** — 0.40 for graphs |
 | `Source/include/GB_defaults.h:20`, `:24` | 2, 4 | `hyper_switch` 0.0625, `chunk` 65,536 |
-| `Source/mxm/GB_AxB_saxpy3_flopcount.c:44-48`, `:50-69` | 3 | complexity and the pre-pass algorithm |
-| `Source/mxm/GB_AxB_saxpy3_flopcount.c:219-221` | 3 | `schedule(dynamic,1)` over pre-sliced tasks |
-| `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:308-310`, `:418` | 3-4 | flopcount call, then `GB_nthreads(total_flops, …)` |
+| `Source/mxm/GB_AxB_saxpy3_flopcount.c:44-48`, `:50-69` | 3 | complexity and the pre-pass algorithm, mask work included |
+| `Source/mxm/GB_AxB_saxpy3_flopcount.c:222-224` | 3 | `schedule(dynamic,1)` over pre-sliced tasks |
+| `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:313-316`, `:424` | 3-4 | flopcount call, then `GB_nthreads(total_flops, …)` |
 | `Source/omp/include/GB_nthreads.h:17-32` | 4 | `clamp(floor(work/chunk), 1, nthreads_max)` |
 | `Source/mxm/GB_AxB_saxpy3.c:22-48` | 5 | coarse/fine, the 4 kinds, the 12 variants |
 | `Source/mxm/GB_AxB_saxpy3.c:62-70` | 5 | the workspace table — 9 vs 16 bytes per row |
-| `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:56-99` | 6 | `GB_hash_table_size` — the **`cvlen/12`** rule |
+| `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:56-99` | 6 | `GB_hash_table_nitems` — the **`cvlen/12`** rule |
 | `Source/mxm/GB_AxB_saxpy3.c:57-58` | 6 | the stale `m/16` comment — do not quote it |
-| `Source/mxm/GB_AxB_dot3.c:10-13`, `:126`, `:171`, `:244` | 7 | mask required and uncomplemented; C sized to nnz(M) |
+| `Source/mxm/GB_AxB_dot3.c:10-13`, `:131`, `:176`, `:247` | 7 | mask required and uncomplemented; C sized to nnz(M) |
 | `Source/mxm/GB_AxB_meta_adotb_control.c:36`, `:60-93` | 8 | default saxpy, then dot4 / dot3 / dot2 in order |
-| `Source/mxm/GB_mxm.h:235-243` | 8 | `GB_AxB_dot3_control` — the four-term predicate |
+| `Source/mxm/GB_mxm.h:236-244` | 8 | `GB_AxB_dot3_control` — the four-term predicate |
 | `Source/mxm/GB_AxB_dot2_control.c:26-30`, `:68-79` | 8 | bitmap/full operand ⇒ dot2; the degree heuristic |
-| `Include/GraphBLAS.h:666` | 8 | `GrB_DESC_RSC = REPLACE + STRUCTURE + COMP` |
+| `Include/GraphBLAS.h:672` | 8 | `GrB_DESC_RSC = REPLACE + STRUCTURE + COMP` |
 
 Navigation advice: start with the saxpy3 header comment
 (`GB_AxB_saxpy3.c:22-86`) — it is the scheduler spec, and
@@ -732,7 +773,7 @@ bottom (391 lines, mostly a switch), then
 ## Questions for notes.md
 
 1. Find FalkorDB's `GxB_set` calls pinning formats
-   (`src/graph/delta_matrix/delta_new.c` at the pin). Which matrices
+   (`src/graph/delta_matrix/delta_new.c`). Which matrices
    allow bitmap, and why not the adjacency ones? Use Step 2's
    arithmetic and Step 1's `GB_conform.c` case table for the
    answer — the interesting part is that pinning removes the
@@ -796,7 +837,7 @@ Answer each before unfolding it.
   Constants: `h` = `GB_HYPER_SWITCH_DEFAULT` = 0.0625 = 1/16
   (`GB_defaults.h:20`), matching TOMS '19 §4.2.1's "hypersparse
   format if n̄ < n/16". `b` is a table indexed by
-  `min(vlen, vdim)` (`GB_Global.c:486-497`) running 0.04 → 0.40;
+  `min(vlen, vdim)` (`GB_Global.c:499-510`) running 0.04 → 0.40;
   for any dimension above 64 it is **0.40**, and it does not depend
   on the operation.
 
@@ -809,7 +850,7 @@ Answer each before unfolding it.
   No. At scale 18 (`notes.md:13`) the matrix is 262,144 × 262,144
   with 2.0e6 entries, so its density is
   2.0e6 / 6.87e10 = 0.0029%. The threshold for a matrix with
-  min dimension > 64 is b = 0.40 = 40% (`GB_Global.c:189`), which
+  min dimension > 64 is b = 0.40 = 40% (`GB_Global.c:191`), which
   is 13,700× away. It would take 2.75e10 entries — 27.5 GB of
   presence flags alone — to trigger.
 
@@ -826,16 +867,19 @@ Answer each before unfolding it.
 
   Because the output's size is not knowable without it, and every
   downstream decision needs a number. The pre-pass walks patterns
-  only — `GB_AxB_saxpy3_flopcount.c:50-57`'s
-  `Bflops(j) += nnz(A(:,k))` — at O(nnz(B)+n) when A and M are not
-  hypersparse, or O(nnz(B)·log h) when they are (`:44-48`). It also
-  applies the mask while counting (`:53`).
+  only — `GB_AxB_saxpy3_flopcount.c:50-69`'s
+  `Bflops(j) += aknz` with `aknz = nnz(A(:,k))` (`:61`, `:66`) — at
+  O(nnz(B)+n) when A and M are not hypersparse, or O(nnz(B)·log h)
+  when they all are (`:44-48`). It also applies the mask while
+  counting: an empty mask column is skipped (`:57`), and a kept one
+  starts its count at `nnz(M(:,j))`, the cost of scattering it
+  (`:58`).
 
   Its two outputs then size: the thread count
   (`GB_nthreads(total_flops, chunk, …)` at
-  `GB_AxB_saxpy3_slice_balanced.c:418`), the task slicing
-  (`target_task_size = total_flops / ntasks_initial` at `:456`),
-  and each task's hash table (`GB_hash_table_size(flmax, …)` at
+  `GB_AxB_saxpy3_slice_balanced.c:424`), the task slicing
+  (`target_work_per_task = total_flops / ntasks_initial` at `:462`),
+  and each task's hash table (`GB_hash_table_nitems(flmax, …)` at
   `:56-99`). Same two-phase shape as cudf's size/retrieve
   (topic 18).
 
@@ -879,7 +923,8 @@ Answer each before unfolding it.
 
   SpMV is forced into fine tasks. `:44-47`: "If B consists of a
   single vector… then the only way to get parallelism is via fine
-  tasks." A matrix-vector product therefore pays atomics on every
+  tasks" — on more than one thread; `:47-48` hands a single thread
+  one coarse task instead. A multi-threaded matrix-vector product therefore pays atomics on every
   scatter, which is the structural reason BFS scales worse than
   SpGEMM.
 
@@ -893,15 +938,15 @@ Answer each before unfolding it.
   `flmax >= cvlen/2`, Gustavson immediately (`:65`) — undocumented
   in the header. Otherwise size the table as
   `2 << (floor_log2(flmax) + 1)` (`:83`) and take Gustavson if
-  `hash_size >= cvlen/12` (`:94`).
+  `hash_nitems >= cvlen/12` (`:94`).
 
-  `GB_AxB_saxpy3.c:57-58` still says the threshold is "m/16". It is
+  `GB_AxB_saxpy3.c:57-58` says the threshold is "m/16". It is
   stale. At m = 2²⁰ the shipped `cvlen/12` rule puts the crossover
   at flmax = 32,768 (= m/32, 3.1% of m); the documented m/16 rule
   would put it at flmax = 16,384. The code is twice as willing to
   hash as its own comment claims.
 
-  The corollary at `:83`: `hash_size` is always at least 2× `flmax`,
+  The corollary at `:83`: `hash_nitems` is always at least 2× `flmax`,
   and `flmax` is an exact bound on the vector's distinct outputs, so
   the table cannot overflow. There is no resize path because there
   is nothing to resize for — SuiteSparse buys that with the extra
@@ -916,17 +961,17 @@ Answer each before unfolding it.
 
   dot3 computes `C<M> = A'*B` with one sparse dot product per mask
   entry. The proof is allocation, not documentation:
-  `GB_AxB_dot3.c:126` computes `mnz = GB_nnz(M)` and `:171` sets
-  `cnz = mnz`, so C is sized to the mask exactly; `:244` sizes the
+  `GB_AxB_dot3.c:131` computes `mnz = GB_nnz(M)` and `:176` sets
+  `cnz = mnz`, so C is sized to the mask exactly; `:247` sizes the
   thread count from `cnz` too. Contrast saxpy3, where a mask prunes
   writes but the flops still happen.
 
   Pull is not dot3 because `GB_AxB_dot3.c:10-11` requires the mask
-  to be "present, and not complemented", and `GB_mxm.h:241` encodes
+  to be "present, and not complemented", and `GB_mxm.h:242` encodes
   that as `M != NULL && !Mask_comp && (M sparse or hypersparse)`.
   LAGraph's pull passes `GrB_DESC_RSC`
   (`…SSGrB_template.c:313`), and `GrB_DESC_RSC` includes
-  `GrB_COMP` (`Include/GraphBLAS.h:666`), so `Mask_comp` is true
+  `GrB_COMP` (`Include/GraphBLAS.h:672`), so `Mask_comp` is true
   and the predicate fails.
 
   What pull actually reaches is **dot2**, because
@@ -988,7 +1033,7 @@ Answer each before unfolding it.
 **Code**
 
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475`. Read `Source/mxm/GB_AxB_saxpy3.c:22-86` first (the
+  v10.5.2, at `7701390417`. Read `Source/mxm/GB_AxB_saxpy3.c:22-86` first (the
   scheduler spec), with
   `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:56-99` open beside it
   because the spec's selection rule is out of date. The full anchor

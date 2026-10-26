@@ -82,14 +82,14 @@ graph LR
 ```
 
 16384 slots (`cluster.h:23`), slot = CRC16 masked to 14 bits
-(`keyHashSlot`, cluster.h:59). A **hash tag** — the substring between
+(`keyHashSlot`, cluster.h:60). A **hash tag** — the substring between
 the first `{` and the next `}`, if non-empty — is hashed instead of the
 whole key, so `user:{42}:cart` and `user:{42}:profile` share a slot and
 multi-key ops on them work. Migration is a per-slot state machine
-(`SETSLOT MIGRATING / IMPORTING / STABLE / NODE`, cluster_legacy.c:6072):
+(`SETSLOT MIGRATING / IMPORTING / STABLE / NODE`, cluster_legacy.c:6217):
 while a slot migrates, the source serves keys it still has and answers
 `-ASK` for keys already moved (`getNodeByQuery` → `clusterRedirectClient`,
-cluster.c:1191/:1443); `-MOVED` means the slot's home changed for good.
+cluster.c:1257/:1519); `-MOVED` means the slot's home changed for good.
 The client-visible difference is the contract: MOVED updates the
 client's slot map, ASK is a one-shot redirect that must not.
 
@@ -144,9 +144,9 @@ capacity.
 
 | repo | anchor | what to see |
 |---|---|---|
-| redis | `src/cluster.h:59` | `keyHashSlot` — CRC16 & 0x3FFF, the hash-tag carve-out |
-| redis | `src/cluster.c:1191` | `getNodeByQuery` — slot ownership, MIGRATING/IMPORTING checks |
-| redis | `src/cluster.c:1443` | `clusterRedirectClient` — the MOVED vs ASK reply |
+| redis | `src/cluster.h:60` | `keyHashSlot` — CRC16 & 0x3FFF, the hash-tag carve-out |
+| redis | `src/cluster.c:1257` | `getNodeByQuery` — slot ownership, MIGRATING/IMPORTING checks |
+| redis | `src/cluster.c:1519` | `clusterRedirectClient` — the MOVED vs ASK reply |
 | cockroach | `pkg/kv/kvserver/replica_split_load.go:34` | load-split thresholds (2500 QPS / 500 ms CPU) |
 | cockroach | `pkg/kv/kvserver/split/decider.go:155` | `Decider` — finding *where* to split a hot range |
 | cockroach | `pkg/kv/kvserver/store_rebalancer.go:114` | store-level rebalancing via lease transfers |

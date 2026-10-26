@@ -67,13 +67,15 @@ with a cost model could *choose*.
 |---|---|
 | SBM build (64 blocks x 256) | 34.4 ms |
 | uniform walks 65,536 x 40 steps | 61.2 ms, 42.8 Msteps/s |
-| SpMM (D^-1 A) x X[16384x64] | 4.31 ms/iter, **16.82 GFLOP/s** |
-| dense matmul [16384x64]x[64x64] | 5.65 ms/iter, 23.75 GFLOP/s |
+| SpMM (D^-1 A) x X[16384x64] | 3.42 ms/iter, **21.2 GFLOP/s** |
+| dense matmul [16384x64]x[64x64] | 5.12 ms/iter, 26.2 GFLOP/s |
 
-The headline: naive scalar SpMM reaches **~71% of dense matmul's
-throughput** on this graph (FINDINGS row 25; 2·566,564·64 flops in
-4.31 ms against 2·16384·64·64 in 5.65 ms). Sparse's irregular gather is
-amortized by the
+The headline: naive scalar SpMM reaches **most of dense matmul's
+throughput** on this graph — 81% in the baseline (2·566,564·64 flops in
+3.42 ms against 2·16384·64·64 in 5.12 ms), and anywhere from about 70% to
+80% from run to run, because both kernels are timed in milliseconds on a
+shared machine. Carry the shape, not the percentage.
+Sparse's irregular gather is amortized by the
 64-float dense rows it drags along — a GNN's SpMM is memory-friendly in
 exactly the way topic 20's SpMV (1-wide) is not. Fat right-hand sides
 forgive sparsity.

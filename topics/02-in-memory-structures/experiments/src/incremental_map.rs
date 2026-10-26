@@ -4,7 +4,7 @@
 //! - chaining table: `Vec<Option<Box<Entry>>>` buckets, power-of-two sizes
 //! - grow at load factor 1.0: allocate ht[1] at 2× and set rehash_idx = 0
 //! - EVERY insert/get performs one rehash step: migrate ≤ 1 bucket from
-//!   ht[0] to ht[1], capped at 10 empty-bucket visits (dict.c:406)
+//!   ht[0] to ht[1], capped at 10 empty-bucket visits (dict.c:407, redis e87dda2a4)
 //! - during rehash: inserts go ONLY to ht[1]; gets check BOTH tables
 //! - when ht[0] is drained: drop it, ht[1] becomes ht[0], rehash_idx = None
 //!
@@ -28,7 +28,7 @@ impl IncrementalMap {
 
     pub fn get(&mut self, key: u64) -> Option<u64> {
         let _ = key;
-        // &mut because reads also pay the rehash tax, like dictFind (dict.c:779)
+        // &mut because reads also pay the rehash tax, like dictFind, whose lookup steps the rehash first (dict.c:783, redis e87dda2a4)
         todo!("rehash_step(); probe ht[0] then ht[1] if rehashing")
     }
 

@@ -17,7 +17,7 @@ adjacent rw-antidependencies — is **Fekete et al.**, cited as [10] and stated 
 Theorem 1 in §3.2. The *algorithm* that exploits it, SSI, is **Cahill, Röhm and
 Fekete** (SIGMOD 2008), cited as [7] in §3.3. The *commit-ordering refinement* is
 from **Cahill's thesis** [6], §3.3.1. Calling the whole bundle "Cahill's theorem"
-(as the previous version of this guide did) collapses three separate results.
+collapses three separate results.
 
 Line numbers below are `postgres/postgres@701f021`, checked with
 `python3 tools/pinned-source.py`. Section numbers are from the arXiv version of
@@ -34,9 +34,9 @@ measurements put the bill at **5% throughput on a CPU-bound TPC-C variant**
 (§8.1), and **nothing measurable at all when the workload is disk-bound** (§8.2,
 150 warehouses).
 
-> The previous version of this guide claimed "~7% overhead". That number is not
-> in the paper. It has been replaced above by the three figures the paper
-> actually reports, each with its section.
+> A single "~7% overhead" figure is sometimes attributed to this paper. It is
+> not in it; the three figures above, each with its section, are what the
+> paper reports.
 
 ## The concepts, step by step
 

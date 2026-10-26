@@ -130,7 +130,7 @@ sophistication is compensation for a missing query surface.
 > with no statistics. Step 6 collects this and the other systems smells.
 
 `router.py:19` `SemanticRouter` picks a retrieval strategy per
-question, but read what the pinned version actually does (rule 6): despite
+question, but read what the code actually does (rule 6): despite
 the name, it is **not** embedding-driven. Strategies register a
 `condition(query) -> bool` callable (`register`, :46 — the docstring's
 example is `lambda q: "how" in q.lower()`), and `_select` (:84) returns the

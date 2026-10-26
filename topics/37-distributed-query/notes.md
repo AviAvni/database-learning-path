@@ -1,15 +1,38 @@
 # Topic 37 notes — distributed query execution
 
-## Predictions vs measurements
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-| question | predicted | measured |
-|---|---|---|
-| P(any slow), p=1/100, n=100 | 1−0.99¹⁰⁰ = 63.4% | **63.4% analytic; 63.4%±2% simulated** (20k trials) |
-| P(any slow), p=1/10000, n=2000 | 18.1% | **18.1%** (closed form, test-pinned to 1e-3) |
-| 100-leaf p50 waiting for all | the leaf's tail → a stall | **1000.0 ms** (one leaf p50: 5.6 ms) |
-| 95%-of-leaves p99 | tail gone | **9.9 ms** vs 1000 ms waiting for all |
-| lane 2: hash routing at k=8 | balanced, deterministic | (stub — implement exchange.rs) |
-| lane 3: hedge at 10 ms | p99.9 ~50× down, +≲1% requests | (stub — implement hedge.rs; reference run: 1000→18.3 ms, +0.5%) |
+`cargo run --release --bin distq_bench`:
+
+```
+== lane 1: the fan-out tail — P(any leaf slow) and Table 1's shape ==
+   P(at least one slow) = 1 - (1-p)^n
+   n        p=1/100   p=1/1000   p=1/10000
+      1        1.0%       0.1%        0.0%
+    100       63.4%       9.5%        1.0%
+    500       99.3%      39.4%        4.9%
+   1000      100.0%      63.2%        9.5%
+   2000      100.0%      86.5%       18.1%
+
+   simulated 100-leaf scatter-gather, 1-in-100 slow leaves, 20k queries
+   (the paper's Table 1: waiting for all vs 95% of leaves)
+   wait for            p50        p95        p99
+   one leaf            5.6 ms     9.6 ms    10.0 ms
+   95% of 100          9.6 ms     9.9 ms     9.9 ms
+   all 100          1000.0 ms  1000.0 ms  1000.0 ms
+
+== lane 2: exchange — routing throughput and the merging exchange ==
+[stub — implement the todo!()s to unlock lane 2]
+
+== lane 3: hedged requests — p99.9 vs extra load, by hedge delay ==
+   leaf: 1-10 ms fast, 1000 ms stall with p = 0.005 (paper: 1800 -> 74 ms at +2%)
+[stub — implement the todo!()s to unlock lane 3]
+```
+
+The table is closed-form and the simulation is seeded (simulated latencies,
+not wall time), so every figure — 63.4% at p = 1/100, n = 100; 18.1% at
+p = 1/10000, n = 2000; one-leaf p50 5.6 ms; all-100 p50 1000.0 ms;
+95%-of-leaves p99 9.9 ms — is identical on every run.
 
 The lane-1 mechanics, worth memorizing: waiting for all of n leaves
 takes the max of n draws, so P(slow) = 1−(1−p)ⁿ — fan-out *exponentiates*
@@ -17,6 +40,42 @@ rarity into certainty. The component's p99 becomes the service's median
 at n≈70 already (0.99⁷⁰ ≈ 0.50). The two outs are structural, not
 tuning: stop waiting for everyone (good-enough / hedges), or shrink n's
 exposure (canary requests, micro-partitions).
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| question | predicted | measured |
+|---|---|---|
+| P(any slow), p=1/100, n=100 | | **63.4% analytic; 63.4%±2% simulated** (20k trials) |
+| P(any slow), p=1/10000, n=2000 | | **18.1%** (closed form, test-pinned to 1e-3) |
+| 100-leaf p50 waiting for all | | **1000.0 ms** (one leaf p50: 5.6 ms) |
+| 95%-of-leaves p99 | | **9.9 ms** vs 1000 ms waiting for all |
+| lane 2: hash routing at k=8 | | |
+| lane 3: hedge at 10 ms | | |
+
+<details>
+<summary>Author's prediction</summary>
+
+| question | author's prediction |
+|---|---|
+| P(any slow), p=1/100, n=100 | 1−0.99¹⁰⁰ = 63.4% |
+| P(any slow), p=1/10000, n=2000 | 18.1% |
+| 100-leaf p50 waiting for all | the leaf's tail → a stall |
+| 95%-of-leaves p99 | tail gone |
+| lane 2: hash routing at k=8 | balanced, deterministic |
+| lane 3: hedge at 10 ms | p99.9 ~50× down, +≲1% requests |
+
+</details>
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. What the reference solution printed
+(measured 2026-07-26, Apple M3 Pro):
+
+- **Lane 2 — exchange**: round-robin **229.6 M rows/s**; hash
+  **543.0 M rows/s** (balance 1.002); 8×500k merging exchange
+  **80.6 M rows/s**.
+- **Lane 3 — hedging**: hedge at 10 ms takes p99.9 **1000 → 18.3 ms** at
+  **+0.5%** requests; hedge at 0 costs +100%.
 
 ## Guide-question checklist
 
@@ -50,25 +109,30 @@ exposure (canary requests, micro-partitions).
 ## Infra notes
 
 - No new clones: datafusion and cockroach already under ~/repos.
-- DataFusion anchors verified by grep this session:
-  physical-plan/src/repartition/mod.rs:1150 (RepartitionExec), :1160
-  (preserve_order), :398-538 (merge mode, per-(input,output) spill
-  channels), :560 (BatchPartitioner), :592 (REPARTITION_RANDOM_STATE,
-  seed 0), :679 (new_hash_partitioner; :667 is its doc comment,
-  :689 the Hash state literal, :691 StrengthReducedU64::new), :710
-  (new_round_robin_partitioner; :699 is its doc comment), :825
-  (partition_iter), :854 (create_hashes), :862
-  (partition_reducer.partition_indices — the strength-reduced
-  modulo; :675 is only a doc comment), :1329 (execute), :1742
-  (pull_from_input);
-  distributor_channels.rs:55 (channels()), :62 (Gate empty_channels),
-  :121 (DistributionSender), :131 (send — parks when ALL buffers
-  non-empty); physical-expr/src/partitioning.rs:117 (Partitioning),
-  :119/:122 (RoundRobinBatch/Hash). Real finding: EnforceDistribution
-  was retired into EnsureRequirements
-  (physical-optimizer/src/ensure_requirements/mod.rs:166, doc comment
-  :157-164; ensure_requirements/enforce_distribution.rs:18/:76 are
-  helpers + the retirement note).
+- DataFusion anchors (`350ca7650`; paths under `datafusion/`):
+  physical-plan/src/repartition/mod.rs:1526 (RepartitionExec), :1536
+  (preserve_order), :446 (consume_input_streams; :484-492 per-(input,
+  output) channels, :495-500 per-output channels, :524-545 spill
+  channels, :547-558 output coalescer), :649 (BatchPartitioner), :677
+  (REPARTITION_RANDOM_STATE, seed 0), :939-951 (StrengthReducedU64:
+  mask for powers of two, reciprocal otherwise), :1024
+  (new_hash_partitioner; :1036 StrengthReducedU64::new), :1055
+  (new_round_robin_partitioner), :1172 (try_new), :1234
+  (partition_iter), :1263 (create_hashes), :1273
+  (partition_reducer.partition_indices), :1303 (range route_indices),
+  :1344 (partition_grouped_take), :1740 (execute), :2280
+  (pull_from_input); repartition/range.rs:36 (RangeRouter), :418
+  (primitive binary search), :585 (row-format binary search);
+  distributor_channels.rs:54 (channels()), :61 (Gate empty_channels),
+  :120 (DistributionSender), :130 (send), :220 (parks when ALL buffers
+  non-empty); physical-expr/src/partitioning.rs:126 (Partitioning),
+  :128/:131/:133 (RoundRobinBatch/Hash/Range), :216
+  (RangePartitioning), :347 (scale). EnsureRequirements
+  (physical-optimizer/src/ensure_requirements/mod.rs:175, motivation
+  :31-35) is the one rule; ensure_requirements/enforce_distribution.rs
+  holds its helpers (:18/:80 retirement notes; :1532
+  ensure_distribution_with_stats; :1776-1822 Range re-cut or hash;
+  :1287 co-partitioned adaptation).
 - Cockroach anchors verified: distsql_check.go:214
   (checkSupportForPlanNode); distsql_physical_planner.go:312
   (mustWrapNode — "no DistSQL-processor equivalent"), :971

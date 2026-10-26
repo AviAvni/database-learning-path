@@ -15,9 +15,8 @@ Every anchor below is **memgraph pinned at `8f87f6a`**
 the one chapter in the topic where the source hands you a *hard*
 number rather than an estimate — `vertex.hpp:73` is a `static_assert`
 on `sizeof(Vertex)` — so Step 2 spends its arithmetic reconstructing
-that number field by field. Doing so also breaks a claim the previous
-version of this chapter made about `small_vector`; Step 3 shows the
-line that breaks it.
+that number field by field. Doing so also breaks a common claim about
+`small_vector`; Step 3 shows the line that breaks it.
 
 ## The problem in one sentence
 
@@ -83,8 +82,7 @@ decision:
     66  };
 ```
 
-**Correction.** The previous version of this chapter placed `delta_`
-at `:66`. Line 66 is the closing brace; `delta_` is at **`:65`**.
+`delta_` is at **`:65`**; line 66 is the closing brace.
 
 Ten lines further down the file states its own size, and this is the
 one number in this topic that cannot drift without the build failing:
@@ -169,9 +167,8 @@ index:
     30  using Edges = utils::small_vector<EdgeTriple, memory::DbAwareAllocator<EdgeTriple>>;
 ```
 
-**Correction.** The previous version of this chapter called this "a
-16-byte triple" (three times: in this step, in Step 5's ledger, and in
-question 4). Size the three members from their own headers:
+It is tempting to call this "a 16-byte triple". Size the three
+members from their own headers:
 
 | member | type | size | source |
 |---|---|---|---|
@@ -184,11 +181,10 @@ question 4). Size the three members from their own headers:
  sizeof(EdgeTriple) = 24 bytes, not 16
 ```
 
-**Correction, and it is the bigger one.** The previous version said
-`small_vector` "stores its first few elements inline … a big win
-because power-law degree distributions mean MOST nodes have few
-labels/edges." That is true of `labels` and **false of edges**, and
-one line says why:
+The bigger trap is the usual story that `small_vector` "stores its
+first few elements inline … a big win because power-law degree
+distributions mean MOST nodes have few labels/edges." That is true of
+`labels` and **false of edges**, and one line says why:
 
 ```cpp
 // src/utils/small_vector.hpp
@@ -402,14 +398,13 @@ field.
    inserts, and why?
 4. memgraph's Expand of one vertex vs kuzu's CSR slice: both
    contiguous. Where does kuzu still win? (Hint: what's IN the vector —
-   16-byte triples with a pointer vs 8-byte offsets.)
+   24-byte triples with a pointer vs 8-byte offsets.)
 5. Sketch what an analytics query (PageRank) costs on this layout vs a
    matrix. Where does the memory bus time go?
 
-> Question 2 and question 4 both encode the mistake Step 3 corrects.
-> Answer 2 for `labels` (where the premise holds, `kSmallCapacity` = 2)
-> and then say why it fails for edges; answer 4 with the real
-> `sizeof(EdgeTriple)` = 24, not 16.
+> Question 2 carries the premise Step 3 takes apart. Answer it for
+> `labels` (where the premise holds, `kSmallCapacity` = 2) and then say
+> why it fails for edges; answer 4 with `sizeof(EdgeTriple)` = 24.
 
 ## Done when
 

@@ -8,10 +8,10 @@ df(t0)=99888 (in 99.9% of docs — "the"), df(t100)=8259, df(t10000)=83.
 
 ### BM25 top-10, exhaustive TAAT oracle
 
-> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 23, which
-> spans **0.009 ms to 10.378 ms** over the same four queries. FINDINGS is
-> canonical for the timings; the posting counts (272,310 and 159) are
-> generator-determined and agree. Cite one run by name, never average.
+The posting counts and scores are generator-determined and reproduce
+exactly; the milliseconds are this run's and move between runs on the
+same machine. Quote one run and say which (`./verify.sh 23` gives your
+machine's).
 
 | query | ms | postings walked | top1 score |
 |---|---|---|---|
@@ -117,7 +117,7 @@ Surprises / dead ends:
 2. gc_marker/unique_id ↔ delta-matrix wait/version:
 3. Codec ladder ↔ Lucene positions/doc-values taxonomy:
 4. Varint vs bitpack bytes/posting at delta≈1; where varint wins:
-5. What to lift verbatim into falkordb-rs-next-gen; what the graph changes:
+5. What to lift verbatim into the Rust engine (FalkorDB 6, formerly falkordb-rs-next-gen); what the graph changes:
 
 ## Cross-topic threads
 

@@ -18,16 +18,17 @@ replace the M13 adjacency core.
   their ptrs)
 
  nvals ≪ nrows   nvals ~ O(nrows)     nvals >    every cell
- (10M×10M with   the graph default    ~4-8% of   present
-  100K edges)                         n×m
+ (10M×10M with   the graph default    40% of     present
+  100K edges)                         n×m (dims
+                                      > 64)
 ```
 
 Switch heuristics are *numbers in the code*, not magic:
 sparse→bitmap when `nnz > bitmap_switch * nrows*ncols`
 (GB_convert_sparse_to_bitmap_test.c:32-38), where `bitmap_switch` is
 indexed by `min(vlen, vdim)`, **not by the operator** — 0.04 at
-dimension 1 rising to **0.40 above 64** (GB_Global.c:181-189, selected
-by GB_Global.c:486-497), so every graph-sized matrix reads the same
+dimension 1 rising to **0.40 above 64** (GB_Global.c:183-191, selected
+by GB_Global.c:499-510), so every graph-sized matrix reads the same
 0.40; hyper↔sparse via `hyper_switch` on the count of non-empty vectors
 (GB_conform_hyper.c:52); all applied by `GB_conform`
 (GB_conform.c:150, cases at :157-160, :166-169, :175-184, :190-193)
@@ -55,10 +56,10 @@ coarse tasks (own whole vectors) and fine tasks (teams share one
 vector); each task independently picks **Gustavson** (dense
 workspace of size m — the SPA) or **hash** (table sized 2×next-pow2
 of estimated flops) — hash wins when the workspace would be cold.
-The comment at GB_AxB_saxpy3.c:57-58 still says "m/16"; the shipped
-rule is Gustavson when `flmax >= cvlen/2`
-(GB_AxB_saxpy3_slice_balanced.c:65) or `hash_size >= cvlen/12` (:94),
-and since `hash_size ≥ 2·flmax` always, no resize path exists. A
+The comment at GB_AxB_saxpy3.c:57-58 says "m/16"; the shipped
+rule (`GB_hash_table_nitems`) is Gustavson when `flmax >= cvlen/2`
+(GB_AxB_saxpy3_slice_balanced.c:65) or `hash_nitems >= cvlen/12` (:94),
+and since `hash_nitems ≥ 2·flmax` always, no resize path exists. A
 *flopcount* pass
 (GB_AxB_saxpy3_flopcount.c) sizes everything first — cudf's
 size/retrieve two-phase (topic 18), five years earlier.
@@ -112,6 +113,11 @@ The GraphBLAS trinity, as an *executor* design:
 [`~/repos/FalkorDB/src/graph/delta_matrix/`](https://github.com/FalkorDB/FalkorDB) — the answer to "GrB
 matrices are fast to read, slow to mutate one edge at a time":
 
+(That path is the C engine quoted here — FalkorDB 4.x, the `master`
+branch, read at `ccb449a9a`; FalkorDB 6's Rust engine lives on `main`,
+which has no `src/graph/`. Open the files with
+`python3 tools/pinned-source.py show FalkorDB src/graph/delta_matrix/<file>`.)
+
 ```
  Delta_Matrix = M (settled GrB_Matrix, hypersparse CSR)
               + delta-plus  DP (pending additions)
@@ -148,16 +154,16 @@ are explicit code*, not `#pragma omp parallel for` sprinkled around:
    how many threads? not "all of them":
    flopcount pre-pass  ──►  nthreads = GB_nthreads(total_flops,
                                          chunk, nthreads_max)
-                            (GB_AxB_saxpy3_slice_balanced.c:418)
+                            (GB_AxB_saxpy3_slice_balanced.c:424)
    tiny multiply ⇒ 1 thread — the parallelism is COSTED like a
    query plan, using the same flopcount that sizes hash tables
 ```
 
 Even the flopcount pass itself is parallel
 (`#pragma omp parallel for schedule(dynamic,1)` —
-GB_AxB_saxpy3_flopcount.c:219). The philosophy: **static
+GB_AxB_saxpy3_flopcount.c:222). The philosophy: **static
 work-partitioning from a cost estimate**, balanced up front
-(target task size, slice_balanced.c:456), because the cost model
+(`target_work_per_task`, slice_balanced.c:462), because the cost model
 is cheap and accurate (flops are countable for SpGEMM).
 
 The Rust translation is rayon, and it inverts the philosophy:

@@ -2,23 +2,49 @@
 
 Machine: Apple M3 Pro, macOS. `cargo run --release --bin ivm_bench`
 (50K nodes / 500K edges; 10 churn batches of +90/−10 edges; reach lane:
-50 insert-only chunks of 10K edges). Date: 2026-07-10.
+50 insert-only chunks of 10K edges).
 
-## Measured baselines (provided full-recompute lanes — the enemy, priced)
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
-> An earlier run than the one the README's opening lane and
-> [FINDINGS.md](../../FINDINGS.md) row 27 report (**triangle 141.6 ms,
-> wedge 1111.0 ms, re-BFS 31.2 ms**). Where the two disagree, FINDINGS is
-> canonical; cite one run or the other by name and never average them.
-> Re-run `./verify.sh 27` before treating any cell below as current.
+`cargo run --release --bin ivm_bench`:
+
+```
+graph: 50000 nodes, 500000 edges; 10 batches of +90/-10
+triangles, full recompute:      100.5 ms/batch   (count after last batch: 1365)
+triangles, incremental:    [stub — implement tri::IncrementalTriangles]
+wedge join, full recompute:     923.5 ms/batch   (wedges incl. trivial: 21063140)
+wedge join, incremental:   [stub — implement djoin::IncrementalJoin]
+reach, re-BFS per batch:         25.9 ms/batch   (|reached| 50000)
+reach, semi-naive:         [stub — implement reach::SemiNaiveReach]
+```
+
+The counts are seeded and identical on every run. That depends on one design
+choice in `ChurnGen::new`: the deletion pool `present_vec` is built from the
+base ZSet's sorted order, not from a std `HashSet`'s iteration order. The
+seeded rng picks each deletion *by index into that pool*, so the pool's order
+is part of the seed — and std's `HashSet` draws a fresh hash key every
+process, which would make the same seed delete different edges each run (the
+triangle count would wander by a few, the wedge weight by a few hundred).
 
 | standing query | full recompute / batch | notes |
 |---|---|---|
-| triangle count | 97.2 ms | O(m·d̄) sorted-intersect sweep; count 1366 after last batch |
-| 2-hop wedge join | 894.3 ms | full self-join, 21,063,114 wedge weight — rebuilt per batch |
-| reachability (re-BFS) | 24.7 ms | Σ over batches ≈ 1.2 s for what should cost O(m) total |
+| triangle count | 100.5 ms | O(m·d̄) sorted-intersect sweep; count 1365 after last batch |
+| 2-hop wedge join | 923.5 ms | full self-join, 21,063,140 wedge weight — rebuilt per batch |
+| reachability (re-BFS) | 25.9 ms | Σ over batches ≈ 1.3 s for what should cost O(m) total |
 
-## Predictions BEFORE implementing the stubs
+Timings vary from run to run; the counts do not. The README and FINDINGS row
+27 quote this run.
+
+## Predictions (fill BEFORE implementing the stubs)
+
+| stub lane | your prediction | measured |
+|---|---|---|
+| incremental triangles | | |
+| incremental wedge join | | |
+| semi-naive reach | | |
+| relaxations | | |
+
+<details><summary>Author's prediction</summary>
 
 | stub lane | prediction | reasoning |
 |---|---|---|
@@ -33,13 +59,13 @@ speedup disappoints, the fix is an indexed/spine state (an arrangement!)
 — which would be the lesson demonstrating itself: deltas are cheap,
 *state maintenance* is where arrangements earn their keep.
 
-## Measured (stub lanes) — TODO after implementation
+</details>
 
-| lane | measured | prediction hit? |
-|---|---|---|
-| incremental triangles | — | — |
-| incremental wedge join | — | — |
-| semi-naive reach | — | — |
+## Reference numbers for the exercise lanes
+
+No reference run is recorded for this topic's stubs; the stub tests are the
+specification (incremental results equal full recompute after every batch,
+and the relaxation bound of 4m).
 
 ## Questions to answer while reading (from the guides)
 

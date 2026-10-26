@@ -581,7 +581,7 @@ Answer each before unfolding it.
 
 ## References
 
-- `egraphs-good/egglog` at the pinned commit (see the pin table at the
+- `egraphs-good/egglog` at `e264c37a`, the commit recorded in the pin table at the
   end of [resources/codebases.md](../../resources/codebases.md)).
   The crates read here: `core-relations` (table, offsets, query,
   free_join), `egglog-bridge`, `union-find`.

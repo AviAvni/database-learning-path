@@ -10,10 +10,10 @@ routes you through the sections.
 
 Every number below is checked against the paper — Boncz, Zukowski, Nes,
 *MonetDB/X100: Hyper-Pipelining Query Execution*, CIDR 2005 — and cited
-to the section, table or figure it came from. Several figures this guide
-used to carry did not survive that check; the corrections are called out
-where they occur, because being wrong in a memorable way is how these
-numbers propagate.
+to the section, table or figure it came from. Several figures commonly
+quoted from this paper are not in it; where one of them would be the
+natural thing to expect, the step says so, because being wrong in a
+memorable way is how these numbers propagate.
 
 ## The problem in one sentence
 
@@ -71,12 +71,12 @@ Table 1, restricted to the one machine that makes the comparison honest
    0.50 / 0.22 =  2.3×  what X100 still leaves on the table
 ```
 
-**Correction:** this guide previously printed ~0.6 s for both the
-hand-coded loop and X100, and called the gap 45×. All three are wrong.
-The hand-coded UDF is 0.22 s (§3.3, "a stunning 0.22 seconds"), X100 is
-0.50 s, and §3.3's own summary of the gap is that X100 "is able to get
-within a factor 2 of this hand-coded implementation" — it does *not*
-reach the roofline. The abstract's claim is "between one and two orders
+Hold the two fast rows apart. The hand-coded UDF is 0.22 s (§3.3, "a
+stunning 0.22 seconds"), X100 is 0.50 s, and §3.3's own summary of the
+gap is that X100 "is able to get within a factor 2 of this hand-coded
+implementation" — it does *not* reach the roofline, and a summary that
+puts both at the same time has erased the 2.3× the paper is careful to
+report. The abstract's claim is "between one and two orders
 of magnitude higher than previous technology", which the 121× and 7.2×
 above bracket.
 
@@ -116,11 +116,10 @@ The health metric is **IPC** (instructions per cycle: how many
 instructions the core actually retires per clock). §2 reports that
 "query execution in commercial DBMS systems get an IPC of only 0.7",
 against scientific computation extracting "average IPCs of up to 2".
-**Correction:** this guide previously said a superscalar core of that era
-could sustain "3+" and that X100 achieved ~2 IPC. Neither is in the
-paper. Three is the R12000's *issue width* for int/fp ops (§3.1), not a
-sustained rate; and the paper reports no IPC figure for X100 at all — its
-X100 measurements are in cycles per tuple (Step 6).
+Two figures often attached to this paragraph are not in the paper. Three
+is the R12000's *issue width* for int/fp ops (§3.1), not a sustained IPC;
+and the paper reports no IPC figure for X100 at all — its X100
+measurements are in cycles per tuple (Step 6).
 
 ### Step 2 — failure mode one: tuple-at-a-time (Volcano)
 
@@ -192,10 +191,9 @@ make it arithmetic:
  in cache at SF=0.001 the same operators exceed          1.5 GB/s
 ```
 
-**Correction:** this guide previously described "~10 intermediates" and
-"hundreds of MB". The trace shows 20 MIL invocations and 1361 MB — more
-than a gigabyte of DRAM traffic to answer a query whose result is four
-rows.
+Count from the trace, not from intuition: 20 MIL invocations and 1361 MB
+— more than a gigabyte of DRAM traffic to answer a query whose result is
+four rows.
 
 The single multiply makes the failure vivid. §3.2 works it out: at
 500 MB/s, `[*]()` moving 16 bytes in and 8 out manages 20M tuples/s,
@@ -288,11 +286,11 @@ is short enough to read whole:
    }
 ```
 
-**Correction:** this guide previously named the primitive
-`map_add_int_vec_int_vec`. The real naming scheme is
-`map_<op>_<type>_<col|val>_<type>_<col|val>`, as the trace in Table 5
-confirms (`map_mul_flt_col_flt_col`, `map_sub_flt_val_flt_col`,
-`select_lt_date_col_date_val`).
+The naming scheme is `map_<op>_<type>_<col|val>_<type>_<col|val>`, as the
+trace in Table 5 confirms (`map_mul_flt_col_flt_col`,
+`map_sub_flt_val_flt_col`, `select_lt_date_col_date_val`) — the operand
+kind (`col` or `val`) is part of the name, because a column-plus-constant
+and a column-plus-column are different compiled loops.
 
 Three things to take from those ten lines.
 
@@ -378,15 +376,14 @@ Read it against MySQL's Table 2 and MIL's Table 3:
    MonetDB/X100  >7.5 GB/s on Itanium2, ~5 GB/s on AthlonMP (§5.1)
 ```
 
-**Correction:** this guide previously claimed "X100 runs at ~2 IPC where
-MySQL managed 0.7". The 0.7 is real (Table 2, §2). The 2 is not an X100
-measurement — §2 offers it as what *scientific computing* achieves.
-Replace the comparison with the one the paper actually makes: 2.2 cycles
-per multiply against 49, which §5.1 states as "way better than the 49
-cycles per tuple achieved by MySQL".
+The tempting summary — "X100 runs at ~2 IPC where MySQL managed 0.7" —
+is half paper and half invention. The 0.7 is real (Table 2, §2). The 2 is
+not an X100 measurement — §2 offers it as what *scientific computing*
+achieves. The comparison the paper actually makes is 2.2 cycles per
+multiply against 49, which §5.1 states as "way better than the 49 cycles
+per tuple achieved by MySQL".
 
-The methodological lesson survives the correction intact, and is the
-transferable part: a runtime is a scalar with no diagnosis in it. Cycles
+The methodological lesson is the transferable part: a runtime is a scalar with no diagnosis in it. Cycles
 per tuple, IPC, cache misses and branch misses tell you which wall you
 are against — interpretation (low IPC, high branch count), bandwidth (low
 IPC, high miss count, and the SF=0.001 experiment as the confirming

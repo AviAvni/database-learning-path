@@ -115,7 +115,7 @@ An implementation is a handful of lines:
 // ILLUSTRATION — not quoted from any repo in this course. This is the §2.3
 // formula above, transcribed. The real implementations are postgres
 // src/backend/utils/adt/selfuncs.c (eqjoinsel) and duckdb
-// src/optimizer/join_order/cardinality_estimator.cpp:908, which divides a
+// src/optimizer/join_order/cardinality_estimator.cpp:917 (v2.0.0), which divides a
 // product of base cardinalities by a product of per-equivalence-class domains.
   1  fn estimate_join_card(tables: &[Table], preds: &[EquiPred]) -> f64 {
   2      let mut card: f64 = tables.iter().map(|t| t.rows as f64).product();
@@ -645,7 +645,7 @@ Answer each before unfolding it.
   optimality properties come from.
 
 **Code**
-- `duckdb/duckdb@6c0c1a68` — `src/optimizer/join_order/cost_model.cpp:40-48`,
+- `duckdb/duckdb@d54cbbe3df` (v2.0.0) — `src/optimizer/join_order/cost_model.cpp:40-48`,
   a cost model small enough to read in one sitting, which is this paper's §5
   conclusion shipped as a product.
 - `postgres/postgres@701f021` — `src/backend/utils/adt/selfuncs.c`, the

@@ -105,8 +105,9 @@ impl KvStore {
             }
         }
         // tail repair: drop torn/uncommitted bytes so leftovers can't
-        // join the next batch (skipping this was itself a bug we
-        // caught with crash_matrix — see notes.md)
+        // join the next batch — without it, a torn tail followed by a
+        // fresh write fuses into one batch that replays as committed
+        // (crash_matrix's torn-tail cases exercise exactly this)
         self.wal.truncate(last_good);
         if self.bug == Bug::TornWriteAccepted {
             // apply the incomplete batch anyway

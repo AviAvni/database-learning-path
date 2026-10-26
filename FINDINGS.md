@@ -5,8 +5,9 @@ whole argument for this format over a reading list in one table: a link
 collection cannot be wrong in a way you can detect, and every row below can.
 
 Every figure here comes from a benchmark in this repo, measured on an **Apple M3
-Pro (5P + 6E, 36 GB)** on 2026-07-28, except topic 44's row, measured on
-the same machine on 2026-08-26. Generators are seeded, so counts,
+Pro (5P + 6E, 36 GB)** on 2026-07-28, except rows 17, 18, 20, 22 and 25
+(2026-07-10, the runs those topics' notes and guides compute against), row 44 (2026-08-26), and rows
+27, 32, 42 and 45 (2026-10-26). Generators are seeded, so counts,
 ratios and distributions reproduce exactly; timings will differ on your
 hardware. Run everything with `./verify.sh`, one topic with `./verify.sh 12`, or
 `./verify.sh --list` to see every lane.
@@ -33,22 +34,22 @@ instead.
 | 14 | [Vector Search](topics/14-vector-search/README.md) | Brute force: **117 QPS** at recall 1.000. That single point is what every ANN index is betting against. | `./verify.sh 14` |
 | 15 | [Replication & Consensus](topics/15-replication-consensus/README.md) | Follower fsync policy alone spans **59×** (341 → 20,174 entries/s). Batching fixes the median and leaves the p99 at 2980 µs. | `./verify.sh 15` |
 | 16 | [Testing & Correctness](topics/16-testing-correctness/README.md) | Seeded crash testing catches planted bugs at **48.8% to 99.6%** per seed — same harness, four wildly different odds of ever finding out. | `./verify.sh 16` |
-| 17 | [SIMD](topics/17-simd/README.md) | Eight accumulators and no intrinsics: **8.88 → 26.32 GB/s**. Branchy filtering collapses to **0.95 GB/s** at 50% selectivity while branchless stays flat at ~10. | `./verify.sh 17` |
-| 18 | [GPU Acceleration](topics/18-gpu/README.md) | **No crossover up to 2^24 elements.** At 16 M, upload alone costs 7197 µs against a 2723 µs CPU total — the transfer tax, measured. | `./verify.sh 18` |
+| 17 | [SIMD](topics/17-simd/README.md) | Eight accumulators and no intrinsics: **10.89 → 42.12 GB/s** (3.9×). Branchy filtering collapses to **1.19 GB/s** at 50% selectivity while branchless stays flat at ~12–13. | `./verify.sh 17` |
+| 18 | [GPU Acceleration](topics/18-gpu/README.md) | **No crossover up to 2^24 elements.** At 16 M, upload alone costs 7385 µs against a 2258 µs CPU total — the transfer tax, measured. | `./verify.sh 18` |
 | 19 | [JIT & Compilation](topics/19-jit/README.md) | Interpretation cost compounds with expression size: 7 → 511 nodes costs the interpreter **94×** but the vectorized evaluator only **47×**, so the gap widens from 6× to 12×. | `./verify.sh 19` |
-| 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **20.7 → 12.3 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **175× faster**. | `./verify.sh 20` |
+| 20 | [GraphBLAS](topics/20-graphblas/README.md) | SpMV bandwidth decays **19.1 → 15.8 GB/s** as the graph grows. Hypersparse indexing is **50× smaller** (80.4 MB → 1.59 MB) and sweeps rows **171× faster**. | `./verify.sh 20` |
 | 21 | [Formal Methods](topics/21-formal/README.md) | The hand-ordered rewriter answers `(a*2)/2` with `(a << 1) / 2` and stops. One locally-excellent rewrite destroys the cancellation — the phase-ordering trap, in four lines. | `./verify.sh 21` |
-| 22 | [Standard Benchmarks](topics/22-benchmarks/README.md) | TPC-H Q1 and Q6 measured at **5.2–5.7** and **9.0–14.4 GB/s** effective; YCSB-E's p999 is **12.9 µs** against read-only's 4.0 µs. | `./verify.sh 22` |
+| 22 | [Standard Benchmarks](topics/22-benchmarks/README.md) | TPC-H Q1 and Q6 measured at **4.7–5.6** and **11.9–15.7 GB/s** effective (SF 0.05–0.25); YCSB-E's p999 is **2.0 µs** against read-only's 0.96 µs. | `./verify.sh 22` |
 | 23 | [Full-Text Search](topics/23-fulltext/README.md) | Exhaustive BM25 spans **0.009 ms to 10.378 ms** across four queries — 272,310 postings against 159. Term rarity, not query complexity. | `./verify.sh 23` |
 | 24 | [Graph Algorithms](topics/24-graph-algorithms/README.md) | Same node and edge count, RMAT vs uniform: **15.6 M triangles vs 5428**, and 447 ms vs 195 ms. Degree skew is the workload. | `./verify.sh 24` |
-| 25 | [Graph ML](topics/25-graph-ml/README.md) | The message-passing kernel *is* an SpMM: **4.31 ms at 16.82 GFLOP/s**, against 5.65 ms for the dense transform beside it. | `./verify.sh 25` |
+| 25 | [Graph ML](topics/25-graph-ml/README.md) | The message-passing kernel *is* an SpMM: **3.42 ms at 21.2 GFLOP/s**, against 5.12 ms for the dense transform beside it. | `./verify.sh 25` |
 | 26 | [Probabilistic Structures](topics/26-probabilistic/README.md) | A point miss costs **246 ns** (binary search) or **299 ns** (BTreeMap); a 224 MB HashSet does it in **28 ns**. That gap is what a filter is bidding for. | `./verify.sh 26` |
-| 27 | [Streaming & IVM](topics/27-streaming/README.md) | 100 edge changes to a 500k-edge graph costs **1111 ms** to re-derive a wedge join — the batch is 0.02% of the graph, the work is 100% of it. | `./verify.sh 27` |
+| 27 | [Streaming & IVM](topics/27-streaming/README.md) | 100 edge changes to a 500k-edge graph costs **924 ms** to re-derive a wedge join — the batch is 0.02% of the graph, the work is 100% of it. | `./verify.sh 27` |
 | 28 | [Cloud-Native Storage](topics/28-cloud-native/README.md) | Local NVMe p50 **0.10 ms**; raw S3 p50 **14.17 ms**, p99 **112.99 ms**. A 140× median gap and a far worse tail. | `./verify.sh 28` |
 | 29 | [Distributed Transactions](topics/29-distributed-txn/README.md) | The workload's own conflict rate goes **0.3% → 99.6%** as Zipf θ moves 0.5 → 1.3. Contention is a property of the data, before any protocol. | `./verify.sh 29` |
 | 30 | [Time-Series](topics/30-timeseries/README.md) | delta+varint gives **11.00 B/sample for all four shapes** — a constant series compresses exactly as well as random noise, because only the timestamp is being compressed. | `./verify.sh 30` |
 | 31 | [CRDTs](topics/31-crdts/README.md) | Last-write-wins on 10 keys with per-write sync loses **94.98%** of writes — 37,991 of 40,000 acknowledged writes that no replica remembers. | `./verify.sh 31` |
-| 32 | [HTAP](topics/32-htap/README.md) | One copy, one coarse lock: adding full scans takes writes from **11.4 M per 2 s to 69**, and p99 from 333 ns to **7.49 s**. Every scan is a write outage. | `./verify.sh 32` |
+| 32 | [HTAP](topics/32-htap/README.md) | One copy, one fair coarse lock: adding full scans takes writes from **14.1 M per 2 s to 21.5 K** (652×), and p99 from 209 ns to **2.25 ms** — exactly one full scan. Every scan is a write outage as long as the scan. | `./verify.sh 32` |
 | 33 | [Temporal Graphs](topics/33-temporal-graphs/README.md) | Static reachability reports 25,031 reachable pairs where time-respecting paths number **137** — **99.5% false positives** on the sparse contact graph. | `./verify.sh 33` |
 | 34 | [Debugging & Diagnosis](topics/34-debugging/README.md) | A closed-loop benchmark reports **p99 = 1.0 µs** where an open-loop one reports **90 ms** on identical work — coordinated omission, a 90,000× lie. | `./verify.sh 34` |
 | 35 | [Overload Control](topics/35-overload/README.md) | A 10-second outage ends at t=40 s. At 140 QPS (of 300 capacity) goodput stays at **zero until t=161 s**; at 280 QPS it **never recovers** — the outage outlives its own trigger. | `./verify.sh 35` |
@@ -58,9 +59,10 @@ instead.
 | 39 | [Fraud & Identity Graphs](topics/39-fraud-identity-graphs/README.md) | Two row-based rankers fail in *opposite* regimes: degree ranking scores **0.00** precision without camouflage, obscurity ranking **0.00** with it. | `./verify.sh 39` |
 | 40 | [Security & Attack Graphs](topics/40-security-attack-graphs/README.md) | A directory reporting **8 privileged accounts, forever** has **1969 of 2000 users** holding a path to Domain Admin — and your exposure number depends on how long the collector ran. | `./verify.sh 40` |
 | 41 | [On-Chain Analytics](topics/41-onchain-analytics/README.md) | The industry-default haircut rule marks **98% of addresses** tainted from one theft; 658 of them are under 0.1% tainted. An 1816 court case does better. | `./verify.sh 41` |
-| 42 | [Recommendations & Social](topics/42-recommendations-social/README.md) | Recommending bestsellers to everyone gets **34.0% hit-rate@50** with **92.3% overlap** with the global bestseller list. Popularity is not a weak baseline. | `./verify.sh 42` |
+| 42 | [Recommendations & Social](topics/42-recommendations-social/README.md) | Recommending bestsellers to everyone gets **35.3% hit-rate@50** with **92.2% overlap** with the global bestseller list. Popularity is not a weak baseline. | `./verify.sh 42` |
 | 43 | [Ops Dependency Graphs](topics/43-ops-dependency-graphs/README.md) | One gray failure: **34 of 55 services alert** and the broken one is not among them — it ranks 35th by failure count, 41st by error rate, at exactly the baseline. | `./verify.sh 43` |
 | 44 | [E-graphs as a Database](topics/44-egraphs-egglog/README.md) | `f(a, g(a))` has **N matches** and costs a backtracking matcher **N²+N+1** units of work; generic join does **5N**. At N=1600: 2,561,601 against 8,000, a measured **21.7×**. Make the pattern linear and generic join is **1.8× slower** — the win is avoided waste, not speed. | `./verify.sh 44` |
+| 45 | [Async I/O & Modern SSDs](topics/45-async-io/README.md) | Random 4 KiB reads around the page cache: **13,810 IOPS at queue depth 1, 248,363 at 64** — **18×** through the same `pread`, Little's law predicting each row. Batch 16 reads into one `lio_listio` and you get **half** of what 16 threads get: the batch waits for its slowest read. | `./verify.sh 45` |
 
 ## How to read this table
 

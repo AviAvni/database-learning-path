@@ -65,7 +65,7 @@ others** (pointers do), so binary search stays cheap and deletion is O(1) +
 freeblock bookkeeping. This is the dense-filter/fat-payload pattern (topic 2 §4)
 on disk: the pointer array is the filter.
 
-Header fields (turso `btree.rs:76–124`, spec in SQLite `btreeInt.h:1–215`):
+Header fields (turso `btree.rs:100–148`, spec in SQLite `btreeInt.h:1–215`):
 byte 0 page type; 1–2 first freeblock; 3–4 cell count; 5–6 content-area start;
 7 fragmented bytes; 8–11 rightmost child pointer (interior only).
 
@@ -128,6 +128,20 @@ flowchart TD
 - Cost: write amp (whole path copied per commit), single writer, and the reader
   table pins pages (a stuck reader = unbounded growth). Same trade the reference
   capstone's cow_btree makes in memory — compare deliberately in M3 notes.
+
+Out-of-place is not only LMDB's recovery trick; it is also how to be kind to the
+flash underneath. Lee, Ziegler and Leis, **"How to Write to SSDs"** (VLDB 2026,
+[arXiv:2603.09927](https://arxiv.org/abs/2603.09927)) show that an in-place
+B-tree writes more than its dirty pages: in-place systems such as MySQL and
+PostgreSQL (the latter indirectly) issue roughly double the user writes because
+of doublewrite buffering, and the SSD then amplifies that again — an in-place
+LeanStore wrote 18.85 KiB of flash per 4 KiB node write on YCSB-A with the SSD
+90% full (§1, Fig. 1). Redesigning LeanStore's B-tree to write pages
+out-of-place, plus a set of placement optimizations, "improves throughput by
+1.65–2.24× and reduces flash writes per operation by 6.2–9.8× on YCSB-A"
+(Abstract). LMDB's copy-on-write is already out-of-place; the paper's question
+is where the new page should land and when the old one's space is reclaimed.
+Topic 45 covers it in depth.
 
 ## 5. Code reading (5–7 h)
 

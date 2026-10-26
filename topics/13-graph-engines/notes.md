@@ -25,9 +25,9 @@ has 6565.
 Note the checksum column is a **sum over the source set**, and the two sets are
 different sizes — 10 000 random sources against 100 supernodes. Normalise before
 comparing anything: random reaches **1022** distinct nodes per query,
-a supernode reaches **78 907** — **77× more**. (An earlier version of this file
-read the raw sums as "the slow case reaches fewer nodes"; it does not, and that
-mistake is worth keeping in mind every time a benchmark prints a total.)
+a supernode reaches **78 907** — **77× more**. Read raw, the sums say the
+opposite (7.9 M for the supernodes against 10.2 M for random), which is the
+mistake to keep in mind every time a benchmark prints a total.
 
 So the 101× decomposes: **77× more nodes reached**, and **1.31× worse cost per
 node reached** (4.81 ns against 6.28 ns). The second factor is the one worth

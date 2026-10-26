@@ -249,8 +249,8 @@ represented on a page.
   1909    if( gap+2+nByte>top ){
   // ... 1910-1911: asserts ...
   1912      rc = defragmentPage(pPage, MIN(4, pPage->nFree - (2+nByte)));
-  // ... 1913-1916: recheck top ...
-  1917    }
+  // ... 1913-1915: recheck top ...
+  1916    }
   // ... 1918-1924: comment on why the gap allocation is now safe ...
   1925    top -= nByte;
   1926    put2byte(&data[hdr+5], top);
@@ -335,20 +335,20 @@ five exact conditions:
 ```c
 // sqlite/sqlite src/btree.c — the balance_quick gate inside balance(), 9216-9222
   9216  #ifndef SQLITE_OMIT_QUICKBALANCE
-  9217        if( pPage->intKeyLeaf
-  9218         && pPage->nOverflow==1
-  9219         && pPage->aiOvfl[0]==pPage->nCell
-  9220         && pParent->pgno!=1
-  9221         && pParent->nCell==iIdx
-  9222        ){
+  9217          if( pPage->intKeyLeaf
+  9218           && pPage->nOverflow==1
+  9219           && pPage->aiOvfl[0]==pPage->nCell
+  9220           && pParent->pgno!=1
+  9221           && pParent->nCell==iIdx
+  9222          ){
 ```
 
 Read: a rowid-table leaf (:9217) with exactly one overflow cell (:9218) that
 belongs *after* every existing cell (:9219), on a non-root parent (:9220),
 and which is that parent's rightmost child (:9221). That is precisely "the
 next sequential rowid, appended". The rationale is stated where the function
-lives, and it is the argument the previous edition of this chapter attached to
-the wrong comment:
+lives, and it is an argument easily attached to the wrong comment (the
+25% renumbering, below):
 
 ```c
 // sqlite/sqlite src/btree.c — the balance_quick header comment, 8022-8037
@@ -427,8 +427,9 @@ The fill bias is a separate thing, twenty lines earlier, and it is explicitly
 So the left bias is an accident of the greedy first-fit packing loop
 (:8580-8634), and the loop at :8647-8688 exists to *correct* it for
 correctness, not for speed. Attributing "packs left so the right page has room
-for the next append" to the 25% comment fuses two unrelated pieces of code —
-the previous edition of this chapter did exactly that, and it was wrong.
+for the next append" to the 25% comment fuses two unrelated pieces of code: the
+append argument belongs to `balance_quick`'s header comment, the 25% to the
+renumbering sort, and the left bias to neither.
 
 **`balance_deeper` (btree.c:9081)** is the root split: the root's content moves
 into a fresh child and the tree grows *up* by one level. It is the only
@@ -439,7 +440,7 @@ Why it matters: the algorithm is in every textbook; the five-condition fast
 path, the bound `NB = 3`, and the *measured* 25% renumbering are what two
 decades of production look like.
 
-### Step 6 — pointer maps: the reverse index turso doesn't have
+### Step 6 — pointer maps: the reverse index the b-tree must keep current
 
 > **In:** the observation that a B-tree has only downward pointers.
 > **Out:** a permanent format tax, paid on every page allocation and every
@@ -487,8 +488,19 @@ page allocation, every split, and every overflow-chain change must also
 page into two and gives the balance code an extra failure mode.
 
 Why it matters: it is a clean example of paying a permanent format tax for one
-management operation — and of why turso has not implemented it yet. See
-[`reading-turso-btree-deep.md`](reading-turso-btree-deep.md).
+management operation, and the tax is in the b-tree layer, not the pager. turso
+(`tursodatabase/turso@a820079e8`) shows the split: its pager reads and writes
+ptrmap entries (`ptrmap_get`/`ptrmap_put`, `core/storage/pager.rs:2721` and
+`:2811`, behind the default `autovacuum` cargo feature) and, under
+`auto_vacuum = full`, reserves ptrmap pages as the file grows
+(`pager.rs:5812–5838`) and records a `RootPage` entry for each new b-tree root
+(`pager.rs:3001–3005`) — but that is the only `ptrmap_put` call in the crate.
+Its b-tree code (`core/storage/btree.rs`) never writes an entry on a split or an
+overflow-chain change, and incremental mode is refused outright ("Incremental
+auto-vacuum is not supported", `pager.rs:3015`), so the page relocation the
+map exists for is not there yet. See
+[`reading-turso-btree-deep.md`](reading-turso-btree-deep.md) for turso's
+freelist, which is what it does instead.
 
 ### Step 7 — the fork: one interior delete becomes two page mutations
 
@@ -761,8 +773,9 @@ Answer each before unfolding it.
   (btree.c:1087) and dirty the covering ptrmap page — turning one dirtied page
   into two, adding a second failure point to the balance code, and adding
   write traffic to the pager on the hottest paths. That is why it is
-  compile-time optional (`SQLITE_OMIT_AUTOVACUUM`, btree.c:1053) and why turso
-  has not implemented it.
+  compile-time optional (`SQLITE_OMIT_AUTOVACUUM`, btree.c:1053) — and why
+  turso, which has the ptrmap format in its pager, has not yet wired the
+  b-tree writes that keep it current.
 
   </details>
 

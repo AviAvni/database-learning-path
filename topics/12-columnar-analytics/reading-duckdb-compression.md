@@ -12,7 +12,7 @@ that shapes the whole menu, two encoders end to end, the string stack, and the z
 that filter pushdown physically lands on. Then it hands you file-and-line anchors for each
 piece.
 
-All anchors are `duckdb/duckdb@6c0c1a68`; check them with
+All anchors are `duckdb/duckdb@d54cbbe3df` (the v2.0.0 release); check them with
 `tools/pinned-source.py show duckdb/duckdb <path> -r A:B`.
 
 Read [reading-cstore-compression.md](reading-cstore-compression.md) first if you have not.
@@ -75,9 +75,9 @@ topic's thesis, and DuckDB is where you can watch it being decided per column.
 | **row group** — a horizontal slice of the table | **122,880** rows | `src/include/duckdb/storage/storage_info.hpp:26` — `#define DEFAULT_ROW_GROUP_SIZE 122880ULL` |
 | **column segment** — one column's data within a row group, encoded one way | ≤ a row group | the checkpoint unit; see Step 3 |
 | **vector** — the execution and analyze unit | **2,048** values | `src/include/duckdb/common/vector_size.hpp:16` — `#define DEFAULT_STANDARD_VECTOR_SIZE 2048U` |
-| **bitpacking group** — the *mode* unit inside a bit-packed segment | **2,048** values | `src/storage/compression/bitpacking.cpp:25` |
+| **bitpacking group** — the *mode* unit inside a bit-packed segment | **2,048** values | `src/storage/compression/bitpacking.cpp:28` |
 
-The relation is exact, and the codebase asserts it: `storage_info.hpp:394` refuses to compile
+The relation is exact, and the codebase asserts it: `storage_info.hpp:402` refuses to compile
 unless `DEFAULT_ROW_GROUP_SIZE % STANDARD_VECTOR_SIZE == 0`. So
 
 ```
@@ -95,9 +95,9 @@ bitpacking groups inside a bit-packed segment.
     └─ column "id"   -> segment encoded as BITPACKING
 ```
 
-Note the third line of `bitpacking.cpp:25`: the group size is
+Note the right-hand side of `bitpacking.cpp:28`: the group size is
 `STANDARD_VECTOR_SIZE > 512 ? STANDARD_VECTOR_SIZE : 2048`, so on a build with a smaller
-vector size the group is still 2,048 — the mode granularity is pinned independently of the
+vector size the group is still 2,048 — the mode granularity is fixed independently of the
 execution granularity.
 
 **Why it matters:** data shape drifts within a table — early rows sorted, late rows random;
@@ -111,7 +111,7 @@ per-group modes bound it further, to 2,048.
 > **Out:** the selection loop, and the four ways a candidate can lose.
 
 The contract is documented in the framework header itself,
-`src/include/duckdb/function/compression_function.hpp:130-138`:
+`src/include/duckdb/function/compression_function.hpp:131-139`:
 
 > "The analyze functions are used to determine whether or not to use this compression
 > method… 1. The `init_analyze` is called to initialize the analyze state of every candidate
@@ -121,59 +121,88 @@ The contract is documented in the framework header itself,
 > called, which should return a score for the compression method… The system then decides
 > which compression function to use based on the analyzed score."
 
-Three typedefs implement it — `compression_init_analyze_t` at `:139`,
-`compression_analyze_t` at `:140`, `compression_final_analyze_t` at `:141` — and the winner's
-`compression_compress_data_t` at `:148`.
+Three typedefs implement it — `compression_init_analyze_t` at `:140`,
+`compression_analyze_t` at `:141`, `compression_final_analyze_t` at `:142` — and the winner's
+`compression_init_compression_t` at `:147-148`, which takes the winning `AnalyzeState` as an
+argument, and `compression_compress_data_t` at `:149`.
 
 The loop that drives them is `ColumnDataCheckpointer::DetectBestCompressionMethod`,
-`src/storage/table/column_data_checkpointer.cpp:172-278`. The shape is not one pass per
+`src/storage/table/column_data_checkpointer.cpp:172-271`. The shape is not one pass per
 encoder; it is **one scan, feeding every candidate the same vector**:
 
 ```rust
 // ILLUSTRATION — Rust sketch of C++ control flow, not quoted. The real loop is
-// duckdb/duckdb@6c0c1a68 src/storage/table/column_data_checkpointer.cpp:172-278;
-// the single shared scan is at :200-217 and the score comparison at :245-256.
-fn detect_best(col: &Column, mut candidates: Vec<Encoder>) -> Encoder {
-    let mut states: Vec<Option<State>> = candidates.iter().map(|e| e.init_analyze()).collect();
+// duckdb/duckdb@d54cbbe3df src/storage/table/column_data_checkpointer.cpp:172-271;
+// the menu is narrowed at :178-190, the single shared scan is at :194-211 and the
+// score comparison at :238-253.
+fn detect_best(col: &Column, mut candidates: Vec<Option<Encoder>>, forced: Option<Kind>) -> Encoder {
+    if let Some(kind) = forced {                     // DDL or PRAGMA named a type (:178-190)
+        for c in candidates.iter_mut() {             // ForceCompression, :142-150
+            if !matches!(c, Some(e) if e.kind == kind || e.kind == Kind::Uncompressed) { *c = None; }
+        }
+    }
+    let mut states: Vec<Option<State>> =
+        candidates.iter().map(|c| c.as_ref().and_then(|e| e.init_analyze())).collect();
 
-    for vector in col.vectors() {                  // ONE pass over the data (:200)
+    for vector in col.vectors() {                    // ONE pass over the data (:194)
         for (enc, st) in candidates.iter().zip(states.iter_mut()) {
-            if let Some(s) = st {
-                if !enc.analyze(s, vector) { *st = None; }   // dropped for good (:211-214)
+            if let (Some(e), Some(s)) = (enc, st.as_mut()) {
+                if !e.analyze(s, vector) { *st = None; }       // dropped for good (:205-208)
             }
         }
     }
 
     let mut best = (usize::MAX, None);
     for (enc, st) in candidates.iter().zip(states) {
-        let Some(s) = st else { continue };
-        let score = enc.final_analyze(s);           // ESTIMATED bytes (:245)
-        if score == INVALID_INDEX { continue }      // self-disqualified (:248-250)
-        if score < best.0 { best = (score, Some(enc)); }     // strict < : ties go to the
-    }                                                        // earlier-registered function
-    best.1.expect("no suitable compression method")          // FatalException at :265-268
+        let (Some(e), Some(s)) = (enc, st) else { continue };
+        let score = e.final_analyze(&s);              // ESTIMATED bytes (:238)
+        if score == INVALID_INDEX { continue }        // self-disqualified (:241-243)
+        let is_forced = Some(e.kind) == forced;
+        if score < best.0 || is_forced {              // strict < : ties go to the
+            best = (score, Some((e, s)));             // earlier-registered function (:245)
+        }
+        if is_forced { break }                        // the named type wins outright (:251-253)
+    }
+    let (winner, state) = best.1.expect("no suitable compression method"); // FatalException, :258-261
+    winner.with_analyze_state(state)                  // the state travels on to compression (:268)
 }
 ```
 
 Four ways to lose, all in that loop:
 
 1. **Drop out mid-scan** — `analyze` returns `false` and the state is nulled for the rest of
-   the pass (`:211-214`), so a hopeless candidate costs nothing further. `BitpackingAnalyze`
-   at `bitpacking.cpp:318-334` does this when one group would not fit in a block, and again
-   whenever a value overflows the state.
+   the pass (`:205-208`), so a hopeless candidate costs nothing further. `BitpackingAnalyze`
+   at `bitpacking.cpp:412-429` does this when one group would not fit in a block
+   (`:418-419`), and again whenever a full group's `Flush` fails (`:424-425`).
 2. **Self-disqualify at the end** — `final_analyze` returns `DConstants::INVALID_INDEX`
-   (`:247-250`). `BitpackingFinalAnalyze` at `bitpacking.cpp:337-344` does exactly this when
-   its final `Flush` fails.
-3. **Lose on score** — `:252`, `score < best_score`, strictly. On a tie the **earlier**
+   (`:241-243`). `BitpackingFinalAnalyze` at `bitpacking.cpp:431-439` does exactly this when
+   its final `Flush` fails (`:434-436`).
+3. **Lose on score** — `:245`, `score < best_score`, strictly. On a tie the **earlier**
    entry in `compression_config.cpp:17-35` wins, which is why `CONSTANT` and `UNCOMPRESSED`
    head the list.
-4. **Never run at all** — `:196`, `skip_scan`. If the column's DDL names a compression type,
-   the analyze scan is skipped outright. That is the ClickHouse-style declaration escape
-   hatch, sitting inside the automatic system. `PRAGMA force_compression` (`:185-188`) is the
-   session-level version, and is how you run this topic's experiments.
+4. **Be struck from the menu** — if the column's DDL names a compression type
+   (`USING COMPRESSION`), `checkpoint_info.GetCompressionType()` (`:178`) is not `AUTO`, and
+   `ForceCompression` (`:117-152`) nulls every candidate except the named one and
+   `UNCOMPRESSED` (`:142-150`). The named type then wins whatever its score — the comparison
+   at `:245` is `score < best_score || forced_method_found`, and the loop stops at
+   `:251-253` — with `UNCOMPRESSED` kept only as the fallback for when the named type drops
+   out or disqualifies itself. That is the ClickHouse-style declaration escape hatch, sitting
+   inside the automatic system. `PRAGMA force_compression` (`:184-189`) is the session-level
+   version of the same call, and is how you run this topic's experiments.
+
+Notice what a declaration does *not* buy: the analyze scan at `:192-211` runs for every
+column, declared or not. Analyze is not only a contest — it builds the state the winner
+compresses with. The winner's `AnalyzeState` is moved into the result at `:268`, and
+`compression_init_compression_t` takes it as an argument (`compression_function.hpp:147-148`).
+ZSTD shows why that matters: its compression state sizes the whole layout from the analyze
+state's tuple, segment and vectors-per-segment counts (`zstd.cpp:239-241`), so it cannot start
+writing until a full pass has counted them. (DuckDB's
+[#24429](https://github.com/duckdb/duckdb/pull/24429) lists the other cases: validity changes
+must be scanned, and Dictionary must see the values before it can fall back to
+Uncompressed.) A declaration narrows the menu to one; it does not save a pass.
 
 The cost is honest and stated by the design: this is a **two-pass** ingest. DuckDB reads the
-whole column once to choose and once to compress. And if nothing qualifies, `:265-268`
+whole column once to choose and once to compress. And if nothing qualifies, `:258-261`
 throws — which is why `UNCOMPRESSED` is in the menu, as the candidate that always scores.
 
 **Why it matters:** it is the same discipline this repo's `verify.sh` enforces on itself —
@@ -189,7 +218,7 @@ alternative to the two other answers in this topic, which Step 4 prices.
 computes the real required space and then inflates it on the way out:
 
 ```cpp
-// duckdb/duckdb@6c0c1a68 src/storage/compression/dictionary_compression.cpp:92-97
+// duckdb/duckdb@d54cbbe3df src/storage/compression/dictionary_compression.cpp:92-97
    92  	auto width = BitpackingPrimitives::MinimumBitWidth(state.current_unique_count + 1);
    93  	auto req_space = DictionaryCompression::RequiredSpace(state.current_tuple_count, state.current_unique_count,
    94  	                                                      state.current_dict_size, width);
@@ -200,7 +229,7 @@ computes the real required space and then inflates it on the way out:
 
 with `MINIMUM_COMPRESSION_RATIO = 1.2F`
 (`src/include/duckdb/storage/compression/dictionary/common.hpp:20`). FSST does the same,
-`src/storage/compression/fsst.cpp:37` and `:202`. So both schemes report themselves **20%
+`src/storage/compression/fsst.cpp:38` and `:205`. So both schemes report themselves **20%
 larger than they are**, and must beat the alternatives by more than 20% to be chosen.
 
 Work it on this topic's shared column — 1,000,000 `INT64` values, 200 distinct, average run
@@ -225,12 +254,12 @@ encoders quietly do less:
 
 | Encoder | Sample | Fraction of a row group |
 | --- | --- | --- |
-| FSST — `fsst.cpp:38`, `ANALYSIS_SAMPLE_SIZE = 0.25` | 25% of the strings | 25% |
-| ALP — `src/include/duckdb/storage/compression/alp/alp_constants.hpp:19-23` | `RG_SAMPLES = 8` vectors × `SAMPLES_PER_VECTOR = 32` values | `8 × 32 / 122,880` = **0.208%** |
+| FSST — `fsst.cpp:39`, `ANALYSIS_SAMPLE_SIZE = 0.25`, applied at `:115` | each vector kept with probability 0.25 (every vector until the first non-NULL string) | ≈25% |
+| ALP — `src/include/duckdb/storage/compression/alp/alp_constants.hpp:29-32` | `RG_SAMPLES = 8` vectors × `SAMPLES_PER_VECTOR = 32` values | `8 × 32 / 122,880` = **0.208%** |
 | BtrBlocks, for comparison (SIGMOD 2023 §3.1) | 10 runs of 64 values per 64,000-value block | 1% |
 
 ALP's sampling is *five times sparser than BtrBlocks'*, in the system that is otherwise the
-poster child for exhaustive analysis. Its stride is spelled out at `:22-23`: "We calculate
+poster child for exhaustive analysis. Its stride is spelled out at `:31-32`: "We calculate
 how many equidistant vector we must jump within a rowgroup", `(122,880 / 8) / 2,048` =
 `15,360 / 2,048` = **7** vectors between samples.
 
@@ -246,12 +275,12 @@ to question 1 rather than the tidy version.
 > **Out:** the contract entry that decides which encodings are admissible at all.
 
 Every encoding must implement `compression_fetch_row_t`
-(`compression_function.hpp:171-173`), documented one line above as "Function prototype used
+(`compression_function.hpp:176-177`), documented one line above as "Function prototype used
 for reading a single value". Late-materialized fetches and index joins ask for single rows,
 not vectors — Step 4 of [reading-cstore-compression.md](reading-cstore-compression.md) is
 where that pattern comes from.
 
-The header states the consequence explicitly at `:174-176`, in the doc comment for
+The header states the consequence explicitly at `:178-180`, in the doc comment for
 `compression_skip_t`: "Function prototype used for skipping 'skip_count' values, **non-trivial
 if random-access is not supported for the compressed data.**"
 
@@ -261,9 +290,9 @@ string because its symbol table is static and stateless (see
 [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md)). A block compressor cannot: fetching
 one row means inflating the whole block, and its internal state is path-dependent.
 
-The framework has two more entries that matter here, both added since the original design:
-`compression_select_t` at `:164-166`, "reading a subset of the values of a vector indicated
-by a selection vector", and `compression_filter_t` at `:167-170`, "**applying a filter to a
+The framework has two more entries that matter here:
+`compression_select_t` at `:165-170`, "reading a subset of the values of a vector indicated
+by a selection vector", and `compression_filter_t` at `:171-174`, "**applying a filter to a
 vector while scanning that vector**". Those are filter pushdown reaching all the way into
 the encoding — topic 10's plan-level rewrite, landing on physical bytes. Step 6 shows what
 RLE does with it.
@@ -275,16 +304,16 @@ lookup afterwards.
 
 ### Step 6 — RLE end to end: Abadi 2006, shipped
 
-> **In:** `src/storage/compression/rle.cpp`, 638 lines.
+> **In:** `src/storage/compression/rle.cpp`, 756 lines.
 > **Out:** the whole framework contract in its simplest instance, plus two optimisations you
 > have already read the paper for.
 
 RLE is the smallest encoder that exercises every part of the contract. Read it first; every
 other encoder repeats its registration pattern.
 
-**Analyze** is a run counter. `RLEAnalyzeState` at `:86-91` wraps an `RLEState<T>`;
-`RLEAnalyze` at `:99-110` walks the vector calling `Update`, which increments `seen_count`
-on each new value. **Score**, `RLEFinalAnalyze` at `:113-116`, is one line:
+**Analyze** is a run counter. `RLEAnalyzeState` at `:102-108` wraps an `RLEState<T>`;
+`RLEAnalyze` at `:115-128` walks the vector calling `Update`, which increments `seen_count`
+on each new value. **Score**, `RLEFinalAnalyze` at `:130-134`, is one line (`:133`):
 
 ```
 return (sizeof(rle_count_t) + sizeof(T)) * rle_state.state.seen_count;
@@ -296,43 +325,53 @@ Note what it is *not*: C-Store's RLE record is a **triple** `(value, start_pos, 
 reconstructs positions by walking the counts, which is a third less space and a slower
 `fetch_row`.
 
-**Compress** writes two arrays into the segment — values from the header forward, counts from
-`rle_count_offset` on (`RLECompressState` at `:126`, the scan state's `data_pointer` and
-`index_pointer` at `:313-314`).
+**Compress** writes two arrays into the segment — values from the header forward, counts in
+a second array (`WriteValue` at `:181-188`, the two pointers at `:184-185`). When the segment
+is flushed, `FlushSegment` at `:208-225` slides the counts down to sit right after the last
+value and stores their offset, `rle_count_offset`, in the segment header (`:222`). The scan
+side reads the layout back in `ReadSegmentLayout` at `:343-356` and treats every run count as
+untrusted: `ValidateThrough` (`:317-329`) checks each count against the rows still
+uncovered before the scan uses it, so a corrupted count raises a `DataCorruptionException`
+instead of reading past the segment.
 
-**Registration**, `GetRLEFunction` at `:568-576`, is the pattern to grep for in every other
+**Registration**, `GetRLEFunction` at `:686-694`, is the pattern to grep for in every other
 encoder: one `CompressionFunction` constructor call bundling `RLEInitAnalyze`, `RLEAnalyze`,
 `RLEFinalAnalyze`, the three compress functions, `RLEInitScan`, `RLEScan`, `RLEScanPartial`,
-`RLEFetchRow`, `RLESkip`, and — at `:574-575` — `RLESelect` and `RLEFilter`. (`:578-584`
+`RLEFetchRow`, `RLESkip`, and — at `:692-693` — `RLESelect` and `RLEFilter`. (`:698-701`
 then disables `filter` for `BOOL`.)
 
 Now the two things worth the trip. Both are the 2006 paper, in C++:
 
-**`isOneValue()`, by another name.** `CanEmitConstantVector` at `:333-347` asks whether the
-current run covers an entire 2,048-value vector; if so `RLEScanConstant` at `:349-359` sets
+**`isOneValue()`, by another name.** `CanEmitConstantVector` at `:437-451` asks whether the
+current run covers an entire 2,048-value vector; if so `RLEScanConstant` at `:453-464` sets
 `VectorType::CONSTANT_VECTOR` and writes **one** value:
 
-```
-result.SetVectorType(VectorType::CONSTANT_VECTOR);
-result_data[0] = scan_state.data_pointer[scan_state.entry_pos];
-scan_state.position_in_entry += scan_count;
+```cpp
+// duckdb/duckdb@d54cbbe3df src/storage/compression/rle.cpp:456-460
+  456  	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+  457  	FlatVector::SetSize(result, count_t(scan_count));
+  458  	auto result_data = ConstantVector::GetData<T>(result);
+  459  	result_data[0] = run.value;
+  460  	scan_state.position_in_entry += scan_count;
 ```
 
+The line to focus on is 459: one store, and the vector reports `scan_count` rows (`:457`).
 2,048 rows produced, one value written. Abadi §5.2's first block property, shipped.
 
-**Predicate once per run.** `RLEFilter` at `:447-490` is the clearest statement of the whole
+**Predicate once per run.** `RLEFilter` at `:560-664` is the clearest statement of the whole
 thesis anywhere in this topic. Its own comments:
 
 > "we haven't applied the filter yet — **apply the filter to all RLE values at once**"
-> (`:456-457`)
-> "**execute the filter over all runs at once**" (`:463`)
-> "early-out, **no runs match the filter so the filter can never pass**" (`:478`)
+> (`:566-567`)
+> "**execute the filter over all runs at once**" (`:576`)
+> "early-out, **no runs match the filter so the filter can never pass**" (`:591`)
 
-It builds a `matching_runs` bool array over the run *values* (`:460-475`), caches it on the
-scan state (`:310`), and can abandon the entire segment at `:477-481` without decoding a
-single row. A predicate over a segment with 125,000 runs and 1,000,000 rows is evaluated
-125,000 times, not 1,000,000. That is Abadi §6.2's `num_tuples / avg_run_len`, nineteen years
-later, in a shipping engine.
+It validates every run count once (`ValidateAllRuns`, `:568`), wraps the run *values* in a
+vector and filters that (`:577-582`), records the survivors in a `matching_runs` bool array
+(`:572-588`) cached on the scan state (`:413-414`), and can abandon the entire segment at
+`:590-594` without decoding a single row. A predicate over a segment with 125,000 runs and
+1,000,000 rows is evaluated 125,000 times, not 1,000,000. That is Abadi §6.2's
+`num_tuples / avg_run_len`, nineteen years later, in a shipping engine.
 
 **Why it matters:** if you read only one file in DuckDB's compression directory, read this
 one. It is where the paper stops being history.
@@ -356,18 +395,22 @@ offsets, 64 bits down to 10, a 6.4× cut. **Delta encoding** stores each value's
 from its predecessor; `DELTA_FOR` delta-encodes first and then applies FOR to the deltas,
 which is what catches timestamps and sequences.
 
-The mode is chosen in `BitpackingState::Flush`, `bitpacking.cpp:204-271`, and it is a
+The mode is chosen in `BitpackingState::Flush`, `bitpacking.cpp:298-366`, and it is a
 **priority cascade**, not a race:
 
 | Order | Line | Test | Mode | What it stores |
 | --- | --- | --- | --- | --- |
-| 1 | `:209` | `all_invalid \|\| maximum == minimum` | `CONSTANT` | one value + a metadata word |
-| 2 | `:219` | `maximum_delta == minimum_delta` | `CONSTANT_DELTA` | base + delta + a metadata word |
-| 3 | `:230-237` | `!prefer_for` | `DELTA_FOR` | FOR value + width + delta offset + packed deltas |
-| 4 | `:257` | `can_do_for` | `FOR` | packed offsets + FOR value + width |
-| — | `:270` | none of the above | `return false` | the encoder disqualifies itself |
+| 1 | `:304` | `all_invalid \|\| maximum == minimum` | `CONSTANT` | one value + a metadata word |
+| 2 | `:314` | `maximum_delta == minimum_delta` | `CONSTANT_DELTA` | base + delta + a metadata word |
+| 3 | `:325-332` | `!prefer_for` | `DELTA_FOR` | FOR value + width + delta offset + packed deltas |
+| 4 | `:352` | `can_do_for` | `FOR` | packed offsets + FOR value + width |
+| — | `:365` | none of the above | `return false` | the encoder disqualifies itself |
 
-The one comparison that decides 3 versus 4 is `:230-235`:
+The table shows each test's data condition. In the source every test also checks `mode`, the
+value `PRAGMA force_bitpacking_mode` (`ForceBitpackingModeSetting`, read at `:407`) sets, so
+a forced mode can veto the branches it does not name.
+
+The one comparison that decides 3 versus 4 is `:325-330`:
 
 ```
 delta_required_bitwidth   = MinimumBitWidth(min_max_delta_diff)
@@ -376,19 +419,19 @@ prefer_for = can_do_for && delta_required_bitwidth >= regular_required_bitwidth
 ```
 
 Ties go to plain `FOR` — note the `>=`. That is the right default: `DELTA_FOR` stores an
-extra `sizeof(T)` delta offset (`:249`) and its decode needs a prefix sum (`:664`, `:824`,
-`:899`), so at equal width it is strictly worse.
+extra `sizeof(T)` delta offset (`:343-344`) and its decode needs a prefix sum (`DeltaDecode`
+at `:652-678`, run by the scan at `:1113-1117`), so at equal width it is strictly worse.
 
 And the detail worth the whole step: **analyze and compress are the same function.**
-`BitpackingFinalAnalyze` at `:337-344` calls `Flush<EmptyBitpackingWriter>()` and returns
-`total_size`. `EmptyBitpackingWriter` at `:47-63` is a struct whose `WriteConstant`,
+`BitpackingFinalAnalyze` at `:431-439` calls `Flush<EmptyBitpackingWriter>()` (`:434`) and
+returns `total_size` (`:438`). `EmptyBitpackingWriter` at `:144-160` is a struct whose `WriteConstant`,
 `WriteConstantDelta`, `WriteDeltaFor` and `WriteFor` all have empty bodies. So the estimate is
 not a model of the encoder — it is the encoder, with the stores compiled out. The score cannot
 drift from reality, because there is only one code path.
 
 Each group's chosen mode is packed into a single 32-bit word with its offset — `EncodeMeta`
-at `:34-39` puts the mode in the high 8 bits, the offset in the low 24 (`0x00FFFFFF`), and
-`DecodeMeta` at `:40-45` pulls them back out. Four bytes of metadata per 2,048 values.
+at `:37-42` puts the mode in the high 8 bits, the offset in the low 24 (`0x00FFFFFF`), and
+`DecodeMeta` at `:44-49` pulls them back out. Four bytes of metadata per 2,048 values.
 
 **Why it matters:** this is the score-then-commit discipline of Step 3 recursed one level
 down, at 2,048-value granularity, and implemented so that the two passes cannot disagree.
@@ -411,7 +454,7 @@ Now the fact worth checking the source for. `DictionaryCompressionStorage::Strin
 at `:70-78` opens with:
 
 ```cpp
-// duckdb/duckdb@6c0c1a68 src/storage/compression/dictionary_compression.cpp:70-77
+// duckdb/duckdb@d54cbbe3df src/storage/compression/dictionary_compression.cpp:70-77
    70  unique_ptr<AnalyzeState> DictionaryCompressionStorage::StringInitAnalyze(ColumnData &col_data, PhysicalType type) {
    71  	auto &storage_manager = col_data.GetStorageManager();
    72  	if (StorageManager::TargetAtLeastVersion(StorageVersion::V1_3_0, storage_manager.GetStorageVersion())) {
@@ -423,27 +466,33 @@ at `:70-78` opens with:
 ```
 
 Plain `DICTIONARY` is **retired** for storage version 1.3.0 and later. It returns a null
-analyze state, which the loop at `column_data_checkpointer.cpp:237-239` skips. It is still in
-the menu, and still the encoder to read for the mechanism — but on a database you create
-today it never wins, because `DICT_FSST` (`compression_config.cpp:33-34`) supersedes it: a
-dictionary whose entries are themselves FSST-compressed, in `src/storage/compression/dict_fsst/`.
+analyze state, which the selection loop skips (`column_data_checkpointer.cpp:202-204` in the
+scan, `:230-232` at scoring). It is still in the menu, and still the encoder to read for the
+mechanism — but on a database you create today it never wins: a new database file is written
+at storage version 2.0.0 unless you ask for an older one (`DEFAULT_STORAGE_VERSION_INFO`,
+`src/include/duckdb/storage/storage_info.hpp:193`), so the version test at `:72` always
+fires, and `DICT_FSST` (`compression_config.cpp:33-34`) takes its place: a dictionary whose
+entries are themselves FSST-compressed, in `src/storage/compression/dict_fsst/`. Attach a
+database with an older `STORAGE_VERSION` and plain `DICTIONARY` competes again.
 
 **FSST** — a fast static symbol table mapping up to 255 substrings of 1–8 bytes to one-byte
 codes — catches the case dictionary encoding cannot: strings that are *distinct but similar*,
 like URLs and email addresses, where there is nothing to deduplicate but plenty to
 substitute. Its DuckDB integration is in `fsst.cpp`; the paper and the algorithm get their own
-chapter, [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md). Three numbers to carry over:
-`MINIMUM_COMPRESSION_RATIO = 1.2` at `:37`, `ANALYSIS_SAMPLE_SIZE = 0.25` at `:38`, and
-`duckdb_fsst_decompress` at `:470`.
+chapter, [reading-btrblocks-fsst.md](reading-btrblocks-fsst.md). Three anchors to carry over:
+`MINIMUM_COMPRESSION_RATIO = 1.2` at `:38`, `ANALYSIS_SAMPLE_SIZE = 0.25` at `:39`, and the
+single-row decode, `StringFetchRow` at `:793-828`, which hands one compressed string to
+`FSSTPrimitives::DecompressValue` (`:826`; the `duckdb_fsst_decompress` call itself is at
+`src/include/duckdb/common/fsst.hpp:50`).
 
 **Zstd** (`src/storage/compression/zstd.cpp`, registered at `compression_config.cpp:29`) is
 the heavyweight fallback for whatever nothing else catches — accepted because sometimes ratio
 genuinely beats access, and constrained by the `fetch_row` cost of Step 5.
 
 **Why it matters:** the string stack is where the ratio-versus-access trade is sharpest,
-because strings are where the ratios are largest. It is also a live part of the tree —
-`DICT_FSST` replacing `DICTIONARY` is a change you can date from the source, and the kind of
-thing a guide written from documentation would miss.
+because strings are where the ratios are largest. It is also where the storage version
+matters: `DICT_FSST` replacing `DICTIONARY` is decided by a version test in the source, the
+kind of thing a guide written from documentation would miss.
 
 ### Step 9 — Zone maps: five answers, not three
 
@@ -462,8 +511,9 @@ entirely — no read, no decode:
  seg 2 [ts: 2026-01-05 .. 2026-02-11]  -> skip
 ```
 
-`ColumnData::CheckZonemap` at `src/storage/table/column_data.cpp:423-462` does it, delegating
-to `expr_filter.CheckStatistics(...)` at `:442-443`. The return type is
+`ColumnData::CheckZonemap` at `src/storage/table/column_data.cpp:482-515` does it, delegating
+to `CheckSegmentStatistics` (`:498`), which calls `expr_filter.CheckStatistics(...)` on the
+segment's statistics at `:522`. The return type is
 `FilterPropagateResult`, and it has **five** values, not three
 (`src/include/duckdb/common/enums/filter_propagate_result.hpp:15-21`):
 
@@ -482,11 +532,11 @@ which is pure win on a highly selective-in-reverse predicate where skipping is i
 
 Three implementation details that change how you reason about this:
 
-- **`state.segment_checked` (`:424`, set at `:433`).** The zone map is consulted once per
-  segment per scan — except for **dynamic filters**, detected at `:431-432`, which are
+- **`state.segment_checked` (`:485`, set at `:494`).** The zone map is consulted once per
+  segment per scan — except for **dynamic filters**, detected at `:491-493`, which are
   re-checked every time "as it can always change". Those are the filters a join build side
   tightens mid-query; a static `segment_checked` would freeze them at their loosest.
-- **Updates invalidate pruning (`:448-461`).** If the column has an update segment, the
+- **Updates invalidate pruning (`:502-514`).** If the column has an update segment, the
   filter is evaluated against the update statistics too, and unless both agree the result is
   downgraded to `NO_PRUNING_POSSIBLE`. Pruning is only sound over data the statistics
   actually cover.
@@ -515,7 +565,7 @@ optimizer controls.
 Baseline: `1,000,000 × 8 B` = **8,000,000 B**. Average run 8 ⇒ `1,000,000 / 8` =
 **125,000 runs**.
 
-**RLE**, scored by `rle.cpp:113-116` as `(sizeof(rle_count_t) + sizeof(T)) × seen_count`.
+**RLE**, scored by `rle.cpp:130-134` as `(sizeof(rle_count_t) + sizeof(T)) × seen_count`.
 `rle_count_t` is 4 bytes, `T` is 8:
 
 ```
@@ -524,7 +574,7 @@ Baseline: `1,000,000 × 8 B` = **8,000,000 B**. Average run 8 ⇒ `1,000,000 / 8
 
 **Bit-packing**, `FOR` mode. The width is `ceil(log2(900))` = **10 bits**, because
 2⁹ = 512 < 900 ≤ 1024 = 2¹⁰. Groups: `1,000,000 / 2,048` = 488.28 ⇒ **489 groups**. Per group,
-`bitpacking.cpp:263-265` charges the packed payload plus `sizeof(T)` for the frame of
+`bitpacking.cpp:358-360` charges the packed payload plus `sizeof(T)` for the frame of
 reference plus an aligned width field:
 
 ```
@@ -579,7 +629,7 @@ the exercise lanes in `experiments/`.
 Read the framework header first — the lifecycle contract is documented in it — then the
 selection loop, then the encoders, then zone maps.
 
-| File (`duckdb/duckdb@6c0c1a68`) | Role (steps) |
+| File (`duckdb/duckdb@d54cbbe3df`) | Role (steps) |
 | --- | --- |
 | `src/function/compression_config.cpp` | the menu and its order (1, 3) |
 | `src/include/duckdb/storage/storage_info.hpp`, `src/include/duckdb/common/vector_size.hpp` | the units (2) |
@@ -592,35 +642,43 @@ selection loop, then the encoders, then zone maps.
 
 - **Step 1** — `compression_config.cpp:17-35`, the `internal_compression_methods` array. The
   order is the tie-break order.
-- **Step 2** — `storage_info.hpp:26` (`DEFAULT_ROW_GROUP_SIZE 122880ULL`), `:394` (the
-  divisibility assert); `vector_size.hpp:16` (`2048U`); `bitpacking.cpp:25`
+- **Step 2** — `storage_info.hpp:26` (`DEFAULT_ROW_GROUP_SIZE 122880ULL`), `:402` (the
+  divisibility assert); `vector_size.hpp:16` (`2048U`); `bitpacking.cpp:28`
   (`BITPACKING_METADATA_GROUP_SIZE`).
-- **Step 3** — `compression_function.hpp:130-138` documents the lifecycle; `:139`
-  `init_analyze`, `:140` `analyze`, `:141` `final_analyze`, `:148` `compress_data`. The loop
-  is `column_data_checkpointer.cpp:172-278`: the shared scan at `:200-217`, drop-out at
-  `:211-214`, `skip_scan` at `:196`, `PRAGMA force_compression` at `:185-188`, the score
-  comparison at `:245-256`, the "no suitable method" throw at `:265-268`.
-- **Step 4** — `dictionary/common.hpp:20` and `fsst.cpp:37` (`MINIMUM_COMPRESSION_RATIO
-  = 1.2F`); `dictionary_compression.cpp:97` and `fsst.cpp:202` apply it. Sampling:
-  `fsst.cpp:38` (`ANALYSIS_SAMPLE_SIZE = 0.25`), `alp_constants.hpp:19-23` (8 vectors × 32
-  values, jumping 7 vectors).
-- **Step 5** — `compression_function.hpp:171-173` `fetch_row`; `:174-176` `skip`, whose doc
-  states the random-access constraint; `:164-166` `select`; `:167-170` `filter`.
-- **Step 6** — `rle.cpp`: `RLEAnalyzeState :86-91`, `RLEAnalyze :99-110`, `RLEFinalAnalyze
-  :113-116` (the score), `RLECompressState :126`, scan-state pointers `:313-314`,
-  `CanEmitConstantVector :333-347`, `RLEScanConstant :349-359`, `RLEFilter :447-490` (the
-  per-run predicate and the whole-segment early-out at `:477-481`), registration
-  `GetRLEFunction :568-576`.
-- **Step 7** — `bitpacking.hpp:15` the enum; `bitpacking.cpp` `EncodeMeta :34-39` /
-  `DecodeMeta :40-45`, `EmptyBitpackingWriter :47-63`, `Flush :204-271` (CONSTANT `:209`,
-  CONSTANT_DELTA `:219`, the width comparison `:230-235`, DELTA_FOR `:237`, FOR `:257`,
-  give-up `:270`), `BitpackingAnalyze :318-334`, `BitpackingFinalAnalyze :337-344`,
-  `ForceBitpackingModeSetting :312`.
+- **Step 3** — `compression_function.hpp:131-139` documents the lifecycle; `:140`
+  `init_analyze`, `:141` `analyze`, `:142` `final_analyze`, `:147-148` `init_compression`
+  (takes the winner's analyze state), `:149` `compress_data`. The loop is
+  `column_data_checkpointer.cpp:172-271`: the declared type at `:178-183`, `PRAGMA
+  force_compression` at `:184-189`, `ForceCompression` at `:117-152` (the menu narrowed at
+  `:142-150`), the shared scan at `:194-211`, drop-out at `:205-208`, the score comparison at
+  `:238-253` (the forced method wins at `:245` and ends the loop at `:251-253`), the "no
+  suitable method" throw at `:258-261`, the chosen state handed on at `:268`;
+  `zstd.cpp:239-241` for a compressor that sizes its layout from that state.
+- **Step 4** — `dictionary/common.hpp:20` and `fsst.cpp:38` (`MINIMUM_COMPRESSION_RATIO
+  = 1.2`); `dictionary_compression.cpp:97` and `fsst.cpp:205` apply it. Sampling:
+  `fsst.cpp:39` (`ANALYSIS_SAMPLE_SIZE = 0.25`, applied per vector at `:115`),
+  `alp_constants.hpp:29-32` (8 vectors × 32 values, jumping 7 vectors).
+- **Step 5** — `compression_function.hpp:175-177` `fetch_row`; `:178-180` `skip`, whose doc
+  states the random-access constraint; `:165-170` `select`; `:171-174` `filter`.
+- **Step 6** — `rle.cpp`: `RLEAnalyzeState :102-108`, `RLEAnalyze :115-128`,
+  `RLEFinalAnalyze :130-134` (the score), `RLECompressState :143-238` (`WriteValue :181-188`,
+  `FlushSegment :208-225`), `ReadSegmentLayout :343-356` and run validation `:317-329`,
+  `CanEmitConstantVector :437-451`, `RLEScanConstant :453-464`, `RLEFilter :560-664` (the
+  per-run predicate and the whole-segment early-out at `:590-594`), registration
+  `GetRLEFunction :686-694`.
+- **Step 7** — `bitpacking.hpp:15` the enum; `bitpacking.cpp` `EncodeMeta :37-42` /
+  `DecodeMeta :44-49`, `EmptyBitpackingWriter :144-160`, `Flush :298-366` (CONSTANT `:304`,
+  CONSTANT_DELTA `:314`, the width comparison `:325-330`, DELTA_FOR `:332`, FOR `:352`,
+  give-up `:365`), `BitpackingAnalyze :412-429`, `BitpackingFinalAnalyze :431-439`,
+  `ForceBitpackingModeSetting :407`, `DeltaDecode :652-678`, `BitpackingFetchRow
+  :1144-1198`.
 - **Step 8** — `dictionary_compression.cpp:14-44` the layout, `:48-65` the storage struct,
-  `:70-78` the V1.3.0 retirement, `:85-98` the score; `fsst.cpp:37,:38,:470`; `dict_fsst/`;
-  `zstd.cpp`.
-- **Step 9** — `column_data.cpp:423-462` `CheckZonemap` (`segment_checked` `:424`/`:433`,
-  dynamic filters `:431-432`, the update downgrade `:448-461`);
+  `:70-78` the V1.3.0 retirement, `:85-98` the score; `storage_info.hpp:193` the default
+  storage version; `fsst.cpp:38`, `:39`, `StringFetchRow :793-828`; `common/fsst.hpp:50`;
+  `dict_fsst/`; `zstd.cpp`.
+- **Step 9** — `column_data.cpp:482-515` `CheckZonemap` (`segment_checked` `:485`/`:494`,
+  dynamic filters `:491-493`, the update downgrade `:502-514`), `CheckSegmentStatistics
+  :517-523`;
   `filter_propagate_result.hpp:15-21` the five results; `string_stats.hpp:34-35` and
   `string_stats.cpp:391-396` for prefix truncation.
 
@@ -633,7 +691,8 @@ selection loop, then the encoders, then zone maps.
    0.208% — Step 4). What distinguishes the encoders that sample from the ones that measure
    everything, and does that rule explain BtrBlocks' choice too?
 2. **`fetch_row` on `DELTA_FOR`.** Decoding row 1907 of a 2,048-value group requires what,
-   exactly? (Follow `bitpacking.cpp:824` and `:899`.) Why is the cost acceptable for OLAP —
+   exactly? (Follow `BitpackingFetchRow` at `bitpacking.cpp:1144-1198` into the `Skip` it
+   calls, `:990-1015`.) Why is the cost acceptable for OLAP —
    think about *when* `fetch_row` runs under late materialization, i.e. after the filter, on
    survivors only. Then say what would change if the same segment served an OLTP point-lookup
    workload.
@@ -649,7 +708,7 @@ selection loop, then the encoders, then zone maps.
    adjacency structure, where ids are dense-ish and clustered by creation time? Work the
    width for a plausible id range with Step 10's arithmetic, and say which mode `Flush`'s
    cascade would actually reach and why — including whether `DELTA_FOR` or `FOR` wins the
-   `:235` comparison for your numbers.
+   `:330` comparison for your numbers.
 
 ---
 
@@ -680,20 +739,24 @@ Answer each before unfolding it.
 
 `init_analyze` per candidate → `analyze` per vector, on every candidate, from **one** shared
 scan → `final_analyze` returns an estimated byte count → the smallest score wins → the winner
-runs `compress_data` over the same data again. Documented at
-`compression_function.hpp:130-138`, implemented at `column_data_checkpointer.cpp:172-278`.
+receives its own analyze state in `init_compression` and runs `compress_data` over the same
+data again. Documented at `compression_function.hpp:131-139`, implemented at
+`column_data_checkpointer.cpp:172-271`.
 
 Four ways to lose:
 1. **Drop out mid-scan** — `analyze` returns false; the state is nulled and the function
-   removed for the remainder of the pass (`:211-214`).
-2. **Self-disqualify** — `final_analyze` returns `DConstants::INVALID_INDEX` (`:247-250`), as
-   `BitpackingFinalAnalyze` does at `bitpacking.cpp:341` when `Flush` fails.
-3. **Lose on score** — `:252` compares with strict `<`, so ties go to the earlier entry in
+   removed for the remainder of the pass (`:205-208`).
+2. **Self-disqualify** — `final_analyze` returns `DConstants::INVALID_INDEX` (`:241-243`), as
+   `BitpackingFinalAnalyze` does at `bitpacking.cpp:435-436` when `Flush` fails.
+3. **Lose on score** — `:245` compares with strict `<`, so ties go to the earlier entry in
    `compression_config.cpp:17-35`.
-4. **Never be considered** — `:196`'s `skip_scan`, when the DDL or `PRAGMA force_compression`
-   names a type outright.
+4. **Be struck from the menu** — when the DDL (`USING COMPRESSION`) or `PRAGMA
+   force_compression` names a type, `ForceCompression` (`:117-152`) removes every other
+   candidate except `UNCOMPRESSED`, and the named type wins regardless of score (`:245`,
+   `:251-253`). The analyze scan still runs, because the winner compresses from its analyze
+   state (`:268`; ZSTD sizes its layout from it at `zstd.cpp:239-241`).
 
-And the safety net: `:265-268` throws `FatalException` if nothing qualifies, which is why
+And the safety net: `:258-261` throws `FatalException` if nothing qualifies, which is why
 `UNCOMPRESSED` is permanently in the menu.
 
 </details>
@@ -703,9 +766,9 @@ And the safety net: `:265-268` throws `FatalException` if nothing qualifies, whi
 
 <details><summary>Answer</summary>
 
-**Dictionary** (`dictionary_compression.cpp:97`) and **FSST** (`fsst.cpp:202`) both multiply
+**Dictionary** (`dictionary_compression.cpp:97`) and **FSST** (`fsst.cpp:205`) both multiply
 their honest estimate by `MINIMUM_COMPRESSION_RATIO = 1.2`
-(`dictionary/common.hpp:20`, `fsst.cpp:37`) before returning it. They report themselves 20%
+(`dictionary/common.hpp:20`, `fsst.cpp:38`) before returning it. They report themselves 20%
 bigger than they are, so they must beat the alternatives by more than 20% to win.
 
 Right, because a byte count is not the whole cost. Both add an indirection to every decoded
@@ -713,8 +776,8 @@ value, and both make `fetch_row` more expensive than a bit-packed segment's arit
 scheme scored purely on size would be picked at margins where it loses on time.
 
 A different kind of not-really-bytes: **ALP** samples 256 of a row group's 122,880 values
-(`alp_constants.hpp:19-23` — 8 vectors × 32 values, 0.208%) and **FSST** analyses 25%
-(`fsst.cpp:38`). Their scores are extrapolations, not measurements. The rule is that encoders
+(`alp_constants.hpp:29-32` — 8 vectors × 32 values, 0.208%) and **FSST** analyses a random
+≈25% of the vectors (`fsst.cpp:39`, drawn per vector at `:115`). Their scores are extrapolations, not measurements. The rule is that encoders
 whose *training* is expensive sample; encoders whose analyze pass is just counting (RLE,
 bit-packing, dictionary) measure everything.
 
@@ -725,11 +788,11 @@ bit-packing, dictionary) measure everything.
 
 <details><summary>Answer</summary>
 
-`rle.cpp:447-490`. On the first filtered scan of a segment it evaluates the predicate over
+`rle.cpp:560-664`. On the first filtered scan of a segment it evaluates the predicate over
 the **run values array**, once — its own comments say "apply the filter to all RLE values at
-once" (`:456-457`) and "execute the filter over all runs at once" (`:463`) — records the
-result in a `matching_runs` bool array cached on the scan state (`:310`, `:460-475`), and
-then, at `:477-481`, returns `sel_count = 0` immediately if no run matched, abandoning the
+once" (`:567`) and "execute the filter over all runs at once" (`:576`) — records the
+result in a `matching_runs` bool array cached on the scan state (`:413`, `:572-588`), and
+then, at `:590-594`, returns `sel_count = 0` immediately if no run matched, abandoning the
 whole segment without decoding a row.
 
 Complexity: `O(runs)`, not `O(rows)`. On this topic's shared column — 1,000,000 values,
@@ -738,8 +801,8 @@ grows linearly with average run length.
 
 That is exactly Abadi §6.2's accounting, which puts the aggregation cost at
 `num_tuples / avg_run_len` for RLE against `num_tuples` uncompressed. Its sibling is
-`CanEmitConstantVector` at `:333-347`: when a run spans a full 2,048-value vector,
-`RLEScanConstant` (`:349-359`) emits a `CONSTANT_VECTOR` holding one value — Abadi's
+`CanEmitConstantVector` at `:437-451`: when a run spans a full 2,048-value vector,
+`RLEScanConstant` (`:453-464`) emits a `CONSTANT_VECTOR` holding one value — Abadi's
 `isOneValue()` block property, by another name.
 
 </details>
@@ -749,7 +812,7 @@ That is exactly Abadi §6.2's accounting, which puts the aggregation cost at
 
 <details><summary>Answer</summary>
 
-`bitpacking.cpp:230-235`:
+`bitpacking.cpp:325-330`:
 
 ```
 delta_required_bitwidth   = MinimumBitWidth(min_max_delta_diff)
@@ -757,18 +820,19 @@ regular_required_bitwidth = MinimumBitWidth(min_max_diff)
 prefer_for = can_do_for && delta_required_bitwidth >= regular_required_bitwidth
 ```
 
-If `prefer_for` is false, `Flush` takes the `DELTA_FOR` branch at `:237`; otherwise it falls
-through to `FOR` at `:257`. `CONSTANT` (`:209`) and `CONSTANT_DELTA` (`:219`) are cheap
+If `prefer_for` is false, `Flush` takes the `DELTA_FOR` branch at `:332`; otherwise it falls
+through to `FOR` at `:352`. `CONSTANT` (`:304`) and `CONSTANT_DELTA` (`:314`) are cheap
 special cases tested before either.
 
 Ties go to plain **`FOR`**, because of the `>=`. That is correct: `DELTA_FOR` stores an extra
-`sizeof(T)` delta offset (`:249`) and its decode needs a prefix sum over the group
-(`:664`, `:824`, `:899`), so at equal bit width it is strictly more expensive in both space
+`sizeof(T)` delta offset (`:343-344`) and its decode needs a prefix sum over the group
+(`DeltaDecode`, `:652-678`; a single-row fetch even decodes every skipped value before it,
+`:990-1015`), so at equal bit width it is strictly more expensive in both space
 and time.
 
 The structural point is that `Flush` is a **priority cascade**, not a race — it takes the
-first mode that applies rather than scoring all four. And `BitpackingFinalAnalyze:337-344`
-runs this very function with `EmptyBitpackingWriter` (`:47-63`, all method bodies empty), so
+first mode that applies rather than scoring all four. And `BitpackingFinalAnalyze:431-439`
+runs this very function with `EmptyBitpackingWriter` (`:144-160`, all method bodies empty), so
 the analyze estimate and the compressor are literally the same code.
 
 </details>
@@ -789,10 +853,10 @@ accepted; the scan still has to consult the validity mask, but it can skip evalu
 predicate itself. Without these two states that whole case collapses to
 `NO_PRUNING_POSSIBLE` and the saving is lost.
 
-Two related things `column_data.cpp:423-462` reveals: the check is memoised per segment via
-`state.segment_checked` (`:424`, `:433`) **except** for dynamic filters (`:431-432`), which
+Two related things `column_data.cpp:482-515` reveals: the check is memoised per segment via
+`state.segment_checked` (`:485`, `:494`) **except** for dynamic filters (`:491-493`), which
 can tighten mid-query and are re-checked; and if the column has updates, the result is
-downgraded to `NO_PRUNING_POSSIBLE` unless the update statistics agree (`:448-461`). And
+downgraded to `NO_PRUNING_POSSIBLE` unless the update statistics agree (`:502-514`). And
 string zone maps are only the first 12 bytes (`string_stats.hpp:34`, truncation marked at
 `string_stats.cpp:391-396`), so a URL column's min/max usually compares `https://www.` and
 prunes nothing.
@@ -803,7 +867,7 @@ prunes nothing.
 
 ## References
 
-**Code** — all anchors at `duckdb/duckdb@6c0c1a68`; verify with
+**Code** — all anchors at `duckdb/duckdb@d54cbbe3df` (v2.0.0); verify with
 `tools/pinned-source.py show duckdb/duckdb <path> -r A:B`.
 
 - [duckdb/duckdb](https://github.com/duckdb/duckdb). Read in this order:

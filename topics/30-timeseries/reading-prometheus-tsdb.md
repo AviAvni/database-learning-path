@@ -234,9 +234,8 @@ prometheus `tsdb/` at `f282b5c`:
 | `head_wal.go:80` | `loadWAL` — crash recovery replay | 3, 6 | — |
 | `head.go:1485` | `truncateWAL` — checkpoint behind a cut block | 6 | — |
 
-Note the earlier draft's `wal.go` does not exist: the WAL implementation is
-`tsdb/wlog/wlog.go`, replayed by `head_wal.go:80` and truncated by
-`head.go:1485`.
+There is no `tsdb/wal.go`: the WAL implementation is `tsdb/wlog/wlog.go`,
+replayed by `head_wal.go:80` and truncated by `head.go:1485`.
 
 ## Questions to answer while reading
 

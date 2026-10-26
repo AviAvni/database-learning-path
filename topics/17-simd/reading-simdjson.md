@@ -8,8 +8,8 @@ ladder, the backslash-parity subtraction, the over-write/under-advance
 flatten, and NEON's emulated compress. Every trick transfers to a DB
 engine: RESP framing, CSV ingest, LIKE prefilters.
 
-Every anchor below is simdjson at the pinned revision
-`simdjson/simdjson@c783809` (`resources/codebases.md`), quoted with the
+Every anchor below is simdjson at
+`simdjson/simdjson@c783809` (the commit recorded in `resources/codebases.md`), quoted with the
 line numbers the code occupies in that revision. Your machine is
 aarch64, so the files that actually run are `include/simdjson/arm64/`
 and `src/arm64.cpp` — and several of them do **not** work the way the
@@ -689,7 +689,7 @@ Answer each before unfolding it.
   measures at "at least one branch miss for each word" (§3.1.4).
 
   The paper's Fig. 6 writes **8** at a time and calls it a heuristic.
-  The pinned code writes **4** (`STEP`, line 108) up to
+  The code writes **4** (`STEP`, line 108) up to
   `STEP_UNTIL = 24` (line 110), then a scalar tail. It also reverses
   the mask once (line 103) and consumes it with leading-zeroes, because
   ARM has no fast trailing-zero instruction (comment, lines 31-43).
