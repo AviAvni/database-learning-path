@@ -225,6 +225,14 @@ its `and` is at `:119`. Two honest divergences from the paper's kernels:
   `CardinalityCounter` visitor (`:259-264`) through `vector::and` /
   `scalar::and` and keeps only the tally.
 
+Redis's build of CRoaring makes the same portability trade more
+bluntly. Redis vendors CRoaring 4.7.2 under `deps/croaring`
+(`include/roaring/roaring_version.h:5`) for its native Roaring bitmaps
+(Step 6), and compiles it with `-DROARING_DISABLE_X64=1
+-DDISABLENEON=1` (`deps/croaring/Makefile:11-12`) — so Redis runs
+CRoaring's *scalar* kernels, not the `PCMPESTRM`/AVX paths the paper
+describes.
+
 Cardinality-only ops (`intersection_len`, `is_disjoint`) are
 zero-allocation on purpose — they are the hot path in query *planning*
 (estimate selectivity before executing, topic 9), where allocating a
@@ -247,9 +255,9 @@ a recurring systems pattern:
 
 The redis numbers are checkable too: HLL's sparse encoding promotes to
 dense when a register value exceeds `HLL_SPARSE_VAL_MAX_VALUE = 32`
-(`redis src/hyperloglog.c:389`; `if (count > HLL_SPARSE_VAL_MAX_VALUE)
-goto promote;` at `:683`) or when the sparse blob would exceed
-`server.hll_sparse_max_bytes` (default 3000 ≈ 3 KB; `:863`). Fill in the
+(`redis src/hyperloglog.c:390`; `if (count > HLL_SPARSE_VAL_MAX_VALUE)
+goto promote;` at `:701`) or when the sparse blob would exceed
+`server.hll_sparse_max_bytes` (default 3000 ≈ 3 KB; `:881`). Fill in the
 *demotion* column yourself: which of the three ever converts back down,
 and why is demotion rarer than promotion everywhere? (Roaring's own
 `Bitmap → Array` demotion at `container.rs:227-228` is the exception that
@@ -257,25 +265,22 @@ makes the rule interesting.) Topic 20's GraphBLAS sparse↔bitmap switch is
 the same crossover at per-matrix granularity — the same density
 arithmetic, measured twice.
 
-> **Upstream since the pin.** Redis now ships Roaring itself. redis
-> [#15331](https://github.com/redis/redis/pull/15331) (commit `f3b9b68ec`,
-> 2026-10-14; on unstable and the `8.12` branch, in no GA release as of
-> 2026-10-26) vendors CRoaring 4.7.2 under `deps/croaring`
-> (`roaring_version.h` defines `ROARING_VERSION "4.7.2"`) and adds a native
-> bitmap type, `OBJECT ENCODING` `bitmap-roaring`, which `SETBIT`, `GETBIT`,
-> `BITCOUNT`, `BITPOS`, `BITOP` and `BITFIELD` operate on alongside plain
-> string bitmaps. It is opt-in: new bitmaps are created as Roaring only when
-> `bitmap-default-roaring` is set (default `no`). Note for Step 5: the
-> vendored build passes `-DROARING_DISABLE_X64=1 -DDISABLENEON=1`
-> (`deps/croaring/Makefile:12`), so Redis runs CRoaring's *scalar* kernels,
-> not the `PCMPESTRM`/AVX paths the paper describes. The steps above describe
-> roaring-rs at its pinned commit, which is what the line numbers point at;
-> the table's redis column is still about HLL and still holds. Roaring is
-> now also a Redis encoding in its own right, but note what drives the switch
-> there: per the commit, an existing string bitmap converts in place on its
-> next bit-write when the config flag is on — a policy flag, not a density
-> threshold like the ones in this table (inside the Roaring value, CRoaring's
-> own containers still make the density choice of Steps 1-3).
+Redis also carries Roaring itself, as a native encoding of its bitmap
+type. `OBJECT ENCODING` reports
+`bitmap-roaring` for one (`src/object.c:1337`), and `SETBIT`, `GETBIT`,
+`BITCOUNT`, `BITPOS`, `BITOP` and `BITFIELD` operate on it alongside
+plain string bitmaps (redis
+[#15331](https://github.com/redis/redis/pull/15331), on the `unstable`
+and `8.12` branches, in no GA release). Note what drives the switch
+there: not a density threshold like the ones in this table, but a
+configuration flag. `bitmap-default-roaring` defaults to off
+(`src/config.c:3556`), and public commands create a Roaring bitmap, or
+convert a string bitmap they write to, only while it is on — and only
+on a primary whose write reaches both the AOF and the replicas
+(`bitroarDefaultEnabled`, `src/bitops.c:861-887`), so the
+representation stays a function of replicated state. Inside the Roaring
+value, CRoaring's own containers still make the density choice of
+Steps 1-3.
 
 ## Where each step lives in the code
 
@@ -450,7 +455,7 @@ Answer each before unfolding it.
   For that last thread: roaring demotes `Bitmap → Array` when a container
   drops to `len() <= ARRAY_LIMIT` (`container.rs:227-228`); redis HLL
   never demotes dense → sparse (promotion at rank > 32 or bytes > max,
-  `src/hyperloglog.c:389`, `:683`, `:863` is one-way); postgres GIN posting
+  `src/hyperloglog.c:390`, `:701`, `:881` is one-way); postgres GIN posting
   trees do not collapse back to inline lists. Demotion is rarer than
   promotion because promotion is forced by a size/precision bound while
   demotion is only an optional space reclaim after deletes — which most of
@@ -471,3 +476,8 @@ Answer each before unfolding it.
   `83caaca` — the Rust port (**not** CRoaring); `roaring/src/bitmap/`
   holds the containers, `store/` the three encodings and the pairwise
   kernels
+- [redis](https://github.com/redis/redis) at `e87dda2a4` (`unstable`) —
+  `src/hyperloglog.c` for Step 6's HLL column; `deps/croaring/` (the
+  vendored CRoaring 4.7.2 and its scalar-only build flags), and
+  `src/bitops.c:861-887`, `src/config.c:3556`, `src/object.c:1337` for
+  the native `bitmap-roaring` encoding and the flag that selects it

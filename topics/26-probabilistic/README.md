@@ -6,25 +6,22 @@ a bounded, one-sided way and win orders of magnitude in space/time. Redis
 PFCOUNT, RocksDB's bloom-per-SST, roaring in Lucene/ClickHouse — this is
 production math, not exotica.
 
-## Our motivation numbers first (Apple M3 Pro, 10M sorted u64, 2026-07-10)
+## Our motivation numbers first (Apple M3 Pro, 10M sorted u64, 2026-10-26)
 
-> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 26, which
-> measures the same three lanes at **246 ns** (binary search), **299 ns**
-> (BTreeMap) and **28 ns** (HashSet). Where the two disagree, FINDINGS is
-> canonical; cite one run or the other by name and never average them.
-> Re-run `./verify.sh 26` before treating a nanosecond figure below as
-> current — the ratios, which are what the topic is about, hold in both.
+The nanoseconds are one run's (the `notes.md` baseline) and move by tens
+of percent between runs; the ratios, which are what the topic is about,
+hold in every run. `./verify.sh 26` gives your machine's.
 
 | point-miss lookup | ns | memory |
 |---|---|---|
-| binary search over sorted vec | 167 | 76 MB (the data) |
-| BTreeMap | 218 | ~200 MB |
-| HashSet | 24 | **224 MB** |
+| binary search over sorted vec | 186 | 76 MB (the data) |
+| BTreeMap | 240 | ~200 MB |
+| HashSet | 20 | **224 MB** |
 | blocked bloom (stub target) | ~15-25 | **12 MB** at 10 bits/key |
 
 The whole topic in one row: the bloom filter should answer "definitely
 absent" at HashSet speed with 5% of HashSet's memory — by being wrong
-(one-sided!) 1% of the time. And binary search's 167 ns is ~23 dependent
+(one-sided!) 1% of the time. And binary search's 186 ns is ~23 dependent
 cache misses; the learned index bets most of that tree walk is
 predictable.
 
@@ -95,7 +92,7 @@ HARD error bound ε — lookup = walk 2-3 segment levels, binary-search a
 fits in cache where a B-tree's top levels don't even. ALEX answers the
 update question with gapped arrays + model-based insertion (alex_nodes.h;
 exponential search from the predicted slot). The honest question our bench
-asks: does PGM's 167→~100 ns win survive keys that aren't uniform, and
+asks: does PGM's 186→~100 ns win survive keys that aren't uniform, and
 does ALEX survive adversarial inserts? (Predict in notes.md first.)
 
 ## Geo indexes: 2D keys through 1D indexes
@@ -106,10 +103,10 @@ geohash stored as a zset score**. Bit-interleave lat/lon
 (`interleave64`, geohash.c:52 — the Morton/Z-order trick with magic
 masks), and prefix-similar codes = spatially-near points, so a bounding
 box becomes a handful of zset RANGE queries
-(`scoresOfGeoHashBox`, geo.c:338: score range = hashcode << shift to
+(`scoresOfGeoHashBox`, geo.c:337: score range = hashcode << shift to
 hashcode+1 << shift). GEOSEARCH = pick a cell size covering the radius
 (`geohashEstimateStepsByRadius`, geohash_helper.c:64), scan the cell +
-its 8 neighbors (`membersOfAllNeighbors`, geo.c:375), then exact
+its 8 neighbors (`membersOfAllNeighbors`, geo.c:374), then exact
 haversine post-filter — a candidate-generation + verification pattern,
 exactly like a bloom filter's "maybe" answer.
 

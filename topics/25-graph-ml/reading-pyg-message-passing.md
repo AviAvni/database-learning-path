@@ -94,7 +94,7 @@ the source row — the gather/message/scatter triple collapses into a
 single **SpMM** (sparse-times-dense matrix multiply: the adjacency in
 CSR against the n × d feature matrix), streaming messages into their
 destinations with zero temporaries. PyG's hook for this is
-`message_and_aggregate`. The dispatch is two-part in the pinned version
+`message_and_aggregate`. The dispatch is two-part
 (message_passing.py): a subclass sets `self.fuse` true only if it *overrides*
 `message_and_aggregate` (checked once in `__init__` at :154 via
 `inspector.implements`), and even then `propagate` fuses only when the

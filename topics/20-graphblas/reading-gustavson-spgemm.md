@@ -13,8 +13,8 @@ behind the ACM paywall and could not be fetched for this repo, so
 **nothing below is attributed to it directly**. The complexity
 statement comes from Buluç & Gilbert 2012 §3, which restates it;
 the workspace and masking behaviour come from Davis's TOMS '19
-§4.2.1; the shipped code comes from SuiteSparse:GraphBLAS at
-`1fd5475`. Where those three disagree, the disagreement is the
+§4.2.1; the shipped code comes from SuiteSparse:GraphBLAS v10.5.2,
+at `7701390417`. Where those three disagree, the disagreement is the
 interesting part and is called out.
 
 ## The problem in one sentence
@@ -112,7 +112,7 @@ A(i,k) × (row k of B). SuiteSparse says so outright:
 Keep both names, and always say which orientation you mean, because
 the *storage* has to match the loop: the column-wise form wants
 CSC for A and B, the row-wise form wants CSR. SuiteSparse's default
-is CSR (`GB_Global.c:203` sets `.is_csc = false`), so its saxpy3
+is CSR (`GB_Global.c:205` sets `.is_csc = false`), so its saxpy3
 comment's "vectors of B" are rows.
 
 The complexity, from Buluç & Gilbert §3:
@@ -232,13 +232,14 @@ The modern library's rule is different in every respect — the heap
 method is gone, replaced by a hash, and the threshold is a number:
 
 ```c
-// GB_AxB_saxpy3_slice_balanced.c — the shipped rule, 83-95 (elided)
-    82          // hash_size = 2 * (smallest power of 2 >= flmax)
-    83          hash_size = ((uint64_t) 2) << (GB_FLOOR_LOG2 (flmax) + 1) ;
+// GB_AxB_saxpy3_slice_balanced.c — the shipped rule, in
+// GB_hash_table_nitems, 82-94 (elided)
+    82          // hash_nitems = 2 * (smallest power of 2 >= flmax)
+    83          hash_nitems = ((uint64_t) 2) << (GB_FLOOR_LOG2 (flmax) + 1) ;
     ...
     92              // default: auto selection:
-    93              // use Gustavson's method if hash_size is too big
-    94              use_Gustavson = (hash_size >= cvlen/12) ;
+    93              // use Gustavson's method if hash_nitems is too big
+    94              use_Gustavson = (hash_nitems >= cvlen/12) ;
 ```
 
 Note the direction: *bigger* hash table means *use Gustavson*. A
@@ -338,8 +339,8 @@ away.
 
 In the inner-product formulation driven *by the mask*, masked-out
 cells cost nothing at all, because the mask is the loop bound. The
-proof is allocation: `GB_AxB_dot3.c:126` computes `mnz = GB_nnz(M)`
-and `:171` sets `cnz = mnz`.
+proof is allocation: `GB_AxB_dot3.c:131` computes `mnz = GB_nnz(M)`
+and `:176` sets `cnz = mnz`.
 
 Davis's triangle-counting example, §4.2.1, is the canonical case:
 
@@ -619,7 +620,7 @@ Answer each before unfolding it.
   |A| + |B|, Gustavson's method is not used, and the heap-based
   method is used instead." The modern code replaced the heap with a
   hash and the prose rule with a number:
-  `use_Gustavson = (hash_size >= cvlen/12)`
+  `use_Gustavson = (hash_nitems >= cvlen/12)`
   (`GB_AxB_saxpy3_slice_balanced.c:94`).
 
   Measured here (`notes.md:22-26`), the HashMap reference runs
@@ -664,8 +665,8 @@ Answer each before unfolding it.
   column is empty.
 
   In the dot formulation the mask is the loop bound, so masked-out
-  cells cost literally nothing: `GB_AxB_dot3.c:126` takes
-  `mnz = GB_nnz(M)` and `:171` sets `cnz = mnz`, sizing C to the
+  cells cost literally nothing: `GB_AxB_dot3.c:131` takes
+  `mnz = GB_nnz(M)` and `:176` sets `cnz = mnz`, sizing C to the
   mask exactly.
 
   Davis's own example is triangle counting: C⟨L⟩ = L² where "Not
@@ -759,11 +760,11 @@ Answer each before unfolding it.
 **Code**
 
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475` — `Source/mxm/GB_AxB_saxpy3.c:20` (the CSR/CSC
+  v10.5.2, at `7701390417` — `Source/mxm/GB_AxB_saxpy3.c:20` (the CSR/CSC
   duality), `:62-70` (workspace),
   `Source/mxm/GB_AxB_saxpy3_slice_balanced.c:56-99` (the shipped
   accumulator choice), `Source/mxm/GB_AxB_saxpy3_flopcount.c:44-69`
-  (the symbolic phase), `Source/mxm/GB_AxB_dot3.c:126`, `:171`
+  (the symbolic phase), `Source/mxm/GB_AxB_dot3.c:131`, `:176`
   (C sized to the mask), `Source/include/GB_defaults.h:20`
   (`hyper_switch` = 1/16). Walked in
   [reading-suitesparse-internals.md](reading-suitesparse-internals.md).

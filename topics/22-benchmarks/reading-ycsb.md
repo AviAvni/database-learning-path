@@ -877,14 +877,15 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   Self-check — the predictions belong in `notes.md`, written before the run.
-  Anchor them to the measured baseline rather than to intuition. The canonical
-  headline is FINDINGS.md row 22 (measured 2026-07-28): **YCSB-E's p999 is
-  12.9 µs against read-only's 4.0 µs**, a ratio of 3.2×. The `notes.md`
-  baseline records an earlier run (M3 Pro, 2026-07-10) with uniform keys at
-  A 2.88, B 4.15, C 3.72, D 4.40, E 1.11, F 2.85 Mops/s and p999 of 2,041 ns
-  (E) against 958 ns (C) — a ratio of 2.1×. The absolute numbers are
-  machine- and run-dependent; **the ratio is the invariant**, so predict
-  ratios.
+  Anchor them to the measured baseline rather than to intuition. The
+  `notes.md` baseline (M3 Pro, 2026-07-10) has uniform keys at A 2.88,
+  B 4.15, C 3.72, D 4.40, E 1.11, F 2.85 Mops/s and p999 of 2,041 ns (E)
+  against 958 ns (C) — a ratio of 2.1×. FINDINGS.md row 22 records another
+  run of the same lane: **YCSB-E's p999 at 12.9 µs against read-only's
+  4.0 µs**, a ratio of 3.2×. The absolute numbers are machine- and
+  run-dependent and the tail moves most; what survives every run is the
+  ordering — E's tail is the worst — so predict ratios and orderings, not
+  nanoseconds.
 
   A model for E-vs-C: a read is one descent of a `BTreeMap` holding 10⁶ keys,
   and a 100-record scan is that descent plus a leaf walk. With Rust's node
@@ -948,10 +949,10 @@ Pinned revision: pingcap/go-ycsb@f030f99 (regenerate the pin table
 with `python3 tools/pin-table.py`).
 
 **Measurements**
-- FINDINGS.md row 22 — the canonical headline: "YCSB-E's p999 is
+- FINDINGS.md row 22 — the headline: "YCSB-E's p999 is
   **12.9 µs** against read-only's **4.0 µs**". Reproduce with
   `./verify.sh 22`.
-- `notes.md` — an earlier baseline run (M3 Pro): uniform-key
+- `notes.md` — the baseline run (M3 Pro, 2026-07-10): uniform-key
   throughputs A 2.88, B 4.15, C 3.72, D 4.40, E 1.11, F 2.85 Mops/s.
   Use ratios, not absolutes, when comparing across runs or machines.
 

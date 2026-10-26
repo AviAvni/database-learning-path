@@ -67,12 +67,12 @@ Surprises / dead ends:
 
 ## Questions from the reading guides
 
-Each guide now ends with its own `## Questions (answer in notes.md)`
-list — six per guide, and they changed when the guides were rewritten
-against the depth rules. Answer them against the guide you just read
-rather than against a copy that can drift out of sync; several of the
-old entries here encoded claims the rewrite corrected (Z3 does *not* use
-Nelson–Oppen, and Lean's runtime is Beans, not Perceus).
+Each guide ends with its own `## Questions (answer in notes.md)`
+list — six per guide. Answer them against the guide you just read
+rather than against a copy kept here, which could drift out of sync.
+Two claims commonly repeated about this material are false and worth
+checking yourself against: Z3 does *not* use Nelson–Oppen, and Lean's
+runtime is Beans, not Perceus.
 
 - [reading-aws-cacm15.md](reading-aws-cacm15.md) — answers:
 - [reading-egg-popl21.md](reading-egg-popl21.md) — answers:

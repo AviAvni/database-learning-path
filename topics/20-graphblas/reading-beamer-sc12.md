@@ -475,9 +475,10 @@ Fig. 7 and note where the shapes differ:
    288                  bool shrinking = nq < last_nq ;
    289                  if (shrinking && (nq <= n_over_beta2))
    290                  {
-   291                      do_push = true ;
-   292                  }
-   293              }
+   291                      // switch from pull to push
+   292                      do_push = true ;
+   293                  }
+   294              }
 ```
 
 Four divergences from Fig. 7, each verifiable in the block above:

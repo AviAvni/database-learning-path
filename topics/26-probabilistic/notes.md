@@ -18,13 +18,9 @@ learned index: [stub — implement pgm::LearnedIndex]
 ```
 
 The counts are seeded and exact (every miss lane finds 0, the hit lane finds
-all 1000000; the HashSet is 224 MB, as first recorded); the timings are this
-run's. Recorded 2026-07-10: 167 / 218 / 24 / 169 ns; this run: 186 / 240 /
-20 / 177 ns — within ~20% on every lane.
-
-> [FINDINGS.md](../../FINDINGS.md) row 26 quotes a third run (**246 / 299 /
-> 28 ns** for the first three lanes). FINDINGS is canonical where they
-> disagree; cite one run by name and never average them.
+all 1000000; the HashSet is 224 MB); the timings are this run's, and they
+move by tens of percent between runs on the same machine — quote one run
+and say which (`./verify.sh 26` gives your machine's).
 
 | lane | ns/lookup | note |
 |---|---|---|

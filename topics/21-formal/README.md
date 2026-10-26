@@ -146,6 +146,25 @@ worklist "is in reality inherited from the legacy SMT solver. It is
 reconstruction from egg." Databases meet Z3 in query equivalence
 checking (Cosette, topic 16) and symbolic execution of UDFs.
 
+A general solver also leaves performance on the table, and isolation
+checking shows how much a domain encoding recovers. **Fast Verification
+of Strong Database Isolation** (VeriStrong — Zhiheng Cai, Si Liu,
+Hengfeng Wei, Yuxing Chen, Anqun Pan; PVLDB 19(4), 2025, VLDB 2026;
+[paper](https://www.vldb.org/pvldb/vol19/p563-wei.pdf) ·
+[extended version](https://arxiv.org/abs/2511.14067) ·
+[code](https://github.com/CzxingcHen/VeriStrong)) starts from the
+reduction of serializability checking to "pick a version order that keeps
+the dependency graph acyclic", which the baseline hands to MonoSAT (§4).
+VeriStrong, built on MiniSat, adds two database-specific changes: it
+pre-encodes the 2-transaction cycles that dominate conflicts in every
+benchmark it measured (§5.1, §6.1), and it picks branch polarity from a
+pseudo-topological order derived from known session and read-from edges
+instead of blindly (§6.2) — the "phase caching" of the SAT core above,
+replaced by a domain heuristic. With 16k transactions it reports up to a
+4.4x speedup even over GPU-accelerated Cobra (§7.2.2, Fig. 11). Topic 8's
+README covers what it checks; here, read it as an SMT encoding to compare
+with [`reading-z3-tacas08.md`](reading-z3-tacas08.md).
+
 ## 5. Lean 4 — proofs, and a runtime worth reading
 
 Proofs are unbounded (no MaxLog=3), but cost weeks not days. Lean's
@@ -167,27 +186,6 @@ proptest (topic 16).
 - [reading-z3-tacas08.md](reading-z3-tacas08.md) — Z3: SAT plus theories, with an e-graph at the core
 - [reading-tlaplus-raft.md](reading-tlaplus-raft.md) — A spec is a state machine: TLA+ through raft.tla
 - [reading-lean-perceus.md](reading-lean-perceus.md) — Perceus: reference counting precise enough to reuse memory
-
-## Newer work (2025–2026)
-
-- **Fast Verification of Strong Database Isolation** (VeriStrong) — Zhiheng
-  Cai, Si Liu, Hengfeng Wei, Yuxing Chen, Anqun Pan. PVLDB 19(4), 2025
-  (VLDB 2026). [paper](https://www.vldb.org/pvldb/vol19/p563-wei.pdf) ·
-  [extended version](https://arxiv.org/abs/2511.14067) ·
-  [code](https://github.com/CzxingcHen/VeriStrong)
-
-  A worked case of §4's point that a general solver leaves performance on the
-  table. Serializability checking reduces to "pick a version order that keeps
-  the dependency graph acyclic", which the baseline hands to MonoSAT (§4).
-  VeriStrong, built on MiniSat, adds two database-specific changes: it
-  pre-encodes the 2-transaction cycles that dominate conflicts in every
-  benchmark it measured (§5.1, §6.1), and it picks branch polarity from a
-  pseudo-topological order derived from known session and read-from edges
-  instead of blindly (§6.2) — Z3's "phase caching" from §4, replaced by a
-  domain heuristic. With 16k transactions it reports up to a 4.4x speedup even
-  over GPU-accelerated Cobra (§7.2.2, Fig. 11). Topic 8's README covers what it
-  checks; here, read it as an SMT encoding to compare with
-  [`reading-z3-tacas08.md`](reading-z3-tacas08.md).
 
 ## Experiments
 

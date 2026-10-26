@@ -2,11 +2,11 @@
 
 ## Baseline (provided code, Apple M3 Pro, measured 2026-07-10)
 
-> These figures predate the 2026-07-28 re-run recorded in
-> [FINDINGS.md](../../FINDINGS.md) row 22 (Q1 5.2–5.7 GB/s, Q6
-> 9.0–14.4 GB/s, YCSB-E p999 12.9 µs against read-only's 4.0 µs). Same
-> machine, later run; where the two disagree, FINDINGS is canonical.
-> Re-run `./verify.sh 22` before treating any cell below as current.
+The generators are seeded, so row counts and selectivities reproduce
+exactly; the timings are this run's and move between runs on the same
+machine (FINDINGS.md row 22 records the spread: Q1 5.2–5.7 GB/s, Q6
+9.0–14.4 GB/s). Quote one run and say which — `./verify.sh 22` gives
+your machine's.
 
 ### TPC-H choke points (bench_suite, dbgen-lite)
 
@@ -127,8 +127,8 @@ Surprises / dead ends:
 - [ ] regression tracking across milestones (M0 BASELINES.md is the
       floor)
 - [ ] three-way shootout falkordb-scratch / FalkorDB 6 (Rust engine,
-      formerly falkordb-rs-next-gen) / FalkorDB 4.x (C engine) with the
-      sins checklist applied
+      `main`) / FalkorDB 4.x (C engine, `master`) with the sins
+      checklist applied
 
 ## Done when
 

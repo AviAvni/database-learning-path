@@ -10,14 +10,14 @@ and the numbers worth retaining.
 
 **Read the version numbers before you read anything else**, because
 this chapter's single biggest hazard is quoting the 2019 paper about
-a 2025 library:
+a 2026 library:
 
 | source | describes | status here |
 |---|---|---|
 | TOMS '19, "Algorithm 1000" | version **2.3.3**, **single-threaded**, **two** sparsity structures | quoted from the author's accepted manuscript, titled "Algorithm 9xx" |
 | Davis, CSC '20, "Parallel GraphBLAS with OpenMP" | version **3.0.1**, the first parallel release | the citable source for every parallelism claim |
 | TOMS '23, "Algorithm 1037" | version 7.x: JIT, iso, 32/64-bit indices | **could not be downloaded**; no claim below is attributed to it |
-| the pinned source | **version 10.3.1** (`Include/GraphBLAS.h:290-292`), **four** sparsity structures × 2 orientations | where every v2-era claim below is verified instead |
+| the source read here | **version 10.5.2** (`Include/GraphBLAS.h:290-292`, dated Oct 20, 2026 at `:289`), **four** sparsity structures × 2 orientations | where every v2-era claim below is verified instead |
 
 ## The problem in one sentence
 
@@ -114,42 +114,41 @@ says, in full:
 > these two formats** (hyper CSR and hyper CSC)."
 
 So the paper's "four formats" are *two* sparsity structures times
-two orientations. Bitmap and full do not exist in it. The pinned
+two orientations. Bitmap and full do not exist in it. The current
 source counts differently again:
 
 ```c
-// GB_Matrix_content.h — how the source counts formats, 52 and 76
-    52  // The matrix can be held in one of 8 formats, each one consisting of a set of
-    53  // vectors.  The vector "names" are in the range 0 to A->vdim-1.
+// GB_Matrix_content.h — how the source counts formats, 55 and 79
+    55  // The matrix can be held in one of 8 formats, each one consisting of a set of
     ...
-    76  // The 8 formats:  (hypersparse, sparse, bitmap, full) x (CSR or CSC)
+    79  // The 8 formats:  (hypersparse, sparse, bitmap, full) x (CSR or CSC)
 ```
 
 Four **sparsity structures** × two **orientations** = eight
 formats. Say which you mean. And note the consequence TOMS '19 §4.2
 draws from its own count — "the four matrices for C⟨M⟩ = AB give
 rise to **256 variants** of the sparse matrix-matrix multiply" —
-which at the pin's eight formats would be 8⁴ = 4,096. That
+which at the source's eight formats would be 8⁴ = 4,096. That
 combinatorial explosion is the reason the JIT of Step 6 exists.
 
 **Second: the density thresholds.** The bitmap rung is not "~4-8%".
 The struct's own comment states the rule:
 
 ```c
-// GB_Matrix_content.h — the bitmap rule, in the struct's comment, 450-457
-   450  //          A->vdim can have at most anz_dense = (A->vlen)*(A->vdim) entries.
-   451  //          If A is sparse/hypersparse with anz > A->bitmap_switch * anz_dense,
-   452  //          then it switches to bitmap.  If A is bitmap and anz =
-   453  //          (A->bitmap_switch / 2) * anz_dense, it switches to sparse.  In
-   454  //          between those two regions, the sparsity structure is unchanged.
+// GB_Matrix_content.h — the bitmap rule, in the struct's comment, 453-460
+   453  //          A->vdim can have at most anz_dense = (A->vlen)*(A->vdim) entries.
+   454  //          If A is sparse/hypersparse with anz > A->bitmap_switch * anz_dense,
+   455  //          then it switches to bitmap.  If A is bitmap and anz =
+   456  //          (A->bitmap_switch / 2) * anz_dense, it switches to sparse.  In
+   457  //          between those two regions, the sparsity structure is unchanged.
    ...
-   456  float hyper_switch ;    // controls conversion hyper to/from sparse
-   457  float bitmap_switch ;   // controls conversion sparse to/from bitmap
+   459  float hyper_switch ;    // controls conversion hyper to/from sparse
+   460  float bitmap_switch ;   // controls conversion sparse to/from bitmap
 ```
 
 and `bitmap_switch` defaults from a table indexed by the matrix's
-*minimum dimension*, not by the operation: `GB_Global.c:181-189`
-runs 0.04 → 0.40, and `GB_Global.c:486-497` selects **0.40** for
+*minimum dimension*, not by the operation: `GB_Global.c:183-191`
+runs 0.04 → 0.40, and `GB_Global.c:499-510` selects **0.40** for
 any dimension above 64. A graph adjacency matrix never becomes
 bitmap; the arithmetic is in
 [reading-suitesparse-internals.md](reading-suitesparse-internals.md)
@@ -230,7 +229,7 @@ The paper's §3.1.9 lists exactly these four as one bundle:
 > controlled by a **descriptor** object."
 
 You can read one off the header. `GrB_DESC_RSC`
-(`Include/GraphBLAS.h:666`) is `GrB_REPLACE + GrB_STRUCTURE +
+(`Include/GraphBLAS.h:672`) is `GrB_REPLACE + GrB_STRUCTURE +
 GrB_COMP` — replace C, use only the mask's pattern and ignore its
 values, and complement it. That single constant is what LAGraph's
 BFS passes to mean "write only where I have not been yet", and
@@ -253,16 +252,16 @@ means the same. SuiteSparse's answer is to *not do it yet*. The
 source defines both precisely:
 
 ```c
-// GB_Matrix_content.h — the zombie, 367-373 and 391
-   367  // A "zombie" is the opposite of a pending tuple.  It is an entry A(i,j) that
-   368  // has been marked for deletion, but has not been deleted yet because it is
-   369  // more efficient to delete all zombies all at once, rather than one (or a few)
-   370  // at a time.  An entry A(i,j) is marked as a zombie by 'zombifying' its index
-   371  // via GB_ZOMBIE (i).  A zombie index is negative, and the actual index can be
-   372  // obtained by GB_UNZOMBIE (i).  GB_ZOMBIE (i) is a function that is its own
-   373  // inverse: GB_ZOMBIE (GB_ZOMBIE (x))=x for all x.
+// GB_Matrix_content.h — the zombie, 370-376 and 394
+   370  // A "zombie" is the opposite of a pending tuple.  It is an entry A(i,j) that
+   371  // has been marked for deletion, but has not been deleted yet because it is
+   372  // more efficient to delete all zombies all at once, rather than one (or a few)
+   373  // at a time.  An entry A(i,j) is marked as a zombie by 'zombifying' its index
+   374  // via GB_ZOMBIE (i).  A zombie index is negative, and the actual index can be
+   375  // obtained by GB_UNZOMBIE (i).  GB_ZOMBIE (i) is a function that is its own
+   376  // inverse: GB_ZOMBIE (GB_ZOMBIE (x))=x for all x.
    ...
-   391  uint64_t nzombies ;     // number of zombies marked for deletion
+   394  uint64_t nzombies ;     // number of zombies marked for deletion
 ```
 
 TOMS '19 §4.1 gives the arithmetic the modern macro hides: "its row
@@ -274,7 +273,7 @@ zombies" — the index is negated but the *ordering* is preserved
 under the transform, so the sorted-array invariant survives.
 
 The source adds a second reason the paper does not stress
-(`:375-383`): "a zombie may be restored as a regular entry by a
+(`:378-386`): "a zombie may be restored as a regular entry by a
 subsequent update… Had the zombie not been there, the update would
 have to be placed in the pending tuple list." Delete-then-reinsert
 is O(1) in place, and never lengthens the pending list.
@@ -291,7 +290,7 @@ The whole mechanism, distilled:
 
 ```rust
 // ILLUSTRATION — not SuiteSparse source. The structural claims are
-// GB_Matrix_content.h:361 (the Pending list), :367-373 and :391 (zombies,
+// GB_Matrix_content.h:364 (the Pending list), :370-376 and :394 (zombies,
 // GB_ZOMBIE, nzombies) and TOMS '19 §3.1.8 (the O(e log e) bound).
 fn set_element(a: &mut Matrix, i: u64, j: u64, v: f64) {
     a.pending.push((i, j, v));       // O(1): append, don't restructure CSR
@@ -351,39 +350,41 @@ The GraphBLAS spec allows every operation to return before doing
 work; the deferred state is reconciled at **`GrB_wait`**
 boundaries — or forced implicitly by any operation that needs to
 *read* the matrix. The source says so for zombies specifically
-(`GB_Matrix_content.h:386-389`): "methods and operations in
+(`GB_Matrix_content.h:389-392`): "methods and operations in
 GraphBLAS that cannot tolerate zombies in their input matrices can
 check the condition (A->nzombies > 0), and then delete all of them
 if they appear, via GB_wait."
 
-Assembling steps 2-4 against the pinned struct, the opaque handle
-looks like this — every line is a real field:
+Assembling steps 2-4 against the struct, the opaque handle looks
+like this — every line is a real field:
 
 ```
  GrB_Matrix = opaque header  (GB_Matrix_content.h)
-   ├─ p, h, i, x, b            :223-228  the five arrays; h only if hypersparse,
+   ├─ p, h, i, x, b            :226-231  the five arrays; h only if hypersparse,
    │                                     b only if bitmap, x only if not full-iso
-   ├─ nvals, nvec, nvec_nonempty :213-229
-   ├─ Y                        :241-274  hyper_hash: a hash over h[] replacing
+   ├─ nvals, nvec, nvec_nonempty :219-232
+   ├─ p_mem … x_mem            :234-238  each array's byte size + memory arena
+   ├─ Y                        :240-312  hyper_hash: a hash over h[] replacing
    │                                     the binary search, load factor 2-4
-   ├─ Pending                  :361      the unsorted insert list
-   ├─ nzombies                 :391      deleted-in-place count
-   ├─ hyper_switch/bitmap_switch :456-457  the two per-matrix knobs
-   ├─ sparsity_control         :462      which of the four structures are allowed
-   ├─ is_csc / jumbled         :497-498  orientation; "may be unsorted"
-   ├─ iso                      :524      all values equal ⇒ store ONE  ← step 6
-   └─ p_is_32/j_is_32/i_is_32  :534-536  per-array index width         ← step 6
+   ├─ Pending                  :364      the unsorted insert list
+   ├─ nzombies                 :394      deleted-in-place count
+   ├─ hyper_switch/bitmap_switch :459-460  the two per-matrix knobs
+   ├─ data_arena               :483      which memory arena the arrays live in
+   ├─ sparsity_control         :492      which of the four structures are allowed
+   ├─ is_csc / jumbled         :527-528  orientation; "may be unsorted"
+   ├─ iso                      :554      all values equal ⇒ store ONE  ← step 6
+   └─ p_is_32/j_is_32/i_is_32  :564-566  per-array index width         ← step 6
 ```
 
-Two of those are worth a second look. `jumbled` (`:498`) is a
+Two of those are worth a second look. `jumbled` (`:528`) is a
 *deferred sort*: the matrix admits it may be out of order, which is
 a third deferral mechanism alongside zombies and pending tuples.
-And `Y` (`:241-274`) is a hash table over the hypersparse row list,
+And `Y` (`:240-312`) is a hash table over the hypersparse row list,
 because otherwise finding row j in `h[]` is a binary search — the
 `lg h` term that appears in `GB_AxB_saxpy3_flopcount.c:44-48`'s
 complexity. Its documented load factor: "the load factor is
 normally in the range of 2 to 4, so ideally each bucket will
-contain about 4 entries on average". FalkorDB turns it *off* for
+contain about 4 entries on average" (`:275-277`). FalkorDB turns it *off* for
 its delta matrices (`delta_new.c:33`, `GxB_HYPER_HASH` false) —
 worth asking why.
 
@@ -418,51 +419,53 @@ speedup number you attribute to "the TOMS paper" is wrong by
 construction; use CSC '20's Table 2, which
 [reading-openmp-vs-rayon.md](reading-openmp-vs-rayon.md) reads.
 
-**The CPU JIT** (topic 19's jitifyer). Verified at the pin: the
+**The CPU JIT** (topic 19's jitifyer). Verified in the source: the
 source tree has `Source/jitifyer/` with one encoder per operation —
 `GB_encodify_mxm.c`, `GB_encodify_ewise.c`, `GB_encodify_reduce.c`,
-`GB_encodify_select.c`, and nine more. What it buys is the
+`GB_encodify_select.c`, and eight more (twelve `GB_encodify_*.c` files). What it buys is the
 combinatorial problem of Step 2: TOMS '19 §4.2 counted 256 mxm
-variants over four formats, and the pin has eight formats. Compiling
+variants over four formats, and the source has eight formats. Compiling
 the one variant you need beats shipping 4,096 of them or falling
 back to a function pointer per element.
 
-**Iso-valued matrices.** Verified at the pin, and the struct
+**Iso-valued matrices.** Verified in the source, and the struct
 explains itself:
 
 ```c
-// GB_Matrix_content.h — why iso exists, 513-524
-   513  // Instead, the common practice is to assign all entries present in the matrix
-   514  // to be equal to a single value, typically 1 or true.  SuiteSparse:GraphBLAS
-   515  // exploits this typical practice by allowing for iso matrices, where all
-   516  // entries present have the same value, held as A->x [0].  The sparsity
-   517  // structure is kept, so in an iso matrix, A(i,j) is either equal to A->x [0],
-   518  // or not present in the sparsity pattern of A.
-   ...
-   521  // If A is full, A->x is the only component present, and thus a full iso matrix
-   522  // takes only O(1) memory, regardless of its dimension.
-   524  bool iso ;          // true if all entries have the same value and only a
+// GB_Matrix_content.h — why iso exists, 543-554
+   543  // Instead, the common practice is to assign all entries present in the matrix
+   544  // to be equal to a single value, typically 1 or true.  SuiteSparse:GraphBLAS
+   545  // exploits this typical practice by allowing for iso matrices, where all
+   546  // entries present have the same value, held as A->x [0].  The sparsity
+   547  // structure is kept, so in an iso matrix, A(i,j) is either equal to A->x [0],
+   548  // or not present in the sparsity pattern of A.
+   549
+   550  // If A is full, A->x is the only component present, and thus a full iso matrix
+   551  // takes only O(1) memory, regardless of its dimension.
+   552
+   553  // 1 bytes:
+   554  bool iso ;          // true if all entries have the same value and only a
 ```
 
 An unweighted graph — A(i,j) = true for every edge — is exactly
-this. `:520-521`'s corollary is startling: a full iso matrix is
+this. `:550-551`'s corollary is startling: a full iso matrix is
 O(1) memory *regardless of dimension*, so `GrB_Matrix` can
 represent an all-ones 10M×10M matrix in a handful of bytes.
 
-**32/64-bit indices per array.** Verified at the pin, and finer
+**32/64-bit indices per array.** Verified in the source, and finer
 than "per matrix":
 
 ```c
-// GB_Matrix_content.h — three independent width flags, 531-536
-   531  // A->p, A->h, and A->i can be either 32-bit or 64-bit integers.
+// GB_Matrix_content.h — three independent width flags, 561-566
+   561  // A->p, A->h, and A->i can be either 32-bit or 64-bit integers.
    ...
-   534  bool p_is_32 ;  // true if A->p is 32-bit, false if 64
-   535  bool j_is_32 ;  // true if A->h and A->Y->[pix] are 32-bit, false if 64
-   536  bool i_is_32 ;  // true if A->i is 32-bit, false if 64
+   564  bool p_is_32 ;  // true if A->p is 32-bit, false if 64
+   565  bool j_is_32 ;  // true if A->h and A->Y->[pix] are 32-bit, false if 64
+   566  bool i_is_32 ;  // true if A->i is 32-bit, false if 64
 ```
 
 Three flags, three arrays, chosen independently — plus
-`p_control`/`j_control`/`i_control` at `:464-466` so an application
+`p_control`/`j_control`/`i_control` at `:494-496` so an application
 can force any of them. Note which array each governs: `p_is_32`
 covers the *offsets* (bounded by nnz), `i_is_32` the *indices*
 (bounded by the dimension). A graph with 5B edges but 100M nodes
@@ -507,8 +510,8 @@ gets *actively wrong* if you read it as current.
 - **TOMS '19, §4.1 (data structure)** — read closely against Step
   2, and keep the version caveat in view the entire time: it
   describes *two* sparsity structures, and its "four formats" are
-  CSR/CSC × standard/hyper. The code counterpart at the pin is
-  `Source/builtin/include/GB_Matrix_content.h`, which is 657 lines
+  CSR/CSC × standard/hyper. The code counterpart is
+  `Source/builtin/include/GB_Matrix_content.h`, which is 687 lines
   of comment-heavy struct and is genuinely readable top to bottom.
 - **TOMS '19, §4.2.1 (matrix multiply)** — the three methods,
   Gustavson's complexity, the hypersparse `n̄ < n/16` rule, and the
@@ -525,29 +528,29 @@ gets *actively wrong* if you read it as current.
 - **TOMS '23 (Algorithm 1037)** — not available to this repo. Do
   not cite it from memory. Everything you would want from it —
   JIT, iso, 32/64-bit indices, the hyper_hash — is verifiable in
-  the pinned source, as Steps 5 and 6 do.
+  the source, as Steps 5 and 6 do.
 
 Numbers to retain while you read:
 
 - format switch defaults: **`bitmap_switch` is a table indexed by
   `min(vlen, vdim)`, not by operation** — 0.04 for a dimension of
   1, rising to **0.40 for anything above 64**
-  (`GB_Global.c:181-189`, `:486-497`), with hysteresis at b/2
-  (`GB_Matrix_content.h:450-454`). `hyper_switch` is 0.0625
+  (`GB_Global.c:183-191`, `:499-510`), with hysteresis at b/2
+  (`GB_Matrix_content.h:453-457`). `hyper_switch` is 0.0625
   (`GB_defaults.h:20`), matching the paper's n/16.
-- saxpy3's Gustavson-vs-hash threshold: **`hash_size >= cvlen/12`**
+- saxpy3's Gustavson-vs-hash threshold: **`hash_nitems >= cvlen/12`**
   (`GB_AxB_saxpy3_slice_balanced.c:94`), plus an undocumented
   `flmax >= cvlen/2` shortcut at `:65`. The widely repeated "m/16"
   is a stale comment at `GB_AxB_saxpy3.c:57-58`.
 - mxm engines: dot3's work is ∝ nnz(M) — provably, since
-  `GB_AxB_dot3.c:126` and `:171` size C to exactly nnz(M) —
+  `GB_AxB_dot3.c:131` and `:176` size C to exactly nnz(M) —
   while saxpy3's is ∝ flops. The mask changes the complexity
   class, not a constant.
 - this topic's measured SpMV bandwidth: **19.1 GB/s at scale 14
   falling to 15.8 GB/s at scale 20** (`notes.md:9-14`), against a
-  ~30 GB/s streaming baseline from topic 0/13. (`FINDINGS.md` row
-  20 states the same decay as 20.7 → 12.3 GB/s. The two were
-  measured on different runs; cite one and say which.)
+  ~30 GB/s streaming baseline from topic 0/13. The timings move
+  between runs of the lane — `FINDINGS.md` row 20 quotes a run that
+  read 20.7 → 12.3 GB/s — so cite one run and say which.
 
 ## Questions for notes.md
 
@@ -560,7 +563,7 @@ Numbers to retain while you read:
    control over *when* wait happens; keeping the transposed pair in
    lockstep; readers must see pre-wait state. Decide which
    dominates, using Step 5's "the library chooses the flush point".
-3. The iso optimization (`GB_Matrix_content.h:513-524`): which
+3. The iso optimization (`GB_Matrix_content.h:543-554`): which
    FalkorDB matrices are iso — adjacency bool, yes; a relation
    matrix holding edge IDs as values, no. What does losing iso cost
    on mxm bandwidth? Compute it: an iso bool matrix moves 0 value
@@ -591,7 +594,7 @@ Answer each before unfolding it.
   (§4.2.1: "while SuiteSparse:GraphBLAS is not yet multi-threaded,
   it is thread-safe"; §7: "an efficient and highly optimized
   single-threaded implementation"). Parallelism arrives in 3.0.1,
-  per Davis's CSC '20 §3. The pin this repo reads is **10.3.1**
+  per Davis's CSC '20 §3. The source this repo reads is **10.5.2**
   (`Include/GraphBLAS.h:290-292`). TOMS '23 could not be obtained,
   so nothing here is attributed to it.
 
@@ -606,15 +609,15 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   hypersparse, sparse, bitmap, full. The source counts **eight
-  formats** — `GB_Matrix_content.h:76`: "(hypersparse, sparse,
+  formats** — `GB_Matrix_content.h:79`: "(hypersparse, sparse,
   bitmap, full) x (CSR or CSC)". TOMS '19 §4.1 counts four, but its
   four are CSC/CSR × standard/hyper: bitmap and full postdate it.
 
   Bitmap: switch up when `nnz > b × m·n`, back down when
   `nnz <= (b/2) × m·n`, unchanged in between
-  (`GB_Matrix_content.h:450-454`). `b` comes from a table indexed
+  (`GB_Matrix_content.h:453-457`). `b` comes from a table indexed
   by `min(vlen, vdim)` — **0.40 for any dimension above 64**
-  (`GB_Global.c:189`, `:486-497`) — so it is neither "4-8%" nor
+  (`GB_Global.c:191`, `:499-510`) — so it is neither "4-8%" nor
   operation-dependent.
 
   Hyper: up when `k <= n × h`, down when `k > n × h × 2`, with
@@ -655,7 +658,7 @@ Answer each before unfolding it.
 
   §3.1.9 bundles all four in one sentence, and one constant proves
   it: `GrB_DESC_RSC` = `GrB_REPLACE + GrB_STRUCTURE + GrB_COMP`
-  (`Include/GraphBLAS.h:666`) — three hints in a single opaque
+  (`Include/GraphBLAS.h:672`) — three hints in a single opaque
   handle, which is exactly what LAGraph's BFS passes to mean "write
   only where I have not been".
 
@@ -668,14 +671,14 @@ Answer each before unfolding it.
   Zombie = an entry marked for deletion in place by negating its
   index: TOMS '19 §4.1 gives the transform as **i → (−i−2)**, and
   the source describes `GB_ZOMBIE`/`GB_UNZOMBIE` as mutually
-  inverse (`GB_Matrix_content.h:370-373`). The transform preserves
+  inverse (`GB_Matrix_content.h:373-376`). The transform preserves
   ordering, so binary search still works on a vector containing
   zombies — and a re-insert can *de-zombify* in place rather than
-  lengthening the pending list (`:375-383`).
+  lengthening the pending list (`:378-386`).
 
   Pending tuple = an insert appended to an **unsorted** side list
   of (i, j, value) with duplicates allowed and a combining operator
-  recorded (§4.1, and `GB_Matrix_content.h:361`).
+  recorded (§4.1, and `GB_Matrix_content.h:364`).
 
   The payoff, §3.1.8: e incremental `setElement` calls cost
   **O(e log e)** in SuiteSparse against **O(e²)** in MATLAB. At
@@ -692,9 +695,9 @@ Answer each before unfolding it.
 
   Deferred: pending inserts, zombie deletions, and — a third one
   the paper does not stress — sortedness, via `jumbled`
-  (`GB_Matrix_content.h:498`). Completion is forced by `GrB_wait`
+  (`GB_Matrix_content.h:528`). Completion is forced by `GrB_wait`
   or implicitly by any operation that cannot tolerate the deferred
-  state; the source spells out the zombie case at `:386-389`
+  state; the source spells out the zombie case at `:389-392`
   ("check the condition (A->nzombies > 0), and then delete all of
   them if they appear, via GB_wait").
 
@@ -712,11 +715,11 @@ Answer each before unfolding it.
 
   An iso matrix keeps its full sparsity pattern but stores **one**
   value, `A->x[0]`, for every present entry
-  (`GB_Matrix_content.h:513-518`, `:524`). The struct's own
+  (`GB_Matrix_content.h:543-548`, `:554`). The struct's own
   rationale is that GraphBLAS deliberately has no structure-only
   type — that "would result in a mathematical mismatch with all
   other objects" — so iso is the sanctioned way to express an
-  unweighted graph. Corollary at `:520-521`: a *full* iso matrix is
+  unweighted graph. Corollary at `:550-551`: a *full* iso matrix is
   O(1) memory regardless of dimension.
 
   FalkorDB: the boolean adjacency and delta matrices are iso — and
@@ -736,10 +739,10 @@ Answer each before unfolding it.
   80.0 + 800.0 = **880 MB**; all-32-bit is 40.0 + 400.0 =
   **440 MB**, exactly 2×.
 
-  The finer point is that the pin has **three independent flags**,
-  not one — `p_is_32`, `j_is_32`, `i_is_32`
-  (`GB_Matrix_content.h:534-536`), plus `p_control`/`j_control`/
-  `i_control` at `:464-466` for forcing them. `p` indexes *offsets*
+  The finer point is that the source has **three independent
+  flags**, not one — `p_is_32`, `j_is_32`, `i_is_32`
+  (`GB_Matrix_content.h:564-566`), plus `p_control`/`j_control`/
+  `i_control` at `:494-496` for forcing them. `p` indexes *offsets*
   (bounded by nnz) and `i` indexes *rows* (bounded by the
   dimension), so a 5B-edge graph over 100M nodes wants 64-bit `p`
   and 32-bit `i` — 480 MB here, still 1.83× better than all-64.
@@ -770,25 +773,26 @@ Answer each before unfolding it.
   TOMS 49(3), 2023. The v2 update: JIT, 32/64-bit indices, iso
   matrices. **Not obtainable for this repo** — no claim in this
   chapter is attributed to it; the same features are verified in
-  the pinned source instead.
+  the source instead.
 
 **Code**
 
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475`, version **10.3.1** (`Include/GraphBLAS.h:290-292`).
+  at `7701390417`, version **10.5.2** (`Include/GraphBLAS.h:290-292`).
   `Source/builtin/include/GB_Matrix_content.h` is the object model
-  in one 657-line file — `:52` and `:76` (eight formats),
-  `:223-228` (the five arrays), `:241-274` (the hyper_hash Y),
-  `:361` (Pending), `:367-391` (zombies), `:450-457` (the two
-  switches), `:462-467` (sparsity and index-width controls),
-  `:497-498` (`is_csc`, `jumbled`), `:513-524` (iso), `:531-536`
+  in one 687-line file — `:55` and `:79` (eight formats),
+  `:226-231` (the five arrays), `:234-238` (their byte sizes and
+  arenas), `:240-312` (the hyper_hash Y), `:364` (Pending),
+  `:370-394` (zombies), `:453-460` (the two switches), `:483`
+  (`data_arena`), `:492-497` (sparsity and index-width controls),
+  `:527-528` (`is_csc`, `jumbled`), `:543-554` (iso), `:561-566`
   (the three width flags). `Source/jitifyer/` is the JIT.
-  `Include/GraphBLAS.h:666` is `GrB_DESC_RSC`. The `Source/mxm/`
+  `Include/GraphBLAS.h:672` is `GrB_DESC_RSC`. The `Source/mxm/`
   and `Source/convert/` walk is
   [reading-suitesparse-internals.md](reading-suitesparse-internals.md).
 - [FalkorDB](https://github.com/FalkorDB/FalkorDB) at `ccb449a9a` (the C
-  engine, which now continues on the `master` branch as 4.x; `main` is the
-  Rust 6.x engine) —
+  engine quoted here, FalkorDB 4.x on `master`; FalkorDB 6's Rust engine
+  lives on `main`) —
   `src/graph/delta_matrix/delta_new.c:24-44` pins the sparsity and
   disables the hyper_hash. Read in
   [reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md).

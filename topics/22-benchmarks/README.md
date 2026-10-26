@@ -95,8 +95,7 @@ selectivity* before implementing (topic 17 says: maybe nothing!).
       ann-benchmarks recall/QPS, one command, results as data files
 - [ ] regression tracking across milestones (M0 baselines are the
       floor; every M* run appends, plots trend)
-- [ ] three-way shootout: falkordb-scratch vs falkordb-rs-next-gen
-      vs FalkorDB — i.e. the Rust engine (FalkorDB 6.x, `main`; the
-      rs-next-gen repo is archived) vs the C engine (FalkorDB 4.x,
-      `master`) — same driver, same data, same machine, fair-
-      benchmarking checklist applied
+- [ ] three-way shootout: falkordb-scratch vs FalkorDB 6 (the Rust
+      engine, `main`) vs FalkorDB 4.x (the C engine, `master`) — same
+      driver, same data, same machine, fair-benchmarking checklist
+      applied

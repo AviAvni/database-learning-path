@@ -8,10 +8,10 @@ df(t0)=99888 (in 99.9% of docs — "the"), df(t100)=8259, df(t10000)=83.
 
 ### BM25 top-10, exhaustive TAAT oracle
 
-> An earlier run than [FINDINGS.md](../../FINDINGS.md) row 23, which
-> spans **0.009 ms to 10.378 ms** over the same four queries. FINDINGS is
-> canonical for the timings; the posting counts (272,310 and 159) are
-> generator-determined and agree. Cite one run by name, never average.
+The posting counts and scores are generator-determined and reproduce
+exactly; the milliseconds are this run's and move between runs on the
+same machine. Quote one run and say which (`./verify.sh 23` gives your
+machine's).
 
 | query | ms | postings walked | top1 score |
 |---|---|---|---|

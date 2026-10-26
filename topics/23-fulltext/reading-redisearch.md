@@ -3,9 +3,9 @@
 Home turf: this is what FalkorDB delegates full-text to, and the
 interesting part is that the C core is being strangler-figged into
 Rust crates behind FFI (`c_entrypoint/inverted_index_ffi`,
-`varint_ffi`) — the exact migration pattern falkordb-rs-next-gen
-lived (that Rust engine's code is now FalkorDB's `main` branch and 6.x
-releases, after FalkorDB/FalkorDB#2279; the C engine continues on `master`). Read the `inverted_index` crate as a *mutable, in-memory*
+`varint_ffi`) — the same migration path FalkorDB itself took from its
+C engine (4.x, the `master` branch) to its Rust engine (FalkorDB 6, on
+`main`). Read the `inverted_index` crate as a *mutable, in-memory*
 counterpart to tantivy's immutable segments
 ([reading-tantivy.md](reading-tantivy.md)). Before pointing at the
 code, this chapter builds the design one constraint at a time —

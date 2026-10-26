@@ -12,7 +12,7 @@ in one batch. Then it says exactly what egg's headline speedup was measured
 against, because that number is quoted wrongly more often than not.
 
 Every code anchor below is `egraphs-good/egg` at the commit this repo pins,
-**`f94c346`** (`resources/codebases.md` pin table), quoted with the line numbers
+**`73975c9`** (`resources/codebases.md` pin table), quoted with the line numbers
 the code occupies at that commit. Every paper claim names the section, figure or
 definition it came from in the POPL 2021 paper (arXiv:2004.03082).
 
@@ -252,26 +252,33 @@ matches, and the chain in Step 3's Figure 2c–2d runs to `a`, cost 1.
 egg's loop is one function, and its three phases are visible as three timers:
 
 ```rust
-// egg src/run.rs, lines 556-595 inside Runner::run_one — read, write, rebuild
-   556          result = result.and_then(|_| {
-   557              matches = self
-   558                  .scheduler
-   559                  .search_rewrites(i, &self.egraph, rules, &self.limits)?;
-   568          let search_time = start_time.elapsed().as_secs_f64();
-   573          result = result.and_then(|_| {
-   574              rules.iter().zip(matches).try_for_each(|(rw, ms)| {
-   578                  let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, ms);
-   587                  self.check_limits()
-   588              })
-   589          });
-   591          let apply_time = apply_time.elapsed().as_secs_f64();
-   594          let rebuild_time = Instant::now();
-   595          let n_rebuilds = self.egraph.rebuild();
+// egg src/run.rs, lines 557-596 inside Runner::run_one — read, write, rebuild
+   557          result = result.and_then(|_| {
+   558              matches = self
+   559                  .scheduler
+   560                  .search_rewrites(i, &self.egraph, rules, &self.limits)?;
+   ...          // 561-567: Ok(()), plus a commented-out per-rule search loop
+   569          let search_time = start_time.elapsed().as_secs_f64();
+   ...
+   574          result = result.and_then(|_| {
+   575              rules.iter().zip(matches).try_for_each(|(rw, ms)| {
+   ...              // 576-577: count and log the matches
+   579                  let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, ms);
+   ...              // 580-587: per-rule bookkeeping of applied counts
+   588                  self.check_limits()
+   589              })
+   590          });
+   ...
+   592          let apply_time = apply_time.elapsed().as_secs_f64();
+   ...
+   595          let rebuild_time = Instant::now();
+   596          let n_rebuilds = self.egraph.rebuild();
 ```
 
-Search (556–566) is read-only over the *whole* e-graph — every rule sees the
-same snapshot, so no rule can preempt another. Apply (573–589) only mutates.
-`rebuild()` is called **once** (595), after all rules have applied. That
+Search (557–567) is read-only over the *whole* e-graph — every rule sees the
+same snapshot, so no rule can preempt another. Apply (574–590) only mutates.
+`rebuild()` is called **once** (596, the line to focus on), after all rules
+have applied. That
 separation is the paper's Figure 5b, and Step 6 is why it is allowed.
 
 ### Step 6 — deferred rebuilding: the contribution
@@ -432,9 +439,14 @@ it indexes e-classes by the discriminant of the operators they contain, and the
 pattern searcher consults it before falling back to a scan —
 
 ```rust
-// egg src/pattern.rs, lines 300-304 — the op index short-circuits the scan
-   300      fn search_with_limit(&self, egraph: &EGraph<L, A>, limit: usize) -> Vec<SearchMatches<L>> {
-   304              if let Some(ids) = egraph.classes_for_op(&key) {
+// egg src/pattern.rs, lines 300-306 — the op index short-circuits the scan
+   300      fn search_with_limit(&self, egraph: &EGraph<L, A>, limit: usize) -> Vec<SearchMatches<'_, L>> {
+   301          match self.ast.last().unwrap() {
+   302              ENodeOrVar::ENode(e) => {
+   303                  let key = e.discriminant();
+   304                  match egraph.classes_for_op(&key) {
+   305                      None => vec![],
+   306                      Some(ids) => rewrite::search_eclasses_with_limit(self, egraph, ids, limit),
 ```
 
 Work it: a pattern rooted at `/` in an e-graph with 10,000 e-classes of which 40
@@ -446,10 +458,10 @@ scan.
 The budget that stops the search from running forever:
 
 ```rust
-// egg src/run.rs, lines 343-345 — RunnerLimits defaults
-   343              iter_limit: 30,
-   344              node_limit: 10_000,
-   345              time_limit: Duration::from_secs(5),
+// egg src/run.rs, lines 344-346 — RunnerLimits defaults
+   344                  iter_limit: 30,
+   345                  node_limit: 10_000,
+   346                  time_limit: Duration::from_secs(5),
 ```
 
 `check_limits` (`run.rs:170`) tests them in the order time (176), nodes (181),
@@ -494,14 +506,49 @@ proved equivalent.
 > cannot optimise.
 
 ```rust
-// egg src/extract.rs, lines 157-166 — AstSize, the default cost function
-   157  pub struct AstSize;
-   164          enode.fold(1, |sum, id| sum.saturating_add(costs(id)))
+// egg src/extract.rs, lines 158-165 — AstSize, the default cost function
+   158  pub struct AstSize;
+   ...
+   165          enode.fold(1, |sum, id| sum.saturating_add(costs(id)))
 ```
 
-`Extractor::find_best` (`extract.rs:225`) reads a table built by `find_costs`
-(`extract.rs:254`), which is a **fixpoint**: repeatedly recompute each class's
-best cost from its e-nodes' children's current best costs until nothing changes.
+`Extractor::find_best` (`extract.rs:226`) reads a table built by `find_costs`
+(`extract.rs:258`), which computes a **fixpoint**: each class's best cost from
+its e-nodes' children's current best costs, until nothing changes. It reaches
+that fixpoint with a worklist rather than by re-sweeping:
+
+```rust
+// egg src/extract.rs, lines 258-289 — find_costs, a worklist fixpoint
+   258      fn find_costs(&mut self) {
+   259          let mut queue: VecDeque<Id> = self.egraph.classes().map(|c| c.id).collect();
+   260          let mut in_queue: HashSet<Id> = queue.iter().copied().collect();
+   261
+   262          while let Some(id) = queue.pop_front() {
+   ...              // 263-266: dequeue, canonicalize, make_pass picks the
+   ...              //          cheapest e-node whose children all have a cost
+   268              let changed = match (self.costs.get(&class.id), pass) {
+   ...                  // 269-277: first cost, or a strictly cheaper one ⇒ true
+   280              if changed {
+   281                  for &parent in class.parents.iter() {
+   282                      let canonical_parent = self.egraph.find(parent);
+   283                      if !in_queue.contains(&canonical_parent) {
+   284                          in_queue.insert(canonical_parent);
+   285                          queue.push_back(canonical_parent);
+   286                      }
+   287                  }
+   288              }
+   289          }
+```
+
+Every class starts in the queue (`:259`), because a leaf class can only be
+costed once and its parents only after it. The line to focus on is 285: when a
+class's best cost improves, only its **canonical parents** are re-queued — the
+classes whose cost could change as a result — and `in_queue` (`:260`, checked
+at `:283`) keeps each class in the queue at most once at a time, the same
+deduplication the rebuild worklist of Step 6 relies on. A class whose cost did
+not change wakes nobody. The table itself stores, per class, the cost and the
+*index* of the winning e-node in that class (`find_best` resolves it at
+`:228-229`), not a copy of the node.
 
 This is optimal for a **local, tree-shaped** cost function — one where a term's
 cost is a function of its node and its children's costs, and shared subterms are
@@ -518,18 +565,11 @@ Cascades optimizer does. An e-graph *is* a Cascades memo discovered
 independently — with congruence, which Cascades lacks, and without physical
 properties and enforcers, which Cascades has (question 5).
 
-> **Upstream since the pin.** `find_costs` is no longer a sweep-until-stable
-> loop. At the pin it sets `did_something = true` and re-scans *every* class
-> until a full pass changes nothing; after egg PR #367 (`2f31b28`, "Extraction
-> optimization", merged 2026-07-19, not yet in a release — the latest tag is
-> v0.11.0) it seeds a `VecDeque` worklist with every class, and when a class's
-> best cost improves it enqueues only that class's canonical *parents*
-> (`extract.rs:258` upstream). The commit message calls the new version
-> O(V+E); this guide has not measured it. The steps above describe the pinned
-> code, which is what the line numbers point at; the argument holds — it is the
-> same fixpoint over per-class best cost, reached by propagating changes upward
-> instead of re-sweeping, so it is still optimal only for local, tree-shaped
-> cost functions.
+The worklist changes how fast the fixpoint is reached, not which fixpoint it is:
+the same per-class minimum over local, tree-shaped costs, so the optimality
+statement above is unchanged. The commit that introduced it (egg PR #367,
+`2f31b28`, "Extraction optimization") calls it O(V+E); this guide has not
+measured that, and it is on egg's `main` branch, after the v0.11.0 tag.
 
 ## How to read the paper (with the concepts in hand)
 
@@ -553,7 +593,7 @@ arXiv:2004.03082.
 
 ## Where each step lives in the code
 
-Pinned at `egraphs-good/egg@f94c346`. Sizes are that commit's.
+Pinned at `egraphs-good/egg@73975c9`. Sizes are that commit's.
 
 | file:line | step | what |
 |---|---|---|
@@ -573,12 +613,12 @@ Pinned at `egraphs-good/egg@f94c346`. Sizes are that commit's.
 | `egraph.rs:184` | 7 | `total_size()` = `memo.len()`, the node count `node_limit` watches |
 | `machine.rs:24-28` | 8 | `Bind`, `Compare`, `Lookup`, `Scan` — the complete instruction set |
 | `machine.rs:66-74` | 8 | `Scan` — `for class in egraph.classes()`, the quadratic risk |
-| `pattern.rs:300-304` | 8 | `classes_for_op` short-circuit |
-| `run.rs:525` | 5 | `run_one` — search (556), apply (573), one `rebuild` (595) |
-| `run.rs:343-345` | 8 | defaults: 30 iterations, 10,000 nodes, 5 s |
+| `pattern.rs:300-306` | 8 | `classes_for_op` short-circuit |
+| `run.rs:526` | 5 | `run_one` — search (557), apply (574), one `rebuild` (596) |
+| `run.rs:344-346` | 8 | defaults: 30 iterations, 10,000 nodes, 5 s |
 | `run.rs:237` | 8 | `StopReason` |
-| `extract.rs:157` | 10 | `AstSize` — `1 + Σ children` |
-| `extract.rs:254` | 10 | `find_costs` — the fixpoint |
+| `extract.rs:158` | 10 | `AstSize` — `1 + Σ children` |
+| `extract.rs:258` | 10 | `find_costs` — the fixpoint, as a worklist that re-queues parents (285) |
 
 Navigation advice: read `unionfind.rs` fully (it is 93 lines and you have
 already seen 21 of them above), then `egraph.rs` by the anchors, then `run.rs`'s
@@ -669,7 +709,7 @@ Answer each before unfolding it.
   The correctness condition is Step 5's phase split: the hashcons is stale
   between rebuilds (`egraph.rs:63-64`), and that is safe only because search is
   read-only and apply is write-only, with one `rebuild()` between them
-  (`run.rs:595`).
+  (`run.rs:596`).
 
   </details>
 
@@ -726,11 +766,13 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  `find_costs` (`extract.rs:254`) is a fixpoint over per-class best cost, and
-  `find_best` (`extract.rs:225`) reads the resulting table. This is optimal for a
-  **local tree cost** — cost of a node is a function of the node and its
-  children's costs, sharing paid per use. `AstSize` (`extract.rs:157`, cost at
-  164) is `1 + Σ children`, exactly that shape.
+  `find_costs` (`extract.rs:258`) is a fixpoint over per-class best cost —
+  reached by a worklist that re-queues a class's canonical parents whenever its
+  cost improves (`:280-288`) — and `find_best` (`extract.rs:226`) reads the
+  resulting table. This is optimal for a **local tree cost** — cost of a node is
+  a function of the node and its children's costs, sharing paid per use.
+  `AstSize` (`extract.rs:158`, cost at 165) is `1 + Σ children`, exactly that
+  shape.
 
   It is **not** optimal for a DAG cost, where a subterm referenced twice should
   be charged once; nor for any objective that is not decomposable per class
@@ -765,7 +807,7 @@ Answer each before unfolding it.
   most doubles the e-nodes at each `+`; associativity on a depth-8 right-nested
   sum generates the distinct parenthesisations, which is Catalan-like growth in
   the number of leaves. With defaults of 30 iterations, 10,000 nodes and 5 s
-  (`run.rs:343-345`), `NodeLimit` is the plausible first trip for a depth-8 sum,
+  (`run.rs:344-346`), `NodeLimit` is the plausible first trip for a depth-8 sum,
   because node count grows per-iteration while iterations are capped at 30 and
   the per-iteration work is still small enough to stay inside 5 s early on.
   Whatever you predict, record it before running — the point of the worksheet in
@@ -790,7 +832,7 @@ Answer each before unfolding it.
   CADE 2007 — the e-matching procedure `machine.rs` implements. Read alongside
   `reading-z3-tacas08.md`.
 
-**Code** — `egraphs-good/egg` at `f94c346`
+**Code** — `egraphs-good/egg` at `73975c9`
 
 | File | Lines | What |
 |------|-------|------|
@@ -798,8 +840,8 @@ Answer each before unfolding it.
 | `src/egraph.rs` | 1511 | M, H, `add`, `union`, `process_unions`, `rebuild` |
 | `src/machine.rs` | 345 | the e-matching VM |
 | `src/pattern.rs` | 536 | patterns, and the `classes_for_op` short-circuit |
-| `src/run.rs` | 994 | `Runner`, the three-phase loop, limits, `StopReason` |
-| `src/extract.rs` | 315 | `Extractor`, `CostFunction`, `AstSize` |
+| `src/run.rs` | 995 | `Runner`, the three-phase loop, limits, `StopReason` |
+| `src/extract.rs` | 333 | `Extractor`, `CostFunction`, `AstSize` |
 | `src/rewrite.rs` | 703 | `Rewrite`, `Searcher`, `Applier` |
 | `src/language.rs` | 1001 | `Language`, `define_language!` — what `eqsat.rs` uses |
 | `src/explain.rs` | 1962 | proof production. Skip on the first pass |

@@ -14,7 +14,7 @@ queries open (DuckDB vendors them — see References and
 Every clause number below is from **TPC-H Standard Specification
 revision 3.0.1**; every choke-point number is from the TPCTC 2013
 paper's Table 1; every SQL line number belongs to
-**duckdb/duckdb@6c0c1a68**, whose `extension/tpch/dbgen/queries/`
+**duckdb/duckdb@d54cbbe3df** (v2.0.0), whose `extension/tpch/dbgen/queries/`
 holds the 22 queries with the spec's validation parameters already
 substituted. Rust line numbers are this topic's `experiments/`.
 Where the paper, the spec and the shipped data disagree — and they
@@ -908,7 +908,7 @@ Answer each before unfolding it.
 | `experiments/src/tpch.rs` | 25-39 | `q1_oracle` — the per-row hash into six slots that CP1.3 says to delete |
 | `experiments/src/tpch.rs` | 43-56 | `q6_oracle` — the branchy scan at 1.81% selectivity |
 
-Pinned revisions: duckdb/duckdb@6c0c1a68 (regenerate the pin table
+Pinned revisions: duckdb/duckdb@d54cbbe3df (regenerate the pin table
 with `python3 tools/pin-table.py`).
 
 **Cross-topic**

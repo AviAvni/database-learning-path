@@ -10,19 +10,15 @@ masked-multiply fold, and the compaction — then hands you the
 anchors into `src/graph/delta_matrix/` to verify each piece.
 
 Every anchor is **FalkorDB at commit `ccb449a9a`**, the pin in
-`resources/codebases.md`. Read the code, not the blog posts: three
-of the claims in the previous version of this chapter were wrong at
-this commit, and each correction is called out where it lands.
+`resources/codebases.md`. Read the code, not the blog posts: the
+flush policy, the read order and the extent of each function are
+all places where the code says something more precise than the
+usual summary, and each is pointed out where it lands.
 
-> **FalkorDB's two engines.** The C code quoted here is FalkorDB's C
-> engine. Since FalkorDB/FalkorDB#2279 (merged 2026-08-02) the C engine
-> continues on the `master` branch and its 4.x releases (4.22.2 at the time of
-> writing), while `main` carries the Rust engine — the code formerly developed
-> in the now-archived `falkordb-rs-next-gen`, released as FalkorDB 6.0.0 on
-> 2026-09-29. The pin `ccb449a9a` (2026-07-15) is C-engine history from before
-> the split, so every anchor here stays correct; read it with
-> `python3 tools/pinned-source.py show FalkorDB <path>`, because a checkout of
-> today's `main` no longer has `src/graph/`.
+The code quoted here is FalkorDB's C engine — FalkorDB 4.x, the
+`master` branch; FalkorDB 6's Rust engine lives on `main`, which
+has no `src/graph/`. Open the files at this commit with
+`python3 tools/pinned-source.py show FalkorDB <path>`.
 
 ## The problem in one sentence
 
@@ -158,13 +154,13 @@ Four decisions in twenty lines, and each is answerable from
    hypersparse; the 50× index saving of `notes.md:41` is the
    reason.
 3. **The hyper_hash is disabled** (`:33`, `:42`). That is the
-   `A->Y` structure of `GB_Matrix_content.h:241-274`; without it,
+   `A->Y` structure of `GB_Matrix_content.h:240-312`; without it,
    finding row j in `h[]` is a binary search costing `lg k`. With
    k ≤ 10,000 that is 14 comparisons — cheaper than building and
    maintaining a hash table that gets cleared at every flush.
 4. **DM is always `GrB_BOOL`** (`:40`), whatever the matrix type
    is. A tombstone carries no value, so DM is iso by construction
-   (`GB_Matrix_content.h:513-524`) and stores one byte total for
+   (`GB_Matrix_content.h:543-554`) and stores one byte total for
    its values.
 
 And the type restriction, at `delta_new.c:64-65`: "supported
@@ -183,10 +179,10 @@ SuiteSparse's own source.
 > order, and the GrB-call cost of one mutation.
 
 The header comment at `delta_matrix.h:26-106` walks every state
-through a worked 3×3 example — it IS the design doc. (The previous
-version of this chapter cited `:34-108`; the block runs `:26-106`,
-and the struct that follows is `:108-115`.) It enumerates **four
-legal states and four impossible ones**:
+through a worked 3×3 example — it IS the design doc. The comment
+block runs `:26-106`, and the struct it documents follows at
+`:108-115`. It enumerates **four legal states and four impossible
+ones**:
 
 | state | lines | A | DP | DM |
 |---|---|---|---|---|
@@ -327,7 +323,7 @@ against MATLAB's O(e²) (TOMS '19 §3.1.8). So why rebuild it?
 
 1. **Flush control.** Any GrB read op can force an internal wait —
    the source says so for zombies at
-   `GB_Matrix_content.h:386-389`. FalkorDB needs reads that do
+   `GB_Matrix_content.h:389-392`. FalkorDB needs reads that do
    *not* flush. DP and DM are ordinary matrices the library never
    touches implicitly, and the flush decision lives in FalkorDB's
    own code at `delta_wait.c:89` and `:97` (Step 6).
@@ -415,7 +411,7 @@ Line by line: `:74` builds `mask = A·DM` over `GxB_ANY_PAIR_BOOL`
 (pattern only, no values, and ANY lets it stop at the first hit);
 `:86` builds `accum = A·DP` over the real semiring; `:104`
 computes the main product with `GrB_DESC_RSC` — which is
-`REPLACE + STRUCTURE + COMP` (`Include/GraphBLAS.h:666`), so the
+`REPLACE + STRUCTURE + COMP` (`Include/GraphBLAS.h:672`), so the
 mask is *complemented*: write only where `A·DM` has **no** entry;
 `:107` adds the additions in.
 
@@ -508,7 +504,7 @@ Unpack `:29` carefully, because it is the cleverest line in the
 directory. `GrB_transpose(C, Mask, accum, A, desc)` computes
 `C<Mask> = Aᵀ`. Here C = m, Mask = dm, A = m, and the descriptor is
 `GrB_DESC_RSCT0` — `REPLACE + STRUCTURE + COMP` plus `GrB_TRAN` on
-input 0 (`Include/GraphBLAS.h:668`). The `T0` transposes the input,
+input 0 (`Include/GraphBLAS.h:674`). The `T0` transposes the input,
 so `Aᵀ` becomes `(mᵀ)ᵀ = m`; the `C` complements the mask; the `S`
 uses only its pattern; the `R` replaces. Net effect: **copy m into
 itself, keeping only the entries dm does not mark.** One library
@@ -531,11 +527,13 @@ Then additions:
     56  	return GrB_Matrix_clear (dp) ;
 ```
 
-(The previous version of this chapter cited `delta_wait.c:36-46+`
-for this function; it runs to `:57`.)
+The function's closing brace is `:57`, so `sync_additions` is
+`delta_wait.c:36-57` — one structurally-masked assign of DP into M,
+then the clear.
 
-Now the trigger, and **the correction that matters most in this
-chapter**. The policy is *not* in `delta_will_wait.c`:
+Now the trigger, and **the point that matters most in this
+chapter**: the policy is *not* in `delta_will_wait.c`, whatever its
+name suggests.
 
 ```c
 // delta_wait.c — the thresholds, 89-99
@@ -629,7 +627,7 @@ that curve, and now you can compute both ends of it.
 | `delta_mxm.c:74`, `:86` | 5 | `mask = A·DM` (ANY_PAIR bool), `accum = A·DP` |
 | `delta_mxm.c:97`, `:104`, `:107` | 5 | `GrB_DESC_RSC`, the masked product, the **unmasked** add |
 | `delta_wait.c:13-33` | 6 | sync_deletions: `GrB_transpose(m, dm, NULL, m, GrB_DESC_RSCT0)` |
-| `delta_wait.c:36-56` | 6 | sync_additions: assign DP into M, clear DP |
+| `delta_wait.c:36-57` | 6 | sync_additions: assign DP into M, clear DP |
 | `delta_wait.c:89`, `:97` | 6 | **the flush thresholds live here** |
 | `delta_wait.c:103-110` | 6 | `GrB_wait(…, GrB_MATERIALIZE)` ×3, then the willWait assertion |
 | `delta_wait.c:122-128` | 6 | twin first; read `Config_DELTA_MAX_PENDING_CHANGES` |
@@ -770,7 +768,7 @@ Answer each before unfolding it.
   The hyper_hash is disabled (`:33`, `:42`), so row lookup in `h[]`
   is a binary search — 14 comparisons at k = 10,000, cheaper than
   building and re-clearing SuiteSparse's `A->Y`
-  (`GB_Matrix_content.h:241-274`) at every flush.
+  (`GB_Matrix_content.h:240-312`) at every flush.
 
   DM is always `GrB_BOOL` (`:40`) whatever the matrix type: a
   tombstone carries no value, so DM is iso by construction.
@@ -782,7 +780,7 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   Three candidates, and each is grounded: (1) flush control — any
-  GrB read can force a wait (`GB_Matrix_content.h:386-389`),
+  GrB read can force a wait (`GB_Matrix_content.h:389-392`),
   whereas FalkorDB's thresholds are its own
   (`delta_wait.c:89`, `:97`); (2) the transposed twin —
   `delta_matrix.h:113` plus the recursion at every mutation, so
@@ -890,14 +888,14 @@ Answer each before unfolding it.
   `delta_remove_element.c`, `delta_will_wait.c`. The flush constant
   is `src/configuration/config.h:19`. Full anchor table above.
 - [SuiteSparse:GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS)
-  at `1fd5475` — the layer underneath.
+  v10.5.2, at `7701390417` — the layer underneath.
   `Source/convert/GB_conform.c:157-160` and `:175-184` are the two
   cases `delta_new.c`'s pins select;
-  `Source/builtin/include/GB_Matrix_content.h:241-274` is the
-  hyper_hash it disables, `:361` and `:367-391` are the pending
-  tuples and zombies it declines to rely on, `:386-389` is the
+  `Source/builtin/include/GB_Matrix_content.h:240-312` is the
+  hyper_hash it disables, `:364` and `:370-394` are the pending
+  tuples and zombies it declines to rely on, `:389-392` is the
   implicit-wait behaviour that motivates the whole layer.
-  `Include/GraphBLAS.h:666` and `:668` are `GrB_DESC_RSC` and
+  `Include/GraphBLAS.h:672` and `:674` are `GrB_DESC_RSC` and
   `GrB_DESC_RSCT0`. Walked in
   [reading-suitesparse-internals.md](reading-suitesparse-internals.md).
 
