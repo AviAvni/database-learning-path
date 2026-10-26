@@ -99,7 +99,7 @@ are worth fetching first.
 | `neon` | `8f60b04` | 2026-05-25 | 215 | [https://github.com/neondatabase/neon](https://github.com/neondatabase/neon) |
 | `sqlite` | `951de30` | 2026-07-09 | 203 | [https://github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) |
 | `GraphBLAS` | `1fd54756ca` | 2026-02-05 | 189 | [https://github.com/DrTimothyAldenDavis/GraphBLAS](https://github.com/DrTimothyAldenDavis/GraphBLAS) |
-| `qdrant` | `222b2e44a` | 2026-10-21 | 178 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
+| `qdrant` | `222b2e44a` | 2026-10-21 | 188 | [https://github.com/qdrant/qdrant](https://github.com/qdrant/qdrant) |
 | `turso` | `dd775bc` | 2026-07-10 | 174 | [https://github.com/tursodatabase/turso](https://github.com/tursodatabase/turso) |
 | `valkey` | `8891441ab` | 2026-05-03 | 171 | [https://github.com/valkey-io/valkey](https://github.com/valkey-io/valkey) |
 | `datafusion` | `1e77af8` | 2026-07-10 | 148 | [https://github.com/apache/datafusion](https://github.com/apache/datafusion) |
@@ -126,10 +126,10 @@ are worth fetching first.
 | `go-ycsb` | `f030f99` | 2025-12-31 | 49 | [https://github.com/pingcap/go-ycsb](https://github.com/pingcap/go-ycsb) |
 | `tantivy` | `7152d53` | 2026-07-10 | 49 | [https://github.com/quickwit-oss/tantivy](https://github.com/quickwit-oss/tantivy) |
 | `BlockSci` | `14ccc93` | 2020-11-13 | 48 | [https://github.com/citp/BlockSci](https://github.com/citp/BlockSci) |
+| `pgwire` | `6bb6299` | 2026-06-29 | 48 | [https://github.com/sunng87/pgwire](https://github.com/sunng87/pgwire) |
 | `ligra` | `8763202` | 2024-02-18 | 46 | [https://github.com/jshun/ligra](https://github.com/jshun/ligra) |
-| `pgwire` | `6bb6299` | 2026-06-29 | 46 | [https://github.com/sunng87/pgwire](https://github.com/sunng87/pgwire) |
 | `cockroach` | `a7e11788` | 2026-07-06 | 45 | [https://github.com/cockroachdb/cockroach](https://github.com/cockroachdb/cockroach) |
-| `usearch` | `9fd6b01` | 2026-05-24 | 45 | [https://github.com/unum-cloud/usearch](https://github.com/unum-cloud/usearch) |
+| `usearch` | `9fd6b01` | 2026-05-24 | 44 | [https://github.com/unum-cloud/usearch](https://github.com/unum-cloud/usearch) |
 | `benchbase` | `33c0047` | 2025-12-13 | 40 | [https://github.com/cmu-db/benchbase](https://github.com/cmu-db/benchbase) |
 | `rayon` | `6d9e94b` | 2026-06-27 | 40 | [https://github.com/rayon-rs/rayon](https://github.com/rayon-rs/rayon) |
 | `ALEX` | `4370da6` | 2024-03-12 | 39 | [https://github.com/microsoft/ALEX](https://github.com/microsoft/ALEX) |
