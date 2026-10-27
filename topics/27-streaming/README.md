@@ -104,7 +104,7 @@ and sideways information passing never times out or runs out of memory, while
 FlowLog without them and Soufflé fail on 25 and 23 of them (§10.4, Fig. 9). It
 is the arrangement machinery of this topic carrying recursive Datalog — read it
 after [reading-differential-dataflow.md](reading-differential-dataflow.md) —
-and the `SemiNaiveReach` stub is its smallest instance.
+and the `SemiNaiveReach` stub is its smallest instance. Its siblings Soufflé, RecStep, Ascent and CozoDB, and the algebra form of the same loop, are read in [topic 55](../55-datalog-engines/README.md).
 
 ## Timestamps, watermarks, and why "when" is half the problem
 

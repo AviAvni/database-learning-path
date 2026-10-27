@@ -137,7 +137,7 @@ Effective ONLY if data is clustered on the filter column — zone maps on
 random data prune nothing (every zone spans the whole domain). That's
 why ClickHouse makes you declare ORDER BY at table creation. DuckDB:
 `ColumnData::CheckZonemap` (column_data.cpp:482), stats per segment.
-Parquet: min/max per column chunk + page.
+Parquet: min/max per column chunk + page. Sorted input is also the comparison sort's cheapest case (10M sorted `u64` rows in 2.9 ms against 150 ms random) and a radix sort's worst: [topic 57](../57-sorting/README.md).
 
 ## 4. The formats: Arrow (memory) vs Parquet (disk)
 

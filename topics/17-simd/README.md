@@ -40,7 +40,7 @@ every fast kernel hardcodes.
 
 ## 3. Branchless selection: the filter kernel
 
-The DB kernel (SIGMOD '15's centerpiece). Three shapes:
+The DB kernel (SIGMOD '15's centerpiece). The same idea drives Rust's branchless partition and sorting-network base case, and IPS⁴o's branch-free classification ([topic 57](../57-sorting/reading-rust-sort.md)). Three shapes:
 
 ```
  branchy:     if v[i] < t { out[k++] = v[i] }        ← mispredicts at 50% sel

@@ -12,7 +12,7 @@ Linux rung out).
 | `fsync` | 22.67 µs | 56.73 µs | 157.06 µs | 44 109 |
 | `F_FULLFSYNC` | **2.97 ms** | 3.61 ms | 9.89 ms | **337** |
 
-**Three rungs, a 2540× spread in the last column, and only the bottom one is
+**Three rungs, a 2,542× spread in the last column, and only the bottom one is
 actually durable on this hardware.** The middle rung is the trap: `fsync` on
 macOS returns once the data reaches the *drive*, not once the drive has
 committed it to stable media — the write can still be sitting in the disk's

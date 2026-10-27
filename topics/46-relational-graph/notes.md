@@ -74,6 +74,8 @@ materialises tuples into an output vector would cost several times more per
 tuple; the number is a lower bound on flat enumeration, not an estimate of a
 real engine's cost.
 
+**Headline vs detail.** FINDINGS row 46 leads with one figure: the 3-hop pattern over 313,512 power-law edges is 9,042,996,117 values flat and 47,997,149 factorized (188×). The supporting numbers are in the tables above: 2,272,724,241 flat tuples; CSR expansion is 1.3× faster per tuple but enumerates the same 2.27 B; on the 40,000-vertex uniform graph (no hubs) the factorization gap is 28×, not 188×.
+
 ## C FalkorDB on the same graph (measured 2026-10-26, Apple M3 Pro)
 
 `python3 experiments/cengine.py 10000 20000 --explain` (with `pgq_edges` built

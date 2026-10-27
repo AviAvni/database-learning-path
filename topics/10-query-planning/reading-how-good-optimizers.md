@@ -245,7 +245,7 @@ six joins" is misreading Figure 3.
 Why underestimation is the dangerous direction: an optimizer told "only 3 rows
 come out of this" cheerfully picks a nested-loop join, which then runs orders
 of magnitude more iterations than promised. Overestimation makes you buy a hash
-table you did not need; underestimation makes you buy a quadratic algorithm.
+table you did not need; underestimation makes you buy a quadratic algorithm. The graph version of this measurement, by hop count and with the correlation that breaks the estimator isolated, is [topic 53](../53-graph-cardinality/README.md).
 
 Why it matters: q-error is the unit the rest of the paper is denominated in,
 and its asymmetry is the reason Step 7's mitigation works.

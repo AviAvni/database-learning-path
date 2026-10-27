@@ -144,7 +144,7 @@ exactly two of the three relations, so x = (½, ½, ½) is feasible
 an arithmetic statement but easy to misread: `m^1.5` is a *worst-case* ceiling over
 all instances with m edges, not an estimate of this graph's triangle
 count, which is far smaller. The number that matters is the ratio, not
-either endpoint.
+either endpoint. On skewed data the AGM bound for a triangle is 131× too high ([topic 53](../53-graph-cardinality/README.md), lane 1).
 
 The gap is also not universal. Do the same LP for question 2's
 4-cycle `R(a,b) S(b,c) T(c,d) U(d,a)`: take x_R = x_T = 1 and

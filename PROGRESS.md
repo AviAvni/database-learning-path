@@ -4,7 +4,7 @@ Two different things get tracked here, and conflating them is misleading:
 
 - **Package** — does `topics/NN-name/` exist and hold up? That means a study
   guide, four to seven reading guides, `notes.md`, and an experiments crate
-  whose provided lane runs and whose numbers are recorded. All 47 are built;
+  whose provided lane runs and whose numbers are recorded. All 58 are built;
   `./verify.sh` re-derives every one of their measured lanes.
 - **Studied** — have *I* actually worked through the material and the two
   exercise lanes? That is a much smaller number, and it is the honest one.
@@ -67,6 +67,13 @@ is done.
 | 48 | Memory Tiering: CXL, Disaggregated Memory & Placement | done | todo |  |
 | 49 | Open File & Table Formats: Parquet's Successors, Iceberg/Delta/DuckLake, and Transactions on Object Storage | done | todo |  |
 | 50 | LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost | done | todo |  |
+| 51 | Dynamic Graph Storage: A CSR That Takes Writes | done | todo |  |
+| 52 | Graph Reordering & Compression: Bytes per Edge, and Why Vertex IDs Are the Lever | done | todo |  |
+| 53 | Cardinality Estimation for Graph Patterns: Where Multi-Hop Estimation Dies | done | todo |  |
+| 54 | Main-Memory Join Algorithms: Hash, Radix-Partitioned & Sort-Merge | done | todo |  |
+| 55 | Datalog Engines: Recursion as Joins and as Sparse Algebra | done | todo |  |
+| 56 | Memory Allocators for Database Workloads | done | todo |  |
+| 57 | Sorting at Scale: Normalized Keys, Radix Sort & Collation | done | todo |  |
 
 ## Capstone milestones (falkordb-rs-next-gen from scratch)
 
@@ -123,6 +130,13 @@ is done.
 | M48 tier-aware placement for the graph store (fast/slow arenas, `mbind` on Linux; vertex renumbering by access frequency with pages-for-90% reported before and after; the partial-move decision before bulk traversals over a slow-tier adjacency; engine metadata pinned to the fast tier) | 48 | pages-for-90% reported before and after renumbering, measured the way topic 48's `tier_bench` does | todo |
 | M49 graph snapshots and branches on object storage (immutable segment files + a manifest with per-segment statistics; commits and branch/tag references by conditional put; an O(1)-metadata planner measured with lane 1a's meter; lane 2's conflict rules for concurrent writers to a branch; manifest-merge interval chosen by lane 3's EOQ rule) | 49 | planning reads O(1) metadata objects per snapshot as lane 1a's meter counts; concurrent conflicting commits rejected by lane 2's rules | todo |
 | M50 semantic predicates in the planner (`ExpensivePredicate` with declared cost and a paid selectivity sample, rank ordering, LIMIT pushdown, (row, predicate) answer cache, two-threshold cascade with a guaranteed-threshold learner; call counts match lane 1 against a mock model) | 50 | model call counts match lane 1 against a mock model; cached (row, predicate) answers never re-call the model | todo |
+| M51 delta-core evaluation (lane 1's workload — two-hop scans with 0/1/10% inserts and the half-deletes mix — on the M20 core: scan ns/edge, amortised c + F/T with F measured, a tombstone scan with no per-edge test asserted ≤ 1.2× the insert-only mix, a bounded flush, bytes/edge; benchmarked against C FalkorDB with the two-hop and insert-latency datapoint) | 51 | two-hop results equal a static-CSR oracle after every insert batch; steady-state insert cost (c + F/T) and scan ns/edge recorded beside topic 51's `dyngraph_bench`; insert-latency p99 against C FalkorDB's on the same graph | todo |
+| M52 id-order pass and compact read-only segment for the sparse-matrix core ((community, degree) renumbering via the Leiden of M24 applied to every relationship matrix and the property store, every query result checked unchanged up to the permutation; lane 1's LogGap / varint bits / simulated-miss / scan-ns columns reported before and after on a graph whose value array exceeds the LLC; a gap+varint read-only segment for settled matrices with the one-thread vs all-thread scan crossover recorded; bytes per edge of every relationship matrix with the iso-boolean case counted) | 52 | every query result unchanged up to the permutation after renumbering; bits/edge and scan ns/edge recorded before and after beside topic 52's `compress_bench` | todo |
+| M53 estimator behind the planner's anchor choice (per-relation F1 and per-type-pair F2 = Σ indeg·outdeg from the matrices' degree vectors, asserted against brute force; an `est(pattern)` trait with independence and the order-2 catalog; lane 1's plan-choice table on the capstone graph with regret and the answer's share of cost; catalog update cost per inserted edge; the same four-hop MATCH anchored at each end) | 53 | F1/F2 statistics equal brute-force counts; q-error by hop recorded beside topic 53's `card_bench`; anchor choice measured at both ends of one four-hop MATCH | todo |
+| M54 join operator for the Rust engine (a `HashJoin` trait with a shared-table and a single-pass radix-partitioned implementation, fan-out from Equation (1) with the measured L1d; a planner rule using the crossover measured on the target machine; late materialisation through the join; benchmarked on the three-hop pattern with the join's share of the query reported) | 54 | join output equals a nested-loop oracle; shared-table and radix timings recorded beside topic 54's `join_bench` with the crossover on the target machine | todo |
+| M55 recursion operator for the Cypher planner (variable-length `*` as a masked sparse product over the relationship matrices with a complement visited-mask and the flops = derivations identity asserted in debug builds; goal-directed evaluation when an endpoint is bound; per-hop out-/in-side choice from the frontier's degrees; dense-vs-sparse mask chosen from n and frontier density; both anchors benchmarked against C FalkorDB's variable-length traversal) | 55 | variable-length results equal a BFS oracle; derivations equal flops + |arc| in debug builds; both anchors timed against C FalkorDB's variable-length traversal | todo |
+| M56 query-scoped arena and allocation-size audit for the graph store (arena above `rm_malloc` for a query's intermediates, per-query cap counting chunks rather than objects; entity headers checked against jemalloc size classes under quantum 8 and 16; resident ÷ live reported per churn round; benchmarked against the C engine's `rm_malloc` path) | 56 | resident ÷ live reported per churn round beside topic 56's `alloc_bench`; per-query cap enforced in a test; temporaries timed against the `rm_malloc` path | todo |
+| M57 normalized-key `ORDER BY` for the Cypher engine (order-preserving encoder for Cypher values with `DESC` and a leading type byte; fixed-width key + row-pointer sort for ≤ 3 numeric keys, variable-size fallback; radix with size cutoff and run detection chosen from `n` and key width; once-per-row collation keys with the comparisons-per-string break-even asserted; 10M-row `ORDER BY` against C FalkorDB's `op_sort.c` path, with and without `LIMIT`) | 57 | `ORDER BY` output equals a comparison-sort oracle for every Cypher type and `DESC`; 10M-row sort timed against C FalkorDB with and without `LIMIT` | todo |
 
 ## Session log
 

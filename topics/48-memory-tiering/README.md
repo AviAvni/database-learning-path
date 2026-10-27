@@ -24,7 +24,7 @@ graph LR
 
 Two questions run through the topic: *what* to put in the fast tier (layout
 and granularity — lanes 1 and 2, OBASE, SIDLE, TPP), and *how much to move*
-when the data starts in the slow one (the hash-join paper's model, lane 3).
+when the data starts in the slow one (the hash-join paper's model, lane 3). Allocation order sets the page layout a placement policy inherits: topic 56 measures how a churned heap interleaves hot and cold objects within pages (resident ÷ live 1.13–1.64× for the system allocator after lane 1b's churn; [topic 56](../56-memory-allocators/README.md)).
 
 ## The problem, measured (bench lane 1, provided — runs today)
 
@@ -252,7 +252,7 @@ not quite the gain (1.1665 vs 1.1703); the NPHJ row reproduces neither (x\*
 reductions, i.e. 1.285× and 1.037×) exceed what the paper calls its model's
 upper bound. The direction holds — move part of the data to DRAM, not all of
 it, and never into the interleaved tier — the bound does not
-([reading-hashjoins-meet-cxl.md](reading-hashjoins-meet-cxl.md)).
+([reading-hashjoins-meet-cxl.md](reading-hashjoins-meet-cxl.md)). The fast-tier latency, TLB-reach and bandwidth ladder these partitioned and non-partitioned costs assume is measured for an M3 in [topic 54](../54-join-algorithms/README.md) lane 0.
 
 ## Step 5 — the far tiers: disaggregated memory and metadata
 
@@ -387,7 +387,8 @@ whole graph in one memory pool; this milestone adds the placement layer.
 - [ ] Vertex renumbering by access frequency (lane 2's `learn_layout` applied
       to matrix rows), with page utilization and pages-for-90% reported before
       and after on a skewed traversal workload — the counted columns of lane
-      1b, for the engine's own data.
+      1b, for the engine's own data ([topic 52](../52-graph-compression/README.md)
+      measures renumbering in bits per edge and gather misses).
 - [ ] Before a bulk traversal over a slow-tier adjacency, the Huang et al.
       decision: measure k and m once, copy x\* of the rows to the fast tier, and
       report the end-to-end time against copy-nothing and copy-all.

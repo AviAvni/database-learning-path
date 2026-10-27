@@ -2,7 +2,7 @@
 
 **A self-paced curriculum in database internals, where every claim is measured.**
 
-51 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
+58 topics, from B-trees to GPU query execution to attack graphs. Each one walks you
 through the papers and the production code, then hands you a Rust benchmark that
 demonstrates the thing being claimed — so you finish with a number you produced
 yourself, not a fact you read.
@@ -31,7 +31,7 @@ Six examples, each the opening measurement of its topic:
 | A global mutex gets **2.9× slower** going from 1 thread to 16 — not "stops scaling", actually negative | [9 — Concurrency](topics/09-concurrency/README.md) |
 | Identical zero-work requests run at **44k/s pipelined 1-deep and 12.3M/s at 256** — a 279× swing that is pure syscalls | [7 — Networking & Protocols](topics/07-networking-protocols/README.md) |
 
-**[FINDINGS.md](FINDINGS.md) has all 42 of them in one table**, with the command
+**[FINDINGS.md](FINDINGS.md) has all 56 of them in one table**, with the command
 that re-derives each. Every one runs today:
 
 ```bash

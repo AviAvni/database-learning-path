@@ -319,6 +319,9 @@ cargo run --release --bin semijoin_bench
 - **Topic 13 (graph engines) ↔ 47.** Every `Expand` in a Cypher plan is a
   join; lane 1 is a three-hop `MATCH`, and anchoring it at the wrong end is
   the bad order.
+- **Topic 53 (graph cardinality) ↔ 47.** The accurate-or-robust pair: [topic 53](../53-graph-cardinality/README.md) measures how wrong multi-hop estimates are (median q-error 324× at four hops) and shows that a wrong estimate often does not change the plan; semi-join reduction is the fix for when it does.
+- **Topic 54 (join algorithms) ↔ 47.** The Bloom pre-filter in front of a radix join's scatter is Bandle et al.'s BRJ ([reading-bandle-to-partition.md](../54-join-algorithms/reading-bandle-to-partition.md)); topic 54's Exercise 5 builds it on topic 47's `bloom.rs`.
+- **Topic 55 (Datalog engines) ↔ 47.** A magic-set rewrite is a semi-join reduction toward the query's bound argument: `?- tc(0,y)` derives 1,808 tuples against the full closure's 137,482 ([topic 55](../55-datalog-engines/README.md)).
 
 ## Capstone M47 — a semi-join pass for the Cypher planner
 

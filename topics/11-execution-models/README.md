@@ -139,14 +139,14 @@ workers PULL morsels dynamically instead of getting static partitions.
 
 ## 5. Hash joins and aggregation, vectorized
 
-The two operators where analytics time actually goes.
+The two operators where analytics time actually goes. The third operator that re-packs vectors into rows is `ORDER BY`: [topic 57](../57-sorting/README.md) measures what encoding the sort key once buys over a comparator, and where a radix sort on that key loses.
 
 - **Hash join** (DuckDB `join_hashtable.cpp`): build side materializes
   into row-format tuple data, partitioned by hash radix; the hash table
   stores 8-byte entries = pointer + SALT bits (topic 2's bit-smuggling:
   compare salt before chasing the pointer — most misses never touch the
   tuple). Probe is vectorized: hash 2048 keys, gather 2048 buckets,
-  compare salts, chase survivors via selection vector.
+  compare salts, chase survivors via selection vector. Whether to partition by hash radix at all, and what DuckDB's radix bits are used for, is topic 54's question ([reading-duckdb-join-hashtable.md](../54-join-algorithms/reading-duckdb-join-hashtable.md)).
 - **Hash aggregation**: same skeleton, plus two-phase: threads build
   thread-local partial HTs (no contention), then radix-partitioned
   merge (`RadixPartitionedHashTable`). DataFusion's

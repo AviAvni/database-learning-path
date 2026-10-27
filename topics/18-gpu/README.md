@@ -123,7 +123,7 @@ happens.
   two-phase size/retrieve pattern (inner_join_size.cu before
   inner_join_retrieve.cu): count matches first, allocate exactly,
   fill second. GPU code can't `Vec::push` — every output needs its
-  size known or an atomic cursor.
+  size known or an atomic cursor. The CPU counterpart of this hash join, with the shared-table vs partitioned trade-off measured, is [topic 54](../54-join-algorithms/README.md).
 - Group-by: shared-memory aggregation per block when cardinality
   fits (groupby/hash/compute_shared_memory_aggs.cu). It does *not*
   spill: `compute_single_pass_aggs.cuh:95-122` sets a device

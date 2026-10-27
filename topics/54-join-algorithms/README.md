@@ -404,6 +404,10 @@ cargo run --release --bin join_bench
 - **Topic 13 (graph engines) ↔ 54.** An `Expand` into a node set that is not an
   adjacency lookup — a multi-way pattern, a join of two edge relations — is the
   hash join of this topic.
+- **Topic 55 (Datalog engines) ↔ 54.** A semi-naive round is this topic's join
+  run once per iteration on the newest facts only; topic 55 counts how many
+  derivations that loop makes and prices the same join as a masked sparse
+  product.
 
 ## Capstone M54 — a join operator for the Rust engine
 

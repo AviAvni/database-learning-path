@@ -334,7 +334,7 @@ DLP_IO_FILE=/mnt/nvme/x.dat cargo run --release --bin io_bench   # measure a spe
 - **Topic 6 (buffer pool) ↔ 45.** The buffer manager is where reads become
   I/O. The mmap chapter's "page faults are I/O you cannot schedule" is the
   QD-1 problem; LeanStore's `O_DIRECT` and vmcache are the engines Jasny et al.
-  and Lee et al. build on.
+  and Lee et al. build on. [reading-predictive-translation.md](../06-buffer-pool/reading-predictive-translation.md) is the hash-table-pool counterpart to LeanStore and vmcache.
 - **Topic 7 (networking) ↔ 45.** Completion vs readiness notification, and
   who owns the buffer between submission and completion — the same inversion
   for sockets and for disk.

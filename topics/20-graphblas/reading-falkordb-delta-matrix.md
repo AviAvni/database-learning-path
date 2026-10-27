@@ -608,7 +608,7 @@ folds; large thresholds mean cheap writes but every read and
 multiply pays the three-way tax longer.
 
 Why it matters: one configuration constant sets the position on
-that curve, and now you can compute both ends of it.
+that curve, and now you can compute both ends of it. Topic 51 measures that curve: [reading-falkordb-delta-in-context.md](../51-dynamic-graph-storage/reading-falkordb-delta-in-context.md) Step 2 works c + F/T on measured flush times (6.28 ms at T = 10,000 on a 16 M-edge CSR; steady-state 782 ns per insert).
 
 ## Where each step lives in the code
 

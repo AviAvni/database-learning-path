@@ -101,7 +101,7 @@ three lies:
 Errors are MULTIPLICATIVE up the plan tree — "How Good Are Query
 Optimizers, Really?" (VLDB '15) measured real systems mis-estimating by
 10⁴–10⁶ on the (real-data) JOB benchmark, and showed cardinality error
-dwarfs cost-model error. postgres's shrug when it knows nothing:
+dwarfs cost-model error (JOB's size and structure — 113 queries, 33 structures, 21 tables, a 3.6 GB IMDB snapshot — are in [topic 22](../22-benchmarks/README.md#job-real-data-correlated-on-purpose)). postgres's shrug when it knows nothing:
 `DEFAULT_EQ_SEL = 0.005` (selfuncs.h:34) — a constant guess powering
 million-dollar plan choices.
 

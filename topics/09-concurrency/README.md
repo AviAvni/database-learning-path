@@ -183,7 +183,7 @@ decide the outcome.
 Two ATOMICS in one 64B/128B cache line = every write invalidates the other
 core's line even though the data is "independent". redis padded its
 per-thread `used_memory` counters (topic 6); you'll measure the effect in
-`false_sharing.rs` (M-series lines are 128B — check both alignments).
+`false_sharing.rs` (M-series lines are 128B — check both alignments). An allocator can create false sharing the program never wrote — Hoard §2.1 names the active and passive cases; see [topic 56](../56-memory-allocators/reading-hoard.md) Step 5.
 
 ## 7. Code to read (guides in this dir)
 

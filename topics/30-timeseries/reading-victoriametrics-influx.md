@@ -398,7 +398,7 @@ Answer each before unfolding it.
   zigzag varint, so on a steady counter or slow gauge the per-sample dod is
   small and encodes in ~1 byte, with the timestamp column doing the same —
   landing well under the 11.00 B/sample baseline (our `baseline.rs`,
-  [measured](../../FINDINGS.md), topic 30), in the same low-single-digit
+  [measured](../../FINDINGS.md), topic 30; that baseline is the raw-values column, and the byte-aligned XOR values column and the ALP lane are in [reading-alp-chimp.md](reading-alp-chimp.md) Step 7), in the same low-single-digit
   range as Gorilla's ~1.37 B/point once `precisionBits` trims float noise.
   The honest caveat: the varint is byte-aligned, so it cannot reach
   Gorilla's sub-bit constant-series figure (2 bits/sample) — VM trades a

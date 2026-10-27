@@ -108,7 +108,7 @@ frontier size, which no layout changes.
 
 The recurring tension: CSR-shaped structures are READ-optimal but hate
 single-edge inserts (shift everything). Every system grows a
-delta/buffer mechanism: kuzu's in-mem CSR buffers, FalkorDB's
+delta/buffer mechanism (topic 51 compares these mechanisms against Sortledton, Teseo, LiveGraph and Packed CSR on one graph): kuzu's in-mem CSR buffers, FalkorDB's
 `Delta_Matrix` (additions/deletions matrices over the main one —
 `src/graph/delta_matrix/` in the C engine quoted here, FalkorDB 4.x on `master`
 at `ccb449a9a`; FalkorDB 6's Rust engine lives on `main`),
@@ -145,7 +145,7 @@ the faster one (0.58×) (§5.3, Table 4). Read the Umbra ratios with care:
 Table 4 prints each cell as "ratio — competitor ms / TurboLynx ms", and the
 Umbra row does not agree with itself — 2319 / 84 is 27.6, not 7.74, and
 113,512 / 12,253 is 9.26, not 0.58 — while the Neo4j row does (880 / 84 =
-10.5); topic 46's DuckPGQ guide works through the table. The capstone's attribute storage
+10.5); topic 46's DuckPGQ guide works through the table. Topic 46's [RelGo guide](../46-relational-graph/reading-relgo.md) runs the same pattern on the C engine: FalkorDB folds a chain whose intermediate vertices are unused into one boolean-semiring `Conditional Traverse` and returns distinct endpoint pairs, not paths. Whether renumbering vertex ids would pay in these engines is topic 52's question: [topic 52](../52-graph-compression/README.md) measures 24.11 vs 14.40 varint bits per edge and 3.27 vs 2.44 ns/edge on one graph, changing only the ids. The capstone's attribute storage
 faces the same row-vs-columnar choice its adjacency already made.
 
 ## 4. Worst-case optimal joins (the kuzu angle)

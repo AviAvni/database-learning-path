@@ -2,7 +2,7 @@
 
 Topic 21 built the e-graph and measured the thing it repairs: a
 hand-ordered rewriter that answers `(a*2)/2` with `(a << 1) / 2` and
-stops. This topic is the sequel, and it belongs in a database course
+stops (topic 21's `normalise_bench` counts how often that happens on random expressions — 118 of 200 at depth 6 — and how large the e-graph gets per iteration, in the same e-node unit used below). This topic is the sequel, and it belongs in a database course
 rather than a compilers one — because the fix for the *next* bottleneck
 turned out to be ours. E-matching, which the egg paper measured at
 **60–90% of equality saturation's run time** (POPL'22 §1, citing
@@ -329,6 +329,7 @@ it into one.
   incremental view maintenance for a monotone query, and the delta rules
   are the same expansion DBSP derives for a join. Different literature,
   identical algebra.
+- **Topic 55 (Datalog engines) ↔ 44.** egglog's loop is a Datalog engine's whose joins are worst-case optimal; [topic 55](../55-datalog-engines/README.md) prices the same semi-naive loop in derivations and reads Soufflé, Ascent, CozoDB and the 2026 GPU/cluster WCOJ Datalog engines.
 - **Topic 4 (LSM) ↔ 44.** Row timestamps + `GeConst` = sequence numbers
   + "everything since". Deferred rebuilding = deferred compaction.
 - **Topic 13 (graph engines) ↔ 44.** Lane 3's triangle query is the

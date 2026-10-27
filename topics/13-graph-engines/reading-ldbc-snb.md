@@ -6,7 +6,7 @@ disclosure. LDBC SNB is that referee for graph engines. Before you
 skim the spec, this chapter builds what makes it one, step by step —
 the workloads, why the correlated data generator is the whole point,
 the update requirement that closes the biggest cheat, the audit
-rules, and what M22's shootout should steal.
+rules, and what M22's shootout should steal. The scoring rules the Interactive driver enforces (95% of operations start within 1 s of schedule, §7.4) and the BI power/throughput scores are also summarised in [topic 22](../22-benchmarks/README.md#ldbc-snb-a-social-network-two-workloads-one-rule-about-lateness).
 
 Every claim below is cited to a numbered section of **The LDBC Social
 Network Benchmark, version 0.3.6**
@@ -418,7 +418,7 @@ plainly where your graph is not theirs.
 3. Uniform-degree graph, same edge count: which of this topic's four
    architectures looks RELATIVELY better than it deserves, and why?
 4. What's the graph analogue of JOB's "cardinality errors dwarf cost
-   model errors" — at which hop does estimation die?
+   model errors" — at which hop does estimation die? See [topic 53](../53-graph-cardinality/README.md): the graph analogue of JOB, measured, with the engines' estimators read.
 5. Which SNB scale factor fits in this Mac's RAM as (a) memgraph
    objects, (b) CSR, (c) Delta_Matrix? Rough per-edge byte estimates.
 

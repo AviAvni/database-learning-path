@@ -50,7 +50,7 @@ flowchart TD
 
 ## Milestone map
 
-Milestones M0–M50 map 1:1 to curriculum topics 0–50 in `PLAN.md`; each topic's
+Milestones M0–M57 map 1:1 to curriculum topics 0–57 in `PLAN.md`; each topic's
 "Capstone milestone" line defines the scope. Status lives in `PROGRESS.md`.
 
 M0–M31 build the engine itself, in the spine below. M32–M43 attach the later
@@ -58,7 +58,13 @@ topics' capabilities to a working engine rather than extending the spine: HTAP
 routing (M32), temporal queries (M33), diagnosis surfaces (M34), admission
 control (M35), sharding and distributed execution (M36/M37), and the six
 graph use cases (M38–M43), each landing as procedures and index structures
-over the M20 core.
+over the M20 core. M44–M57 deepen that core where the later topics measured it:
+a relational rewrite stage (M44), an async page path (M45), factorized
+intermediates and semi-joins in the planner (M46/M47), tiering and object
+storage (M48/M49), semantic predicates (M50), a delta core that takes writes
+(M51), id reordering (M52), a pattern estimator (M53), the join operator
+(M54), recursion as a masked product (M55), a query arena (M56) and
+normalized-key `ORDER BY` (M57).
 
 Rough dependency spine: M0 → M2 → M13 (naive adjacency graph) → M10/M11 (query engine)
 → M20 (sparse-matrix core replaces M13). Everything else attaches to that spine —

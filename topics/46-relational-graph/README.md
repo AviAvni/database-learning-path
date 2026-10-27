@@ -297,6 +297,7 @@ cargo run --release --bin pgq_bench
   multi-source BFS family; lane 3's product BFS is BFS on a product graph.
 - **Topic 27 (incremental views) ↔ 46.** Semi-naive recursion is the delta
   rule; lane 3 shows that under set semantics it already does BFS's work.
+- **Topic 55 (Datalog engines) ↔ 46.** The closure `WITH RECURSIVE … UNION` derives is the quantity [topic 55](../55-datalog-engines/README.md)'s lane 1 counts; its lane 3 evaluates the same closure as a masked sparse product.
 
 ## Capstone M46 — factorized expansion and closures as join operands
 
@@ -318,3 +319,4 @@ representation of intermediates.
       `(a)-[:R*1..k]->(b)` as a closure that can be intersected with other edges
       at `b` (Pang et al.'s TI-with-KC), under explicit set or bag semantics,
       and measure lane 3's pairs-vs-walks gap through Cypher.
+- [ ] For patterns whose intermediate vertices are unnamed, decide `count(*)` bag vs set semantics explicitly, and test the decision against the C engine's two answers in notes.md.

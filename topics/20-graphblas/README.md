@@ -139,7 +139,7 @@ which has no `src/graph/`. Open the files with
 This is topic 3's LSM memtable+tombstones, rebuilt over matrices —
 same read-merge, same deferred compaction, same "don't block the
 writer" motive. Guide:
-[reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md).
+[reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md). The measured side of this design — flush cost, c + F/T, delta growth, and the same graph in a real FalkorDB — is [topic 51](../51-dynamic-graph-storage/README.md). [Topic 52](../52-graph-compression/reading-graphblas-bytes.md) counts the bytes per edge of these matrices (4.5 for an iso boolean, 12.5 for the UINT64 tensor, 32-bit indices) with a probe linked against FalkorDB's libgraphblas; renumbering is a row/column permutation that changes no result. [Topic 55](../55-datalog-engines/README.md) shows that the transitive-closure loop `D' = (D·A)⟨¬T⟩` is LAGraph's BFS level with a matrix frontier: its flops equal semi-naive evaluation's derivations, so GraphBLAS changes the cost of a derivation, not their number.
 
 ## 6. Parallelism: OpenMP inside SuiteSparse, rayon in Rust
 
