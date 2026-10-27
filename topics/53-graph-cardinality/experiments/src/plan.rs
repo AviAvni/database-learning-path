@@ -117,7 +117,7 @@ mod tests {
     fn a_misleading_estimate_costs_regret() {
         // truth: the middle edge is the tiny one, so start there; the estimate thinks edge 0 is.
         let truth = |lo: usize, hi: usize| if lo <= 1 && 1 <= hi { 1.0 } else { 100.0 };
-        let est = |lo: usize, hi: usize| if lo == 0 { 1.0 } else { 100.0 };
+        let est = |lo: usize, _hi: usize| if lo == 0 { 1.0 } else { 100.0 };
         let o = edge_orders(3);
         let p = plan(&o, &truth, &est);
         assert!(p.wrong && p.regret > 1.0);
