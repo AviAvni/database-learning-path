@@ -68,19 +68,19 @@ every stub test (triangles: per-edge `|N(u) ∩ N(v)|` against current
 `HashMap<u32, BTreeSet<u32>>` state; wedge join: `delta_join` composed from
 `join_oracle` over the integrated `ZSet` state, then `merge`; reach: frontier
 BFS from newly-connected endpoints) printed, from `cargo run --release --bin
-ivm_bench` (Apple M3 Pro, 2026-10-26, one run, machine shared with other jobs;
-the full-recompute lines of that same run were 123.9 / 964.2 / 27.9 ms):
+ivm_bench` (Apple M3 Pro, 2026-10-27, one run on an idle machine; the
+full-recompute lines of that same run were 100.8 / 885.3 / 29.2 ms):
 
 | lane | incremental | speedup in that run | check |
 |---|---|---|---|
-| triangles, +90/-10 batch | 97.5 µs/batch | 1271x | count 1365 == oracle |
-| wedge join | 39,544 µs/batch | 24x | wedges 21,063,140 == oracle |
-| reach, 50 insert chunks | 646.1 µs/batch | 43x | |reached| 50000; 110,608 relaxations for 500,000 edges |
+| triangles, +90/-10 batch | 69.5 µs/batch | 1450x | count 1365 == oracle |
+| wedge join | 41,175 µs/batch | 21x | wedges 21,063,140 == oracle |
+| reach, 50 insert chunks | 655.2 µs/batch | 44x | |reached| 50000; 110,608 relaxations for 500,000 edges |
 
 - **A "3-5 orders of magnitude" claim does not
-  reproduce.** The best lane is 1271x (3.1 orders) and the median is 43x
+  reproduce.** The best lane is 1450x (3.2 orders) and the median is 44x
   (1.6 orders). The wedge join, whose incremental form is the textbook
-  bilinear identity, reaches only 24x because `ZSet::merge` re-sorts the whole
+  bilinear identity, reaches only 21x because `ZSet::merge` re-sorts the whole
   1 M-entry state every batch and `join_oracle` rebuilds a hash index over the
   whole other side: the delta is 200 rows, the state work is 2 M. The fix is
   the arrangement the author's prediction flagged, and it is left as the

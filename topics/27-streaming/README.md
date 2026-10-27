@@ -39,12 +39,12 @@ one is the interesting result, not the 1000× one.
 
 | standing query | full recompute / batch | incremental target |
 |---|---|---|
-| triangle count | 100.5 ms | per-edge common-neighbour probes — batch·d̄, not m·d̄ (reference: 97.5 µs, 1271x) |
-| 2-hop wedge join | 923.5 ms | bilinear delta rule (reference: 39.5 ms, 24x — see below) |
-| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* (reference: 646 µs, 43x) |
+| triangle count | 100.5 ms | per-edge common-neighbour probes — batch·d̄, not m·d̄ (reference: 69.5 µs, 1450x) |
+| 2-hop wedge join | 923.5 ms | bilinear delta rule (reference: 41.2 ms, 21x — see below) |
+| reachability from src | 25.9 ms (re-BFS) | semi-naive: each edge relaxed O(1) times *ever* (reference: 655 µs, 44x) |
 
 The reference solution (`notes.md`, one run) measured **1-3 orders of
-magnitude**, not more: 1271x on triangles, 43x on reachability, and only 24x on
+magnitude**, not more: 1450x on triangles, 44x on reachability, and only 21x on
 the wedge join. The wedge lane is the instructive one: its delta rule is
 correct, but the straightforward state (a sorted `ZSet` re-merged and
 re-hashed per batch) is still O(state) per step, so most of the saving is

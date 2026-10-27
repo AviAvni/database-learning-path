@@ -21,20 +21,27 @@ flowchart LR
 ## The problem, measured (bench lane 1, provided — runs today)
 
 `cargo run --release --bin exec_bench` — 50 M rows,
-`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3:
+`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3 (median of three
+invocations, idle machine, rustc 1.99.0):
 
 ```
-selectivity      volcano
-        5%      0.386 s     129.4 M rows/s
-       50%      0.484 s     103.3 M rows/s
-       95%      0.669 s      74.7 M rows/s
+selectivity      volcano       ns per scanned row
+        5%      0.098 s     511.2 M rows/s     1.96
+       50%      0.272 s     183.5 M rows/s     5.45
+       95%      0.169 s     295.0 M rows/s     3.39
 ```
 
-**103 M rows/s is the tuple-at-a-time ceiling on this machine — and notice which
-way it moves.** Cost rises monotonically with selectivity, because in a Volcano
-pipeline every row that *survives* the filter pays the full per-tuple
-interpretation bill on its way to the aggregate: a virtual call per operator per
-row. The filter is not the expensive part. Passing it is.
+**183 M rows/s at 50% is the tuple-at-a-time ceiling on this machine — and notice
+the shape: it is slowest in the middle, not at the permissive end.** Two costs
+stack. The filter is a data-dependent branch, so at 50% selectivity on random
+data the predictor is wrong about every other row — and a misprediction costs
+more than the whole per-row call chain at 5%. (`cargo run --release --bin
+sorted_filter` runs the same pipeline with `f` sorted: 50% falls from 5.05 to
+2.23 ns/row, while 5% and 95% barely move; [notes.md](notes.md) has the
+numbers.) On top of that, a row that survives pays a second `dyn` return and
+the aggregate's write: 95% vs 5% is 1.4 ns/row slower, about 1.6 ns per
+additional survivor. Topic 0's `branch_misprediction` lane measures the same
+penalty on a flat loop.
 
 The reference solution for the two exercise lanes (`notes.md`, "Reference
 numbers") puts a number on the gap: at 50% selectivity vectorized ran **1.7x**
@@ -43,7 +50,7 @@ back to back; the ratios moved between runs on a loaded machine, the ordering
 never did.
 
 Put that next to topic 12's measurement of the same machine — ~50 GB/s of
-sequential u64 fold, about 6.2 G values/s — and the gap is 60×. That gap is what
+sequential u64 fold, about 6.2 G values/s — and the gap is 34× (6200 / 183.5). That gap is what
 vectorized execution and compiled kernels are competing to close, and the
 interesting question is not whether they close it but *what the remainder
 consists of* once they do. Predict the split before you implement either lane.

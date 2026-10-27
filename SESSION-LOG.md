@@ -9,6 +9,83 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-27 — topic 11 — the Volcano baseline re-measured
+
+The provided `exec_bench` Volcano lane no longer printed the recorded 2026-07-28 baseline (129.4 / 103.3 / 74.7 M rows/s at 5 / 50 / 95%, monotone). Bench source unchanged since then except a comment (`git diff c3a8f6e HEAD`). Re-measured on an idle M3 Pro, rustc 1.99.0, three invocations via benchlock.sh, median taken:
+
+- 5%: 511.2 / 502.8 / 543.6 -> median 511.2 M rows/s (0.098 s), 1e3/511.2 = 1.96 ns/row
+- 50%: 170.7 / 183.5 / 186.2 -> median 183.5 M rows/s (0.272 s), 5.45 ns/row
+- 95%: 294.9 / 328.2 / 295.0 -> median 295.0 M rows/s (0.169 s), 3.39 ns/row
+
+The shape is non-monotone: slowest at 50%.
+
+Cause (what was verified):
+- `objdump -d` of the release binary: `FilterOp::next` is a real conditional branch (`cmp w8, w22; b.hs` looping back to the `blr` of the child call), with the Option<Row> returned through the stack. Not if-converted.
+- New provided bin `src/bin/sorted_filter.rs` (registered in Cargo.toml): same Volcano pipeline on the random `f` column vs after `f.sort_unstable()`. Median of three runs, ns/row, random -> sorted: 5%: 1.94 -> 1.62; 50%: 5.05 -> 2.23; 95%: 2.95 -> 2.84. (Per-run 50% random: 5.00 / 5.05 / 5.09; sorted 2.23 / 2.23 / 2.18.) The peak vanishes with a predictable branch, so it is misprediction. 2.82 / 0.5 = 5.64 ns (~23 cycles at an assumed 4 GHz) is a lower bound per misprediction; topic 0's branch_misprediction bound is <= 7.62 ns. No hardware counters on macOS: misprediction counts not measured.
+- Survivor cost: (3.39 - 1.96) / 0.9 = 1.59 ns per surviving row (1.09 ns if the 95% point is taken at its fastest, 340 M rows/s; 95% is the noisiest point, 295-340 across nine invocations). Survivors alone predict 1.96 + 0.45 x 1.59 = 2.68 ns at 50%; measured 5.45 leaves 2.77 ns/row for the misprediction.
+- Toolchain is NOT the cause: same source built with rustc 1.85.0 / 1.91.1 / 1.97.1 (scratch copy) gave 50%: 190.4 / 190.8 / 188.6; 5%: 512.1 / 532.3 / 450.2; 95%: 340.0 / 298.6 / 337.3 M rows/s. The 2026-10-26 loaded reference run's Volcano column (449.6 / 175.0 / 294.0) already had this shape.
+- Not determined: why the July run printed 129.4 / 103.3 / 74.7 (3.4-4x slower at 5%). The toolchain used then is not recorded; no tested toolchain reproduces it; machine state during that run (load, power mode) is the remaining unverified candidate.
+
+Derived figures rewritten: dyn-call cost per call, 1.96/1.05 = 1.86 ns (7.5 cycles) at 5% and 3.39/1.95 = 1.74 ns (7.0 cycles) at 95%, vs the c = 20 cycles assumption in reading-postgres-executor (a pessimistic bound); gap to topic 12 bandwidth 6200/183.5 = 33.8x (was 60x); morsel stand-in 5.45 ns/row: morsel 0.545 ms, per-thread 51.1 ms, window 1.1%, half-speed static +100%, morsel +0.8%.
+Reference ratios unchanged (1.7x vectorized, 9.2x kernel at 50% from the 2026-10-26 loaded run; Volcano 175.0 there is consistent with the new baseline 183.5).
+Files: topic 11 README, notes, reading-{duckdb-execution,postgres-executor,x100,compiled-vs-vectorized,morsel-parallelism}, topic 1 reading-architecture-of-a-dbms, FINDINGS row 11, experiments/Cargo.toml + src/bin/sorted_filter.rs. Not done: a verify.sh entry for sorted_filter.
+
+## 2026-10-27 — topic 26 — one run for every point-miss figure
+
+Topic 26 quoted three different runs of the same `filter_bench` lane: 246 / 299 / 28 ns
+(binary-search miss / BTreeMap miss / HashSet miss, 2026-07-28; FINDINGS row 26 and five
+reading guides), 186 / 240 / 20 ns (2026-10-26; README and notes Baseline), and a loaded
+run in the Reference-numbers section (blocked bloom 10 bpk 28 ns, binary search 556 ns,
+BTreeMap 426, HashSet 96, load average above 25). Re-measured on an idle machine
+(Apple M3 Pro), each run under `benchlock.sh`, medians of three, and every guide now quotes
+that one set.
+
+Provided lane (`cargo run --release --bin filter_bench`), runs 1/2/3 -> median:
+
+| lane | run 1 | run 2 | run 3 | median ns |
+|---|---|---|---|---|
+| binary search miss | 156 | 151 | 149 | **151** |
+| BTreeMap miss | 208 | 218 | 224 | **218** |
+| HashSet miss (224 MB) | 12 | 14 | 14 | **14** |
+| binary search hit | 149 | 144 | 145 | **145** |
+
+Scratch reference solution (blocked bloom + HLL), runs 1/2/3 -> median:
+
+| lane | run 1 | run 2 | run 3 | median |
+|---|---|---|---|---|
+| binary search miss | 151 | 155 | 144 | 151 ns |
+| BTreeMap miss | 207 | 224 | 206 | 207 ns |
+| HashSet miss | 14 | 13 | 13 | 13 ns |
+| binary search hit | 151 | 143 | 144 | 144 ns |
+| blocked bloom 8 bpk | 15 | 13 | 13 | 13 ns, fpr 0.0236 (theory 0.0216), 9 MB |
+| blocked bloom 10 bpk | 12 | 11 | 14 | 12 ns, fpr 0.0096 (theory 0.0084), 11 MB |
+| blocked bloom 16 bpk | 8 | 8 | 8 | 8 ns, fpr 0.0012 (theory 0.0009), 19 MB |
+
+Bloom build times (ms, 8 / 10 / 16 bpk): median 56.0 / 61.0 / 117.5. HLL P=14 (16 KB):
+est 10132906 vs true 10000000, err 1.329% (identical in all three runs), total 14.32 ms median.
+FPR, sizes and the HLL estimate are seeded and identical across runs.
+
+Derived figures recomputed from these:
+- binary search: log2(10,000,000) = 23.25, ceil = 24 comparisons; 151 / 24 = 6.3 ns per
+  comparison (151 / 23.25 = 6.5 ns). The old "each a branch mispredict into a different
+  cache line" and "~23 dependent cache misses" wording is replaced: 6.3-6.5 ns per probe
+  on average means the top of the walk is cached and only the bottom misses.
+- bloom vs binary search (reference run, 151 ns): 151/13 = 11.6x, 151/12 = 12.6x,
+  151/8 = 18.9x at 8 / 10 / 16 bpk; vs BTreeMap 207/12 = 17.3x at 10 bpk.
+- bloom vs HashSet (13 ns): 13/13 = 1.0x, 13/12 = 1.1x, 13/8 = 1.6x. So "roughly HashSet
+  speed, one order of magnitude under binary search, not two" holds.
+- Space unchanged and exact: 11.9 MiB bloom vs 224 MB HashSet (19x), vs 76 MB keys (6.4x);
+  HLL 16 KB (~14,000x under the HashSet); HLL err 1.329% vs 1.04/sqrt(16384) = 0.81%
+  standard error (under 2 sigma).
+- Learned-index window widths 2e+2 = 34 / 130 / 514 for e = 16 / 64 / 256 are unchanged;
+  only the baseline they are reasoned against moved (151 ns).
+
+Edited: topics/26-probabilistic/README.md, notes.md, reading-postgres-indexam.md,
+reading-learned-indexes.md, reading-cuckoo-xor.md, reading-bloom-to-ribbon.md,
+reading-roaring-internals.md; FINDINGS.md row 26 (now 151 / 218 / 14 ns, bloom 12 ns at
+0.96%). `check-reading-depth.py --check` passes on all five guides and the postgres guide;
+`check-mermaid.js` reports 0 syntax errors on every edited file.
+
 ## 2026-10-27 — topic 06 — Buffer Pool: Bf-Tree reading guide and the heat-scatter model
 
 **New `reading-bftree.md`** (Bf-Tree, Hao and Chandramouli, PVLDB 17(11) 2024, doi 10.14778/3681954.3682012, PDF downloaded from vldb.org and read in full; section numbers 3.1–3.5, 4.1–4.3, 5.1–5.7, 6.1–6.11 checked against the text — the PDF's two-column text layer scrambles section order, so numbering was settled from the `-layout` extraction). Anchors are `microsoft/bf-tree` at `ca61307` (2026-08-19), read with `git archive ca61307` from a fresh clone whose HEAD was `f442e61`. Every paper number quoted is from prose or figure text; Figure 6's bar heights are not in the text layer and are not quoted.
@@ -295,7 +372,7 @@ C FalkorDB (redis-server 8.6.2, falkordb.so RelWithDebInfo of 2026-07-24, module
 
 ## 2026-10-26 — topics 0, 11, 26, 27, 28, 36, 45 — magnitude claims checked against measurements
 - 11: the README's "one to two orders of magnitude" for vectorized over Volcano did not reproduce. A reference solution of the stubbed lanes (scratch, not committed) measured vectorized 1.7× and a fused branch-free kernel 9.2× over Volcano at 50% selectivity (299.5 and 1,618 vs 175.0 M rows/s); 1.7–3.1× and 3.7–9.2× across selectivities, 1.7× and 9.3× on a second run. The BATCH_SIZE sweep shows no small-batch arm: 64 and 1,024 within 10%, 65,536 loses 20–36%. README and diagram reworded.
-- 27: "3–5 orders of magnitude" became "1–3": a reference incremental solution maintained triangles 1,271× faster than full recompute (97.5 µs per batch), reachability 43×, the wedge join only 24× (39.5 ms), because its state is re-merged every batch.
+- 27: "3–5 orders of magnitude" became "1–3": a reference incremental solution maintained triangles 1,271× faster than full recompute (97.5 µs per batch), reachability 43×, the wedge join only 24× (39.5 ms) under load; re-run on an idle machine 2026-10-27: 1,450× (69.5 µs), 44× (655 µs), 21× (41.2 ms) — the figures the topic quotes, because its state is re-merged every batch.
 - 26: reference blocked Bloom filter at 10 bits/key answers a miss in 28 ns at 0.96% false positives in 11.9 MiB, 19× less memory than the 224 MB HashSet; HyperLogLog counts in 16 KB at 1.33% error (~14,000×). Cuckoo and learned-index lanes not implemented.
 - 36: Dynamo's "three orders of magnitude" smaller metadata is §6.2 prose with no table behind it (PDF read); the README now attributes it to the authors.
 - 0: DRAM reads ~100 ns, with the measured 87 ns at 64 MB and 104–113 ns at 128–512 MB in a footnote; the fsync row is marked as not this laptop's.

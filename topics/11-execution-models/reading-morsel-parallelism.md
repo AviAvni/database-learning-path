@@ -319,19 +319,19 @@ process a single morsel."
 Size that bound with this repo's own per-row cost as a stand-in:
 
 ```
- FINDINGS.md row 11 — 9.68 ns per scanned row through
+ FINDINGS.md row 11 — 5.45 ns per scanned row (1e3 / 183.5 M rows/s) through
  scan -> filter -> group-by-sum at 50% selectivity (M3 Pro).
 
- one morsel  = 100,000 rows x 9.68 ns              = 0.97 ms
+ one morsel  = 100,000 rows x 5.45 ns              = 0.545 ms
    <- the maximum any thread can be left waiting
 
  a 600M-row scan (TPC-H SF-100 lineitem) on 64 threads:
-   ideal per-thread work = 600e6 / 64 x 9.68 ns    = 90.8 ms
-   photo-finish window   = 0.97 / 90.8             = 1.1%
+   ideal per-thread work = 600e6 / 64 x 5.45 ns    = 51.1 ms
+   photo-finish window   = 0.545 / 51.1            = 1.1%
 
  the same query, static split, with one of the 64 cores
  running at half speed:
-   that thread's share takes 2 x 90.8              = 181.5 ms
+   that thread's share takes 2 x 51.1              = 102.2 ms
    the query waits for it                          = +100%
    morsel version: the other 63 absorb its work    = +0.8%
 
@@ -582,10 +582,10 @@ Answer each before unfolding it.
   what a static split cannot promise, since there the bound is one
   partition.
 
-  Using this repo's measured 9.68 ns per scanned row (FINDINGS row 11) as
-  a stand-in: one 100,000-row morsel is 0.97 ms. A 600M-row scan on 64
-  threads gives each thread 90.8 ms of ideal work, so the photo-finish
-  window is 0.97/90.8 = 1.1% of the runtime. Under a static split, one
+  Using this repo's measured 5.45 ns per scanned row (FINDINGS row 11) as
+  a stand-in: one 100,000-row morsel is 0.545 ms. A 600M-row scan on 64
+  threads gives each thread 51.1 ms of ideal work, so the photo-finish
+  window is 0.545/51.1 = 1.1% of the runtime. Under a static split, one
   core running at half speed doubles the query's runtime; under morsels
   the other 63 threads absorb its share for about +0.8%. §5.4's measured
   36.8% vs 4.7% is the same experiment on real hardware.

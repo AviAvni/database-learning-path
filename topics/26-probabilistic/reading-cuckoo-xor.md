@@ -28,9 +28,9 @@ of its k shared bits can create a **false negative** (the filter says
 "absent" for a key that is present, breaking the one contract a filter
 has) for every key that shares those bits — yet caches, routing tables,
 and any filter over churning data need membership *with* deletion, and
-they need it cheap: a point miss over 10M keys costs **246 ns** (binary
-search) or **299 ns** (BTreeMap) while a 224 MB HashSet answers in
-**28 ns** ([FINDINGS.md](../../FINDINGS.md) row 26) — that gap is what a
+they need it cheap: a point miss over 10M keys costs **151 ns** (binary
+search) or **218 ns** (BTreeMap) while a 224 MB HashSet answers in
+**14 ns** ([FINDINGS.md](../../FINDINGS.md) row 26) — that gap is what a
 filter is bidding for.
 
 ## The concepts, step by step

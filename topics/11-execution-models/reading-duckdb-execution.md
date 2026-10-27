@@ -130,12 +130,14 @@ dispatch 32× more often. 2048 is where those two curves cross, and it is
 the single most consequential number in the codebase.
 
 **What batching does not fix.** This repo's own Volcano lane
-([FINDINGS.md](../../FINDINGS.md) row 11) tops out at 103.3 M rows/s and
-gets *slower* as selectivity rises — 74.7 M rows/s at 95%. The cost that
-grows is per *surviving* row, not per *evaluated* predicate. Dividing
+([FINDINGS.md](../../FINDINGS.md) row 11) tops out at 183.5 M rows/s at 50%
+selectivity, and is *faster* at both ends — 511.2 M rows/s at 5%, 295.0 at
+95%. Two costs separate there: a coin-flip filter branch that the
+predictor loses at 50% (5.45 ns/row against 1.96 at 5%), and a cost per
+*surviving* row (3.39 ns/row at 95% against 1.96 at 5%). Dividing
 dispatch by 2048 attacks the per-call term; it does nothing on its own
-about the work each surviving row still causes downstream. Steps 3 and 6
-are about that half.
+about the mispredicted branch or the work each surviving row still causes
+downstream. Steps 3 and 6 are about that half.
 
 ### Step 2 — vector type flags: metadata instead of work
 
@@ -669,8 +671,9 @@ it made possible.
 
 What it does *not* buy you is on the other side of the ledger. This repo's
 Volcano lane ([FINDINGS.md](../../FINDINGS.md) row 11) shows the
-tuple-at-a-time cost rising with selectivity — 103.3 M rows/s at 50%,
-74.7 M at 95% — because the expensive thing is a row *surviving*, not a
+tuple-at-a-time cost peaking at 50% selectivity — 183.5 M rows/s there,
+511.2 M at 5%, 295.0 M at 95% — because the expensive things are a
+filter branch the predictor cannot call and a row *surviving*, not a
 predicate being evaluated. Batching divides the per-call term by 2048; the
 per-surviving-row term is what Steps 3 and 6 are for.
 

@@ -65,6 +65,7 @@ BENCHES=(
   "09-concurrency:false_sharing:the cost of sharing a cache line you never share"
   "09-concurrency:scaling:a global mutex scaling BACKWARDS with cores"
   "11-execution-models:exec_bench:tuple-at-a-time vs batch-at-a-time"
+  "11-execution-models:sorted_filter:the same Volcano filter on random vs sorted input — the 50% peak is the branch"
   "12-columnar-analytics:scan_bench:the memory-bandwidth floor a scan has to beat"
   "13-graph-engines:hop_bench:two-hop traversal, adjacency list vs CSR vs SpMV"
   "14-vector-search:ann_bench:brute-force recall and the QPS floor it sets"

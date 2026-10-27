@@ -151,37 +151,69 @@ through `Box<dyn Operator>` at `:118-120`), and
 [notes.md](notes.md)'s baseline table records:
 
 ```
- selectivity   time      rows/s        ns per scanned row (t / 50e6)
-        5%    0.386 s   129.4 M/s      7.72 ns
-       50%    0.484 s   103.3 M/s      9.68 ns
-       95%    0.669 s    74.7 M/s     13.38 ns
+ selectivity   time      rows/s        ns per scanned row (1e3 / rate)
+        5%    0.098 s   511.2 M/s      1.96 ns
+       50%    0.272 s   183.5 M/s      5.45 ns
+       95%    0.169 s   295.0 M/s      3.39 ns
 ```
 
-9.68 ns per row for a two-`dyn`-call chain says the 20-cycles-per-call
-assumption is the right order of magnitude, not a fantasy.
+Count the `dyn` calls per scanned row: every row costs one (`FilterOp` calls
+`Scan::next`), and each survivor costs one more (`AggOp` calls
+`FilterOp::next`). At 5% that is 1.05 calls per row, so 1.96 / 1.05 =
+1.86 ns per call, 7.5 cycles at `f = 4e9`; at 95% it is 1.95 calls per row,
+3.39 / 1.95 = 1.74 ns, 7.0 cycles. Those figures include the compare, the
+row copy and the accumulate around each call, so they overstate the bare
+call — and they are about a third of the `c = 20` assumed above. The
+assumption is a pessimistic bound for a *predicted* indirect call on this
+core, not a measurement of it; what the table does confirm is that a
+two-`dyn`-call chain costs single-digit nanoseconds per row, so the 25
+ns/row of the worked arithmetic is an overestimate here and the
+amortisation argument loses nothing.
 
 And then the surprise, which is [FINDINGS.md](../../FINDINGS.md) row 11:
-**the engine gets slower as more rows pass the filter.** Do the marginal
-division the table invites:
+**the cost is not monotone in the selectivity — 50% is the slowest point,
+5.45 ns/row, against 1.96 at 5% and 3.39 at 95%.** Two effects are stacked
+in that column and they have to be separated; a single "marginal cost per
+surviving row" division across all three rows would blend them.
 
 ```
- extra survivors from 5% to 95%:  (0.95 − 0.05) × 50e6 = 45,000,000 rows
- extra time:                       0.669 − 0.386        = 0.283 s
- marginal cost per surviving row:  0.283 / 45e6         = 6.29 ns
+ mispredicted branch:   FilterOp's `if row.f < threshold` is a real
+                        conditional branch (`volcano.rs:66`, inside the loop at `:64-69`). On random
+                        data it is right ~95% of the time at 5% and at
+                        95%, and ~50% of the time at 50%.
+ survivor cost:         the 5% and 95% points mispredict about equally
+                        (the rarer outcome, 5% of rows), so their
+                        difference is survivors alone:
+                        (3.39 - 1.96) / (0.95 - 0.05)  = 1.59 ns per survivor
+ misprediction cost:    whatever 50% has beyond that (below)
 ```
 
-Every row that *survives* costs 6.29 ns more than a row that is rejected
-— at the assumed 4 GHz, about 25 cycles. That is the second `dyn` call
-(`AggOp` pulling through `FilterOp`, `volcano.rs:63-70`) plus the
-aggregate's read-modify-write into `sums[k]` (`:96`), neither of which a
-rejected row ever reaches: `FilterOp::next` loops internally on a
-rejection and returns nothing. **Evaluating the predicate is the cheap
-part; passing it is what costs.** Any account of this model that says
-"a selective filter does more work" has it backwards.
+The survivor term is the second `dyn` call (`AggOp` pulling through
+`FilterOp`) plus the aggregate's read-modify-write into `sums[k]`
+(`volcano.rs:96`), neither of which a rejected row ever reaches:
+`FilterOp::next` loops internally on a rejection and returns nothing —
+about 1.59 ns, 6 cycles at the assumed 4 GHz (the 95% point is the noisiest
+of the three; at its fastest observed 340 M rows/s the same division gives
+1.09 ns). The 50% peak is not a survivor term at all: with survivors
+costing 1.59 ns each, the 50% point would sit near 1.96 + 0.45 × 1.59 =
+2.68 ns/row, and the measured 5.45 ns leaves 2.77 ns/row unexplained. That
+is the misprediction. The repo's `sorted_filter` binary confirms it by
+removing it: with `f` sorted, the same pipeline runs the 50% point at 2.23
+ns/row (median of three runs; 5.05 on the random column in the same
+binary), and the 5% and 95% points barely move (1.62 and 2.84 against 1.94
+and 2.95). The 2.82 ns/row difference divided by at most 0.5
+mispredictions per row is at least 5.64 ns per misprediction, about 23
+cycles, which sits under the `≤ 7.62 ns` ceiling that topic 0's
+`branch_misprediction` lane gives in Step 5 below. **Evaluating the
+predicate is cheap when the branch is predictable; passing it costs a
+little; guessing it wrong costs most.** Any account of this model that says
+"a selective filter does more work" has it backwards, and so does one that
+says cost simply grows with the number of survivors.
 
 Why it matters: the per-tuple tax is proportional to rows *delivered*
 through the operator boundary, not rows examined — so it is worst on
-exactly the analytic queries that deliver the most.
+exactly the analytic queries that deliver the most — and a branchy
+per-tuple predicate adds a data-dependent stall on top of it.
 
 ### Step 3 — self-modifying dispatch: the wrapper that swaps itself out
 
@@ -645,25 +677,34 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You can say why postgres's Volcano executor gets *slower* as a filter passes more rows, and give the marginal cost per surviving row from this repo's own lane.
+- [ ] You can say why postgres's Volcano executor is *slowest at 50% selectivity* rather than at the most permissive filter, and separate the two costs using this repo's own lane.
 
   <details><summary>Answer</summary>
 
-  Because the per-tuple tax is paid by rows that cross an operator
-  boundary, not by rows that are examined. In the provided lane's chain
-  (`experiments/src/volcano.rs`), a rejected row costs one `dyn` call
-  into `Scan::next` and one predicate compare; `FilterOp::next` (`:63-70`)
-  loops internally and never returns. A surviving row costs that plus the
-  return through the second `dyn` call and the aggregate's
-  read-modify-write of `sums[k]` (`:96`).
+  Two costs are stacked. The first is a mispredicted branch: the filter
+  (`experiments/src/volcano.rs:66`, `if row.f < self.threshold`) compiles
+  to a real conditional branch, which on uniform random data is a coin flip
+  only at 50% selectivity and almost always predictable at 5% and 95%. The
+  second is a per-survivor cost: a rejected row costs one `dyn` call into
+  `Scan::next` and one compare, and `FilterOp::next` (`:63-70`) loops
+  internally and never returns; a survivor adds the return through the
+  second `dyn` call and the aggregate's read-modify-write of `sums[k]`
+  (`:96`).
 
-  [notes.md](notes.md)'s baseline table, 50 M rows: 0.386 s at 5%
-  selectivity, 0.484 s at 50%, 0.669 s at 95% — 129.4, 103.3 and
-  74.7 M rows/s. The marginal division is
-  `(0.669 − 0.386) / ((0.95 − 0.05) × 50e6) = 0.283 / 45e6 = 6.29 ns` per
-  additional surviving row, about 25 cycles at an assumed 4 GHz. That is
-  [FINDINGS.md](../../FINDINGS.md) row 11, and it inverts the intuition
-  that a permissive filter is the cheap case.
+  [notes.md](notes.md)'s baseline, 50 M rows: 0.098 s at 5%, 0.272 s at 50%,
+  0.169 s at 95% — 511.2, 183.5 and 295.0 M rows/s, i.e. 1.96, 5.45 and
+  3.39 ns per scanned row. The 5% and 95% points mispredict about equally,
+  so their difference is survivors: `(3.39 − 1.96) / (0.95 − 0.05) =
+  1.59 ns` per additional surviving row, about 6 cycles at an assumed
+  4 GHz (about 1.09 ns using the fastest observed 95% run, 340 M rows/s).
+  Survivors alone would put 50% near `1.96 + 0.45 × 1.59 = 2.68 ns`; the
+  measured 5.45 leaves 2.77 ns/row, which is the misprediction. Sorting
+  the filter column (`sorted_filter` binary) takes 50% from 5.05 to 2.23
+  ns/row and leaves the ends nearly unchanged, and `2.82 / 0.5 = 5.64 ns`,
+  about 23 cycles, is a lower bound on the cost of one misprediction. That
+  is [FINDINGS.md](../../FINDINGS.md) row 11, and it contradicts both the
+  intuition that a permissive filter is the cheap case and the one that
+  cost simply grows with survivors.
 
   </details>
 

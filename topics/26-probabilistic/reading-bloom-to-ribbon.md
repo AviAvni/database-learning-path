@@ -18,7 +18,7 @@ code uses.
 ## The problem in one sentence
 
 Answering "is key X in this set?" exactly for 10M u64 keys costs a
-HashSet — **224 MB** at **28 ns/lookup** ([FINDINGS.md](../../FINDINGS.md)
+HashSet — **224 MB** at **14 ns/lookup** ([FINDINGS.md](../../FINDINGS.md)
 row 26) — while a structure allowed to be wrong 1% of the time, in one
 direction only, does it in **12 MB** (10M keys × 10 bits) at roughly the
 same speed; the fifty-year question is how close to the
@@ -425,9 +425,9 @@ Answer each before unfolding it.
   frames the stakes: blocked Bloom filters are "roughly 10% of memory and
   roughly 1% of CPU" in large deployments (§1, footnote 5).
 
-  Put the win beside this topic's baseline: a point miss costs **246 ns**
-  (binary search) or **299 ns** (BTreeMap), while a 224 MB HashSet does it
-  in **28 ns** ([FINDINGS.md](../../FINDINGS.md) row 26). A blocked bloom
+  Put the win beside this topic's baseline: a point miss costs **151 ns**
+  (binary search) or **218 ns** (BTreeMap), while a 224 MB HashSet does it
+  in **14 ns** ([FINDINGS.md](../../FINDINGS.md) row 26). A blocked bloom
   aims for HashSet-class miss-skipping at ~12 MB (10M × 10 bits) — the
   space that ribbon then shaves another ~24% off on the cold levels.
 

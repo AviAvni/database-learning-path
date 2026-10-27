@@ -22,9 +22,10 @@ section or figure it came from.
 ## The problem in one sentence
 
 On this topic's motivation bench a point-miss over 10M sorted u64 keys
-costs **246 ns** by binary search ([FINDINGS.md](../../FINDINGS.md) row
-26) — about **⌈log₂(10,000,000)⌉ = 24** dependent comparisons, each a
-branch mispredict into a different cache line — and if the key
+costs **151 ns** by binary search ([FINDINGS.md](../../FINDINGS.md) row
+26) — about **⌈log₂(10,000,000)⌉ = 24** dependent comparisons, 6.3 ns
+each on average (151 / 24), the top of the walk staying in cache and the
+bottom not — and if the key
 distribution is smooth, most of those 24 hops land where a
 two-multiply-add linear model would have predicted for free.
 
@@ -60,7 +61,7 @@ models predict the position in O(1) with a small residual to
 binary-search away:
 
 ```
-  B-tree:  ~log_B(n) node hops, each a dependent miss   (246 ns, ~24 comparisons)
+  B-tree:  ~log_B(n) node hops, each a dependent miss   (151 ns, ~24 comparisons)
   learned: 1-2 model evals + binary search of a 2ε      (the bet: most of the
            window                                        tree walk is predictable)
 ```
@@ -332,7 +333,7 @@ commit `4370da6`):
    *first* point; optimal PLA doesn't.)
 2. ε trades segment count against final-search width. Segments live in
    cache; the 2ε window is one or two line fetches into the data. Given
-   the motivation numbers (246 ns ≈ 24 comparisons,
+   the motivation numbers (151 ns ≈ 24 comparisons,
    [FINDINGS.md](../../FINDINGS.md) row 26), predict the ns/lookup curve
    for ε ∈ {16, 64, 256} on 10M uniform keys *before* running
    filter_bench.
@@ -373,7 +374,7 @@ Answer each before unfolding it.
   constant per leaf, with worst-case guarantees. The learned bet is to
   replace it with a *piecewise-linear* model where the CDF is smooth, so a
   prediction plus a tiny corrective search beats the ~24 dependent
-  comparisons a 10M-key binary search costs (246 ns,
+  comparisons a 10M-key binary search costs (151 ns,
   [FINDINGS.md](../../FINDINGS.md) row 26).
 
   </details>
@@ -492,7 +493,7 @@ Answer each before unfolding it.
   The five (Step references in parentheses): Q1 — four points where the
   cone splits but optimal PLA continues (Step 4; the (0,0),(1,0),(2,2),(3,5)
   construction above). Q2 — the predicted ns/lookup curve for
-  ε ∈ {16, 64, 256}, reasoned from window widths 34/130/514 and the 246 ns
+  ε ∈ {16, 64, 256}, reasoned from window widths 34/130/514 and the 151 ns
   ≈ 24-comparison baseline ([FINDINGS.md](../../FINDINGS.md) row 26).
   Q3 — why a uniform CDF compresses to < 2,000 segments for 1M keys and
   what breaks it (Step 4; near-uniform = auto-increment IDs, steady-ingest
