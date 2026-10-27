@@ -60,9 +60,9 @@ run and 150 µs in another).
 
 **Hand-off (lane A; the full table and its reading are in the guide's Step 7).**
 `GxB_load_Matrix_from_Container` of the Rust `Csr` (readonly, rowptr `u64`,
-colidx `u32`) takes **0.12–0.17 µs at every size**; `GrB_Matrix_build` of the
-same entries takes 349 → 6,822 µs in CSR order and 9,384 → 146,676 µs shuffled;
-`extractTuples` 118 → 4,039 µs; a `memcpy` of the CSR 21 → 2,355 µs.
+colidx `u32`) takes **0.12 µs at every size**; `GrB_Matrix_build` of the
+same entries takes 386 → 4,582 µs in CSR order and 7,210 → 107,659 µs shuffled;
+`extractTuples` 106 → 3,492 µs; a `memcpy` of the CSR 19 → 2,126 µs.
 
 **The kernel against the library — lane B.** Rust `spmv::spmv` (single thread)
 against `GrB_mxv` with the `GrB_PLUS_TIMES_SEMIRING_FP64` semiring on the
@@ -72,29 +72,31 @@ the Rust kernel's to 1e-9 relative on every row (the lane asserts it).
 
 | scale | Rust µs (GB/s) | `GrB_mxv` 1 thread, JIT off | 1 thread, JIT on | 11 threads, JIT on |
 |---|---|---|---|---|
-| 14 | 116 (24.2) | 502 (5.6) | 150 (18.6) | 65 (42.8) |
-| 16 | 568 (20.2) | 2,132 (5.4) | 452 (25.3) | 191 (60.1) |
-| 18 | 2,796 (16.7) | 8,712 (5.4) | 2,647 (17.6) | 759 (61.4) |
-| 20 | 12,608 (15.0) | 44,868 (4.2) | 11,905 (15.9) | 2,864 (65.9) |
+| 14 | 119 (23.6) | 482 (5.8) | 70 (39.8) | 85 (32.9) |
+| 16 | 609 (18.8) | 2,068 (5.6) | 419 (27.4) | 129 (89.1) |
+| 18 | 2,905 (16.1) | 8,404 (5.6) | 2,348 (19.9) | 418 (111.6) |
+| 20 | 11,648 (16.2) | 36,358 (5.2) | 8,976 (21.0) | 1,889 (99.9) |
 
-- **With the JIT off the library loses 3–4×** (3.1–4.3× slower than the Rust
+(`./verify.sh 20`, 2026-10-27, idle machine, best of 5, µs.)
+
+- **With the JIT off the library loses 3–4×** (2.9–4.1× slower than the Rust
   loop). `GxB_BURBLE` says why: every call printed `GrB_mxv C=A'*B,
   dot_product (dot2) ... (generic C=A'*B, C bitmap)` — the *generic* kernel,
   which calls the semiring's multiply and add through function pointers per
   entry. This install has no pre-compiled factory kernel for FP64 PLUS_TIMES on
   this path, so the JIT-off number is "the library when it cannot compile".
   Whether FalkorDB's own build behaves the same was not checked.
-- **With the JIT on it is at parity on one thread**: from 1.3× slower
-  (scale 14, a noisy cell) to 1.26× faster (scale 16) and 0.94–0.95× the Rust
-  time at scales 18 and 20. The kernel was compiled during the warm-up call
-  and is not in the timing. The Rust loop is not slow code — it reaches 15–24
-  GB/s, near the ~16–19 GB/s the baseline above recorded — so the library's
-  compiled dot kernel is about as fast as a plain gather loop, no faster:
-  SpMV with a dense x is bandwidth- and gather-bound, and neither side has a
-  trick for the gather.
+- **With the JIT on the library wins on one thread too**: 1.70×, 1.45×,
+  1.24× and 1.30× faster than the Rust loop at scales 14–20. The kernel was
+  compiled during the warm-up call and is not in the timing. The Rust loop is
+  not slow code — it reaches 16–24 GB/s, near the ~16–19 GB/s the baseline
+  above recorded — so the compiled dot kernel does something the plain gather
+  loop does not; what (unrolling, index width, bounds checks) is not isolated
+  here, and is the first thing M20's kernel should find out.
 - **Parallelism is where the library pulls ahead**: 11 OpenMP threads run
-  1.8×, 3.0×, 3.7× and 4.4× faster than the single-thread Rust kernel at
-  scales 14–20 (65.9 GB/s of the byte count at scale 20). That compares one
+  1.4×, 4.7×, 7.0× and 6.2× faster than the single-thread Rust kernel at
+  scales 14–20 (99.9 GB/s of the byte count at scale 20, under the M3 Pro's
+  150 GB/s memory bandwidth; scale 14 is too small to spread). That compares one
   thread against eleven; the fair rayon-vs-OpenMP comparison is the topic's
   M20 exercise ([reading-openmp-vs-rayon.md](reading-openmp-vs-rayon.md)).
 - A matrix GraphBLAS built itself (`GrB_Matrix_build`) multiplies at the same

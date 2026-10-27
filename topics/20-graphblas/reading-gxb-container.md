@@ -219,43 +219,42 @@ unload, treat the three pointers as slices, load them back.
 
 **Lane A — moving the matrix.** Best of 5 (3 at scale 20; 20 and 12 iterations
 for the O(1) rows, whose minimum is the figure), µs, Apple M3 Pro, libgraphblas
-10.5.0 built by FalkorDB's native-deps cache (the pinned reading is 10.5.2; the
-Container source did not differ in the files quoted), load average 24–26 while
-other work ran, so quote the shape, not the digits:
+10.5.0 (the pinned reading is 10.5.2; the Container source did not differ in
+the files quoted), `./verify.sh 20` on an idle machine, 2026-10-27:
 
 | scale | nnz | CSR MB | `build` sorted tuples | `build` shuffled | `extractTuples` | Container load (Rust CSR) | Container unload | unload (GB-built) | reload (GB-built) | `memcpy` of the CSR |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 14 | 120,128 | 1.6 | 349 | 9,384 | 118 | 0.17 | 0.12 | 0.17 | 0.12 | 21 |
-| 16 | 494,634 | 6.5 | 540 | 8,164 | 251 | 0.12 | 0.12 | 0.12 | 0.12 | 97 |
-| 18 | 2,018,190 | 26.3 | 1,557 | 29,497 | 1,320 | 0.17 | 0.12 | 0.12 | 0.12 | 550 |
-| 20 | 8,175,704 | 106.5 | 6,822 | 146,676 | 4,039 | 0.12 | 0.12 | 0.12 | 0.12 | 2,355 |
+| 14 | 120,128 | 1.6 | 386 | 8,646 | 106 | 0.12 | 0.12 | 0.12 | 0.12 | 19 |
+| 16 | 494,634 | 6.5 | 531 | 7,210 | 236 | 0.12 | 0.12 | 0.12 | 0.12 | 86 |
+| 18 | 2,018,190 | 26.3 | 1,224 | 23,699 | 933 | 0.12 | 0.12 | 0.12 | 0.12 | 502 |
+| 20 | 8,175,704 | 106.5 | 4,582 | 107,659 | 3,492 | 0.12 | 0.12 | 0.12 | 0.12 | 2,126 |
 
 How to read it:
 
 - **The Container rows are flat.** From 120,128 to 8,175,704 entries (68×)
-  load and unload stay at 0.12–0.17 µs. The timer's tick on this machine is
-  about 0.04 µs, so those are three or four ticks: "a few pointer assignments
+  load and unload stay at 0.12 µs. The timer's tick on this machine is
+  about 0.04 µs, so that is three ticks: "a few pointer assignments
   and four library calls", not a precise figure. The pointers that come out of
   `unload` are asserted equal to the `Vec` pointers that went in, at every
   scale (the lane panics otherwise): nothing was copied.
 - **Everything that copies grows with `nnz`.** `build` of tuples already in CSR
-  order grows 19.5× (349 → 6,822 µs; sub-linear because 11 threads share the
-  work at large sizes), `extractTuples` 34× (118 → 4,039), `memcpy` of the
-  three arrays 112× (21 → 2,355 µs, the 21 µs being cache-resident). At
-  scale 20 the Container load is at least 19,000× cheaper than even the
-  `memcpy` of the same bytes (2,355 / 0.12).
+  order grows 11.9× (386 → 4,582 µs; sub-linear because 11 threads share the
+  work at large sizes), `extractTuples` 33× (106 → 3,492), `memcpy` of the
+  three arrays 112× (19 → 2,126 µs, the 19 µs being cache-resident). At
+  scale 20 the Container load is about 17,700× cheaper than even the
+  `memcpy` of the same bytes (2,126 / 0.12).
 - **Input order is the whole difference between the two `build` columns.** The
   shuffled tuples are the same 8,175,704 entries permuted by a seeded
-  shuffle; `build` takes 146,676 µs against 6,822 µs sorted, 21.5×, which is
+  shuffle; `build` takes 107,659 µs against 4,582 µs sorted, 23.5×, which is
   the Step-2 prediction: sorted input skips the sort (`GB_builder.c:44–51`),
   shuffled input pays it (`:63–66`). Ingesting an edge list is the shuffled
   column.
-- **`memcpy` is the floor of every copy.** `build` sorted (6,822) is 2.9× the
-  `memcpy` of the CSR (2,355), `extractTuples` (4,039) 1.7×, and shuffled
-  `build` 62×. No copying interface can approach the Container, because the
+- **`memcpy` is the floor of every copy.** `build` sorted (4,582) is 2.2× the
+  `memcpy` of the CSR (2,126), `extractTuples` (3,492) 1.6×, and shuffled
+  `build` 51×. No copying interface can approach the Container, because the
   Container is the only column that does not read the matrix.
 - **The reverse direction costs the same.** A matrix GraphBLAS built itself
-  (`build`) unloads and reloads in 0.12–0.17 µs, and the arrays it returns can
+  (`build`) unloads and reloads in 0.12 µs, and the arrays it returns can
   be read in place: the lane asserts that GraphBLAS's own CSR — `Ap` and `Ai`
   both 32-bit, `iso = false`, format sparse by-row at every scale — equals
   the seeded `Csr` entry for entry, reading it through raw pointers.
@@ -263,16 +262,16 @@ How to read it:
 Sanity checks the lane carries: `build` keeps all `nnz` entries (the seeded
 graph has no duplicates after dedup), `extractTuples` returns tuples equal to
 the seeded ones, and the `memcpy` column is the one figure to hold against the
-hardware: 106.5 MB in 2,355 µs is 45 GB/s of copied bytes (twice that as
+hardware: 106.5 MB in 2,126 µs is 50 GB/s of copied bytes (twice that as
 read-plus-write traffic), above the ~30 GB/s single-thread streaming figure
-topic 0 records. A single memcpy can reach that on this chip, but it is the
-number to re-measure on a quiet machine before leaning on it.
+topic 0 records and under the chip's 150 GB/s memory bandwidth; a single
+memcpy using wide loads and stores can reach it, and it held on the idle run.
 
 **Lane B — one product, two kernels** is in the topic's [notes.md](notes.md)
 (Rust SpMV against `GrB_mxv` on the same matrix): with the JIT off the
-library's generic kernel is 3.1–4.3× slower than the Rust loop on one
-thread; with the JIT on it is within about 0.8–1.3× of it in time, and with all 11
-threads 1.8–4.4× faster. Neither number is about the Container; the Container only
+library's generic kernel is 2.9–4.1× slower than the Rust loop on one
+thread; with the JIT on it is 1.2–1.7× faster, and with all 11 threads
+1.4–7.0× faster. Neither number is about the Container; the Container only
 makes it possible to run the library on the Rust matrix without a copy.
 
 ### Step 8 — what it means for a Rust rewrite
@@ -386,12 +385,12 @@ Answer each before unfolding it.
 
   <details><summary>Answer</summary>
 
-  Container load and unload took 0.12–0.17 µs at every size from 120,128 to
+  Container load and unload took 0.12 µs at every size from 120,128 to
   8,175,704 entries: they do not touch the entries, so they do not scale.
   Everything that copies scales with `nnz`: `build` of sorted tuples
-  349 → 6,822 µs, `extractTuples` 118 → 4,039 µs, `memcpy` of the CSR 21 →
-  2,355 µs. Input order matters only to `build`: the same entries shuffled
-  took 146,676 µs against 6,822 µs sorted (21.5×) because the sort is no
+  386 → 4,582 µs, `extractTuples` 106 → 3,492 µs, `memcpy` of the CSR 19 →
+  2,126 µs. Input order matters only to `build`: the same entries shuffled
+  took 107,659 µs against 4,582 µs sorted (23.5×) because the sort is no
   longer skipped. The Container is therefore the right door for a matrix that
   already is a CSR, and `build` remains the right door for an edge list that
   is not.

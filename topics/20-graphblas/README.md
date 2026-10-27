@@ -217,13 +217,13 @@ assignments only, "O(1) time" by the source's own comment
 and column indices 32-bit, which is exactly this topic's `Csr`.
 
 Measured on RMAT scale 14–20 (120,128 to 8,175,704 entries): load and unload
-cost **0.12–0.17 µs at every size**; `GrB_Matrix_build` of the same entries
-costs 349 → 6,822 µs in CSR order and 9,384 → 146,676 µs shuffled,
-`extractTuples` 118 → 4,039 µs, and a plain `memcpy` of the CSR 21 → 2,355 µs.
+cost **0.12 µs at every size**; `GrB_Matrix_build` of the same entries
+costs 386 → 4,582 µs in CSR order and 7,210 → 107,659 µs shuffled,
+`extractTuples` 106 → 3,492 µs, and a plain `memcpy` of the CSR 19 → 2,126 µs.
 The price of O(1) is that the library checks only lengths, not that indices are
 sorted or in range. On the same matrices `GrB_mxv` against this topic's SpMV
 kernel, on the Rust CSR in place: 3–4× slower with the JIT off (the generic
-kernel), at parity with it on, and 1.8–4.4× faster with 11 threads
+kernel), 1.2–1.7× faster with it on, and 1.4–7.0× faster with 11 threads
 ([notes.md](notes.md)). The chapter reads the source line by line and states
 the ownership rules a Rust wrapper must follow:
 [reading-gxb-container.md](reading-gxb-container.md).
