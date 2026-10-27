@@ -1106,20 +1106,20 @@ transactions × 4 operations, on an Apple M3 Pro:
 
 | mix | global-lock txn/s | mvcc txn/s | aborts |
 |---|---|---|---|
-| read-heavy 95/5, 10K keys | 623 454 | stub | stub |
-| write-heavy 50/50, 10K keys | 594 264 | stub | stub |
-| write-heavy 50/50, 64 keys (HOT) | 676 691 | stub | stub |
+| read-heavy 95/5, 10K keys | 1 393 945 | stub | stub |
+| write-heavy 50/50, 10K keys | 806 155 | stub | stub |
+| write-heavy 50/50, 64 keys (HOT) | 1 092 582 | stub | stub |
 
-**The headline is the flatness, and it is a negative result.** ~600k txn/s on
-all three mixes: the mutex does not care whether the workload is 95% reads or
-50% writes, or whether it collides on 10 000 keys or 64, because it already
-serialized everything. The 64-key row is even the *fastest* — a cache-resident
-working set, with no contention penalty to pay because there was only ever one
-lock to contend on.
+**Every row is fully serialized.** The mutex does not use the read-heavy row's
+concurrency — that row is fastest only because a lookup is cheaper than an
+allocating insert — and the 64-key row beats the 10K-key write row because its
+working set stays in cache, not because the lock is less contended.
 
-So: **this repo has not measured MVCC beating a mutex, and has not measured SSI
+So: **the provided lane does not measure MVCC, and the repo has not measured SSI
 at all.** The `mvcc txn/s` and `aborts` columns are `stub` because you have not
-written that code yet. Nothing in this guide should be read as a repo
+written that code yet; `notes.md` records a reference snapshot-isolation
+implementation at 1.4–1.6× the mutex, and its serializable variant 0–25% below
+that. Nothing in this guide should be read as a repo
 measurement — every number above is Ports & Grittner's, on their 2011 hardware,
 carrying its section. When you fill in those columns, the prediction worth
 writing down first is in [notes.md](notes.md): MVCC should crush the baseline on
@@ -1229,12 +1229,12 @@ Answer each before unfolding it.
   **3.0%** on RUBiS (422 vs 435 req/s, §8.3 Fig 6), and **nothing measurable**
   on disk-bound DBT-2++ (§8.2, 150 warehouses). The repo's lane
   ([`FINDINGS.md`](../../FINDINGS.md) row 8, [notes.md](notes.md)) reports
-  something else entirely: a global `Mutex<HashMap>` at **623 454 / 594 264 /
-  676 691 txn/s** across read-heavy, write-heavy and hot-key mixes — flat,
-  because a single mutex had already serialized everything. They cannot be
-  compared because the repo has measured **no MVCC implementation and no SSI at
-  all**: the `mvcc txn/s` and `aborts` columns are still `stub`. Any claim here
-  that MVCC beats a mutex would be unmeasured.
+  something else entirely: a global `Mutex<HashMap>` at **1 393 945 / 806 155 /
+  1 092 582 txn/s** across read-heavy, write-heavy and hot-key mixes, every one
+  fully serialized. They cannot be compared: the provided lane measures **no
+  MVCC and no SSI** (its `mvcc txn/s` and `aborts` columns are `stub`), and the
+  serializable reference in `notes.md` validates read sets at commit — backward
+  validation, not Ports & Grittner's rw-antidependency tracking.
 
   </details>
 

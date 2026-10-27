@@ -14,20 +14,24 @@ ops, against one global `Mutex<HashMap>`:
 
 ```
 mix                                 global-lock/s     mvcc txn/s    aborts
-read-heavy  95/5, 10K keys                 623454              —         —
-write-heavy 50/50, 10K keys                594264              —         —
-write-heavy 50/50, 64 keys (HOT)           676691              —         —
+read-heavy  95/5, 10K keys                1393945              —         —
+write-heavy 50/50, 10K keys                806155              —         —
+write-heavy 50/50, 64 keys (HOT)          1092582              —         —
 ```
 
-**The baseline barely moves across three workloads that should be wildly
-different, and the flatness is the finding.** A single mutex cannot benefit from
-the read-heavy row (95% of those operations could have run concurrently, and
-none of them did) and cannot be hurt by the HOT row (everything was already
-contending on one lock, so shrinking the keyspace to 64 changes nothing). The
-hot row is even the *fastest*, because a 64-key working set fits in cache.
+(Median of three runs. The lane builds each transaction's keys and draws its
+coins *before* taking the lock, so the critical section holds only the four
+store operations — the same work the MVCC lane does outside any lock.)
+
+**One mutex, and the throughput is just the price of the critical section.**
+None of the read-heavy row's concurrency is used: 95% of its operations could
+have run in parallel and none did; it is the fastest row only because a lookup
+is cheaper than an insert that allocates. The HOT row beats the 10K-key write
+row because a 64-key map stays in cache, not because the lock is less
+contended — every row is fully contended.
 
 That gives you a sharp pair of predictions to write down before you implement
-MVCC: it should crush row 1, since readers never block writers. It may well
+MVCC: it should win row 1, since readers never block writers. It may well
 *lose* row 3, where first-committer-wins converts key contention into aborted
 work the mutex never had to redo. Find the keyspace size where the crossover
 happens — that number, not the read-heavy speedup, is what decides whether MVCC
@@ -39,23 +43,22 @@ suggests) fills the empty column, median of three runs, same machine:
 
 ```
 mix                                 global-lock/s     mvcc txn/s    aborts/commit
-read-heavy  95/5, 10K keys                 600 842        2 119 487       0.000
-write-heavy 50/50, 10K keys                526 678        1 353 137       0.001
-write-heavy 50/50, 64 keys (HOT)           576 817        1 640 987       0.16
+read-heavy  95/5, 10K keys                1 393 945        1 976 273       0.000
+write-heavy 50/50, 10K keys                 806 155        1 320 490       0.001
+write-heavy 50/50, 64 keys (HOT)          1 092 582        1 553 817       0.16
 ```
 
-**The prediction that MVCC loses the hot row is wrong for this baseline, and the
-reason is in the baseline.** MVCC is 3.5× the lock on read-heavy, as predicted,
-and still 2.8× on the HOT row at 0.16 aborts per commit — an abort here costs
-four cheap operations, and the mutex baseline builds its key strings *while
-holding the lock*. Move key construction outside the lock (a fairer baseline,
-~0.9 M txn/s on the hot rows) and the margin shrinks to 1.6× on HOT-64 and the
-crossover appears: MVCC loses at 1–2 keys (0.70× and 0.90× of the fair lock),
-ties at 4, and wins from 8 up. That crossover sits near one key per thread, at
+**MVCC wins every row, by 1.4–1.6×, and the hot row is not where it loses.**
+At 0.16 aborts per commit an abort costs four cheap operations, which the
+lock's serialization more than pays for. Shrink the keyspace further and the
+crossover appears: MVCC loses at 1–2 keys (0.70× and 0.90× of the lock), ties
+at 4, and wins from 8 up. That crossover sits near one key per thread, at
 1.2–1.7 aborts per commit — where retrying costs more than the lock's
-serialization. `notes.md` has the full sweep. The lesson is the one the baseline
-row already hinted at, made quantitative: what decides MVCC's worth is not the
-read/write mix but the *abort rate times the cost of redoing a transaction*.
+serialization. `notes.md` has the full sweep, including what building the keys
+*inside* the lock costs (it halves the lock's throughput, and an earlier
+version of this lane did exactly that). The lesson, made quantitative: what
+decides MVCC's worth is not the read/write mix but the *abort rate times the
+cost of redoing a transaction*.
 
 ## 1. Isolation levels are defined by their bugs
 

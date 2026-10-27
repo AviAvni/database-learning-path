@@ -39,7 +39,7 @@ instead.
 | 5 | [Durability & WAL](topics/05-durability-wal/README.md) | `write()` **857k/s**, `fsync` **44k/s**, `F_FULLFSYNC` **337/s** — a 2540× spread, and only the last is durable on this drive. | `./verify.sh 05` |
 | 6 | [Buffer Pool](topics/06-buffer-pool/README.md) | mmap page reads: p50 **42 ns**, max **182 µs**. A 4300× spread, entirely minor page faults the database cannot see or schedule. A hash lookup in front of a dependent page read costs 213 ns against 102 for a direct pointer; predicting the frame and reading it beside the lookup gets it back to 107.5 ns. | `./verify.sh 06` |
 | 7 | [Networking & Protocols](topics/07-networking-protocols/README.md) | Identical zero-work requests: **44k ops/s at P=1**, **12.3M at P=256** — a **279×** swing that is pure syscalls and round trips. | `./verify.sh 07` |
-| 8 | [Transactions & MVCC](topics/08-transactions-mvcc/README.md) | A global mutex delivers ~**600k txn/s** on read-heavy, write-heavy and hot-key workloads alike — flat, because it already serialized everything. **`[REFERENCE]`** A reference MVCC makes it **3.5×** (2.12 M) on read-heavy and **2.8×** (1.64 M) on the hot 64-key row: the predicted hot-key loss does not appear. Against a fairer lock the crossover appears at **~1 key per thread** (MVCC 0.70× at 1 key, 1.06× at 4, 1.24× at 8). | `./verify.sh 08` |
+| 8 | [Transactions & MVCC](topics/08-transactions-mvcc/README.md) | One global mutex, fully serialized: **1.39 M txn/s** read-heavy, 0.81 M write-heavy, 1.09 M on 64 hot keys — the rows differ only by what the critical section costs. **`[REFERENCE]`** A reference MVCC wins every row by **1.4–1.6×**, including the hot one; the crossover is at **~1 key per thread** (0.70× at 1 key, 1.06× at 4, 1.24× at 8). Building keys inside the lock, as an earlier version of the lane did, halves the lock and inflates the win to 3.5×. | `./verify.sh 08` |
 | 9 | [Concurrency](topics/09-concurrency/README.md) | A global mutex gets **2.9× slower** from 1 to 16 threads (8.65 → 2.96 Mops/s). Padding "independent" counters to 128 B is worth **17.8×**; 64 B only half-fixes it on M-series. | `./verify.sh 09` |
 | 11 | [Execution Models](topics/11-execution-models/README.md) | Volcano tops out at **103 M rows/s**, and gets *slower* as selectivity rises (74.7 M at 95%) — surviving the filter is what costs, not the filter. **`[REFERENCE]`** Vectorized is **1.7×** over Volcano at 50% selectivity and a fused branch-free kernel **9.2×** — not "one to two orders of magnitude". | `./verify.sh 11` |
 | 12 | [Columnar Analytics](topics/12-columnar-analytics/README.md) | The scan floor is **24–57 GB/s** on a 150 GB/s machine. This lane previously printed **19,047,619 GB/s** — a hoisted loop, caught by its own implausibility. | `./verify.sh 12` |
@@ -98,8 +98,8 @@ Some rows are pleasant confirmations of theory. The interesting ones are not:
   20,000× faster than the memory bus. Both are in the guides as the finding,
   because a curriculum that only reports confirmations is not measuring anything.
 - **Rows 8, 22 and 42 are baselines that refuse to be weak.** A global mutex
-  is flat rather than bad, and still within 1.6× of MVCC against a fair lock;
-  bestseller lists get a third of users right. If your improvement cannot beat
+  stays within 1.6× of MVCC once its critical section holds only the shared
+  work; bestseller lists get a third of users right. If your improvement cannot beat
   these, that is worth knowing before you build it.
 - **Rows 34 through 43 are all measurement failures rather than system
   failures** — the closed loop, the alert storm, the per-node statistic, the

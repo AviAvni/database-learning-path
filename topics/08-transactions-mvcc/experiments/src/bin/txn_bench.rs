@@ -46,12 +46,20 @@ fn run_global_lock(mix: Mix) -> f64 {
             let store = store.clone();
             std::thread::spawn(move || {
                 let mut rng = StdRng::seed_from_u64(t as u64);
+                let mut ops = Vec::with_capacity(OPS_PER_TXN);
                 for _ in 0..TXNS_PER_THREAD {
-                    // "transaction" = hold the one lock across all ops
-                    let mut guard = store.lock().unwrap();
+                    // Build the keys and draw the coins before taking the lock,
+                    // as the MVCC lane does, so the critical section holds only
+                    // the store operations.
+                    ops.clear();
                     for _ in 0..OPS_PER_TXN {
                         let k = key(rng.gen_range(0..mix.keyspace));
-                        if rng.gen_range(0..100) < mix.write_pct {
+                        ops.push((k, rng.gen_range(0..100) < mix.write_pct));
+                    }
+                    // "transaction" = hold the one lock across all ops
+                    let mut guard = store.lock().unwrap();
+                    for (k, write) in ops.drain(..) {
+                        if write {
                             guard.insert(k, b"v".to_vec());
                         } else {
                             let _ = guard.get(&k);
