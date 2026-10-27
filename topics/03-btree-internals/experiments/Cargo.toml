@@ -7,6 +7,9 @@ edition = "2021"
 redb = "2"
 rand = "0.8"
 tempfile = "3"
+# Lane 1b: a modern in-memory B+tree to set beside std::BTreeMap. Pinned to the
+# release whose source (commit f0a5d36) reading-bbtree.md anchors against.
+bbtree = "=0.1.5"
 
 [dev-dependencies]
 criterion = "0.5"

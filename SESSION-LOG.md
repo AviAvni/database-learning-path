@@ -9,6 +9,45 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-27 — topic 06 — Buffer Pool: Bf-Tree reading guide and the heat-scatter model
+
+**New `reading-bftree.md`** (Bf-Tree, Hao and Chandramouli, PVLDB 17(11) 2024, doi 10.14778/3681954.3682012, PDF downloaded from vldb.org and read in full; section numbers 3.1–3.5, 4.1–4.3, 5.1–5.7, 6.1–6.11 checked against the text — the PDF's two-column text layer scrambles section order, so numbering was settled from the `-layout` extraction). Anchors are `microsoft/bf-tree` at `ca61307` (2026-08-19), read with `git archive ca61307` from a fresh clone whose HEAD was `f442e61`. Every paper number quoted is from prose or figure text; Figure 6's bar heights are not in the text layer and are not quoted.
+
+**Paper vs code, found by reading both.** Promotion rate: 1% (§5.1), 20% (§6.11), 30% release / 50% debug (`config.rs:22–23`). Mapping-table entry: the paper packs a 16-bit lock and a 48-bit address in 8 bytes (§3.3); the source is `MappingTable<RwLock<PageLocation>>` — `size_of` of the three type definitions compiled in a scratch program: `PageLocation` 16 B, `RwLock<PageLocation>` 24 B. Node meta: 12 B in the paper (§3.2), `NodeMeta` is three `u16` (6 B) in a 32 B const-asserted `LeafNode` header. The circular buffer's `alloc` and eviction reservation take one `Mutex<()>` (`circular_buffer/mod.rs:368, 537`); the eviction callback runs outside it. The default mini-page ladder `[64, 128, 256, 448, 832, 1600, 2048, 4096]` is pinned by the authors' unit test `tree.rs:1697–1698` and reproduced by hand from `create_mem_page_size_classes`. Derived footprints for 32 B records: cell 40 B, 101 cells per 4 KiB leaf (71 at 70% fill), a lone record costs 136 B (128 B class + 8 B header) vs 4,104 B for its page; growth chain 128 → 256 → 448 → 832 → 1600 → 2048 → merge, 5,312 B allocated to reach 50 records.
+
+**Lane `heat_scatter_model` (provided, deterministic, no timing; two runs, identical output):**
+
+```
+Part 1 — Zipf(0.9) over N = 200,000,000 records, exact sums
+  80% of requests reach the top 15.1% of records (paper §6.1 parenthetical: 33%)
+  raw data 5.96 GiB; a 2 GiB cache is 33.6% of it
+  oracle record cache, full mini-pages: holds 26.1% of records, hit ratio 0.854
+  oracle record cache, lone-record mini-pages: holds 7.9% of records, hit ratio 0.739
+Part 2 — page cache at 1/10 scale: N = 20,000,000, 281,691 pages, cache holds 52,326 pages (18.6% of records)
+  oracle PAGE cache, heat CLUSTERED : 0.812
+  oracle PAGE cache, heat SCATTERED : 0.566
+  oracle RECORD cache, full mini-pages  : 0.848
+  oracle RECORD cache, lone-record pages: 0.728
+```
+
+**Reading.** The paper's "around 50%" (page-caching systems) and "almost 75%" (Bf-Tree) cache ratios (§6.5) are bracketed by the scattered-page and record-cache bounds; with clustered heat the page cache would already reach 0.81. The paper does not say how Zipf ranks map to keys. Its §6.1 parenthetical "80% of requests access 33% of records" is 15.1% under the textbook pmf. No Bf-Tree code was run; nothing here is a throughput claim.
+
+## 2026-10-27 — topic 03 — B-Tree Internals: bbtree reading guide and lane 1b
+
+**New `reading-bbtree.md`** (bbtree, `XiangpengHao/bbtree` at `f0a5d36`, crate 0.1.5; design log files 04, 05, 06, 08, 09, 12 read; Graefe, *More Modern B-Tree Techniques* (2024) was **not** obtained, so the page citations in `design/06-cost-model.md` are attributed to the doc and marked unchecked). Cost-model arithmetic recomputed from the doc's inputs: 10M `u64`, `C_l = C_i = 55`, `u = 0.7` → 253,165 leaves, 6,576 internal nodes, 265.97 MB, 26.60 B/entry, depth 5 (4 at 1M) — the doc's table row exactly. Little's-law consistency check on the doc's own batch numbers: 6.3 misses in flight × 74.8 ns / 4.017 lines = 117 ns; 8.1 × 60.8 / 4.017 = 123 ns (about 120 ns per line for two different schedulers). Verus coverage read from `bbtree/src/proof/`: 1,523 of 48,868 lines in `src/` (3.1%); proven are the inline-key windows for `[u8]`, `u64`, `u128`, `i64`, `i128` and the `SearchBytes` comparisons; trusted are the std specs in `std_specs.rs`; not proven are the node searches, tree invariants and everything concurrent (shuttle is sequentially consistent only; Miri's config excludes the threaded tests). Corrections to the brief found in the code: the node search is a **count over every slot**, never a binary search (`inline_key_search.rs:200–213`), and the std byte-string "hash tag" is the key **length** saturated at 255 (`inline_key.rs:236–239`). crates.io 0.1.5 differs from `f0a5d36` in three remove-path files (`tree/remove.rs`, `tree/latched/remove.rs`, `tree/node/leaf.rs`; the latter by six lines after line 268); the lane does not touch them.
+
+**Lane 1b (`bbtree_vs_std`, provided, Apple M3 Pro, system allocator, two back-to-back runs under load average ≈ 10; checksums identical):**
+
+```
+u64    n=   100000  insert std  95.1 bb  74.3 ns (1.28x) | get std  81.5 bb  34.1 ns (2.39x) | get_many16 bb  32.4 ns
+u64    n=  1000000  insert std 154.0 bb 121.9 ns (1.26x) | get std 203.8 bb  71.8 ns (2.84x) | get_many16 bb  41.0 ns
+u64    n= 10000000  insert std 294.2 bb 215.1 ns (1.37x) | get std 352.5 bb 151.1 ns (2.33x) | get_many16 bb  73.0 ns
+String n=  1000000  insert std 457.5 bb 245.3 ns (1.86x) | get std 700.1 bb 270.0 ns (2.59x)
+(run 2: u64 10M insert 294.2 → 190.6 (1.54x), get 568.1 → 175.6 (3.24x), get_many16 65.8; String 1M get 676.3 → 271.8 (2.49x))
+```
+
+**Negative result.** The README's "5× faster than std's BTreeMap at single thread" does not reproduce for single gets (2.3–3.2× at 10M, 2.4–2.8× at 1M). The author's own one-thread tables (`design/14-blogpost.md`, Ryzen 9 9900X, 10M, lookups half missing) give `u64` get 109 vs 264 ns (2.4×) and gets 1.7–4.1× / batched 2.4–6.6× over four key types, so "5×" sits in the batched range. `get_many16` at 100K gives almost nothing (32.4 vs 34.1 ns): 100K is above the library's 39,936-entry batching cutoff, so the lanes run, but the tree is cache-resident and there are no misses to overlap. The lane's `String` keys (`user:` + 16 hex digits, all length 21) are the favourable case for inline keys; the tied case is left as an exercise in `notes.md`. Not measured: memory (the "30% lower" claim), tail latency, threads, mimalloc.
+
 ## 2026-10-27 — topic 57 — Sorting at Scale: Normalized Keys, Radix Sort & Collation
 
 New topic. Read in full: Kuiper & Mühleisen (ICDE 2023), IPS⁴o (arXiv 1705.02257v2), UTS #10 v18.0.0 rev. 55 (§1, §3.6, §7.3, §9.1). Not obtained: Graefe's CSUR survey (ACM paywall; unpaywall reports no OA copy) — its four radix objections are quoted via the ICDE paper §VI-C and the guides say so. Code read at the pins: DuckDB `d54cbbe3df` (`create_sort_key.cpp`, `tuple_data_layout.cpp`, `sort_key.hpp`, `sorted_run.cpp`, `ska_sort.hpp`, `vergesort.h`, `icu_extension.cpp`, `collation_binding.cpp`), FalkorDB `ccb449a9a` (`op_sort.c`), Rust std from rustc 1.99.0's `rust-src`, and two new clones (`ips4o/ips4o` at `08a5b92`, `Voultapher/sort-research-rs` at `8d3eae4`, the latter only cited by the source comments). The pinned DuckDB differs from the paper: vergesort + a ska_sort radix over at most 8 key bytes + full-key comparison for ties, strings encoded as `byte+1` and a `0` delimiter, key width derived from statistics. The guides say where.

@@ -133,9 +133,9 @@ flowchart TD
 **Why:** SQLite/Postgres/LMDB/most-embedded-DBs. Pages are how disks think.
 
 - **Concepts:** slotted pages, node splits/merges, B+tree vs B-tree, prefix compression, copy-on-write B-trees (LMDB), overflow pages, page checksums, varint encoding.
-- **Read code:** turso `core/storage/btree.rs` + pager (Rust re-implementation of SQLite — ideal), SQLite `btree.c` (the classic), LMDB `mdb.c` (COW).
+- **Read code:** turso `core/storage/btree.rs` + pager (Rust re-implementation of SQLite — ideal), SQLite `btree.c` (the classic), LMDB `mdb.c` (COW); bbtree (XiangpengHao/bbtree): an in-memory B+tree with a numbered design log — cost model first, inline keys, batched prefetching lookups, optimistic latches, a Verus/shuttle/fuzzing verification stack.
 - **Papers:** "Modern B-Tree Techniques" (Graefe — the survey), SQLite file-format doc.
-- **Build & bench:** implement a slotted-page disk B+tree in Rust (fixed 4KB pages); bench point lookups & range scans vs `redb`; try prefix truncation and measure.
+- **Build & bench:** implement a slotted-page disk B+tree in Rust (fixed 4KB pages); bench point lookups & range scans vs `redb`; try prefix truncation and measure; provided lane `bbtree_vs_std` measures bbtree 0.1.5 against std `BTreeMap` in memory.
 - **Capstone M3:** disk-backed B+tree backend for properties + range indexes behind the storage abstraction.
 
 ## 4. LSM-Tree Deep Dive
@@ -164,8 +164,8 @@ flowchart TD
 
 - **Concepts:** buffer pool design, eviction (LRU, CLOCK, LRU-K, 2Q), pointer swizzling (LeanStore), why mmap is (usually) wrong for DBs, jemalloc/arena allocation, NUMA.
 - **Read code:** postgres `bufmgr.c` + CLOCK sweep, redis `zmalloc.c`, DuckDB buffer manager, LeanStore (C++).
-- **Papers:** "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR'22), "LeanStore" (ICDE'18), "Virtual-Memory Assisted Buffer Management" (vmcache, SIGMOD'23); "Predictive Translation: High-Performance Buffer Management Without the Trade-Offs" (Zinsmeister, Nguyen, Leis, Neumann, SIGMOD 2026).
-- **Build & bench:** build a buffer pool (CLOCK) for the B+tree; bench vs mmap on datasets larger than RAM; reproduce mmap's write-back unpredictability; provided micro-lane `translation_micro`: a hash-table page lookup vs a predicted frame vs a direct pointer in front of a dependent read.
+- **Papers:** "Are You Sure You Want to Use MMAP in Your DBMS?" (CIDR'22), "LeanStore" (ICDE'18), "Virtual-Memory Assisted Buffer Management" (vmcache, SIGMOD'23); "Predictive Translation: High-Performance Buffer Management Without the Trade-Offs" (Zinsmeister, Nguyen, Leis, Neumann, SIGMOD 2026); "Bf-Tree: A Modern Read-Write-Optimized Concurrent Larger-Than-Memory Range Index" (PVLDB 17, 2024) — mini-pages in a circular buffer as a record-granularity buffer pool.
+- **Build & bench:** build a buffer pool (CLOCK) for the B+tree; bench vs mmap on datasets larger than RAM; reproduce mmap's write-back unpredictability; provided micro-lane `translation_micro`: a hash-table page lookup vs a predicted frame vs a direct pointer in front of a dependent read; provided `heat_scatter_model` bounds what record-granularity caching can win under a Zipf workload.
 - **Capstone M6:** buffer pool under the persistent backends — graphs larger than RAM.
 
 ## 7. Networking, Protocols & Event Loops
