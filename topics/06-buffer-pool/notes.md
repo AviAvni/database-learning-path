@@ -24,6 +24,34 @@ playing with an advantage. If your pool still wins the tail, that is conclusive;
 if mmap wins the median, that is expected and the interesting question is why
 the tail behaves differently from the median at all.
 
+## Baseline (heat_scatter_model, provided lane, deterministic)
+
+`cargo run --release --bin heat_scatter_model` — what an *oracle* cache (always
+holds the most popular items that fit) achieves under the Bf-Tree paper's
+workload (Zipf 0.9, 200 M records of 32 B, 2 GiB cache; paper §6.1), for a
+record cache and for a page cache whose popular keys are scattered or clustered.
+Seeded; identical output on every run (checked twice). No timing.
+
+```
+Part 1 — Zipf(0.9) over N = 200,000,000 records, exact sums
+  80% of requests reach the top 15.1% of records (paper §6.1 parenthetical: 33%)
+  oracle record cache, full mini-pages: holds 26.1% of records, hit ratio 0.854
+  oracle record cache, lone-record mini-pages: holds 7.9% of records, hit ratio 0.739
+Part 2 — page cache at 1/10 scale: N = 20,000,000, 281,691 pages, cache holds 52,326 pages
+  oracle PAGE cache, heat CLUSTERED : 0.812
+  oracle PAGE cache, heat SCATTERED : 0.566
+  oracle RECORD cache, full mini-pages  : 0.848
+  oracle RECORD cache, lone-record pages: 0.728
+```
+
+The paper's §6.5 reports about 50% of reads from cache for page-caching systems
+and "almost 75%" for Bf-Tree. The scattered page-cache bound (0.57) and the
+record-cache bounds (0.73–0.85) bracket both; the clustered page-cache bound
+(0.81) says that if the paper's hot keys were adjacent, a page cache would
+already be near the record cache. The paper does not say which holds, and its
+"80% of requests access 33% of records" is 15.1% under the textbook pmf (the
+exact sum above). See `reading-bftree.md`, Step 8.
+
 ## Predictions (fill BEFORE running)
 
 - pool_vs_mmap p50: mmap ___ ns vs pool ___ ns (who wins the median and why?)
@@ -88,6 +116,13 @@ Verdict — is strict LRU's hit-rate edge worth its per-hit cost here?
 2. Why cooling is a FIFO, not a stack:
 3. vmcache state word vs postgres packed state — what colocation buys:
 4. Which design is admissible for matrix-tile DAGs:
+
+### Bf-Tree (reading-bftree.md)
+1. Growth chain and capacity per class for 100-byte values with 16-byte keys:
+2. Scattered vs clustered page-cache bound at Zipf 0.99 (predict, then run):
+3. Table entry: paper's 8 bytes vs the source's 24, for 2.8 M leaves:
+4. Which promotion rate (1% / 20% / 30%) and what it trades:
+5. Where the circular buffer's one `Mutex` would show up:
 
 ### redis zmalloc (reading-redis-zmalloc.md)
 1. Cost of a shared fetch_add per malloc at 8 threads:

@@ -30,6 +30,16 @@ row: mmap gets the whole machine's page cache here, while your pool will be
 held to 256 MiB against a 1 GiB file. If your pool still wins the tail under
 that disadvantage, the result is conclusive.
 
+**A further provided lane — the unit of caching (`cargo run --release --bin heat_scatter_model`,
+provided, deterministic, ~3 s).** Every pool above caches whole pages. Bf-Tree
+caches the hot *records* of a page; whether that wins depends on whether the
+heat is scattered across pages. Under the paper's workload (Zipf 0.9, 200 M
+records of 32 B, a 2 GiB cache) an oracle page cache reaches a 0.566 hit ratio
+when popular keys are scattered and 0.812 when they are adjacent, and an oracle
+record cache 0.73–0.85 ([`reading-bftree.md`](reading-bftree.md), Step 8). Under
+the same pmf, 80% of requests reach the top 15.1% of records, not the 33% the
+paper's §6.1 parenthetical says.
+
 ## Outcomes
 
 By the end you can:
@@ -173,6 +183,12 @@ against maxmemory, and *opaque* to redis defrag.
   → [`reading-mmap-paper.md`](reading-mmap-paper.md) — mmap is not a buffer pool
 - "LeanStore: In-Memory Data Management Beyond Main Memory" (ICDE '18) +
   vmcache (SIGMOD '23) as the sequel. → [`reading-leanstore-paper.md`](reading-leanstore-paper.md) — LeanStore & vmcache: pay only on the miss
+- "Bf-Tree: A Modern Read-Write-Optimized Concurrent Larger-Than-Memory Range
+  Index" (PVLDB 2024) — a pool whose frames are the hot *records* of a leaf
+  (mini-pages in a circular buffer), with the paper's numbers checked against
+  its text and `microsoft/bf-tree` source.
+  → [`reading-bftree.md`](reading-bftree.md) — Bf-Tree: a buffer pool whose
+  frames are the hot records
 
 ## 8. Experiments (in `experiments/`)
 
@@ -186,6 +202,10 @@ against maxmemory, and *opaque* to redis defrag.
 3. **`benches/eviction.rs`** — CLOCK vs strict-LRU (linked list) vs FIFO on
    Zipf-skewed access: hit rate AND ns/lookup. Shows why nobody ships strict
    LRU (per-hit list surgery costs more than the hit-rate gain).
+4. **`src/bin/heat_scatter_model.rs`** (provided, deterministic, no timing) —
+   oracle hit-ratio bounds for record caches versus page caches under a Zipf
+   workload: when does caching records instead of pages pay, and what does it
+   need from where the heat sits? Change the skew and re-run.
 
 ## 9. Capstone milestone M6 (in `../../capstone/`)
 

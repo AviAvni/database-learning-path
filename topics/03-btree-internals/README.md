@@ -33,6 +33,26 @@ levers here, not one: fanout (which you control through the page format, and
 which suffix truncation exists to protect) and residency (which you do not
 control at all until topic 6 gives you a buffer pool). Keep both columns.
 
+**Lane 1b — the same question for an in-memory tree
+(`cargo run --release --bin bbtree_vs_std`, provided).** Take the page away and
+the lever changes: with 1 KiB nodes in RAM the cost is not I/O but how many
+*dependent cache misses* a lookup chains and how many comparisons touch the
+heap. `bbtree` (crate 0.1.5, a drop-in for `BTreeMap`) against std on seeded
+random `u64` keys at 100K / 1M / 10M and `String` keys at 1M, Apple M3 Pro,
+single thread, best of 3 for reads:
+
+```
+u64    n=  10000000  insert std 294.2 bb 215.1 ns (1.37x) | get std 352.5 bb 151.1 ns (2.33x) | get_many16 bb 73.0 ns (4.83x vs std get)
+u64    n=   1000000  insert std 154.0 bb 121.9 ns (1.26x) | get std 203.8 bb  71.8 ns (2.84x) | get_many16 bb 41.0 ns (4.97x vs std get)
+String n=   1000000  insert std 457.5 bb 245.3 ns (1.86x) | get std 700.1 bb 270.0 ns (2.59x)
+```
+
+Single gets are 2.3–3.2× faster than std across two runs, not the 5× in the
+crate's README: that figure sits inside the author's own *batched* range (his
+one-thread tables: gets 1.7–4.1×, batched 2.4–6.6×), and batching 16 keys per
+`get_many` is here a further 2.1–2.7× on top of bbtree's own `get` at 10M. [`reading-bbtree.md`](reading-bbtree.md)
+derives each piece and says which parts of the claim reproduce.
+
 ## Outcomes
 
 By the end you can:
@@ -156,6 +176,13 @@ Topic 45 covers it in depth.
   → chapter: [`reading-lmdb.md`](reading-lmdb.md) — LMDB: recovery is choosing a
   root pointer
 
+- **bbtree** (`XiangpengHao/bbtree`, an in-memory B+tree with a numbered design
+  log) — the opposite end of the design space: 1 KiB RAM nodes, inline keys
+  compared as integers, batched lookups with software prefetch, optimistic
+  latches, and a verification stack whose Verus proofs cover less than the badge
+  suggests. → chapter: [`reading-bbtree.md`](reading-bbtree.md) — bbtree: a B+tree
+  designed from its cost model, then argued with by its own benchmarks
+
 ## 6. Papers / docs (3–4 h)
 
 - Graefe, "Modern B-Tree Techniques" (Foundations & Trends 2011) — the survey;
@@ -174,6 +201,9 @@ with `todo!()`; page-format helpers + tests provided):
 1. `src/page.rs` — slotted page: header, cell ptr array, insert/delete/defrag.
 2. `src/btree.rs` — B+tree on a page file: search, insert with leaf split,
    range scan via leaf sibling links.
+
+Lane 1b (`src/bin/bbtree_vs_std.rs`) is provided and needs none of it: it prints
+the in-memory comparison above and exits 0 on a fresh clone.
 
 Then bench (`benches/disk_btree.rs`):
 - **point lookups + range scans** vs `redb`, 1M keys, cold-ish (drop your page
