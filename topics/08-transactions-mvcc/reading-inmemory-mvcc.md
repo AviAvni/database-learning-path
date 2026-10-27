@@ -390,9 +390,10 @@ made all protocols "scale linearly up to 40 threads", because longer
 transactions mean less pressure on the shared structures.
 
 Why it matters: hold that finding next to this repo's own measured lane in
-[`notes.md`](notes.md) — a single global mutex delivers ~600k txn/s
-*flat* across read-heavy, write-heavy and hot-key workloads. Both results
-say the same thing from opposite ends: on a multi-core machine the shared
+[`notes.md`](notes.md) — a single global mutex delivers 0.81–1.39 M txn/s
+across read-heavy, write-heavy and hot-key workloads, every one of them fully
+serialized, and a reference MVCC beats it by only 1.4–1.6×. Both results say
+the same thing from opposite ends: on a multi-core machine the shared
 coordination structure, not the isolation algorithm, sets the ceiling.
 
 ### Step 8 — design decision 1 of 4: the concurrency control protocol
@@ -702,27 +703,25 @@ postgres, for the one choice the two systems share.
 
 This topic's provided benchmark lane measures a deliberately naive
 baseline: a single global `Mutex<HashMap>`, 4 threads × 50 000 transactions
-× 4 operations each. On an Apple M3 Pro (measured 2026-07-28, recorded in
+× 4 operations each, keys built before the lock is taken. On an Apple M3
+Pro (measured 2026-10-27, median of three runs, recorded in
 [`notes.md`](notes.md)):
 
 | Workload | Keys | mutex txn/s |
 |---|---|---|
-| read-heavy 95/5 | 10 000 | 623 454 |
-| write-heavy 50/50 | 10 000 | 594 264 |
-| write-heavy 50/50 | 64 (hot) | 676 691 |
+| read-heavy 95/5 | 10 000 | 1 393 945 |
+| write-heavy 50/50 | 10 000 | 806 155 |
+| write-heavy 50/50 | 64 (hot) | 1 092 582 |
 
-**Read that table as a negative result, and be careful what you conclude
-from it.** The three numbers are flat — within about 12% of each other —
-across workloads that differ enormously in read/write mix and key skew. The
-reason is not that the mutex is good; it is that a global mutex has
-*already serialized everything*, so the workload's shape cannot influence
-the result. That is the finding recorded in
-[`FINDINGS.md`](../../FINDINGS.md) row 8.
+**Read that table carefully.** Every row is fully serialized: the
+read-heavy row is fastest only because a lookup is cheaper than an
+allocating insert, and the hot row beats the 10K-key write row because 64
+keys stay in cache. The workload's concurrency never reaches the result.
 
-What this repo has **not** measured is MVCC beating that mutex. The `mvcc
-txn/s` and `aborts` columns in `notes.md` are `stub` — they are the
-exercise. Nothing in this guide, and nothing in the topic, is evidence that
-this repo's MVCC implementation is faster than the mutex; the Wu/Pavlo
+The provided lane does **not** measure MVCC: the `mvcc txn/s` and `aborts`
+columns are `stub` — they are the exercise. `notes.md` records what a
+reference implementation (one `RwLock` over the version map) printed: 1.4–1.6×
+the mutex on every row, and a crossover near one key per thread. The Wu/Pavlo
 numbers quoted above were measured on a 40-core Xeon running Peloton, not
 here.
 
@@ -830,14 +829,17 @@ indicts a layout decision, not the protocol.
 
 <details><summary>Answer</summary>
 
-The global-mutex baseline delivers 623 454 / 594 264 / 676 691 txn/s on
+The global-mutex baseline delivers 1 393 945 / 806 155 / 1 092 582 txn/s on
 read-heavy 10K-key, write-heavy 10K-key and write-heavy 64-hot-key
-workloads respectively (Apple M3 Pro, 2026-07-28; `notes.md`,
-[`FINDINGS.md`](../../FINDINGS.md) row 8). It is **flat** because the mutex
-already serialized everything, so the workload's shape cannot reach the
-result. It does **not** show MVCC beating a mutex — the `mvcc txn/s` and
-`aborts` columns are `stub`, and every comparative number in this guide was
-measured by Wu & Pavlo on a 40-core Xeon running Peloton, not in this repo.
+workloads respectively (Apple M3 Pro, 2026-10-27, median of three; `notes.md`,
+[`FINDINGS.md`](../../FINDINGS.md) row 8). Every row is fully serialized, so
+the differences are the cost of the critical section — lookups are cheaper
+than allocating inserts, and 64 keys stay in cache — not the workload's
+concurrency. The provided lane does **not** show MVCC beating a mutex: its
+`mvcc txn/s` and `aborts` columns are `stub`. The reference implementation's
+1.4–1.6× in `notes.md` is the only repo number for that, and every other
+comparative number in this guide was measured by Wu & Pavlo on a 40-core Xeon
+running Peloton.
 
 </details>
 
@@ -874,7 +876,7 @@ measured by Wu & Pavlo on a 40-core Xeon running Peloton, not in this repo.
 | Where | What |
 |---|---|
 | [`notes.md`](notes.md) | the measured mutex baseline and the `stub` MVCC columns |
-| [`FINDINGS.md`](../../FINDINGS.md) row 8 | the headline: flat ~600k txn/s, because the mutex already serialized everything |
+| [`FINDINGS.md`](../../FINDINGS.md) row 8 | the headline: a serialized mutex at 0.81–1.39 M txn/s, and the reference MVCC's 1.4–1.6× over it |
 | `experiments/src/mvcc.rs:105` | `commit()` — where first-committer-wins goes |
 | [`reading-postgres-heapam.md`](reading-postgres-heapam.md) | the disk-era design this one is defined against |
 | [`reading-ssi-postgres.md`](reading-ssi-postgres.md) | SIREAD locks, the alternative to Step 4's commit-time validation |

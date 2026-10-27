@@ -10,5 +10,9 @@ rand = "0.8"
 name = "exec_bench"
 path = "src/bin/exec_bench.rs"
 
+[[bin]]
+name = "sorted_filter"
+path = "src/bin/sorted_filter.rs"
+
 [profile.release]
 debug = true

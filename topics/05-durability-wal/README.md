@@ -166,7 +166,7 @@ the design.
 3. **`src/bin/crash_test.rs`** — crash injection: child process inserts keys,
    parent `kill -9`s it at a random moment, reopens, verifies: every
    acknowledged key present, no torn state, unacked keys either fully in or out.
-   Run 100 rounds.
+   Run 100 rounds. How many seeded random crash schedules a bug class needs before it shows is in [topic 16](../16-testing-correctness/README.md)'s `crash_matrix`: 5 seeds for 95% on its slowest planted bug.
 4. **`benches/commit_throughput.rs`** — fsync-per-commit vs group commit
    (batch 8/64/512) vs `appendfsync everysec`-style. Plot commits/s vs
    durability window.

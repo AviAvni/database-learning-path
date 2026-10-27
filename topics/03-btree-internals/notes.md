@@ -47,6 +47,32 @@ The file doubles and lookups slow 20%. The arithmetic above predicted a 2.5×
 fanout loss; redb absorbs most of it, which is itself the finding — a
 production B-tree already does some of what you are about to implement by hand.
 
+### Lane 1b — bbtree vs std, in memory (provided, Apple M3 Pro, measured 2026-10-27)
+
+`cargo run --release --bin bbtree_vs_std`: `bbtree` 0.1.5 (`unsync::BBTreeMap`,
+system allocator) against `std::collections::BTreeMap`, seeded keys, probes in a
+different random order than the inserts, `get` best of 3, `get_many` 16 keys per
+call. Two consecutive runs (the machine was loaded, load average ≈ 10; the
+checksums are identical, only the timings move):
+
+| keys | n | insert ns std → bb | get ns std → bb | get_many16 ns (bb) |
+|---|---|---|---|---|
+| u64 | 100K | 95.1 → 74.3 / 128.0 → 84.7 | 81.5 → 34.1 / 76.9 → 30.2 | 32.4 / 27.9 |
+| u64 | 1M | 154.0 → 121.9 / 121.2 → 87.2 | 203.8 → 71.8 / 138.5 → 58.8 | 41.0 / 40.9 |
+| u64 | 10M | 294.2 → 215.1 / 294.2 → 190.6 | 352.5 → 151.1 / 568.1 → 175.6 | 73.0 / 65.8 |
+| String | 1M | 457.5 → 245.3 / 413.7 → 226.3 | 700.1 → 270.0 / 676.3 → 271.8 | — |
+
+(run 1 / run 2 in each cell. A third run on an idle machine, `./verify.sh 03`
+2026-10-27, gave get 2.25× / 2.51× / 2.23× at 100K / 1M / 10M and get_many16
+5.49× std's get at 10M.) Single `get` is 2.2–3.2× faster than std at 10M;
+`get_many16` is 2.1–2.7× faster than bbtree's own `get` at 10M and gives almost nothing
+at 100K, where the tree is cache-resident. The crate README's "5× faster than
+std at single thread" does not reproduce for single gets; the author's own
+one-thread tables on a Ryzen 9 9900X show 1.7–4.1× for gets and 2.4–6.6×
+batched ([`reading-bbtree.md`](reading-bbtree.md), Step 9). The `String` keys
+here (`user:` + 16 hex digits) almost never tie in the 8-byte inline key, the
+favourable case; the exercise is to construct the tied one.
+
 ## Predictions (fill BEFORE running)
 
 | Bench | my btree | redb |
@@ -55,6 +81,13 @@ production B-tree already does some of what you are about to implement by hand.
 | range scan 1K rows (µs) | | |
 | long-key (32B, shared prefix) height / lookup | | — |
 | after suffix truncation: height / fanout / lookup | | — |
+
+| Lane 1b (`bbtree_vs_std`) | my prediction | measured |
+|---|---|---|
+| u64 10M single `get`, bbtree vs std (ratio) | | |
+| u64 10M `get_many16` vs bbtree `get` (ratio) | | |
+| u64 100K `get_many16` vs bbtree `get` (ratio) | | |
+| `String` 1M `get` ratio when keys share a 17-byte prefix | | (exercise) |
 
 Fanout arithmetic check (before measuring): 4KB page, 8B key + 2B ptr + 4B lens
 ⇒ leaf holds ~N cells; interior fanout ~M ⇒ predicted height at 1e6 keys = ___.
@@ -75,6 +108,13 @@ Fanout arithmetic check (before measuring): 4KB page, 8B key + 2B ptr + 4B lens
 1. Why no sibling redistribution on split:
 2. Which fsync could go, on what hardware:
 3. 1-key commit cost LMDB vs WAL engine; where LMDB still wins:
+
+### bbtree (reading-bbtree.md)
+1. Depth and bytes/entry at 100M `u64` entries from the cost model:
+2. Why a count over every slot and a binary search can both be right (1M vs 10M):
+3. Tied-key `String` lane — predicted vs measured get ratio; which step does the work:
+4. Why a no-op waker is correct for the batch executor:
+5. One property per verification tool that it does not establish:
 
 ### Graefe survey
 1. Suffix (interior) vs prefix (leaf) truncation asymmetry:

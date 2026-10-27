@@ -37,6 +37,33 @@ exhaustively in under a second on a 3-replica/3-entry model.
 Removing one conjunct (the quorum gate) flips 1080-states-safe to
 counterexample-at-depth-5 — invariants are load-bearing.
 
+### Fixed order vs saturation (normalise_bench, provided lane 1b)
+
+`cargo run --release --bin normalise_bench` — 200 seeded expressions per depth;
+the hand rewriter against an e-graph with the same rules unordered plus constant
+folding (12 iterations / 20 000 e-nodes). Counts are exact; the µs column is the
+only timing.
+
+| depth | in cost | hand cost | egg min | hand fails | swap-R4-first fails | saturated | max e-nodes | egg µs/expr |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 7.0 | 5.7 | 5.6 | 4/200 | 4/200 | 194 | 64 | 33 |
+| 3 | 15.0 | 12.2 | 11.8 | 9/200 | 9/200 | 187 | 320 | 47 |
+| 4 | 31.0 | 24.1 | 23.1 | 23/200 | 23/200 | 177 | 1836 | 111 |
+| 5 | 63.0 | 48.6 | 43.1 | 63/200 | 63/200 | 144 | 2569 | 253 |
+| 6 | 127.0 | 95.1 | 73.9 | 118/200 | 118/200 | 98 | 4750 | 649 |
+
+Rule-order control: swapping R4 ahead of R2 changes the output on 0 of 1000
+expressions (the traversal is bottom-up; the Mul is rewritten before its Div
+parent is visited). Constant-analysis disagreements from the unsound `x/x → 1`:
+1090. Depth-4 e-graph size per iteration (mean of 20 seeds): seed 31.0, then
+21.6, 36.0, 40.9, 44.0, 47.2, 50.1, 53.6, 58.6, 66.8, 81.2, 107.8, 120.2.
+Where egg stopped at the iteration cap (e.g. 102 of 200 at depth 6) "egg min" is
+a bound, so the failure counts there are lower bounds.
+
+Topic 44 comparison: both tables count e-nodes. Topic 44's lane fixes the graph
+(3N e-nodes) and counts *matching work* on it (N²+N+1 backtracking visits vs 5N
+generic-join probes); this lane counts how the graph *grows* under the rules.
+
 ## Predictions (fill BEFORE implementing the stub)
 
 | question | prediction | actual |

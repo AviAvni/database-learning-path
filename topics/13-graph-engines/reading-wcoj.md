@@ -144,7 +144,7 @@ exactly two of the three relations, so x = (½, ½, ½) is feasible
 an arithmetic statement but easy to misread: `m^1.5` is a *worst-case* ceiling over
 all instances with m edges, not an estimate of this graph's triangle
 count, which is far smaller. The number that matters is the ratio, not
-either endpoint.
+either endpoint. On skewed data the AGM bound for a triangle is 131× too high ([topic 53](../53-graph-cardinality/README.md), lane 1).
 
 The gap is also not universal. Do the same LP for question 2's
 4-cycle `R(a,b) S(b,c) T(c,d) U(d,a)`: take x_R = x_T = 1 and
@@ -366,6 +366,135 @@ masked-SpGEMM literature converged on the same computation from
 opposite directions, and your M20 matrix core inherits worst-case
 optimality without ever naming it.
 
+### Step 7 — where does the filter go? Inside the intersection
+
+> **In:** Step 3's Generic Join / Leapfrog loop and Step 4's `leap`
+> (galloping) primitive.
+> **Out:** three placements for a property filter (before the join,
+> after it, or *as one more list in the intersection*), the worked
+> arithmetic for the third, and the separate problem HoneyComb solves —
+> skew across threads.
+
+Every real graph query is a pattern plus a predicate:
+`MATCH (x:Person)-[:LIVES]->(Europe), (x)-[:WORKS]->(CS) WHERE x.age >= 50`.
+The Steps above optimise the pattern and say nothing about the `WHERE`.
+Two terms first. A **selection** (or *filter*) is a predicate that keeps
+or drops a candidate binding — here `x.age >= 50`. A **leaptor** is the
+name Gómez-Brandón, Hogan and Navarro give to anything that can answer
+`leap(c)` — "the smallest member of my set that is ≥ c" — in
+polylogarithmic time (*Uplifting the Superpowers of Worst-Case-Optimal
+Join Algorithms*, arXiv:2608.03840, §4). A trie child list is a leaptor;
+the paper's point is that *a filter can be one too*.
+
+There are three places to put the filter:
+
+```
+ pre-filter    : materialise {x : age>=50}  ──► then run the pattern on it
+ post-filter   : run the pattern, intersect lists ──► drop rows with age<50
+ push-down     : age>=50 is a THIRD list in the intersection of x's loop;
+                 leap(c) on it skips over every x that fails the age test,
+                 and the other two lists leap to that answer, not to c+1
+```
+
+The paper's own account of why the first two lose is §3.3 and §4.1:
+pre-filtering "will generate a lot of senior people, very few of which
+will end up passing the BGP filter"; post-filtering "will generate a lot
+of people in Europe working in CS, very few of which will pass the
+seniority filter" (a **BGP**, basic graph pattern, is the set of edge
+patterns without the `WHERE`). Their bound: neither meets the
+**alternation complexity** — the least number of times you must switch
+from one sorted list to another to certify the intersection, which is
+never larger than the smaller input and can be far smaller (§3.2's
+example: `{2i}` against `{2i-1}` has alternation 2n−1; `{1..n}` against
+`{n+1..2n}` has alternation 1, one comparison proves the intersection
+empty). A leaptor-based intersection costs Õ(alternation); probing the
+smallest list into the others does not.
+
+**Worked example (the paper's §4.3, run by hand).** The `age` property
+over the node ids is stored as a value sequence S_age listing each
+node's age in id order, plus a bitvector B_age holding, for each node id,
+a `1` followed by one `0` per value that node has. `select1(B, k)` is
+the position of the k-th `1` in B and `select0(B, k)` the position of
+the k-th `0` (a **select** query finds the position of the k-th set or
+unset bit). The paper gives S_age = ⟨55, 45, 60, 25⟩ and
+B_age = `1 1 0 1 0 1 0 1 0` (§4.3) and asks for
+`leftmost([3, +∞] × [50, +∞])`: the smallest node id ≥ 3 whose age is
+≥ 50.
+
+1. `select1(B_age, 3)` — the position of the third `1` in
+   `1 1 0 1 0 1 0 1 0` (ones at positions 1, 2, 4, 6, 8) — is 4. Then
+   c′ = 4 − 3 + 1 = **2**: the first index of S_age that belongs to a
+   node id ≥ 3.
+2. Scan S_age[2..] = ⟨45, 60, 25⟩ for the first value ≥ 50: it is
+   S_age[3] = 60. (The paper does this with a wavelet tree in
+   O(log |U|); the scan gives the same answer.)
+3. Convert the index back to a node id: `select0(B_age, 3)` is 7 (the
+   zeros sit at positions 3, 5, 7, 9), and 7 − 3 = **4**. The paper
+   reads this node as Diego.
+
+So `leap(3)` on the age leaptor returns 4. The trie lists proposed
+node 3, and the filter answers "nobody with age ≥ 50 until node 4", so
+the two trie lists leap to 4 in one step instead of testing 3 and then
+4. That skipped candidate is the entire saving, and it grows with how
+*clustered* the ids are — the paper says alternation "can be much lower"
+when ids cluster by country, occupation or age (§4.1).
+
+**What they measured (§6.2, Wikidata as a property graph: 109 M nodes,
+719.5 M edges, 19.6 K queries converted from SPARQL logs).** Against the
+same engine with the filter placed before or after, "On average, PG-Ring
+achieves a 16% improvement over the post-filter baseline and is 15
+times faster than pre-filter", and on one query (humans born in 1554,
+`MATCH (v:Q5)-[e:P21]->(u) WHERE v.P569 >= 1554-01-01 AND v.P569 < 1555-01-01`)
+the push-down was "over 5,000 times" faster than post-filter and about
+2× faster than pre-filter. Read the *shape*, not the headline: the
+average win over post-filter is modest (16%), the win on a selective
+filter is three orders of magnitude, and the engine is a static, read-only,
+succinct (wavelet-tree) index running on an AMD Ryzen 9 9900X, so none
+of it transfers as a number to a mutable in-memory engine like
+FalkorDB's. Their LSQB comparison (§6.1) is also honest about the other
+side: with results limited to 10, PG-Ring wins the cyclic queries Q2,
+Q3 and Q6 but "the clear winner" on the others is MillDB, at about 5.4×
+PG-Ring's space.
+
+**The matrix reading.** In FalkorDB's algebra a predicate on a node
+label or on an indexed property becomes a diagonal or Boolean vector,
+and the pre/post/push-down choice becomes *where the mask enters the
+mxm* — exactly the early-versus-late masking distinction Step 6 drew for
+dot3. This guide states the analogy; it does not claim FalkorDB's planner
+makes the choice per query — read `reading-graphblas-internals.md` and
+the engine before asserting that.
+
+**A different problem: skew across threads (HoneyComb).** Step 4 said
+skew is why galloping wins; Wu and Suciu's *HoneyComb: A Parallel
+Worst-Case Optimal Join on Multicores* (arXiv:2502.06715) shows skew
+again, one level up. Parallel WCOJ systems "partition only the top
+variable" — thread *i* gets a slice of the first variable's values — so
+a supernode's slice does all the work. Their Example 1.1/1.2 runs the
+triangle query on the WGPB graph (54.0 M nodes, 81.4 M edges) as 4096
+tasks on 60 cores, varying how the 4096 is split across the three
+variables (Figure 2's table):
+
+| partitioning (X × Y × Z) | min task | max task | total work | wall clock, 60 cores |
+|---|---|---|---|---|
+| 4096 × 1 × 1 (top variable only) | 64.50 ms | 989.41 ms | 307.73 s | 13.83 s |
+| 16 × 16 × 16 | 58.11 ms | 229.37 ms | 300.38 s | 6.57 s |
+| 64 × 64 × 1 (their chosen shares) | 20.59 ms | 63.93 ms | 114.23 s | 2.46 s |
+
+Arithmetic on those cells: skew (max ÷ min task) is 989.41 / 64.50 =
+**15.3**, then 229.37 / 58.11 = **3.9**, then 63.93 / 20.59 = **3.1**.
+A perfectly balanced run would take total work ÷ 60 cores:
+307.73 / 60 = 5.13 s against 13.83 s measured (2.7× over ideal),
+300.38 / 60 = 5.01 s against 6.57 s (1.3×), 114.23 / 60 = 1.90 s against
+2.46 s (1.3×). Two things to take from it. First, the 4096 × 1 × 1 row's
+gap to ideal is the skew: total work is the same as the 16 × 16 × 16
+row's (307.73 s against 300.38 s) yet the wall clock is 2.1× worse.
+Second, the third row did not just balance load, it cut total work
+from ~300 s to 114 s, because partitioning the *last* variable makes
+threads repeat the upper loops — the paper reports tuning the shares by
+a cost model (their Eq. 3), not by always splitting every variable.
+HoneyComb is about intersection-heavy cyclic queries on skewed graphs,
+which is this topic's workload; it says nothing about filter placement.
+
 ## How to read the papers (with the concepts in hand)
 
 | Step | Where to read it |
@@ -378,6 +507,7 @@ optimality without ever naming it.
 | 4 | *Skew Strikes Back* §1 p.2 ("it is the old enemy … skew") and EmptyHeaded §1 on the min property |
 | 5 | EmptyHeaded §1 (95% of runtime; the three granularities; 13.4× vs 1.6×) then its layout section |
 | 6 | [reading-graphblas-internals.md](reading-graphblas-internals.md) on dot3 and masking, then [reading-kuzu.md](reading-kuzu.md) on `Intersect` |
+| 7 | Gómez-Brandón–Hogan–Navarro §3.3 (why pre/post-filtering lose), §4.1 (the grid leaptor and the Fig. 2 example), §6.2 (Wikidata, push-down vs pre/post); Wu–Suciu §1 Examples 1.1–1.2 and Fig. 2 |
 
 1. **Ngo, Ré, Rudra — "Skew Strikes Back" (SIGMOD Record 2013)** —
    read THIS one, it's the readable survey. The triangle example is
@@ -411,6 +541,24 @@ optimality without ever naming it.
 5. M10 planner question: how would YOUR optimizer decide binary-join
    vs intersect for a pattern — what's the detectable trigger?
    (Cyclicity of the pattern graph.)
+6. Filter placement, by experiment. Take two sorted node-id lists
+   (say N(a) and N(b) from the preferential-attachment graph in this
+   topic's `data.rs`) and a predicate `p(v)` that keeps a fraction f of
+   node ids — once with the kept ids scattered at random, once with them
+   clustered into one contiguous id range. Count *candidates examined*
+   (every id a list is asked about) under (a) pre-filter: build the kept
+   set, then intersect all three; (b) post-filter: intersect the two
+   lists, then test `p`; (c) push-down: intersect all three with
+   `leap`/galloping, treating the kept set as a third sorted list.
+   Predict first, for f = 1% and f = 50%, which placement wins in which
+   layout, then measure. The paper's claim (§4.1) is that (c) can
+   beat both only when the lists' ids are correlated with the
+   predicate; the interesting result is the scattered layout, where it
+   should not — report that if it is what you see.
+7. HoneyComb's Figure 2 shows 4096 × 1 × 1 doing 307.73 s of total work
+   and 16 × 16 × 16 doing 300.38 s, yet wall clocks of 13.83 s and
+   6.57 s. Explain the gap using only the min/max task times in the
+   table, and say what a supernode does to the first row.
 
 ## Done when
 
@@ -504,6 +652,53 @@ Answer each before unfolding it.
 
   </details>
 
+- [ ] You can say where a property filter can go in a worst-case-optimal join, why the third placement can beat both of the others, and when it cannot.
+
+  <details><summary>Answer</summary>
+
+  Before the join (pre-filter), after it (post-filter), or as one more
+  sorted list in the intersection of the variable's loop (push-down,
+  via a *leaptor*: anything that answers `leap(c)`, the smallest member
+  ≥ c). Pre-filtering builds every node that passes the predicate even
+  though few pass the pattern; post-filtering builds every node that
+  passes the pattern even though few pass the predicate. Push-down lets
+  the predicate's `leap` jump all the lists past a candidate the
+  predicate rejects, so the work tracks the alternation complexity
+  (switches between lists), not the size of the smaller input.
+
+  Worked check: in the paper's §4.3 example, `leap(3)` on the age
+  grid returns 4 (select1(B,3) = 4, c′ = 4 − 3 + 1 = 2, first value
+  ≥ 50 at S[3] = 60, select0(B,3) − 3 = 7 − 3 = 4), so node 3 is
+  skipped without being tested against the other two lists.
+
+  It does not always win: the paper's own Wikidata average is only
+  16% over post-filtering (and 15× over pre-filtering), with a 5,000×
+  outlier on a selective filter; and it needs a structure that can
+  answer `leap` on the predicate (a wavelet-tree grid there), which an
+  engine without one cannot assume. If ids are uncorrelated with the
+  predicate the alternation is close to the list size and there is
+  little to skip.
+
+  </details>
+
+- [ ] You can explain why parallelising a worst-case-optimal join by splitting only its first variable fails on a skewed graph, using HoneyComb's table.
+
+  <details><summary>Answer</summary>
+
+  Splitting only X into 4096 tasks (4096 × 1 × 1) gave tasks from
+  64.50 ms to 989.41 ms — max/min = 15.3 — so the busiest task, the one
+  holding the high-degree X values, sets the finish time: 13.83 s on 60
+  cores against 307.73 / 60 = 5.13 s if perfectly balanced. Splitting
+  all three variables 16 × 16 × 16 kept total work essentially the same
+  (300.38 s) but cut max/min to 229.37 / 58.11 = 3.9 and wall clock to
+  6.57 s. Choosing 64 × 64 × 1 also cut total work to 114.23 s (the
+  authors' cost model weighs the work repeated by threads that share the
+  upper loops) and wall clock to 2.46 s. This is Wu and Suciu's Example
+  1.1/1.2 on the WGPB graph (54.0 M nodes, 81.4 M edges), 60 cores; it
+  is about load balance, not filter placement.
+
+  </details>
+
 - [ ] You wrote answers to all questions in notes.md.
 
   <details><summary>Answer</summary>
@@ -552,6 +747,16 @@ Answer each before unfolding it.
   hardware-conscious intersection kernels; §1 for the 95%-of-runtime
   measurement, the uint/bitset choice at graph/set/block granularity,
   and the 13.4× (Google+) vs 1.6× (LiveJournal) payoff
+- Gómez-Brandón, Hogan, Navarro — "Uplifting the Superpowers of
+  Worst-Case-Optimal Join Algorithms"
+  ([arXiv:2608.03840](https://arxiv.org/abs/2608.03840), v2, 7 Aug 2026)
+  — filters as leaptors inside Leapfrog Triejoin; §3.3 and §4.1 for the
+  argument and the grid example, §6.2 for the pre/post/push-down
+  measurement on Wikidata
+- Wu, Suciu — "HoneyComb: A Parallel Worst-Case Optimal Join on
+  Multicores" ([arXiv:2502.06715](https://arxiv.org/abs/2502.06715), v1,
+  Feb 2025) — §1 Examples 1.1–1.2 and Fig. 2 for skew when only the top
+  variable is partitioned
 
 **Code**
 - No repo of its own for this chapter. The anchors live in the two

@@ -1,4 +1,4 @@
-# One shared build directory for all 52 crates in this repo, placed OUTSIDE
+# One shared build directory for all 59 crates in this repo, placed OUTSIDE
 # the repo root — as a sibling of your clone, not inside it.
 #
 # Two reasons it lives outside rather than in ./target:

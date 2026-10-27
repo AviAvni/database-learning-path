@@ -43,6 +43,70 @@ hyper (50×)**; full sweep **11312 µs vs 66 µs (171×)** — iterating
 the id space vs iterating what exists. This is why every FalkorDB
 relation matrix is hypersparse.
 
+### GraphBLAS on the same matrices — `gb_container` (measured 2026-10-26, Apple M3 Pro)
+
+`cargo run --release --bin gb_container` links a SuiteSparse:GraphBLAS v10
+install (`GRAPHBLAS_DIR`, a standard prefix, or FalkorDB's
+`~/.cache/falkordb/native-deps/graphblas/<hash>/` cache; the run below used a
+10.5.0 build from that cache — the Container source read in
+[reading-gxb-container.md](reading-gxb-container.md) is the pinned 10.5.2) and
+prints `[skip — libgraphblas not found]` and exits 0 when there is none. The
+matrices are the RMAT scale-14/16/18/20, edge-factor-8, seed-42 ones the SpMV
+sweep above uses, so nnz is identical (120,128 / 494,634 / 2,018,190 /
+8,175,704). Load average was 24–26 (other agents' benchmarks); the
+Container rows and the order of the others are stable across three runs, the
+single-thread mxv digits are not (the scale-14 JIT-on column read 63 µs in one
+run and 150 µs in another).
+
+**Hand-off (lane A; the full table and its reading are in the guide's Step 7).**
+`GxB_load_Matrix_from_Container` of the Rust `Csr` (readonly, rowptr `u64`,
+colidx `u32`) takes **0.12 µs at every size**; `GrB_Matrix_build` of the
+same entries takes 386 → 4,582 µs in CSR order and 7,210 → 107,659 µs shuffled;
+`extractTuples` 106 → 3,492 µs; a `memcpy` of the CSR 19 → 2,126 µs.
+
+**The kernel against the library — lane B.** Rust `spmv::spmv` (single thread)
+against `GrB_mxv` with the `GrB_PLUS_TIMES_SEMIRING_FP64` semiring on the
+*Rust* CSR loaded through the Container, y = A·x with x = `i % 7`. GB/s uses
+`spmv::spmv_bytes` for every column. `sum(y)` of the library's result equals
+the Rust kernel's to 1e-9 relative on every row (the lane asserts it).
+
+| scale | Rust µs (GB/s) | `GrB_mxv` 1 thread, JIT off | 1 thread, JIT on | 11 threads, JIT on |
+|---|---|---|---|---|
+| 14 | 119 (23.6) | 482 (5.8) | 70 (39.8) | 85 (32.9) |
+| 16 | 609 (18.8) | 2,068 (5.6) | 419 (27.4) | 129 (89.1) |
+| 18 | 2,905 (16.1) | 8,404 (5.6) | 2,348 (19.9) | 418 (111.6) |
+| 20 | 11,648 (16.2) | 36,358 (5.2) | 8,976 (21.0) | 1,889 (99.9) |
+
+(`./verify.sh 20`, 2026-10-27, idle machine, best of 5, µs.)
+
+- **With the JIT off the library loses 3–4×** (2.9–4.1× slower than the Rust
+  loop). `GxB_BURBLE` says why: every call printed `GrB_mxv C=A'*B,
+  dot_product (dot2) ... (generic C=A'*B, C bitmap)` — the *generic* kernel,
+  which calls the semiring's multiply and add through function pointers per
+  entry. This install has no pre-compiled factory kernel for FP64 PLUS_TIMES on
+  this path, so the JIT-off number is "the library when it cannot compile".
+  Whether FalkorDB's own build behaves the same was not checked.
+- **With the JIT on the library wins on one thread too**: 1.70×, 1.45×,
+  1.24× and 1.30× faster than the Rust loop at scales 14–20. The kernel was
+  compiled during the warm-up call and is not in the timing. The Rust loop is
+  not slow code — it reaches 16–24 GB/s, near the ~16–19 GB/s the baseline
+  above recorded — so the compiled dot kernel does something the plain gather
+  loop does not; what (unrolling, index width, bounds checks) is not isolated
+  here, and is the first thing M20's kernel should find out.
+- **Parallelism is where the library pulls ahead**: 11 OpenMP threads run
+  1.4×, 4.7×, 7.0× and 6.2× faster than the single-thread Rust kernel at
+  scales 14–20 (99.9 GB/s of the byte count at scale 20, under the M3 Pro's
+  150 GB/s memory bandwidth; scale 14 is too small to spread). That compares one
+  thread against eleven; the fair rayon-vs-OpenMP comparison is the topic's
+  M20 exercise ([reading-openmp-vs-rayon.md](reading-openmp-vs-rayon.md)).
+- A matrix GraphBLAS built itself (`GrB_Matrix_build`) multiplies at the same
+  speed as the Container-loaded Rust one (JIT off: 490 / 2,135 / 8,750 /
+  50,361 µs against 502 / 2,132 / 8,712 / 44,868), so a shallow matrix is not
+  handicapped in this operation.
+- The output y has one entry per non-empty row of A (9,256 of 16,384 rows at
+  scale 14): GraphBLAS stores no entry where a row has no product term, and the
+  lane checks that count.
+
 ## Predictions (fill BEFORE implementing the stubs)
 
 | question | prediction | actual |

@@ -46,12 +46,14 @@ eight aggregates over just four group combinations — small enough that
 
 That 98% is not incidental, and this repo has measured why. `exec_bench`'s
 Volcano lane ([FINDINGS.md](../../FINDINGS.md) row 11) sweeps selectivity
-over 50M rows and finds the model *slowest* at the high end — 74.7 M
-rows/s at 95% selectivity against 129.4 M at 5% — because a rejected row
-costs one `next()` call inside the filter loop while a survivor pays a
-second `next()` up the chain plus the aggregate's work
-([notes.md](notes.md)). Q1 is therefore near the worst case for a
-tuple-at-a-time engine, which is precisely what makes it a good
+over 50M rows and finds the model *slowest* in the middle — 183.5 M
+rows/s at 50% against 511.2 M at 5% and 295.0 M at 95% — because the filter
+branch is a coin flip at 50% (the predictor loses about every other row), and
+a rejected row costs one `next()` call inside the filter loop while a
+survivor pays a second `next()` up the chain plus the aggregate's work, which
+is why 95% is slower than 5% ([notes.md](notes.md)). Q1's 98% selectivity
+puts it at the predictable end of the branch but the expensive end of the
+survivor cost, so it is still a hard case for a tuple-at-a-time engine, which is precisely what makes it a good
 microbenchmark: the per-tuple tax is at full strength.
 
 Table 1, restricted to the one machine that makes the comparison honest

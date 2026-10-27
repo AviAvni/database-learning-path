@@ -1,4 +1,4 @@
-use fulltext_experiments::{bm25, corpus, index, postings, wand};
+use fulltext_experiments::{bm25, compress, corpus, index, postings, wand};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Instant;
 
@@ -122,4 +122,82 @@ fn main() {
             println!("roaring {name}  [stub — implement postings::Roaring]");
         }
     }
+
+    println!("\n== posting-list compression: varint deltas (RediSearch shape) vs 128-block bit-packing (tantivy shape) ==");
+    println!("   bytes are exact for the layouts in compress.rs; raw = 8 B/posting (u32 doc + u32 tf)");
+    println!(
+        "   {:<28} {:>8} {:>11} {:>11} {:>11} {:>9} {:>9}",
+        "list class (by df)", "lists", "postings", "varint B/p", "bitpack B/p", "vs raw", "vs varint"
+    );
+    let classes: [(&str, usize, usize); 4] = [
+        ("head   df >= 10,000", 10_000, usize::MAX),
+        ("mid    1,000 .. 9,999", 1_000, 9_999),
+        ("low    128 .. 999", 128, 999),
+        ("tail   < 128 (varint tail)", 1, 127),
+    ];
+    let encoded: Vec<(Vec<u8>, Vec<u8>)> = idx
+        .lists
+        .iter()
+        .map(|l| (compress::varint_encode(&l.postings), compress::bitpack_encode(&l.postings)))
+        .collect();
+    let (mut tp, mut tv, mut tb) = (0usize, 0usize, 0usize);
+    for (name, lo, hi) in classes {
+        let (mut lists, mut p, mut v, mut b) = (0usize, 0usize, 0usize, 0usize);
+        for (l, e) in idx.lists.iter().zip(&encoded) {
+            let n = l.postings.len();
+            if n >= lo && n <= hi {
+                lists += 1;
+                p += n;
+                v += e.0.len();
+                b += e.1.len();
+            }
+        }
+        tp += p;
+        tv += v;
+        tb += b;
+        println!(
+            "   {name:<28} {lists:>8} {p:>11} {:>11.3} {:>11.3} {:>8.1}x {:>8.2}x",
+            v as f64 / p as f64,
+            b as f64 / p as f64,
+            8.0 * p as f64 / b as f64,
+            v as f64 / b as f64
+        );
+    }
+    println!(
+        "   {:<28} {:>8} {tp:>11} {:>11.3} {:>11.3} {:>8.1}x {:>8.2}x   ({:.1} MB varint, {:.1} MB bit-packed, {:.1} MB raw)",
+        "all",
+        "",
+        tv as f64 / tp as f64,
+        tb as f64 / tp as f64,
+        8.0 * tp as f64 / tb as f64,
+        tv as f64 / tb as f64,
+        tv as f64 / 1e6,
+        tb as f64 / 1e6,
+        8.0 * tp as f64 / 1e6
+    );
+    // decode speed: scalar, whole list into a Vec<Posting>, head lists only
+    let head: Vec<usize> = (0..idx.lists.len()).filter(|&t| idx.lists[t].postings.len() >= 10_000).collect();
+    let hp: usize = head.iter().map(|&t| idx.lists[t].postings.len()).sum();
+    let dec = |f: &dyn Fn(usize) -> usize| {
+        let mut ts: Vec<f64> = (0..7)
+            .map(|_| {
+                let t = Instant::now();
+                let mut s = 0usize;
+                for &l in &head {
+                    s += f(l);
+                }
+                std::hint::black_box(s);
+                t.elapsed().as_secs_f64() * 1e9 / hp as f64
+            })
+            .collect();
+        ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        ts[3]
+    };
+    let v_ns = dec(&|t| compress::varint_decode(std::hint::black_box(&encoded[t].0), idx.lists[t].postings.len()).len());
+    let b_ns = dec(&|t| compress::bitpack_decode(std::hint::black_box(&encoded[t].1), idx.lists[t].postings.len()).len());
+    println!(
+        "   scalar decode of the {} head lists ({hp} postings): varint {v_ns:.2} ns/posting, bit-packed {b_ns:.2} ns/posting",
+        head.len()
+    );
+    println!("   (tantivy's bitpacking crate is SIMD; this scalar decoder is the portable floor, not tantivy's speed)");
 }

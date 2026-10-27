@@ -1,16 +1,18 @@
 # Topic 26 — Notes & measurements
 
-## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
+## Baseline (provided lane, Apple M3 Pro, measured 2026-10-27)
 
 `cargo run --release --bin filter_bench` — 10M sorted random u64 keys, 1M
-queries per lane:
+queries per lane. Median of three runs on an idle machine (binary-search
+miss 156 / 151 / 149, BTreeMap 208 / 218 / 224, HashSet 12 / 14 / 14, binary-search hit
+149 / 144 / 145 ns):
 
 ```
 10000000 sorted u64 keys, 1000000 queries each lane
-binary search (miss): 186 ns/lookup  (0 hits)
-BTreeMap (miss):      240 ns/lookup  (0 hits)
-HashSet (miss):       20 ns/lookup  (0 hits)  [224 MB]
-binary search (hit):  177 ns/lookup  (1000000 found)
+binary search (miss): 151 ns/lookup  (0 hits)
+BTreeMap (miss):      218 ns/lookup  (0 hits)
+HashSet (miss):       14 ns/lookup  (0 hits)  [224 MB]
+binary search (hit):  145 ns/lookup  (1000000 found)
 blocked bloom: [stub — implement bloom::BlockedBloom]
 cuckoo: [stub — implement cuckoo::CuckooFilter]
 hll: [stub — implement hll::Hll]
@@ -18,20 +20,56 @@ learned index: [stub — implement pgm::LearnedIndex]
 ```
 
 The counts are seeded and exact (every miss lane finds 0, the hit lane finds
-all 1000000; the HashSet is 224 MB); the timings are this run's, and they
-move by tens of percent between runs on the same machine — quote one run
-and say which (`./verify.sh 26` gives your machine's).
+all 1000000; the HashSet is 224 MB); the timings are the three-run median, and they
+move by a few percent between idle runs and by multiples on a loaded machine —
+quote the median and say which (`./verify.sh 26` gives your machine's).
 
 | lane | ns/lookup | note |
 |---|---|---|
-| binary search (miss) | 186 | ~23 dependent cache misses over 76 MB |
-| BTreeMap (miss) | 240 | pointer-chasing tax over binary search |
-| HashSet (miss) | 20 | the speed target — at 224 MB, the memory anti-target |
-| binary search (hit) | 177 | hit ≈ miss: the cost is the walk, not the compare |
+| binary search (miss) | 151 | ~23 dependent probes over 76 MB, 6.5 ns each on average |
+| BTreeMap (miss) | 218 | pointer-chasing tax over binary search |
+| HashSet (miss) | 14 | the speed target — at 224 MB, the memory anti-target |
+| binary search (hit) | 145 | hit ≈ miss: the cost is the walk, not the compare |
 
 The whole topic in these four numbers: a filter should say "definitely
 absent" at ~HashSet speed with ~5% of its memory (12 MB at 10 bpk), and a
-learned index should collapse most of binary search's 23-miss walk.
+learned index should collapse most of binary search's 23-probe walk.
+
+## Reference numbers for the exercise lanes
+
+Read these after filling the worksheet. A scratch reference solution for the
+blocked bloom (`new`: ceil(n*bpk/512) 64-byte blocks, 6 probes; block by
+`fastrange32(h1)`, bit positions from the top 9 bits of `h2 * 0x9e3779b9`
+iterated) and HyperLogLog (P=14, Ertl tau/sigma estimator) passes every bloom
+and hll test; the cuckoo and learned-index lanes were not implemented. From
+`cargo run --release --bin filter_bench` (Apple M3 Pro, 2026-10-27, idle
+machine, median of three runs; the individual runs' 10 bpk bloom lane read
+12 / 11 / 14 ns and their binary-search miss 151 / 155 / 144 ns):
+
+```
+binary search (miss): 151 ns/lookup
+BTreeMap (miss):      207 ns/lookup
+HashSet (miss):        13 ns/lookup  [224 MB]
+binary search (hit):  144 ns/lookup
+blocked bloom  8 bpk: 13 ns/query  fpr 0.0236 (theory 0.0216)   9 MB
+blocked bloom 10 bpk: 12 ns/query  fpr 0.0096 (theory 0.0084)  11 MB
+blocked bloom 16 bpk:  8 ns/query  fpr 0.0012 (theory 0.0009)  19 MB
+hll P=14 (16 KB):     est 10132906 vs true 10000000 (err 1.329%)
+```
+
+- **FPR** is deterministic (seeded keys): 2.36% / 0.96% / 0.12% at 8 / 10 / 16
+  bits per key, 1.09x / 1.14x / 1.33x the standard-bloom theory — the cache-line
+  layout costs 10-33%, less than the test's 4x allowance. 8 to 16 bpk cuts FPR
+  20x.
+- **Time**: the bloom miss (13 / 12 / 8 ns at 8 / 10 / 16 bpk) is 11.6x / 12.6x /
+  18.9x faster than binary search (151 ns) and 1.0x / 1.1x / 1.6x faster than
+  the HashSet (13 ns): roughly HashSet speed, one order of magnitude under
+  binary search, not two. Against the BTreeMap (207 ns) the 10 bpk filter is
+  17.3x faster.
+- **Space** (exact): bloom 10 bpk = 11.9 MiB; HashSet 224 MB (19x); sorted keys
+  76 MB (6.4x); HLL 16 KB (the one-byte-per-register layout, ~14,000x under the
+  HashSet). The HLL error of 1.33% is within the 1.04/sqrt(16384) = 0.81%
+  standard error's 2 sigma.
 
 ## Predictions (fill BEFORE implementing the stubs)
 

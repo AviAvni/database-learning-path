@@ -95,7 +95,7 @@ header costs nothing.
 Note *which* size the ledger records: the **usable** size, what the allocator
 actually reserved including bucket rounding, not what you asked for. Ask
 jemalloc for 100 bytes, get a 112-byte bin, and the ledger records 112. That
-gap, times millions of allocations, is Step 5.
+gap, times millions of allocations, is Step 5. For the allocator underneath this ledger — size classes, thread caches, what the usable-size gap costs on a graph trace, and what Redis's `--with-lg-quantum=3` build flag is worth (10% of resident memory on topic 56's bulk load) — see [topic 56](../56-memory-allocators/README.md) and its [FalkorDB/Redis allocator chapter](../56-memory-allocators/reading-falkordb-redis-allocator.md).
 
 ### Step 3 — per-thread padded counters: a ledger without coherence traffic
 

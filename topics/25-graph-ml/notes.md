@@ -22,6 +22,33 @@ SBM: 64 blocks x 256 = 16,384 vertices, m=566,564 directed
   per step (rng + one CSR row index) — the corpus for skip-gram costs
   less than one training epoch will.
 
+### Neighbour explosion and sampling (`sampling.rs`, counted, seeded)
+
+256 seeds (`pick_seeds`, seed 5), graphs of 262,144 vertices: SBM
+(`gen_sbm(256, 1024, 0.01, 0.00002, 43)`, avg degree 15.5, max 35) and
+preferential attachment (`gen_preferential(262144, 8, 43)`, avg 16.0, max
+2,316). Sampling uses seed 6, without replacement, per-vertex cap per hop.
+Identical across two runs.
+
+| graph | field | vertices | edges |
+|---|---|---|---|
+| SBM | full 1 / 2 / 3 layers | 4,154 / 55,812 / 248,786 | 3,931 / 67,680 / 910,451 |
+| SBM | sampled (25,10) / (15,10,5) | 36,895 / 125,781 | 42,603 / 187,073 |
+| preferential | full 1 / 2 / 3 layers | 4,165 / 114,729 / 262,089 | 4,004 / 175,872 / 2,390,821 |
+| preferential | sampled (25,10) / (15,10,5) | 29,451 / 94,944 | 34,977 / 145,740 |
+
+Sampling cuts, SBM: 2-layer vertices 1.5x, edges 1.6x; 3-layer 2.0x, 4.9x.
+Preferential: 2-layer 3.9x, 5.0x; 3-layer 2.8x, 16.4x. 512 seeds on the 16,384-vertex SBM above already reach 100.0% of it in two
+hops (385,945 edges), which is why the lane runs on the larger graphs.
+
+### Aggregate-first vs transform-first (measured, SBM n=16,384, d_in 1433 -> 16)
+
+Counted FLOPs: transform-first 0.769 G (sparse 0.018 + dense 0.751),
+aggregate-first 2.375 G (sparse 1.624 + dense 0.751): 89.6x on the sparse
+side, 3.09x for the layer. Measured median of 5: 80.2 vs 180.2 ms (2.25x);
+a second run 83.4 vs 185.9 ms (2.23x); a run at load 35+ read 92.0 vs
+306.5 ms (3.33x). Outputs agree to 2.0e-8.
+
 ## Predictions (fill BEFORE implementing the stubs)
 
 | question | prediction | actual |

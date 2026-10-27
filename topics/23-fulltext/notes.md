@@ -38,6 +38,30 @@ output — two-pointer is O(|dense|); the walk of t0 is the price.
 That asymmetry is the roaring (probe 172 u16s into bitmaps) and
 galloping motivation.
 
+### Posting-list compression (`compress.rs`, provided)
+
+Bytes are exact; decode ns is one run on a busy machine (load 13-35).
+Layouts: varint = (doc delta, tf) as base-128 varints; bit-packed = tantivy's
+shape (128-posting blocks, width byte + packed delta-1, width byte + packed
+tf-1, tail < 128 postings as varints). Scalar bit packer: tantivy's is SIMD.
+
+| class | lists | postings | varint B/p | bitpack B/p | vs raw | vs varint |
+|---|---|---|---|---|---|---|
+| head df >= 10,000 | 82 | 2,300,771 | 2.000 | 0.786 | 10.2x | 2.55x |
+| mid 1,000-9,999 | 789 | 2,021,291 | 2.060 | 1.132 | 7.1x | 1.82x |
+| low 128-999 | 6,037 | 1,813,736 | 2.610 | 1.635 | 4.9x | 1.60x |
+| tail < 128 | 43,092 | 1,732,312 | 2.939 | 2.939 | 2.7x | 1.00x |
+| all | 50,000 | 7,868,110 | 2.363 | 1.544 | 5.2x | 1.53x |
+
+62.9 MB raw / 18.6 MB varint / 12.2 MB bit-packed. Scalar decode of the head
+lists: varint 1.66 ns/posting, bit-packed 2.96 ns/posting.
+
+- The head row's 2.000 is exactly 1 B gap + 1 B tf: every value is < 128.
+- Bit-packing's win is concentrated: 82 lists (0.16% of lists, 29% of
+  postings) compress 10x; the 43,092 short lists get nothing.
+- Scalar bit-packed decode is 1.8x *slower* than varint. Do not quote a speed
+  win for bit-packing from this lane.
+
 ## Predictions (fill BEFORE implementing the stubs)
 
 | question | prediction | actual |

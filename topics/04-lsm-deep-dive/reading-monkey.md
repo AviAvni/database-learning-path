@@ -248,7 +248,7 @@ fn monkey_alloc(level_entries: &[u64], total_fpr: f64) -> Vec<f64> {
 ### Step 6 — what it buys, and where the idea stops
 
 > **In:** the allocation from Step 5.
-> **Out:** the measured payoff, the asymptotic claim behind it, and the two
+> **Out:** the measured payoff, the asymptotic claim behind it, and three
 > boundaries — one of which is Dostoevsky's opening.
 
 The asymptotic result is sharper than the worked example and is the reason the
@@ -290,6 +290,58 @@ merge policy fixed while it tunes filters; §4.2-4.3 and Appendix D go on to
 co-tune `T` and the merge policy against the same cost model, but the merging
 half is done properly by Dostoevsky, the next chapter — which is also where the
 sum-of-FPRs objective gets its second term.
+
+A third boundary is about *time*. Monkey's optimum is static: it is computed once
+from the level sizes and assumes every level is probed equally often by a
+zero-result lookup. A line of systems work makes the allocation adaptive,
+re-weighting bits toward levels whose keys are hot (ElasticBF, Mnemosyne,
+Endure). **The Value of Adaptivity in LSM Bloom-Filter Tuning: A Log-Law and a
+Two-Clock Frontier** (Madhulatha Mandarapu and Sandeep Kunkunuru;
+[arXiv:2606.18138](https://arxiv.org/abs/2606.18138), June 2026; a preprint from
+a small company, not peer reviewed, code and pre-registration at
+[samyama-ai/lsm-bloom-allocation](https://github.com/samyama-ai/lsm-bloom-allocation))
+asks the prior question — how much is adaptivity worth? — and answers it with
+Step 5's own algebra. Write `a_i` for the probability that a zero-result lookup
+probes run `i`, `N_i` for its key count, `β = ln²2 ≈ 0.4805` so that an
+optimally-tuned Bloom filter at `b` bits per key has FPR `e^(−βb)` (Step 3), and
+`λ` for the Lagrange multiplier. The Lagrangian optimum is `f_i = λ·N_i/a_i`
+(Monkey's "FPR proportional to level size" is the case `a_i = 1`), or in bits
+(§2, Eq. 1):
+
+```
+ b_i = (1/β) · ( ln a_i − ln N_i − ln λ )        slope 1/β = 1/0.4805 = 2.081
+
+ worked example: level X is probed twice as often as level Y, same size.
+   extra bits per key for X = (ln 2)/β = 0.6931 / 0.4805 = 1.443 bits
+   (= log2(e): doubling the traffic buys 1.44 bits, whatever the budget)
+```
+
+Because the workload enters only through `ln a_i`, a *mis-estimate* of hotness
+costs little. If the true hotness is `a_i` and you allocate using `κ_i·a_i`, the
+relative excess read cost is, to second order, `ΔC/C* ≈ D/2` with `D` the
+`N`-weighted variance of `ln κ_i` (§2, Eq. 2); a common factor `κ` for every run
+costs nothing, since `λ` absorbs it. Worked example: half the keys are on levels
+whose hotness you over-estimate by 2×, the other half are right. Then
+`ln κ` is `ln 2` on one half and `0` on the other, the weighted mean is
+`(ln 2)/2`, every deviation is `±(ln 2)/2`, so `D = (ln 2)²/4 = 0.4805/4 =
+0.1201` and `ΔC/C* ≈ 0.060` — a factor-of-two error on half the data costs about
+6% extra wasted I/O. Their conclusion is that coarse statistics suffice, and that
+compaction, which rebuilds filters anyway, is a free moment to re-allocate: the
+value of *continuous* tracking over compaction-only re-allocation grows with the
+square of the within-epoch drift (§2, Eq. 3). The measured side is thinner than
+the algebra. On a real Twitter cache trace cluster that sits in the low-drift
+regime, re-allocating only at compaction captured 96–99% of continuous
+tracking's benefit; the pre-registered test of the law across *all* regimes
+**failed** (mean absolute error 0.231 against a 0.15 bar), and the law is only
+claimed where drift is small (§3, "Real traces"). On RocksDB's own Bloom filter
+the `e^(−βb)` model held to within 4% up to 8 bits per key (effective
+`β = 0.462` against 0.480) and saturated above 10 bits — 7.7× above the
+optimal-Bloom floor at 16 bits (§3, "Real engine"). The authors say plainly that
+the log-law is a re-reading of Monkey's formula and that the engine arm checks
+the filter primitive, not an adaptive controller. Take it as a rule of thumb
+with a derivation — do not re-tune a static Monkey allocation per workload shift
+unless drift *within one compaction epoch* is large — not as a measured
+speed-up.
 
 ## How to read the paper (with the concepts in hand)
 

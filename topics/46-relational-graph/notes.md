@@ -74,6 +74,90 @@ materialises tuples into an output vector would cost several times more per
 tuple; the number is a lower bound on flat enumeration, not an estimate of a
 real engine's cost.
 
+**Headline vs detail.** FINDINGS row 46 leads with one figure: the 3-hop pattern over 313,512 power-law edges is 9,042,996,117 values flat and 47,997,149 factorized (188×). The supporting numbers are in the tables above: 2,272,724,241 flat tuples; CSR expansion is 1.3× faster per tuple but enumerates the same 2.27 B; on the 40,000-vertex uniform graph (no hubs) the factorization gap is 28×, not 188×.
+
+## C FalkorDB on the same graph (measured 2026-10-26, Apple M3 Pro)
+
+`python3 experiments/cengine.py 10000 20000 --explain` (with `pgq_edges` built
+and `FALKORDB_MODULE` set). It starts `redis-server` 8.6.2 on port 16479 with
+`~/repos/FalkorDB/bin/macos-arm64v8-release/falkordb.so` (the C engine, a
+RelWithDebInfo build of 2026-07-24 that reports module version 999999, i.e. a
+development build; the clone's `main` is at `5e475e6c92`), loads lane 1b's edge
+list through `UNWIND … CREATE`, runs each query twice and records the server's
+own "Query internal execution time". The graph is the lane's: `pgq_edges`
+prints the same `power_law(seed 46, 70%)` list, and the load is checked against
+the bench's edge counts (77,164 and 155,727). Default server configuration,
+default thread count, no index on the traversal. Run through the bench lock;
+load average 17 at the start, 6 at the end.
+
+Two forms of each query, because FalkorDB's planner chooses between them by
+which variables the query mentions (the `GRAPH.EXPLAIN` plans are in the run
+output and quoted below):
+
+```
+-- every hop used:  MATCH (a)-[:E]->(v1)-[:E]->(v2)-[:E]->(v3)
+                    RETURN sum(1 + 0*id(v1) + 0*id(v2))
+   plan: Aggregate <- Traverse (v2)->(v3) <- Traverse (v1)->(v2) <- Traverse (a)->(v1) <- All Node Scan (a)
+-- endpoints only:  MATCH (a)-[:E]->(v1)-[:E]->(v2)-[:E]->(v3) RETURN count(*)
+   plan: Aggregate <- Traverse (a)->(v3) <- All Node Scan (a)
+```
+
+| |V| | pattern | form | count returned | server ms (best of 2) | ns per counted row | bench: result tuples |
+|---|---|---|---|---|---|---|
+| 10,000 | 2-hop | every hop used | 6,665,086 | 592.5 | 88.9 | 6,665,086 |
+| 10,000 | 2-hop | endpoints only | 5,809,343 | 325.2 | 56.0 | |
+| 10,000 | 3-hop | every hop used | 234,636,483 | 30,091.5 | 128.3 | 234,636,483 |
+| 10,000 | 3-hop | endpoints only | 45,794,367 | 2,474.7 | 54.0 | |
+| 20,000 | 2-hop | every hop used | 17,759,290 | 1,588.2 | 89.4 | 17,759,290 |
+| 20,000 | 2-hop | endpoints only | 15,926,364 | 1,033.3 | 64.9 | |
+| 20,000 | 3-hop | every hop used | 721,738,265 | 87,416.0 | 121.1 | 721,738,265 |
+| 20,000 | 3-hop | endpoints only | 157,710,285 | 8,067.3 | 51.2 | |
+
+(The bench column is the last join's output, the 3-hop *result*: at 10,000
+241,301,569 − 6,665,086 = 234,636,483; at 20,000 739,497,555 − 17,759,290 =
+721,738,265. The "tuples" column of the README counts both joins.)
+
+What it says:
+
+- **Same counts, so it is the same graph and the same semantics** — on the
+  "every hop used" form. Four counts equal the bench's exactly.
+- **The C engine is two to three orders of magnitude behind the Rust crate's
+  flat plans per tuple, and that is not an apples-to-apples gap.** 3-hop at
+  10,000: 30,091.5 ms against the crate's 70.0 ms (hash join) and 53.6 ms (CSR
+  expansion), 430× and 560×; per row 128 ns against 0.2–0.35 ns. The Rust
+  lanes enumerate into a `black_box`ed sum; FalkorDB builds a record per row
+  and pushes it through the Cypher pipeline (project, aggregate), so the
+  comparison prices "row at a time through an execution engine" against "bare
+  loop". The README's note that 0.21–0.35 ns/tuple is a lower bound on flat
+  enumeration is this row: a real engine's cost per flat tuple on this graph is
+  ~100 ns (88.9–128.3 measured here), roughly 300–600× the bare loop.
+- **The C engine does not factorize.** The 3-hop plan enumerates every one of
+  the 234,636,483 rows (and 721,738,265 at 20,000) — the representation it
+  works in is the flat tuple, exactly the Step-1 blow-up. Its cost per row
+  stays near 120–130 ns as the result grows: 234.6M → 721.7M rows is 3.1×,
+  30,091.5 → 87,416.0 ms is 2.9×.
+- **The "endpoints only" form is a different query, not a faster plan.** When
+  only the first and last variables are used, FalkorDB's planner folds the
+  chain into one algebraic expression (`Conditional Traverse | (a)->(v3)`,
+  i.e. A·A·A over a boolean semiring) and emits one row per distinct endpoint
+  pair. The counts are not Cypher's path counts: 5,809,343 against 6,665,086
+  at 2-hop. They are the number of non-zero entries of A² (and A³): checked
+  independently from the same edge list with a dense matrix product (numpy):
+  nnz(A²) = 5,809,343, Σ(A²) = 6,665,086, nnz(A³) = 45,794,367. So `count(*)`
+  over a pattern whose intermediate vertices are not mentioned returns the
+  *set* semantics number, while mentioning an intermediate vertex anywhere
+  (even `count(b)`) switches to the bag number. Whether that is intended is
+  not checked here; it is a question for the FalkorDB team and for the M46
+  capstone, whose `count(*)` over a factorized intermediate must return the
+  *bag* number. Set semantics *is* a factorization of sorts — it collapses
+  the middle — and it is 12.2× faster at 3-hop/10,000 (2,474.7 against
+  30,091.5 ms) and 10.8× at 20,000 for 5.1× and 4.6× fewer rows.
+- **Plans**: `All Node Scan` (no label on the pattern), a `Conditional
+  Traverse` per hop, `Aggregate`. No hash join, no semi-join, no index use —
+  the adjacency is the delta/relation matrix, and each `Conditional Traverse`
+  multiplies the current frontier of source nodes by it and iterates the
+  result row by row.
+
 ### Lane 3 (provided half) — `a·b*` from 257 sources, |V| = 40,000
 
 78,165 `a`-edges and 235,347 `b`-edges (label = one in four by a hash of the

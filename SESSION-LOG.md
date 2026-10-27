@@ -9,6 +9,383 @@ Every performance figure quoted below is reproducible with `./verify.sh` (see
 [README.md](README.md)); timings depend on hardware, everything else is seeded.
 
 <!-- newest first: date — what was done -->
+## 2026-10-27 — topic 11 — the Volcano baseline re-measured
+
+The provided `exec_bench` Volcano lane no longer printed the recorded 2026-07-28 baseline (129.4 / 103.3 / 74.7 M rows/s at 5 / 50 / 95%, monotone). Bench source unchanged since then except a comment (`git diff c3a8f6e HEAD`). Re-measured on an idle M3 Pro, rustc 1.99.0, three invocations via benchlock.sh, median taken:
+
+- 5%: 511.2 / 502.8 / 543.6 -> median 511.2 M rows/s (0.098 s), 1e3/511.2 = 1.96 ns/row
+- 50%: 170.7 / 183.5 / 186.2 -> median 183.5 M rows/s (0.272 s), 5.45 ns/row
+- 95%: 294.9 / 328.2 / 295.0 -> median 295.0 M rows/s (0.169 s), 3.39 ns/row
+
+The shape is non-monotone: slowest at 50%.
+
+Cause (what was verified):
+- `objdump -d` of the release binary: `FilterOp::next` is a real conditional branch (`cmp w8, w22; b.hs` looping back to the `blr` of the child call), with the `Option<Row>` returned through the stack. Not if-converted.
+- New provided bin `src/bin/sorted_filter.rs` (registered in Cargo.toml): same Volcano pipeline on the random `f` column vs after `f.sort_unstable()`. Median of three runs, ns/row, random -> sorted: 5%: 1.94 -> 1.62; 50%: 5.05 -> 2.23; 95%: 2.95 -> 2.84. (Per-run 50% random: 5.00 / 5.05 / 5.09; sorted 2.23 / 2.23 / 2.18.) The peak vanishes with a predictable branch, so it is misprediction. 2.82 / 0.5 = 5.64 ns (~23 cycles at an assumed 4 GHz) is a lower bound per misprediction; topic 0's branch_misprediction bound is <= 7.62 ns. No hardware counters on macOS: misprediction counts not measured.
+- Survivor cost: (3.39 - 1.96) / 0.9 = 1.59 ns per surviving row (1.09 ns if the 95% point is taken at its fastest, 340 M rows/s; 95% is the noisiest point, 295-340 across nine invocations). Survivors alone predict 1.96 + 0.45 x 1.59 = 2.68 ns at 50%; measured 5.45 leaves 2.77 ns/row for the misprediction.
+- Toolchain is NOT the cause: same source built with rustc 1.85.0 / 1.91.1 / 1.97.1 (scratch copy) gave 50%: 190.4 / 190.8 / 188.6; 5%: 512.1 / 532.3 / 450.2; 95%: 340.0 / 298.6 / 337.3 M rows/s. The 2026-10-26 loaded reference run's Volcano column (449.6 / 175.0 / 294.0) already had this shape.
+- Not determined: why the July run printed 129.4 / 103.3 / 74.7 (3.4-4x slower at 5%). The toolchain used then is not recorded; no tested toolchain reproduces it; machine state during that run (load, power mode) is the remaining unverified candidate.
+
+Derived figures rewritten: dyn-call cost per call, 1.96/1.05 = 1.86 ns (7.5 cycles) at 5% and 3.39/1.95 = 1.74 ns (7.0 cycles) at 95%, vs the c = 20 cycles assumption in reading-postgres-executor (a pessimistic bound); gap to topic 12 bandwidth 6200/183.5 = 33.8x (was 60x); morsel stand-in 5.45 ns/row: morsel 0.545 ms, per-thread 51.1 ms, window 1.1%, half-speed static +100%, morsel +0.8%.
+Reference ratios unchanged (1.7x vectorized, 9.2x kernel at 50% from the 2026-10-26 loaded run; Volcano 175.0 there is consistent with the new baseline 183.5).
+Files: topic 11 README, notes, reading-{duckdb-execution,postgres-executor,x100,compiled-vs-vectorized,morsel-parallelism}, topic 1 reading-architecture-of-a-dbms, FINDINGS row 11, experiments/Cargo.toml + src/bin/sorted_filter.rs. Not done: a verify.sh entry for sorted_filter.
+
+## 2026-10-27 — topic 26 — one run for every point-miss figure
+
+Topic 26 quoted three different runs of the same `filter_bench` lane: 246 / 299 / 28 ns
+(binary-search miss / BTreeMap miss / HashSet miss, 2026-07-28; FINDINGS row 26 and five
+reading guides), 186 / 240 / 20 ns (2026-10-26; README and notes Baseline), and a loaded
+run in the Reference-numbers section (blocked bloom 10 bpk 28 ns, binary search 556 ns,
+BTreeMap 426, HashSet 96, load average above 25). Re-measured on an idle machine
+(Apple M3 Pro), each run under `benchlock.sh`, medians of three, and every guide now quotes
+that one set.
+
+Provided lane (`cargo run --release --bin filter_bench`), runs 1/2/3 -> median:
+
+| lane | run 1 | run 2 | run 3 | median ns |
+|---|---|---|---|---|
+| binary search miss | 156 | 151 | 149 | **151** |
+| BTreeMap miss | 208 | 218 | 224 | **218** |
+| HashSet miss (224 MB) | 12 | 14 | 14 | **14** |
+| binary search hit | 149 | 144 | 145 | **145** |
+
+Scratch reference solution (blocked bloom + HLL), runs 1/2/3 -> median:
+
+| lane | run 1 | run 2 | run 3 | median |
+|---|---|---|---|---|
+| binary search miss | 151 | 155 | 144 | 151 ns |
+| BTreeMap miss | 207 | 224 | 206 | 207 ns |
+| HashSet miss | 14 | 13 | 13 | 13 ns |
+| binary search hit | 151 | 143 | 144 | 144 ns |
+| blocked bloom 8 bpk | 15 | 13 | 13 | 13 ns, fpr 0.0236 (theory 0.0216), 9 MB |
+| blocked bloom 10 bpk | 12 | 11 | 14 | 12 ns, fpr 0.0096 (theory 0.0084), 11 MB |
+| blocked bloom 16 bpk | 8 | 8 | 8 | 8 ns, fpr 0.0012 (theory 0.0009), 19 MB |
+
+Bloom build times (ms, 8 / 10 / 16 bpk): median 56.0 / 61.0 / 117.5. HLL P=14 (16 KB):
+est 10132906 vs true 10000000, err 1.329% (identical in all three runs), total 14.32 ms median.
+FPR, sizes and the HLL estimate are seeded and identical across runs.
+
+Derived figures recomputed from these:
+- binary search: log2(10,000,000) = 23.25, ceil = 24 comparisons; 151 / 24 = 6.3 ns per
+  comparison (151 / 23.25 = 6.5 ns). The old "each a branch mispredict into a different
+  cache line" and "~23 dependent cache misses" wording is replaced: 6.3-6.5 ns per probe
+  on average means the top of the walk is cached and only the bottom misses.
+- bloom vs binary search (reference run, 151 ns): 151/13 = 11.6x, 151/12 = 12.6x,
+  151/8 = 18.9x at 8 / 10 / 16 bpk; vs BTreeMap 207/12 = 17.3x at 10 bpk.
+- bloom vs HashSet (13 ns): 13/13 = 1.0x, 13/12 = 1.1x, 13/8 = 1.6x. So "roughly HashSet
+  speed, one order of magnitude under binary search, not two" holds.
+- Space unchanged and exact: 11.9 MiB bloom vs 224 MB HashSet (19x), vs 76 MB keys (6.4x);
+  HLL 16 KB (~14,000x under the HashSet); HLL err 1.329% vs 1.04/sqrt(16384) = 0.81%
+  standard error (under 2 sigma).
+- Learned-index window widths 2e+2 = 34 / 130 / 514 for e = 16 / 64 / 256 are unchanged;
+  only the baseline they are reasoned against moved (151 ns).
+
+Edited: topics/26-probabilistic/README.md, notes.md, reading-postgres-indexam.md,
+reading-learned-indexes.md, reading-cuckoo-xor.md, reading-bloom-to-ribbon.md,
+reading-roaring-internals.md; FINDINGS.md row 26 (now 151 / 218 / 14 ns, bloom 12 ns at
+0.96%). `check-reading-depth.py --check` passes on all five guides and the postgres guide;
+`check-mermaid.js` reports 0 syntax errors on every edited file.
+
+## 2026-10-27 — topic 06 — Buffer Pool: Bf-Tree reading guide and the heat-scatter model
+
+**New `reading-bftree.md`** (Bf-Tree, Hao and Chandramouli, PVLDB 17(11) 2024, doi 10.14778/3681954.3682012, PDF downloaded from vldb.org and read in full; section numbers 3.1–3.5, 4.1–4.3, 5.1–5.7, 6.1–6.11 checked against the text — the PDF's two-column text layer scrambles section order, so numbering was settled from the `-layout` extraction). Anchors are `microsoft/bf-tree` at `ca61307` (2026-08-19), read with `git archive ca61307` from a fresh clone whose HEAD was `f442e61`. Every paper number quoted is from prose or figure text; Figure 6's bar heights are not in the text layer and are not quoted.
+
+**Paper vs code, found by reading both.** Promotion rate: 1% (§5.1), 20% (§6.11), 30% release / 50% debug (`config.rs:22–23`). Mapping-table entry: the paper packs a 16-bit lock and a 48-bit address in 8 bytes (§3.3); the source is `MappingTable<RwLock<PageLocation>>` — `size_of` of the three type definitions compiled in a scratch program: `PageLocation` 16 B, `RwLock<PageLocation>` 24 B. Node meta: 12 B in the paper (§3.2), `NodeMeta` is three `u16` (6 B) in a 32 B const-asserted `LeafNode` header. The circular buffer's `alloc` and eviction reservation take one `Mutex<()>` (`circular_buffer/mod.rs:368, 537`); the eviction callback runs outside it. The default mini-page ladder `[64, 128, 256, 448, 832, 1600, 2048, 4096]` is pinned by the authors' unit test `tree.rs:1697–1698` and reproduced by hand from `create_mem_page_size_classes`. Derived footprints for 32 B records: cell 40 B, 101 cells per 4 KiB leaf (71 at 70% fill), a lone record costs 136 B (128 B class + 8 B header) vs 4,104 B for its page; growth chain 128 → 256 → 448 → 832 → 1600 → 2048 → merge, 5,312 B allocated to reach 50 records.
+
+**Lane `heat_scatter_model` (provided, deterministic, no timing; two runs, identical output):**
+
+```
+Part 1 — Zipf(0.9) over N = 200,000,000 records, exact sums
+  80% of requests reach the top 15.1% of records (paper §6.1 parenthetical: 33%)
+  raw data 5.96 GiB; a 2 GiB cache is 33.6% of it
+  oracle record cache, full mini-pages: holds 26.1% of records, hit ratio 0.854
+  oracle record cache, lone-record mini-pages: holds 7.9% of records, hit ratio 0.739
+Part 2 — page cache at 1/10 scale: N = 20,000,000, 281,691 pages, cache holds 52,326 pages (18.6% of records)
+  oracle PAGE cache, heat CLUSTERED : 0.812
+  oracle PAGE cache, heat SCATTERED : 0.566
+  oracle RECORD cache, full mini-pages  : 0.848
+  oracle RECORD cache, lone-record pages: 0.728
+```
+
+**Reading.** The paper's "around 50%" (page-caching systems) and "almost 75%" (Bf-Tree) cache ratios (§6.5) are bracketed by the scattered-page and record-cache bounds; with clustered heat the page cache would already reach 0.81. The paper does not say how Zipf ranks map to keys. Its §6.1 parenthetical "80% of requests access 33% of records" is 15.1% under the textbook pmf. No Bf-Tree code was run; nothing here is a throughput claim.
+
+## 2026-10-27 — topic 03 — B-Tree Internals: bbtree reading guide and lane 1b
+
+**New `reading-bbtree.md`** (bbtree, `XiangpengHao/bbtree` at `f0a5d36`, crate 0.1.5; design log files 04, 05, 06, 08, 09, 12 read; Graefe, *More Modern B-Tree Techniques* (2024) was **not** obtained, so the page citations in `design/06-cost-model.md` are attributed to the doc and marked unchecked). Cost-model arithmetic recomputed from the doc's inputs: 10M `u64`, `C_l = C_i = 55`, `u = 0.7` → 253,165 leaves, 6,576 internal nodes, 265.97 MB, 26.60 B/entry, depth 5 (4 at 1M) — the doc's table row exactly. Little's-law consistency check on the doc's own batch numbers: 6.3 misses in flight × 74.8 ns / 4.017 lines = 117 ns; 8.1 × 60.8 / 4.017 = 123 ns (about 120 ns per line for two different schedulers). Verus coverage read from `bbtree/src/proof/`: 1,523 of 48,868 lines in `src/` (3.1%); proven are the inline-key windows for `[u8]`, `u64`, `u128`, `i64`, `i128` and the `SearchBytes` comparisons; trusted are the std specs in `std_specs.rs`; not proven are the node searches, tree invariants and everything concurrent (shuttle is sequentially consistent only; Miri's config excludes the threaded tests). Corrections to the brief found in the code: the node search is a **count over every slot**, never a binary search (`inline_key_search.rs:200–213`), and the std byte-string "hash tag" is the key **length** saturated at 255 (`inline_key.rs:236–239`). crates.io 0.1.5 differs from `f0a5d36` in three remove-path files (`tree/remove.rs`, `tree/latched/remove.rs`, `tree/node/leaf.rs`; the latter by six lines after line 268); the lane does not touch them.
+
+**Lane 1b (`bbtree_vs_std`, provided, Apple M3 Pro, system allocator, two back-to-back runs under load average ≈ 10; checksums identical):**
+
+```
+u64    n=   100000  insert std  95.1 bb  74.3 ns (1.28x) | get std  81.5 bb  34.1 ns (2.39x) | get_many16 bb  32.4 ns
+u64    n=  1000000  insert std 154.0 bb 121.9 ns (1.26x) | get std 203.8 bb  71.8 ns (2.84x) | get_many16 bb  41.0 ns
+u64    n= 10000000  insert std 294.2 bb 215.1 ns (1.37x) | get std 352.5 bb 151.1 ns (2.33x) | get_many16 bb  73.0 ns
+String n=  1000000  insert std 457.5 bb 245.3 ns (1.86x) | get std 700.1 bb 270.0 ns (2.59x)
+(run 2: u64 10M insert 294.2 → 190.6 (1.54x), get 568.1 → 175.6 (3.24x), get_many16 65.8; String 1M get 676.3 → 271.8 (2.49x))
+```
+
+**Negative result.** The README's "5× faster than std's BTreeMap at single thread" does not reproduce for single gets (2.3–3.2× at 10M, 2.4–2.8× at 1M). The author's own one-thread tables (`design/14-blogpost.md`, Ryzen 9 9900X, 10M, lookups half missing) give `u64` get 109 vs 264 ns (2.4×) and gets 1.7–4.1× / batched 2.4–6.6× over four key types, so "5×" sits in the batched range. `get_many16` at 100K gives almost nothing (32.4 vs 34.1 ns): 100K is above the library's 39,936-entry batching cutoff, so the lanes run, but the tree is cache-resident and there are no misses to overlap. The lane's `String` keys (`user:` + 16 hex digits, all length 21) are the favourable case for inline keys; the tied case is left as an exercise in `notes.md`. Not measured: memory (the "30% lower" claim), tail latency, threads, mimalloc.
+
+## 2026-10-27 — topic 57 — Sorting at Scale: Normalized Keys, Radix Sort & Collation
+
+New topic. Read in full: Kuiper & Mühleisen (ICDE 2023), IPS⁴o (arXiv 1705.02257v2), UTS #10 v18.0.0 rev. 55 (§1, §3.6, §7.3, §9.1). Not obtained: Graefe's CSUR survey (ACM paywall; unpaywall reports no OA copy) — its four radix objections are quoted via the ICDE paper §VI-C and the guides say so. Code read at the pins: DuckDB `d54cbbe3df` (`create_sort_key.cpp`, `tuple_data_layout.cpp`, `sort_key.hpp`, `sorted_run.cpp`, `ska_sort.hpp`, `vergesort.h`, `icu_extension.cpp`, `collation_binding.cpp`), FalkorDB `ccb449a9a` (`op_sort.c`), Rust std from rustc 1.99.0's `rust-src`, and two new clones (`ips4o/ips4o` at `08a5b92`, `Voultapher/sort-research-rs` at `8d3eae4`, the latter only cited by the source comments). The pinned DuckDB differs from the paper: vergesort + a ska_sort radix over at most 8 key bytes + full-key comparison for ties, strings encoded as `byte+1` and a `0` delimiter, key width derived from statistics. The guides say where.
+
+**Lane 1 (provided).** Seed 57. 10M `Row64`: `sort_unstable_by` 152.3 ms (0.65 ns/(n·log₂n)), bare `u64` 112.4, stable `sort_by` 211.9; checksum `0812712ec852b87e`. 5M `(int, string)`: b1 (1,000 `a`-values) 545.1 ms, b2 (`a` over `i32`) 111.3, b3 (20-byte shared prefix) 530.0; checksums `534fdd4bcaf33e4b` / `1cd6d972296e3024` / `c23c7c8734b16de6`; ties on `a` 4,999,000 / 2,904 / 4,999,000. 2M collation strings: 13.6 bytes average, 1,978,777 distinct, collating comparator 744.8 ms (17.79 ns/(n·log₂n)). Counts identical in four runs; second run (load 4.83) within 4%.
+
+**Reference numbers (scratch solutions, 22 tests green, not committed).** `u64` LSD/MSD speed-up over the comparator: 2.06×/1.62× at 10M, 2.22×/1.78× at 50M, 0.19×/0.84× at 100 rows, 1.06×/0.68× at 10,000; presorted 0.04×/0.02×, reverse 0.08×/0.04×, 256 distinct 1.42×/0.54×, 3 live bytes 3.20×/1.04×. `(int, string)` radix: b1 3.00×, b2 1.08×, b3 0.71×; shared-prefix sweep 0/4/8/12/16/24/40 bytes → 1.93/2.36/1.79/0.69/0.71/0.72/0.73×. Lane 3 sort keys vs collating comparator, n = 16…2,000,000: 1.04×…1.76× (second run 1.00×…1.72×), 8.6…43.2 counted comparisons per string, 82 key bytes per string, g 34–49 ns, c 9–18 ns, b 3–8 ns, m* 8.2–13.8; primary-level classes 490,966 vs 490,842 predicted. IPS⁴o (C++, sequential) vs `std::sort`, 16-byte rows: 2.07× at 1M, 2.34× at 10M. Negative results: Graefe's "worse cache efficiency" does not reproduce up to 50M rows; the paper's "LSD for ≤ 4-byte keys, MSD above" does not transfer to 8-byte keys with the skip optimisation on this machine (caveat: the reference MSD is out-of-place with copy-back).
+
+**Lessons.** (1) The first lane-1c comparator validated UTF-8 on every string access and measured 2,395–2,984 ms; removing the validation (validate once in `StrSet::new`) gave 745 ms and changed lane 3's speed-up from ~5× to ~1.7× — a hidden per-call cost in the *baseline* inflates a technique's win. (2) Wall-clock timings at load 15–40 were unusable (a 1M sort slower than a 50M one); thread CPU time made them reproducible within 5% at load ~5. (3) The Rust base case differs by element size (sorting network for ≤ 8-byte `Copy` types, general small sort at 16 bytes), so a bare-`u64` sort is not the same algorithm as a `Row64` sort.
+
+## 2026-10-26 — topic 56 — Memory Allocators for Database Workloads
+
+**New topic 56, `Memory Allocators for Database Workloads`** — six reading guides (mimalloc, jemalloc, Durner–Leis–Neumann, Hoard, Mesh, and FalkorDB/Redis's allocator path), a graph-engine allocation bench with the system allocator, a bump arena and feature-gated mimalloc/jemalloc comparison, and two stub lanes (a page-sharded size-class allocator; cross-thread frees without blowup).
+
+**Lane 1** (seeded, `trace.rs` seed 56: 200,000 nodes → **1,797,141** objects, **80,949,568 B = 77.2 MiB** requested, **997,374** 40-byte edge records; every count reproduces exactly; each phase in a fresh child process, best-of-3 time, median-of-3 memory; Apple M3 Pro, load average 4.72 at the start). 1a bulk load: libmalloc 14.0 ns/alloc, resident 86.3 MiB (**1.12×** live); arena 4.8 ns, 77.6 MiB (1.00×). 1b churn (3 rounds, free a random half, insert replacements with grown properties; live after 132.1 MiB): libmalloc 29.6 ns/op, **216.2 MiB (1.64×)**; arena 15.6 ns, 288.6 MiB (2.18×, never reclaims). 1c query temporaries (400 × 20,000 objects): libmalloc **26.4 ns** per allocate+free, arena **1.7 ns** (15.5×). 1d cross-thread (4 × 1,000,000): libmalloc 33.1 ns same-thread, **46.5 ns** other-thread (1.40×).
+
+**Allocator comparison** (`--features mimalloc` = crate 0.1.52, mimalloc 2.x C source; `--features jemalloc` = tikv-jemallocator 0.6.1, jemalloc 5.3.0): 1a 8.2 / 10.1 ns (res/live 1.12 / 1.13); 1b 19.2 / 23.7 ns, 1.15× / 1.15×; 1c 9.7 / 16.1 ns; 1d same-thread 9.2 / 13.6 ns, other-thread 21.1 / 15.4 ns. A second run moved single cells by up to 30% and no ranking. **The quantum:** `JEMALLOC_SYS_WITH_LG_QUANTUM=3` (Redis's `--with-lg-quantum=3`, `deps/Makefile:162`) takes the bulk load from 87.0 to **78.2 MiB (1.13× → 1.01×, −10.1%) and churn from 1.15× to 1.08×, because the 40-byte edge stops rounding to 48 (997,374 × 8 B = 7.6 MiB).
+
+**Negative / unexplained.** libmalloc's post-churn residency is bimodal: one binary 1.64× in 20 of 20 fresh processes, another 1.13–1.14× in 15 of 20 and 1.64× in 5 (and in 12 more runs, with and without `MallocNanoZone=0`, 1.64× in 12 of 12 and 6/6 split); `footprint` equals `resident`, so it is not reusable pages. Cause not found — exercise 3. A toy page-sharded allocator (reference, uncommitted) matches jemalloc on this trace (21.0 vs 23.7 ns/op, 1.07× vs 1.15×) — a statement about page-sharded free lists on this trace, not about jemalloc.
+
+**Reference lanes** (scratch crate, not committed): lane 2 `PageHeap` 8.5 ns bulk (1.01×), 21.0 ns/op churn (**1.07×**), 7.2 ns/obj query temporaries; lane 3 `SharedHeap` **15.5 ns/obj** cross-thread (libmalloc 46.5), 42–43 pages (40 once) vs ~440 without remote-free reuse. All 20 tests pass against the reference (10 provided, 6 lane-2, 4 lane-3); the committed crate fails exactly the 10 stub tests.
+
+**Papers and code, each checked against the text.** mimalloc TR (§1 "over 25%" Lean, §2.2 bump pointer "about 2% worse", §3.4 `gcc` 30% / "over 18000" pages, `xmalloc-test` 30%, §4 redis 14% over jemalloc); Durner et al. (abstract 2.7×; Tables 1–2 transcribed, inflation ratios computed: 2.23 / 2.10 / 1.76 / 3.02 / 1.58); Hoard (§1 blowup definition, §2.2, §3 invariant, §4.1 O(1), §5 parameters S = 8 KiB, f = 1/4, K = 4); Mesh (§1 Robson 13×, §2.2 10⁻¹⁵² = 256⁻⁶³ checked, §6.2.1 632 → 530 MB = 16.1%, §6.2.2 0.23 s vs 1.49 s — the paper's printed "5.5×" disagrees with its own seconds, 6.5×; meshing probabilities `C(256−k,k)/C(256,k)` computed here, not from the paper). Evans' BSDCan 2006 jemalloc paper and TCMalloc's OSDI'21 paper were not obtained and are not cited. Source anchors: FalkorDB `ccb449a9a` and redis `e87dda2a4` through `pinned-source.py`; mimalloc `8b08dbb8f9c8` (`main3`) and jemalloc `0697b617fbaa` (`dev`) read from new clones (not yet pinned). Found while reading: FalkorDB's `rm_aligned_malloc` ignores its alignment; `n_alloced` adds requested and subtracts usable bytes (the file's own comment says so); Redis builds jemalloc with an 8-byte quantum, the crate default is 16.
+
+**Gates.** `check-reading-depth.py --check topics/56-memory-allocators/` 6/6; `check-mermaid.js` 6 blocks, 0 errors; relative links in the topic resolve (a full `mdbook build` needs the SUMMARY entries above); `cargo build --release --all-targets` with `-D warnings` clean, also with `--features mimalloc`.
+
+(fix typo at integration: the `−10.1%)]` should read `−10.1%)`.)
+
+## 2026-10-26 — topic 55 — Datalog Engines: Recursion as Joins and as Sparse Algebra
+
+**What was built.** `topics/55-datalog-engines/`: README, six reading guides (Soufflé; RecStep; Ascent; CozoDB; the 2026 GPU and distributed worst-case-optimal Datalog preprints; Datalog as linear algebra), `notes.md`, and a dependency-light Rust crate `datalog-experiments` (committed `Cargo.lock`) with lane 1 implemented and lanes 2 and 3 stubbed; `check-reading-depth.py --check` reads 6/6, every mermaid block parses, no internal link is broken.
+
+**Lane 1 (provided), Apple M3 Pro, load average 13.51 at the start; counts exact and identical across two runs.** Linear TC naive / semi-naive derivations, rounds, new, duplicates left: power-law n=1500 (3,489 arcs) 2,109,908 / 137,482 (15.3×), 21 rounds, 65,289 new, 72,193 duplicates; grid 24×24 (1,104) 5,248,416 / 165,600 (31.7×), 46 rounds, 89,424, 76,176; chain 500 (499) 41,417,499 / 124,750 (332×), 499 rounds, 124,750, 0; 6,000 chains × 10 (54,000) 1,494,000 / 270,000 (5.5×), 9 rounds, 270,000, 0. Same generation: power-law n=600 (960) 278,931 / 64,787 (4.3×), 25,408 new, 39,379 duplicates; grid 619,986 / 35,468 (17.5×), 9,177, 26,291. Nonlinear TC naive / textbook / old-delta: power-law 5,882,220 / 2,749,550 / 2,143,923 (6 rounds; old-delta 22.0% fewer than textbook), grid 17,567,264 / 8,114,570 / 6,581,680 (7; 18.9%), chain 45,138,521 / 24,420,281 / 20,708,999 (10; 15.2%) — 15.6×, 39.7×, 166× the linear semi-naive derivations. Goal-directed `?- tc(0,y)`: 1,808 / 1,104 / 499 / 9 derivations (661 / 575 / 499 / 9 tuples) against 137,482 / 165,600 / 124,750 / 270,000. Timings in the README (best of 3, quoted run): linear naive / semi-naive 107.05 / 13.01 ms power-law, 1550.63 / 16.84 ms chain; nonlinear old-delta 95.76 ms power-law, 1638.68 ms chain; sg 15.62 / 3.33 ms.
+
+**Reference solution for lanes 2 and 3 (scratch copy, not committed; load average 5.81).** Lane 2, derivations Left / Right / Adaptive on the power-law graph 137,482 / 124,357 / 119,159 (Adaptive = the BFS-level oracle |arc| + Σ_r min(L_r, R_r); 13.3% under Left, 4.2% under Right), probes 169,244 / 161,822 / 160,296, 4.59 / 4.38 / 4.39 ms against hash semi-naive 13.21 ms; grid, chain and 10-chains tie at 165,600 / 124,750 / 270,000; sorted 4.4–6.0 ms on the grid (hash 15.09), 38.0–38.7 ms on the chain (hash 15.91, sorted 2.4× slower — a full-closure rewrite per round), 4.4–4.8 ms on the 10-chains (hash 5.98). Lane 3 flops / new entries / ms (lane-1 hash ms): power-law 133,993 / 61,800 / 0.80 (13.21), grid 164,496 / 88,320 / 0.46 (15.09), chain 124,251 / 124,251 / 1.45 (15.91), 10-chains 216,000 / 216,000 / 7.57 (5.98, algebra 1.27× slower: n = 60,000 → 450 MB mask), sg power-law 85,124 / 25,408 / 0.41 (2.82) against lane 1's 64,787 derivations, sg grid 54,328 / 9,177 / 0.27 (0.38); flops + |arc| equals the semi-naive derivation count on all four closure graphs. Per-source bit-matrix (RecStep PBME): 1.83 / 1.48 / 2.87 / 24.45 ms, derivations equal to semi-naive's.
+
+**Negative result recorded.** A static `Left`/`Right` choice cannot come from degree or walk-count statistics: Σ_z out(z)·(walks ending at z) = Σ_z in(z)·(walks starting at z) for every length, so such an estimator always ties and picks `Left` — right on 21 of 40 seeded power-law graphs (`power_law(300, 900, seed)`, seeds 0–39), worst ratio 1.535. Sampled-BFS estimators were right on 16 / 18 / 26 / 24 / 28 of 40 at 8 / 16 / 32 / 64 / 128 sources and 40 of 40 at all 300; hence the per-round `Adaptive` lane. Cozo's rule-level semi-naive makes nonlinear TC cost the naive row (2.74× the disjoint split on the power-law graph).
+
+**Paper audit.** SRDatalog (arXiv 2604.20073v2) Table 2, 17 rows: geometric mean of raw time ratios vs Ascent 17.6× (text 21×), vs FlowLog 13.4× (14×), vs Soufflé 26.4× (26×); the abstract's 21×–47× is not in the table; the clean GPU-vs-GPU rows are 2.3×–7.1× (VFLog, SG) and 2.1×–4.0× (cuMatch, LSQB). Distributed paper (arXiv 2610.12692v1): Table I edges 66 / 17 / 12 × N_E for 1D / 2D / 3D; 2D out of memory at 32 ranks on Polaris for the two Orkut workloads; Table V loses to FlowLog on Andersen Large (17.519 vs 9.408 s) and to Soufflé and FlowLog on SG (78.235 vs 57.347 and 31.905 s); Table VI's 8.9×–11.2× over Slog is TC (a two-atom join). RecStep (arXiv 1812.03975): OOF 63% / 41% / 24% on CSPA/httpd (Figure 2). Sato (arXiv 1608.00139): Matrix 0.094–0.117 s at every p_e for N = 1,000, slower than Prolog and ASP at p_e = 0.001 and 15–10⁴× faster from 0.01 (Table 2).
+
+**Anchors.** Three new clones (below); 62 `file:line` anchors into them checked by script against the files (content at the cited line); the two GraphBLAS/LAGraph anchors checked with `pinned-source.py`. The Soufflé CAV'16 / PPoPP'19 / PMAM'19 PDFs could not be fetched (the host was blocked by the sandbox), so nothing is attributed to them; the Soufflé chapter rests on the PVLDB'18 paper and the source. FlowLog (VLDB 2026) is covered in topic 27's README and only cross-linked.
+
+## 2026-10-27 — topic 54 — Main-Memory Join Algorithms: Hash, Radix-Partitioned & Sort-Merge
+
+**New topic 54, `Main-Memory Join Algorithms`** — the three designs (one shared table, radix-partitioned, sort-merge) on one seeded workload (R with 2¹⁴–2²⁴ unique-key 8-byte tuples, S with 2²⁵ foreign-key probes), five reading guides (Balkesen et al. PVLDB'13, Schuh et al. SIGMOD'16, Bandle et al. SIGMOD'21, DuckDB v2.0.0's join table, DataFusion `350ca7650`'s hash join), a Rust crate with lane 1 provided and lanes 2–3 stubbed (12 failing tests as the specification), and a reference solution (uncommitted) that fills notes.md's reference tables.
+
+**Lane 0 measured the machine rather than quoting it** (Apple M3 Pro; `sysctl`: performance-core L1d 128 KiB, cache line 128 B, page 16 KiB, performance-cluster L2 16 MiB, efficiency L2 4 MiB; no system-level-cache size is exposed): dependent-load latency 0.99–1.07 ns up to 128 KiB, 5.25 ns at 512 KiB, 6.04 at 2 MiB, 8.31 at 8 MiB, 45 at 16 MiB (19–45 between runs), 91.8 at 32 MiB, 112.7 at 1 GiB; by pages (one node per 16 KiB page) 1.06 ns at 128 pages, 2.65 at 256, 4.22 at 1,024, 6.56 at 2,048, 15.16 at 4,096, 23.87 at 65,536; read bandwidth 70.0 GB/s with one thread, 117.2 with eleven.
+
+**Lane 1** (|S| = 33,554,432, thread CPU time, best of 3, load average 4.71): build 0.08 / 0.45 / 2.09 / 9.35 / 56.11 / 241.51 ms for 2¹⁴…2²⁴; batched probe 284.87 / 294.10 / 301.39 / 356.80 / 663.80 / 719.42 ms = 8.49 / 8.76 / 8.98 / 10.63 / 19.78 / 21.44 ns per probe; the one-slot-per-step probe 464.16 / 504.93 / 535.40 / 623.78 / 1693.13 / 2307.70 ms. Lane 1a (tables in L1/L2, |S| = 2²⁴): scalar / bucket / batched 8.59 / 6.02 / 6.46 ns at 2⁴, 11.77 / 7.52 / 8.11 at 2⁸, 13.74 / 8.61 / 8.43 at 2¹⁴. Lane 1d (random vs sorted-by-home-bucket probes): 8.70 vs 4.38 ns (2¹⁴, 1.99×), 12.17 vs 5.00 (2²⁰, 2.43×), 27.66 vs 5.10 (2²², 5.42×), 32.66 vs 5.80 (2²⁴, 5.63×). Lane 1b (2²⁴): Zipf 0.75 / 0.99 probes 0.91× / 0.68× of uniform (1118.17 ms). Lane 1c: 703.34 / 379.61 / 193.54 / 127.26 ms on 1 / 2 / 5 / 11 threads (1.85 / 3.63 / 5.53×). Checksum of the lane-2 oracle `a1f3afb6193b238f`, identical across runs.
+
+**Reference solution** (|S| = 2²⁵, ms; NPJ / best radix (bits) / LSD sort-merge): 2¹⁴ 288.8 / 221.3 (12) / 250.2; 2¹⁶ 303.7 / 248.9 (12) / 248.4; 2¹⁸ 307.3 / 264.8 (9) / 268.8; 2²⁰ 431.7 / 277.5 (10) / 258.6; 2²² 719.1 / 311.2 (10) / 358.3; 2²⁴ 973.5 / 424.9 (12) / 544.1. Partition phase 54.5–63.1 ms up to 2²² (97.1 at 2²⁴) = 1.6–1.8 ns per tuple against a 7.9 ms read+write floor at 70 GB/s; two passes lose 16–20% (2²⁰ 323.2 vs 277.5; 2²² 371.8 vs 311.2; 2²⁴ 504.6 vs 424.9), write-combine buffers lose 7–11% (2²⁰ 297.9 vs 277.5; 2²⁴ 471.0 vs 424.9); at 2²⁴ 4 bits (Equation (1) with the 16 MiB L2) is the worst plain single-pass point, 933.1 ms, and 12 bits the best, 424.9. At |R| = 2²⁴: 10% hits NPJ 863.9 vs radix 405.6 ms, Zipf 0.99 774.8 vs 402.1. Tiny builds (2⁴…2¹²): NPJ 213.8–267.6 ms vs radix 183–201.
+
+**The negative result.** Bandle et al.'s "partitioning rarely pays when the build side fits the cache" does not reproduce on 8-byte tuples: the radix join wins at every size, and lane 1d shows why below the cache cliff — the shared table's probe loop costs 6–8 ns even for a 16-tuple table, and sorted probe order halves it, so what partitioning buys at small sizes is order, not fewer misses. The case where the shared table should win (32–64-byte payloads, a selective join without a pre-filter) is not constructed by the reference; Exercises 4–5 build it. Equation (1) holds only with the L1d as the cache (11 bits predicted at 2²⁴, 12 measured).
+
+**Process notes.** The first probe loop (slot at a time) and a first timing harness (wall time under load average 17–31, threads landing on efficiency cores) gave numbers that were discarded: single-threaded lanes now use thread CPU time (`timing.rs`) and print the dependent-add period of the core they ran on; the bucket probe loop was added when lane 1a showed a 9–12 ns floor on an all-L1 table. The probe loop's remaining floor was not decomposed (Exercise 3). A scratch experiment (not in the repo) measured 1.2 ns for a straight-line 4-load probe with no exit branch; it is not cited as a result. All five guides pass `tools/check-reading-depth.py --check`; the README's mermaid diagram parses.
+
+## 2026-10-26 — topic 53 — Cardinality Estimation for Graph Patterns: Where Multi-Hop Estimation Dies
+
+Motivated by topic 13's open question ("where does multi-hop estimation die", `notes.md:122`, `reading-ldbc-snb.md:421`) and topic 10's relational audit. Papers read from the PDF: G-CARE (SIGMOD'20; ntu.edu.sg copy), Pessimistic Cardinality Estimation (arXiv 2412.00642), LpBound (arXiv 2502.05912), GOpt (arXiv 2401.17786), Color (arXiv 2405.06767v2). Not obtained: Neumann & Moerkotte, "Characteristic Sets" (ICDE'11 — the Mannheim and TUM copies returned HTML; the estimator is quoted through G-CARE §3.2 and a Waterloo slide deck was not used). Not read: GLogS (ATC'23), "Still Asking" (VLDB'25), Kayali & Suciu's quasi-stable coloring, Markl et al.'s progressive optimization.
+
+**Lane 1 (provided).** Seeded labelled Zipf graph (`Params::lane1(seed, pop)`, seeds 1–5): 27,000 nodes in 4 labels [3000, 6000, 12000, 6000]; 5 edge types r0 L0>L1, r1 L1>L2, r2 L2>L3, r3 L3>L0, r4 L2>L0; edge draws [40k, 60k, 90k, 60k, 30k] de-duplicated (seed 1: [34374, 53343, 80401, 51749, 28132] = 247,999 edges); Zipf 0.6 sources / 1.0 destinations; `Shared` popularity (one ranking per label) vs `Independent` (a ranking per type and role). Patterns: all label-consistent walks of 2 / 3 / 4 edges (6 / 7 / 9 per graph; 30 / 35 / 45 over five seeds) plus triangle r0>r1>r4. Independence (Kùzu `getExtensionRate` = Neo4j node-connection product), median / p90 / max q (under): shared — hop 2 9.6 / 13.8 / 15.0 (100%), hop 3 57.5 / 65.1 / 67.0 (100%), hop 4 324.0 / 372.6 / 394.1 (100%); independent — 1.1 / 1.2 / 1.8 (43%), 1.1 / 1.7 / 2.0 (49%), 1.1 / 1.7 / 1.9 (58%). Memgraph constant `|L|·3^k`: shared 62.2 / 822.1 / 12,425.7 medians, independent 6.4 / 18.6 / 40.1. Max-degree bound: shared 4.4 / 40.8 / 294.4, independent 40.8 / 1,741.3 / 83,367.0. Two-hop degree-sequence bound: 1.0 shared, 9.7 independent; ℓ2 bound 1.3 and 12.4. Seed-1 detail: r0>r1 true 3,009,074, estimate 305,602.0 (q 9.8); r0>r1>r2 124,840,475 vs 2,047,559.2 (61.0); r0>r1>r2>r3 6,150,191,151 vs 17,659,856.7 (348.3). Triangles r0>r1>r4: shared seeds 1–3 true 54,738 / 56,124 / 54,948, independence ≈ 238.8 (q 229.2 / 235.0 / 230.3), AGM 7,182,143 (131.2×), ℓ2 712,488 (13.0×); independent true 234 / 234 / 404, independence q 1.0 / 1.0 / 1.7, AGM q 30,678.4 / 30,653.2 / 17,729.4, ℓ2 q 3,019.4 / 3,027.8 / 1,723.4. Plan choice (2^(k−1) left-deep orders, cost = rows materialised): independence picks a non-optimal order for 5 / 35 (3 hops) and 5 / 45 (4 hops) on the shared graph with geomean regret 1.00, worst < 1.005, answer share of the best order's cost 97.7% / 98.3%; independent graph 4 / 35 and 4 / 45 wrong, worst regret 1.06 / 1.03, answer share 89.5% / 91.0%. Sanity: 2-hop DP = Σ in·out for every 2-walk; forward DP = backward DP on every 4-walk; single edge exact; max-degree bound never below truth. Two runs byte-identical. Nothing timed.
+
+**Negative result.** A 348× underestimate did not change any plan's cost: the answer is 90–98% of the cheapest order's cost and every order pays it (G-CARE §6.5 reports the same for star-shaped queries). Exercise 7 constructs a selective-predicate case where it should matter; not measured.
+
+**Reference solutions (scratch; not committed).** Lane 2 characteristic sets, shared popularity, seeds 1–5: median / p90 / max q 8.7 / 10.3 / 10.8 (hop 2), 41.6 / 43.9 / 44.7 (3), 204.3 / 231.6 / 236.9 (4), all underestimates; 21 sets on seed 1 — a 1.1× / 1.4× / 1.6× gain over independence; negative result: a set records which types a node has, not how many. Lane 3 two-edge catalog: 1.0 / 1.0 / 1.0, 2.0 / 2.2 / 2.2, 3.2 / 3.5 / 3.6, never an underestimate, 11 stored patterns (F2[0][1]=3,009,074, [1][2]=4,607,815, [1][4]=1,779,714, [2][3]=6,685,881, [3][0]=4,198,038, [4][0]=2,659,294); seed-1 r0>r1>r2 catalog 259,926,444.2 vs true 124,840,475 (characteristic sets 2,971,857.9); r0>r1>r2>r3 21,614,622,638.0 vs 6,150,191,151 (26,552,817.3). Plan choice with either estimator: 0–5 wrong picks, regret 1.00. The catalog's covariance of in(b), out(c) over middle edges is negative for all seven three-edge patterns on seed 1 (−1,010 … −5,334) and sign(estimate − truth) = sign(−covariance) for all seven. All 28 tests green with the references (16 provided tests pass, 12 stub tests fail on the committed crate).
+
+**Code reading (pinned).** Kùzu: per-hop factor `numRels / atLeastOne(numBoundNodes)` (`cardinality_estimator.cpp:219`), applied as a group multiplier on a factorized Extend (`append_extend.cpp:88-91`), constants 0.01 / 0.1 (`constants.h:159-160`). Neo4j: node cardinalities × per-connection multipliers `E(rel)/(card(left)·card(right))` with an unbound endpoint costing 1 (`NodeConnectionCardinalityModel.scala:148-167`), statistic = counts store of (label)-[type]->(label) (`TransactionBoundGraphStatistics.scala:149`); for a labelled path it reduces to `E_r·E_s/|B|`, identical to Kùzu's. Memgraph: constant `kExpand = 3.0` per Expand unless `SymbolStatistics.degree` is supplied (`cost_estimator.hpp:368-380`, `cost_constants.hpp:47`). FalkorDB (C and Rust): no cardinality estimate — a priority score (bound 3 / filtered 2 / labelled 1, labels counted *on the query node*) with a node-count-per-label tie-break (`traverse_order_utils.c:36-53, 225-308`, `cost_base_label_scan.c:216-220`, `select_scan_node.rs:79-111`); matrices multiplied left to right under `GxB_ANY_PAIR_BOOL` (`algebraic_expression_mul.c:33, 36-58`).
+
+**Paper discrepancies.** Color Example 4: text says average degree "≈ 4" and `10100·4^k`; the stated graphs give 29,900 / 10,100 = 2.96 (guide uses 2.96; exact `100·99^k + 10000·2^k` is 1,020,100 / 97,109,900 / 9,606,120,100 at k = 2 / 3 / 4, traditional 88,516 / 262,042 / 775,748). Color §1 "1–2 orders of magnitude" vs §3 "over 2 orders" for Figure 2. G-CARE's validity range is Markl et al.'s concept (ref. [27]), not Kabra & DeWitt's. LpBound's error metric is estimate ÷ truth, not q-error.
+
+## 2026-10-26 — topic 52 — Graph Reordering & Compression: Bytes per Edge, and Why Vertex IDs Are the Lever
+
+Built to answer a FalkorDB developer's question: how many bytes per edge do
+CSR/GraphBLAS matrices cost, and is the vertex-id order — not the codec — the
+real lever for size and for cache misses? Papers downloaded and read: Boldi &
+Vigna WebGraph I (WWW'04, all tables), Dhulipala et al. (arXiv 1602.08820v1,
+§3–§5, Tables 2–3), Shun et al. Ligra+ (DCC'15, §3–§4, Tables 1–2, Figure 5),
+Brisaboa et al. k²-trees (SPIRE'09, all), and the ReScience replication of
+Gorder (Lécuyer et al., 2021, in full). Not obtained: the SIGMOD'16 Gorder
+paper, Rabbit Order (IPDPS'16; the IPDPS URL returned HTML), the k²-tree journal
+version (abstract only). New clone: `webgraph-rs` (see below). Code read:
+`ligra/byte.h`, `byteRLE.h`; `webgraph-rs` `bvcomp.rs`, `flags.rs`, `algo/src/llp`;
+FalkorDB `module.c`, `tensor.c`, `delta_new.c`, `graph.c`; GraphBLAS header.
+
+**Lane 1 (provided).** Seeded community graph (seed 52): n = 6,000,000,
+m = 64,747,251 (mean out-degree 10.79, max 1,756), 21,972 planted communities,
+75% intra-community edges; loaded with random ids (`shuffle_perm` seed 1).
+Per ordering (LogGap / γ / varint / +vertex bits per edge / simulated 4 MiB
+8-way miss % / CSR ns per edge / varint ns per edge / BFS ms), run at load 5.27:
+random 18.01 / 35.78 / 24.11 / 30.04 / 90.3 / 3.27 / 9.95 / 2541.0; in-degree
+sorted 17.74 / 35.35 / 24.00 / 29.93 / 85.9 / 3.06 / 9.24 / 2535.5; BFS 14.68 /
+29.68 / 20.98 / 26.91 / 62.0 / 2.71 / 7.95 / 1591.7; planted 8.72 / 18.17 /
+14.40 / 20.33 / 23.5 / 2.44 / 5.44 / 1859.1. Order time 87 / 308 / 1,023 ms.
+Scan checksum e5358af47cfd3b71; three BFSs reach 17,992,203 vertices, examine
+194,160,603 edges, depth sum 26 — identical under every labelling. The bit sizes,
+miss rates and BFS counts were identical between two runs; an unlocked run at
+load 14.93 gave 3.87 → 2.81 ns/edge CSR, 12.17 → 6.28 varint, 2809 → 2202 ms BFS.
+Headline: random → planted ids = 1.67× fewer varint bits, 1.34× faster gather,
+1.37× faster BFS; degree sorting 0.5% (negative); BFS order −13% in 1 s; the
+varint scan is 2.2× slower than CSR at planted ids and 3.0× at random ids (one
+thread — Ligra+'s win is a 40-thread result). At n = 2,000,000 (16 MB of values,
+inside the 16 MB P-cluster L2) the orderings did not separate in time (random
+1.37 ns/edge, planted 2.63, a locked run) while the simulated misses did (72% vs
+18%) — why the lane uses 6 M.
+
+**Lane 1c probes.** `probe/graphblas_bytes.c` against FalkorDB's libgraphblas.a
+(v10.5.0), 1 M × 1 M, 7,999,964 entries: GrB_BOOL iso 36,000,108 B = 4.500 B/edge,
+iso off 5.500, GrB_UINT64 edge ids 12.500, 32-bit offsets and indices in all.
+`GRAPH.MEMORY USAGE` after bulk loading 200,000 nodes + 1 M / 2 M / 4 M edges:
+relation_matrices 26 / 49 / 94 MB, total 36 / 68 / 131 MB; slope 23.8 B/edge
+(relation matrices), 33.2 (graph). Settled-matrix arithmetic predicts 17–18; the
+gap is open (README exercise 6).
+
+**Lanes 2 and 3 (stubs).** Reference (not committed) run at load 5.27: bisection
+(leaf 32, 20 iterations, seed 1, top 3 recursion levels on 8 threads) 204,425 ms;
+LogGap 8.51 / γ 17.82 / varint 14.52 / +vertex 20.45 / miss 26.0% / CSR 2.59 /
+varint 5.97 ns / BFS 1898 ms — within 0.8% of the oracle's bytes, below its
+LogGap. Small-graph test LogGap random 9.951, BFS 8.335, bisection 5.788. WebGraph
+coding (W 7, R 3, L_min 4): lane-1 graph gaps-only / varint / BV bits per edge —
+random 26.11 / 24.11 / 26.30, BFS 22.10 / 20.98 / 21.97, planted 14.41 / 14.40 /
+14.56, bisection 14.20 / 14.52 / 14.35; web-like graph (40% copies, m =
+65,476,552) random 26.17 / 24.13 / 26.35, planted 14.44 / 14.39 / 10.15. BV
+decode-scan 21.98–28.50 ns/edge vs varint 4.63–10.04 vs CSR 2.01–3.28; encode
+~10 s. Negative result: references cost 1% on independent lists; on copied lists
+they save 29.7%. 23 repo tests: 15 provided pass, 8 stubs fail by design;
+`-D warnings` build clean; reference green.
+
+**Discrepancy found.** WebGraph paper: ν(x) = 2|x| − 1 for x < 0 gives ν(−2) = 3,
+but the worked residual example and Table 5 print 5; dsi-bitstream's `to_nat`
+(−2x − 1) follows the formula.
+
+**Verification.** `tools/check-reading-depth.py --check` 7/7; mermaid 0 errors;
+`tools/check-book-links.py` on a scratch build (placeholder topic 51 page): only
+the topic-51 link unresolved.
+
+## 2026-10-27 — topic 51 — Dynamic Graph Storage: A CSR That Takes Writes
+
+**New topic 51, `Dynamic Graph Storage: A CSR That Takes Writes`** — FalkorDB's delta matrix (topic 20) priced against LiveGraph, Sortledton, Teseo, Aspen and Packed CSR on one seeded graph, with an independent comparison (Su et al., SIGMOD 2025) and a real C FalkorDB datapoint. Six reading guides (Revisiting, Sortledton, Teseo, Packed CSR, LiveGraph, FalkorDB's delta in context), README, notes.md with reference numbers, a crate with lane 1 provided and lanes 2–3 stubbed (11 stub tests), `scripts/falkordb_datapoint.py`, `dump_edges`.
+
+**Lane 1** (R-MAT scale 20, seed 51; |V| 1,048,576, |E| 16,084,545, max out-degree 39,354, 502,214 isolated, top 1% own 49.8%; Apple M3 Pro, load 4.49): splice insert **0.641 ms** (delete 0.664; 34 MB moved at 53 GB/s); two-hop scan 0.161 / 0.160 / 0.145 ns/edge (CSR / empty delta / `Vec<Vec<u32>>`) over 36,871,342 edges touched; 1% writes: delta 220 ns/write, adjacency list 1,237, splice 615,536; 10% inserts: delta 490 (1 flush, 6.60 ms), adjacency list 555; 10% half deletes: delta scan 0.189, **per-edge tombstone test 0.339 (1.98×)**, adjacency list 0.171; growth ×empty 0.94 / 0.97 / 1.09 / **2.14** at 1,000 / 10,000 / 100,000 / 1,000,000 pending (1,030,138 pending over 188,772 DP rows); flush threshold: T = 1,000 → 18 flushes of 3.11 ms, 2,959 ns/write; T = 10,000 → 1 flush of 6.28 ms, 468 ns/write (154 excluding the flush; steady state 154 + 628 = **782 ns**, 1.4× the adjacency list); bytes/edge 4.26 / 4.43 / 5.56.
+
+**Negative results.** (1) The per-edge tombstone scan was mistaken for "delta growth" until lane 1c's deletion mix disagreed with 1d; splitting rows at tombstones (binary search each) removes it. (2) A stream average hid the flush: 468 ns/insert at T = 10,000 is 782 in steady state. (3) A PMA CSR's scan is **8.3×** a CSR's (1.376 vs 0.165 ns/edge), 5.4× with a branchless gap compaction, against PCSR's "within a factor of two" — the paper's Table II itself shows CSR 1.69–2.78× faster on real graphs, not the "within 25%" of its synthetic figures. (4) Revisiting's text ranges (1.2–53.7×, 2.4–11.0×) do not reproduce from its Table 5, which recomputes to 1.11–4.10×.
+
+**Reference numbers (reference solutions, not committed):** lane 2 (sorted blocks, capacity 256) scan 0.206 ns/edge (1.25×), 7.98 B/edge, writes 588 / 404 / 341 ns; lane 3 (PMA, leaf 16) 1.376 (8.3×), 8.87 B/edge, writes 376 / 359 / 369; branchless PMA 0.867 (5.4×).
+
+**C FalkorDB** (redis-server 8.6.2 + `falkordb.so`, port 6390, shut down): 16,084,545 relations bulk-loaded in 23.0 s; `count(c)` equals the Rust distinct two-hop vertex count for all 200 starts (FalkorDB's traversal is set-valued: 1,837,771 distinct vs 3,742,650 paths); engine 891 µs per query with an empty delta (~47.6 ns per nominal path edge), +3% / +9% / +6% / +8% at 5,000 / 10,000 / 12,500 / 20,000 inserted (run B +15% / +5% / +7% / +12%); median MERGE latency 152 → 335 µs over the first 10,000 pending, 166 µs after the flush; one insert at #10,734 paid **24.2 ms** (29.4 ms in run B) — the flush.
+
+**Verified against sources:** Revisiting Tables 1, 2, 4, 5, 7, 8, 9 (every ratio recomputed); Sortledton §2–§7 and the code (merge threshold 0.45 vs the paper's 0.5); Teseo Equation (1) checked on the rendered page — the printed `high(W)` has `(τh + τ1)` where the code (`crawler.cpp:295`) and the leaf bound need `(τ1 − τh)`; PCSR Table I/II and the code; LiveGraph §2.1, §4, §6 and the code (Bloom filter from order 10 = 1,024 B, the paper says 256 B; entry 24 B vs the paper's 28 B); FalkorDB delta_wait.c / delta_mxm.c at `ccb449a9a`. Not verified: Aspen directly; the cause of the C engine's rising insert latency; the cause of the PMA's residual 2.6× scan gap; cache effects behind 1d's 2.14×.
+
+## 2026-10-26 — topic 25 — neighbour sampling and aggregate-first, measured
+
+Topic 25's README promised "GraphSAGE's real contribution" and the 90× associativity claim without a lane behind either. Added `sampling.rs` (seeded neighbour sampling, receptive-field counts, a preferential-attachment generator) and two lanes to `gnn_bench`. Counted, identical across two runs: for 256 seeds on 262,144-vertex graphs, SBM (avg deg 15.5, max 35) full 1/2/3 layers = 4,154 / 55,812 / 248,786 vertices (1.58% / 21.29% / 94.90%), sampled (25,10) = 36,895 vertices, 42,603 edges, sampled (15,10,5) = 125,781 / 187,073; preferential (avg 16.0, max 2,316) full = 4,165 / 114,729 / 262,089 vertices, 4,004 / 175,872 / 2,390,821 edges, sampled (25,10) = 29,451 / 34,977, (15,10,5) = 94,944 / 145,740. Sampling cuts 3-layer edges 4.9× (SBM) and 16.4× (hub graph); vertices only 2.0× / 2.8×. Aggregate-first vs transform-first, d_in 1433 → 16 on the 16,384-vertex SBM: counted 89.6× on the sparse side but 3.09× for the layer (the dense XW is paid either way); measured 80.2 vs 180.2 ms = 2.25× (second run 2.23×; a load-35 run 3.33×). README's "90× cheaper" now says which half.
+
+## 2026-10-26 — topic 23 — posting-list compression, measured
+
+README promised compression "that keeps random access" with no bytes behind it. Added `compress.rs` (varint deltas vs tantivy-shaped 128-block bit-packing with varint tail, round-trip tested on every list) and a lane in `fts_bench`. Exact bytes over 7,868,110 postings: raw 62.9 MB, varint 18.6 MB (2.363 B/posting), bit-packed 12.2 MB (1.544 B/posting, 5.2× vs raw, 1.53× vs varint). By df class: head (82 lists, 2,300,771 postings) 2.000 vs 0.786 B/posting; mid 2.060 vs 1.132; low 2.610 vs 1.635; tail (43,092 lists) 2.939 vs 2.939 (identical — no full block). Negative result: scalar decode of head lists is varint 1.66 ns/posting vs bit-packed 2.96 ns/posting (bit-packing is slower without SIMD; tantivy's crate is SIMD and is not measured). Not done: Elasticsearch scatter-gather and RRF hybrid fusion remain unmeasured (RRF needs the Cormack et al. SIGIR'09 PDF read before any figure is cited).
+
+## 2026-10-26 — topic 48 — a two-tier emulation lane
+
+The provided lane's ~1× at 5% hot never showed a tiering time difference. Added lane 1c: a fixed fast set (the 1,024 most-accessed 16 KiB pages of an earlier window, 16 MiB) and a calibrated dependent spin of 165.7 ns (SIDLE Fig. 1(c) 276.9 − 111.2 — a MODEL constant) on every access outside it; spin result folded into the next address through an opaque zero so it serialises; control = same loop, 0 iterations. Counted slow share, packed vs scattered: 0.1% 9.8% / 83.4%; 0.5% 9.9% / 96.6%; 1% 9.8% / 97.4%; 5% 71.7% / 98.2%. Timed (load 13–25): scattered/packed 4.58× / 4.62× / 3.24× / 1.35×; second run 4.42× / 5.74× / 4.07× / 1.26×. The tiered time lands within 16% of control + share × 165.7 (spin runs over its calibration in-loop; first attempt calibrated iterations only and was 18% over, so calibration now times whole calls). Cannot show bandwidth, queueing or prefetch effects of real CXL — stated in README. The earlier README row that rejected a latency-injected tier now says the lane uses it as a labelled model.
+
+## 2026-10-26 — topic 49 — footer control
+
+FINDINGS row 49's footer negative result had no control. Added a 10-column file to lane 1c: footer 1,119 bytes (111.9 B/column); the 50,000-column footer's 6,027,910 bytes are 5,387× that = 5,000× the columns × 1.078× the bytes per column. Timings of the 10-column row (4 / 4 / 3 µs) come from a later, quieter run than the other rows, so the decode ratio is not quoted. The bench previously could be read as "skipping statistics recovers 14.5%" under load; that ratio line was removed — skipping statistics is not faster (18,273 vs 17,522 µs at 50,000 in the latest run).
+
+## 2026-10-26 — topic 20 — GxB_Container and the library boundary
+- Re-measured 2026-10-27 on an idle machine (`./verify.sh 20`): Container load/unload 0.12 µs at every scale; build sorted 386 / 531 / 1,224 / 4,582 µs, shuffled 8,646 / 7,210 / 23,699 / 107,659, extractTuples 106 / 236 / 933 / 3,492, memcpy 19 / 86 / 502 / 2,126. Rust spmv 119 / 609 / 2,905 / 11,648 µs; GrB_mxv JIT off 482 / 2,068 / 8,404 / 36,358 (2.9–4.1× slower); JIT on 70 / 419 / 2,348 / 8,976 (1.2–1.7× faster — not the parity the loaded run below suggested); 11 threads 85 / 129 / 418 / 1,889 (1.4–7.0×). README, notes and reading-gxb-container quote these; the figures below are the loaded first run.
+
+Added `reading-gxb-container.md` (read at the pinned GraphBLAS commit `7701390417`, v10.5.2: `Doc/ChangeLog:147–164`, `Include/GraphBLAS.h:6896–7005`, `Source/container/GB_load_from_container.c`, `GB_unload_into_container.c`, `GB_vector_load.c`, `GB_vector_unload.c`, `Source/builder/GB_builder.c:44–66`) and a measured lane, `gb_container`, that links a real libgraphblas (10.5.0, from FalkorDB's native-deps cache) through a 100-line C shim and `build.rs` (cfg `have_graphblas`; the lane skips, exit 0, without one).
+
+Lane A (RMAT edge-factor 8, seed 42; nnz 120,128 / 494,634 / 2,018,190 / 8,175,704; best of 5, load 24–26): Container load of the Rust CSR 0.17 / 0.12 / 0.17 / 0.12 µs, unload 0.12 at every size; `GrB_Matrix_build` sorted tuples 349 / 540 / 1,557 / 6,822 µs, shuffled 9,384 / 8,164 / 29,497 / 146,676 µs; `extractTuples` 118 / 251 / 1,320 / 4,039 µs; `memcpy` of the CSR 21 / 97 / 550 / 2,355 µs. Asserted in the lane: the pointers an unload returns are the Rust `Vec` pointers; GraphBLAS's own CSR (Ap, Ai both u32, sparse by-row) equals the seeded one entry for entry.
+
+Lane B: Rust `spmv` 116 / 568 / 2,796 / 12,608 µs; `GrB_mxv` on the same matrix loaded via Container, 1 thread: JIT off 502 / 2,132 / 8,712 / 44,868 µs (3.1–4.3× slower; `GxB_BURBLE` shows the generic dot2 kernel), JIT on 150 / 452 / 2,647 / 11,905 µs (parity), 11 threads JIT on 65 / 191 / 759 / 2,864 µs (1.8–4.4× faster than the single-thread Rust kernel). sum(y) agrees to 1e-9 relative.
+
+Negative/caveat: the JIT-off figure is the library without a compiled kernel (this install has no factory kernel on that path), not a statement about GraphBLAS in general; scale-14 single-thread JIT cells moved 63 → 150 µs between runs at different load.
+
+## 2026-10-26 — topic 46 — RelGo, the cross-model-tax preprint, and the C engine on lane 1's graph
+
+Added `reading-relgo.md` (RelGo, PACMMOD 2(6) / SIGMOD, Dec 2024, arXiv:2408.13480 v3, read §§1–5 and 7; Fig. 4b's "10^4" confirmed from the page image; and arXiv:2609.05014 v2, read §3.1–3.4, §5.3, abstract). Findings cited with sections: Lemma 1 (§3.1.1), Theorem 1 and Fig. 4 (§3.1.3–3.1.4), physical operators (§3.2.2; EXPAND_EDGE flattens), rules (§4.2.3: FilterIntoMatch 299.4×/699.8× on LDBC10/30, TrimAndFuse 2.0×/2.3×), evaluation (§5.3: 21.9× / 5.4× / 49.9× / 188.7× on LDBC100, 8.2× / 4.0× / 1.7× / 136.1× on JOB), setup (DuckDB v0.9.2, single thread, Xeon E5-2682). No mention of factorized intermediates in RelGo's text.
+
+C FalkorDB (redis-server 8.6.2, falkordb.so RelWithDebInfo of 2026-07-24, module version 999999, clone main at 5e475e6c92) on lane 1b's seeded graph via `experiments/cengine.py` + `src/bin/pgq_edges.rs`, loaded edge counts checked (77,164; 155,727): "every hop used" form returns the bench's counts exactly (2-hop 6,665,086 / 17,759,290; 3-hop 234,636,483 / 721,738,265) in 592.5 / 1,588.2 / 30,091.5 / 87,416.0 ms; "endpoints only" form folds the chain to one `Conditional Traverse (a)->(v3)` and returns distinct endpoint pairs (5,809,343 / 15,926,364 / 45,794,367 / 157,710,285) in 325.2 / 1,033.3 / 2,474.7 / 8,067.3 ms. The pair counts and Σ(A²) were reproduced independently with a dense matrix product (nnz(A²) = 5,809,343, Σ(A²) = 6,665,086, nnz(A³) = 45,794,367 at |V| = 10,000).
+
+## 2026-10-26 — topic 13 — reference lanes, C FalkorDB column, WCOJ filter placement
+
+- Reference CSR + masked-SpMV (scratch crate, not committed) on the topic's
+  seeded graph (1 M nodes, 15,998,310 edges): ns/query random / supernodes —
+  adj_list 3,029 / 296,180; CSR 2,503 / 247,659; masked SpMV 2,628 / 267,001
+  (median of 3 reps, quiet machine, under the bench lock). Checksums equal the
+  oracle (10,220,457 / 7,890,665). Edges scanned per query 1,042 / 89,034
+  (85.4x), rows opened 17 / 1,624, reached 1,022 / 78,907 (77.2x), model
+  bytes 12,560 / 1,040,888. Supernode/random: 97.8x / 98.9x / 101.6x.
+  Finding: CSR removes a constant 1.2x, not the tail; the README's 1.31x
+  per-reached-node residual is 1.11x extra edges (1.13 vs 1.02 edges per
+  reached node) times ~1.14x cache.
+- C FalkorDB (~/repos/FalkorDB/bin/macos-arm64v8-release/falkordb.so, ver
+  999999 dev build, repo main 25babfe4f, redis 8.6.2, port 6391) on the same
+  graph via falkordb-bulk-insert: every per-source count equals the oracle;
+  server median 183 us random / 14.9 ms supernodes (73x / 60x the Rust CSR);
+  RETURN 1 floor through the Python client 214 us. Server was shut down.
+- Topic 24: same RMAT/uniform graphs in C FalkorDB — triangles via Cypher
+  15,645,988 / 5,428 (equal to Rust) in 31,097 ms / 3,015 ms vs Rust 383.8 /
+  142.1 ms; algo.WCC 18,844 components (equal), 18.5 ms vs 4.2 ms;
+  algo.pageRank 16.7 ms vs 11.1 ms (procedure latencies, not controlled).
+- Reading: reading-wcoj.md Step 7 (filters as leaptors; arXiv:2608.03840 §3.3,
+  §4.1, §4.3, §6.2) and HoneyComb (arXiv:2502.06715 Fig. 2 / Examples 1.1-1.2,
+  numbers verified against the PDF); reading-free-join.md paragraph on
+  arXiv:2505.19918 (§5.2.1 geomeans 1.49x / 1.42x, minima 0.71x / 0.30x).
+  HoneyComb is about parallel skew, not filter placement; the guide says so.
+- matrix.rs gains stub test spmv_touches_only_the_frontiers_targets (passes
+  against the reference solution; bounds writes and output by frontier work,
+  cannot see reads — stated in notes.md).
+- README: mermaid diagram of adjacency list vs CSR vs masked SpMV; Kuzu
+  paragraph re-verified (archived, last commit 89f0263 2025-10-10, LadybugDB
+  README says "formerly known as Kuzu") and a RyuGraph fork pointer added
+  (predictable-labs/ryugraph, created 2025-10-13). "Bighorn" could not be
+  found in GitHub search or web search, so it is NOT added.
+
+## 2026-10-26 — topics 14, 22, 38 — ANN curve, filtered-search over-fetch, benchmark methodology
+
+- **Topic 14.** FINDINGS row 14 was a denominator. Reference solutions of the two stubs (scratch only, never committed: `/private/tmp/claude-501/-Users-aviavni-repos-database-learning-path/23b67dea-6461-44d1-bfeb-a11c855f7109/scratchpad/avb/vec14/src/{hnsw,quant}.rs`; all 10 stub tests pass against them) give, in one locked `ann_bench` run (M3 Pro; brute force 149 QPS, 3.35 s): HNSW m=16, ef_c=128, build 13.3 s, max_level 4, recall@10 / QPS at ef 16/32/64/128/256 = 0.962/22,336, 0.988/15,490, 0.999/11,450, 1.000/8,884, 1.000/6,933; u8 scan+rescore x1/x2/x4 = 0.961/698, 1.000/602, 1.000/453. Recall columns identical across three runs. The clustered generator is easy for HNSW (recall 0.962 at ef=16), so these are a ceiling.
+- **New provided lane `filter_bench`** (brute force + exact rankings only; `data::clustered_labeled` / `queries_with_source` added with identical RNG draws so `clustered`/`queries` output is unchanged). Over-fetch factor α = rank of the K-th matching vector, K=10, 500 queries. Mean α, independent filter at s = 50/10/1/0.1%: 19.9 / 99.1 / 958.6 / 8,527 (K/s = 20/100/1,000/10,000); aligned: 10.2 / 34.3 / 317.5 / 6,779; anti-aligned: 337.8 / 852.5 / 2,332.7 / 11,563. Two identical runs. The Eq. 5 estimator of Lim et al. (arXiv:2606.14193) evaluated as printed has K/s as a floor and overshoots measured α by 4.0x (1% independent: 3,798 vs 959) and 4.8x (0.1%); the paper validates it only by rank correlation.
+- **Reference HNSW under filters** (200 queries, K=10, ef 128; counts seeded, two identical runs): restricted traversal recall 0.999 / 0.566 / 0.018 / 0.002 at s = 50/10/1/0.1% (independent); score-through recall ≥ 0.996 everywhere at 592 / 3,438 / 26,058 / 99,880 distance evaluations vs a scan of 50,000 / 10,000 / 1,000 / 100; post-filter x16 / x64 recall at 1% 0.159 / 0.650. Traversal-to-scan crossover between 10% and 1%.
+- **Papers read in full** (PDF -> text, numbers cross-checked): arXiv:2508.16263 (v2) — new guide `reading-filtered-ann-survey.md`; arXiv:2610.02652 and arXiv:2603.02164 — Step 6 of `reading-diskann.md`; arXiv:2609.09854 — Step 7 of `reading-qdrant-quantization.md` plus a pointer in `reading-pq.md`; arXiv:2606.14193 — the README rho <= -0.7 claim checked and confirmed (§3.4.3: "typically rho <= -0.7" for alpha-Hardness over 29 datasets and seven strategies, Fig. 3 caption; selectivity "near zero or unstable"). Judgment: the survey earned a guide (its ladder grounds the planner section and its numbers sit beside measured ones); RaBitQ-SSD and CatapultDB share one Step in the DiskANN guide (both are answers to DiskANN's two costs); the low-bit paper is one Step because its evidence is a theory plus one table. Negative results recorded: RaBitQ-SSD is overtaken by the best graph baseline at recall 0.98 with the full prefix on 4 of 5 datasets (§5.2); CatapultDB loses 25.4% on uniform queries (§4.3.1) and its "up to 2.51x" cannot be recomputed from the text (checkable: 2.23x / 2.01x).
+- README gains a mermaid diagram of the HNSW query path with the filtered variants marked, the measured over-fetch table, paragraphs on the four papers; notes.md gains the reference-numbers section.
+- **Topic 22.** README deepened with sections on TPC-C (Clause 5.2.5.7 table; the 12.86 tpmC/warehouse ceiling derived: 0.45*30 + 0.43*15 + 0.04*12 + 0.04*7 + 0.04*7 = 20.99 s per terminal cycle, 60/20.99*0.45*10 = 12.86), JOB (113 queries, 33 structures, 21 tables, 3.6 GB; §2.1-2.2), LDBC SNB v2.2.4 (IC 1-14, IS 1-7, BI 1-20, SF = GiB of CSV, 95% on-time within 1 s §7.4), ClickBench (99,997,497 rows, 43 queries, 10 ms floor, failed query = 2x slowest with 300 s floor, geomean), a which-suite-for-which-question table, and a methodology case on arXiv:2609.23315.
+- **arXiv:2609.23315 (read in full).** For FalkorDB it reports ONLY: query geomean 1.81 ms at 1.02 M nodes with 18/20 shapes correct (§5.1, App. A.1) and point update 0.85 ms (§5.5). No ingest throughput, batch update, 1K/10K-scale latency, version, engine variant (C vs Rust), hardware or thread count appears for any system; which two shapes failed is not stated. Ingest spans 4.3 M to 5.0 k rows/s across engines (~860x). Crossover Eq. 6 on the paper's inputs = (61.4 - 1.24) / (2.47e-3 - 0.90e-3) = 38,318, paper prints 38,304 (rounding). Internal inconsistency found: Table 1's Ladybug "(copy)" row carries the attach configuration's ingest (476,000) and point-update (0.96 ms) values per App. A.1 (copy: 793,462 rows/s, 4.08 ms, 1.57 ms), and §5.1 quotes 3.97 ms where the table says 4.08.
+- **Topic 38.** README gains a mermaid diagram (text -> extraction -> FalkorDB graph -> PPR / communities / bi-temporal -> context) and the section "What a graph-memory benchmark has to report: the ingest bill" with the FalkorDB datapoint above.
+
+## 2026-10-26 — topic 30 (+12, 18) — value-stream baseline, ALP/Chimp guide, GPU-Parquet note
+
+- Topic 30 headline: the provided lane compressed only timestamps, so FINDINGS reported 11.00 B/sample "for all four shapes". Lane 1 now also encodes values (`xor_bytes_encode`: XOR with previous, leading zero bytes dropped, 4-bit tag): timestamps 3.00 B/sample on every shape; values 0.50 (constant), 6.80 (gauge), 6.07 (counter), 7.48 (random); totals 3.50 / 9.80 / 9.07 / 10.48 B/sample; decode 214 / 132 / 124 / 136 Msamples/s (M3 Pro, one locked run).
+- Lane F (new, provided, `alp.rs`): ALP-style decimal-to-integer + FOR + bit-pack, single-level (e,f) search over all 190 pairs on a 32-value sample, raw fallback per vector, no ALP_RD. B/value, byte-XOR / Gorilla(reference) / ALP: decimal 2dp 6.79 / 8.03 / 1.50; decimal 6dp 6.82 / 8.07 / 3.25; counter 6.07 / 3.01 / 1.95; constant 0.50 / 0.13 / 0.01; f64 walk 6.80 / 8.07 / 8.00 (95.1% exceptions, 926/977 vectors raw); random 7.48 / 7.37 / 8.00. ALP decode on the decimal path 590 / 589 / 647 vs byte-XOR 164 / 168 / 174 Mvalues/s (3.5-3.7x).
+- Negative result: Gorilla (reference) is worse than raw (8.03 B) and worse than byte-aligned XOR (6.79) on 2-decimal values: the reuse window opens wide and never narrows (10 windows in 1M values, 99.1% reuse, 64.23 bits/value). Random doubles cost 59.00 bits/value in Gorilla (4 windows), not the 77 bits the guide's old accounting claimed.
+- Gorilla stub spec fixes: tests "gauge beats raw 3x" and "random > 8 B" were false for an honest implementation (9.48 B total / 7.37 B value); replaced by counter-beats-3x (4.42 B jittered total), gauge > 7 B, random 6.5-9 B. The dod bucket upper ends (64/256/2048) do not fit two's complement, so the layout doc now states the prometheus decode rule. Reference solution (gorilla, head, index) kept in scratch only; reference numbers recorded in notes.md.
+- reading-alp-chimp.md written against ALP paper (SIGMOD 2024), Chimp paper (PVLDB 15(11)), cwida/ALP @31ca0ed, DuckDB @d54cbbe3df. Findings from the code: DuckDB's ALP does not use FastLanes FFOR (BitpackingPrimitives, two passes); ALP and ALPRD are separate compression functions scored by the generic analyze step; Chimp and Patas are deprecated for writing at the pin; MAX_EXPONENT is 18 in code (paper analysis uses 21). Paper figures quoted: Table 4 ALL AVG (ALP 21.7, Chimp128 28.7, Gorilla 42.2, Zstd 20.6 bits/value), Table 5 (ALP 2.609 vs Gorilla 0.047 tuples/cycle decompress).
+- Topics 12/18: Luo/Chen/Binnig (DaMoN '26, arXiv:2602.17335) read in full. 125 GiB/s is an *effective* rate (logical bytes / scan time); sanity check from its own figures: 1 SSD = 6.4 GiB/s (Fig. 2), 4 SSD = 25.6 GiB/s of file bytes, compression ratio 5.3 (Fig. 3) gives 135.7 GiB/s ceiling; 1-SSD point 6.4 x 5.3 = 33.9 vs reported 33. Fig. 1 series (GiB/s): 1, 3, 45, 117, 125. Added a scan-pipeline mermaid to topic 12 README and a transfer-path mermaid to topic 18 README.
+
+## 2026-10-26 — topics 4, 6, 8, 21 — storage and transactions refresh
+- Topic 8 baseline fixed (2026-10-27): the provided `txn_bench` built each key's `String` inside the global mutex, which halved the lock and made it look flat (~600k txn/s on every mix). Keys and coin draws now happen before the lock. Re-measured, median of three: lock 1 393 945 / 806 155 / 1 092 582 txn/s (read-heavy / 50/50 10K / 50/50 64 hot); the reference MVCC 1 976 273 / 1 320 490 / 1 553 817 (1.42× / 1.64× / 1.42×, ~3 / ~230 / ~31 600 aborts). FINDINGS row 8, README, notes and two guides (reading-inmemory-mvcc, reading-ssi-postgres) rewritten to the fixed numbers; the sweep keeps the keys-inside column as the cost of allocating under the lock.
+
+- Topic 8: wrote a reference MVCC in a scratch crate (RwLock over `HashMap<Key, Vec<Version>>`; passes all 8 tests; not committed). `txn_bench` with it, median of 3, 4 threads × 50 000 txns × 4 ops: read-heavy 600 842 → 2 119 487 txn/s (3.53×); 50/50 10K keys 526 678 → 1 353 137 (2.57×); 50/50 64 keys 576 817 → 1 640 987 (2.84×), ~31 800 aborts of 200 000 commits. Keyspace sweep (50/50): MVCC÷fair-lock 1.50× at 100 000 keys, 1.62× at 10 000, 1.82× at 1 000, 1.61× at 64, 1.34× at 16, 1.24× at 8, 1.06× at 4, 0.90× at 2, 0.70× at 1; aborts per commit 0.000, 0.001, 0.011, 0.154, 0.516, 0.833, 1.246, 1.496, 1.673. The provided baseline builds key strings inside the lock; the "fair" lock (~0.9 M txn/s) builds them outside. Single-mutex MVCC variant is 0.68× of the RwLock one at 64 keys. Serializable mode 0–25% slower, ~1.9× the aborts at 64 keys. README prediction (MVCC loses the hot row) did not reproduce; crossover at ~1 key per thread. Papers: SVCC (CIDR'27) is a position paper whose evidence is LoC (303/45/665 vs 426/265/1325, Table 1) and one TPC-C point (127K vs 119K txn/s, 8 threads, §3.3); cMVBT (arXiv preprint) is index-level, single-row transactions only, "preliminary" experiments reported as figures — both added to README §4 with those limits stated.
+- Topic 21: `normalise_bench` (provided lane 1b, runs without src/eqsat.rs). 200 seeded exprs/depth, hand fixpoint vs egg (9 unordered rules + ConstFold analysis, 12 iters / 20 000 e-nodes). Failures (hand cost > egg min): 4/200, 9/200, 23/200, 63/200, 118/200 at depths 2–6; mean cost hand 5.7/12.2/24.1/48.6/95.1 vs egg 5.6/11.8/23.1/43.1/73.9; saturated 194/187/177/144/98; max e-nodes 64/320/1836/2569/4750; reorder control 0/1000 changed (traversal is bottom-up); 1090 constant-analysis disagreements from the unsound x/x→1; depth-4 e-nodes per iteration 31.0 (seed), 21.6, 36.0, 40.9, 44.0, 47.2, 50.1, 53.6, 58.6, 66.8, 81.2, 107.8, 120.2. `hand.rs` gained `hand_optimize_ordered`; default behaviour unchanged (eqsat_bench hand column identical: 21/90/355/1390).
+- Topic 6: read Predictive Translation (SIGMOD '26); wrote `reading-predictive-translation.md`; README §3 revised (single-owner swizzling now "ruled out for DAG-shaped tiles", LIPAH/predictive translation as alternatives; vmcache called the first synthesis). New provided lane `translation_micro` (2^20 × 64 B pages, 50%-full open-addressing table): chained access ns/access, run 1/run 2 — direct 101.5/102.9; hash 213.4/198.2; predictive 107.5/107.5 at 0% miss; 130.6/118.5 at 10%; 178.4/184.2 at 50% (hash 201.1/200.9 and 243.2/209.5). Independent: hash 14.2/10.8, predictive 10.9/8.5 at 0%; predictive worse than hash at 50% (16.4/16.1 vs 11.2/10.3). Negative intermediate result recorded in the guide: with the guessed read inside the `if f == pred` arm there was no gain (two scratch variants — black_box, xor-zero — both stayed at the hash time); hoisting the read above the branch matched `direct`. Assembly not read. Derived (not in the paper): Poisson/zero-truncated chain lengths reproduce the paper's 77% / 92% / 97% at fill 0.5/0.75/1.0; the paper's "480 GB" vmcache metadata figure recomputes to 469 GB (decimal TB) or 515 GB (binary TB).
+- Topic 4: README §3 gains a DiaLSM paragraph (M/G/1 vacation model of write stalls, Eq. 1–3 recomputed from the PDF — the extraction had swapped numerator/denominator, checked against the page image layout; MAE 0.03 stalls/s, Table I; 94.3% fewer stalls and up to 2.4× throughput vs ADOC, FillRandom, RocksDB 8.3.2; extra tail latency at p99.9+ stated). `reading-monkey.md` Step 6 gains the log-law/robustness paragraph from arXiv:2606.18138 with two worked examples (1.443 extra bits for 2× traffic; 6.0% excess for a 2× error on half the keys); stated as preprint, pre-registered point test failed (MAE 0.231 vs 0.15).
+
+## 2026-10-26 — topics 0, 11, 26, 27, 28, 36, 45 — magnitude claims checked against measurements
+- 11: the README's "one to two orders of magnitude" for vectorized over Volcano did not reproduce. A reference solution of the stubbed lanes (scratch, not committed) measured vectorized 1.7× and a fused branch-free kernel 9.2× over Volcano at 50% selectivity (299.5 and 1,618 vs 175.0 M rows/s); 1.7–3.1× and 3.7–9.2× across selectivities, 1.7× and 9.3× on a second run. The BATCH_SIZE sweep shows no small-batch arm: 64 and 1,024 within 10%, 65,536 loses 20–36%. README and diagram reworded.
+- 27: "3–5 orders of magnitude" became "1–3": a reference incremental solution maintained triangles 1,271× faster than full recompute (97.5 µs per batch), reachability 43×, the wedge join only 24× (39.5 ms) under load; re-run on an idle machine 2026-10-27: 1,450× (69.5 µs), 44× (655 µs), 21× (41.2 ms) — the figures the topic quotes, because its state is re-merged every batch.
+- 26: reference blocked Bloom filter at 10 bits/key answers a miss in 28 ns at 0.96% false positives in 11.9 MiB, 19× less memory than the 224 MB HashSet; HyperLogLog counts in 16 KB at 1.33% error (~14,000×). Cuckoo and learned-index lanes not implemented.
+- 36: Dynamo's "three orders of magnitude" smaller metadata is §6.2 prose with no table behind it (PDF read); the README now attributes it to the authors.
+- 0: DRAM reads ~100 ns, with the measured 87 ns at 64 MB and 104–113 ns at 128–512 MB in a footnote; the fsync row is marked as not this laptop's.
+- 28: its NVMe "0.10 ms" read p50 is a simulated constant (90–119 µs in `sim.rs`); the README says so and points at topic 45's measured uncached 68.8 µs p50 (13,810 IOPS at QD1). reading-slatedb-quickwit.md used that read latency as a local fsync; it now cites topic 5's 22.67 µs and 2.97 ms. Topic 45 states its path (`F_NOCACHE`) beside its page-cache lane.
+- fsync figures (856,898 / 44,109 / 337 per second; topic 15's 341) agree across topics 0, 5, 15, 28.
+- These runs were taken at load average 25–40; only within-run ratios were quoted, and the absolutes were re-measured serially before release.
+
+## 2026-10-26 — topics 16, 29, 31 — headlines that measured the harness
+- 16 crash_matrix: seeds for 95% N=ceil(ln .05/ln(1-p)): LostDelete 3, NoSyncOnCommit 1, TornWriteAccepted 5, StaleRead 2 (99.9%: 6/2/11/3); blocks hit 1650/1666, 4980/5000, 977/1000, 2493/2500. Length sweep (2000 seeds) 5/10/20/40/80 ops: LostDelete 5.6/14.3/38.5/74.8/98.1; NoSync 82.0/90.2/96.4/99.8/100; Torn 5.0/13.3/27.5/50.6/75.5; Stale 22.4/46.4/73.5/94.5/99.8.
+- 29 txn_bench lane 1b: abort% 0.03/7.74/50.67/72.90, attempts/txn 1.000/1.084/2.027/3.690, RTT/commit 4.001/4.252/7.082/12.070, max attempts 2/6/8/8.
+- 31 crdt_bench: negative result. Old "lost" counted all merge overwrites. Classified with write identities (replica, seq, writes-seen-of-other): 10 keys sync 1: overwritten 94.98%, concurrent lost 5.00% (2000/40000); model K*pA^2/(2s) agrees (5.00%). Sweep 10..10000 keys x sync 1..1000 added (lane 1b); peak ~20% at s≈K.
+- READMEs of 09, 17, 39, 42, 43 gained mermaid diagrams (OLC sequence, NEON compress, identity-resolution pipeline, Pixie pipeline, localization). 37 and 41 keep their existing ASCII diagrams (exchange operator; taint/flow) by the brief's rule.
+
 ## 2026-10-26 — topic 50 — LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost
 
 **New topic 50, `LLM-Era Query Processing: Semantic Operators, Text-to-Query, and Their Cost`** — semantic operators (LLM-powered filter, join, map, top-k inside a plan), text-to-query and the agent as client, read as a cost-based optimization problem for an operator that costs dollars and seconds per row and is sometimes wrong. Package: README, six reading guides, `notes.md`, a dependency-free Rust crate (`semop_bench`) with lane 1 implemented and two lanes stubbed, `FINDINGS.md` row, `verify.sh` lane, `PLAN.md` §50 and a map node (`T10 --> T50 --> T38`), capstone M50, SUMMARY entries, `resources/papers.md` entries; topic count 46 → 47 and crate count 47 → 48 where they appear (sibling topics 46–49 are being built in parallel; the merge reconciles). `check-reading-depth.py --check --all` reads **247/247**.

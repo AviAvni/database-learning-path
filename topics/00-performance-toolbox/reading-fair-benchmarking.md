@@ -550,6 +550,8 @@ Answer each before unfolding it.
 | §3.8 | verify against a reference engine, and re-verify when the data changes |
 | Appendix A | the checklist, condensed in the table above |
 
+**See also.** A 2026 worked example of the checklist applied to a vendor benchmark, including a table that disagrees with its own appendix: [topic 22](../22-benchmarks/README.md#a-methodology-case-the-benchmark-that-prices-ingest).
+
 **Code**
 - [pholanda/FairBenchmarking](https://github.com/pholanda/FairBenchmarking)
   — the paper's experiment scripts and configs, the artifact §3 preamble

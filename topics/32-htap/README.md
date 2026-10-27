@@ -24,7 +24,7 @@ outage, and the outage is as long as the scan: a writer that arrives while
 a scan holds the lock waits for all of it. The lock is deliberately coarse, but the shape survives every
 mitigation short of separation: scans and writes on one copy fight over
 *something* (locks, cache lines, buffer pool, MVCC GC). HTAP architectures
-are the catalog of ways to stop the fight.
+are the catalog of ways to stop the fight. [Topic 8](../08-transactions-mvcc/README.md) weighs the single-version side (the CIDR '27 SVCC paper) against its own MVCC sweep; the long-running-scan case where versions pay is the one that sweep does not contain and this topic measures.
 
 ## The trilemma
 

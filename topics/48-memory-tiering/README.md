@@ -24,7 +24,7 @@ graph LR
 
 Two questions run through the topic: *what* to put in the fast tier (layout
 and granularity — lanes 1 and 2, OBASE, SIDLE, TPP), and *how much to move*
-when the data starts in the slow one (the hash-join paper's model, lane 3).
+when the data starts in the slow one (the hash-join paper's model, lane 3). Allocation order sets the page layout a placement policy inherits: topic 56 measures how a churned heap interleaves hot and cold objects within pages (resident ÷ live 1.13–1.64× for the system allocator after lane 1b's churn; [topic 56](../56-memory-allocators/README.md)).
 
 ## The problem, measured (bench lane 1, provided — runs today)
 
@@ -87,12 +87,75 @@ check catches; see notes.md). The loop floor — 8 ns of multiplies and
 shifts that sit on the dependency chain to pick the next object — is in every
 row.
 
+## Lane 1c — the same accesses with a slow tier (MODEL for the slow tier)
+
+Lane 1b's one tier cannot show a *tiering* time difference: at 5% hot, 3,257
+packed pages against 57,116 scattered pages is a 17.5× difference in the fast
+tier a placer needs, and the clock reads 1.07×, because both layouts miss to
+the same DRAM. Lane 1c gives the machine a second tier it does not have. The
+fast tier is a fixed set of 1,024 16 KiB pages (16 MiB, 1.6% of the arena) —
+the 1,024 most-accessed pages of an earlier window, the best any static
+placement can do. Every access to a page outside that set is followed by a
+dependent busy chain whose duration is calibrated to **165.7 ns**, SIDLE's
+slow-minus-fast latency (276.9 − 111.2, Figure 1(c)). The chain's result is
+XOR-ed into the next address through an opaque zero, so it adds its duration
+to the critical path the way a longer load would, and the id stream and
+checksums are unchanged.
+
+**What is modelled, what is measured, what is counted.**
+
+| | status | how |
+|---|---|---|
+| the 165.7 ns per slow access | MODEL | a published pair from one CXL platform, applied as a constant; no CXL device was touched |
+| that slow accesses serialise with no queueing or bandwidth limit | MODEL | a dependent chain has queue depth 1, so a loaded CXL link would be *worse*, not better |
+| the spin's cost | MEASURED | calibrated by timing chains of calls until one call costs 165.7 ns (call overhead included), then checked inside the loop |
+| the control column (same loop, same bitmap lookup, zero spin) | MEASURED | the machine's own cache and DRAM behaviour under each layout |
+| slow share (accesses outside the fast set) | COUNTED | exact for the seed; the timing difference follows from it |
+
+Apple M3 Pro, load average 13–25 during the run (other benchmarks were
+running; the rows below are one run, see notes.md for a second):
+
+```
+   hot set              layout      slow share   control ns   tiered ns   predicted ns   tiered/control
+   0.1% (1.0 MiB)       packed            9.8%        30.61       47.79          46.92            1.56x
+                        scattered        83.4%        51.39      219.05         189.50            4.26x
+                        scattered/packed with the slow tier: 4.58x time
+   0.5% (5.1 MiB)       packed            9.9%        41.20       59.61          57.53            1.45x
+                        scattered        96.6%        94.45      275.26         254.43            2.91x
+                        scattered/packed with the slow tier: 4.62x time
+   1.0% (10.2 MiB)      packed            9.8%        78.06       84.70          94.37            1.09x
+                        scattered        97.4%       111.44      274.28         272.84            2.46x
+                        scattered/packed with the slow tier: 3.24x time
+   5.0% (51.2 MiB)      packed           71.7%       105.69      217.38         224.53            2.06x
+                        scattered        98.2%       128.55      293.20         291.32            2.28x
+                        scattered/packed with the slow tier: 1.35x time
+```
+
+*predicted* is `control + slow share × 165.7 ns`; the tiered time lands within
+16% of it on every row (the in-loop spin runs a little over its calibration,
+and the 1% packed control of this run was disturbed by load: 78 ns against
+38–43 ns in two other runs, see notes.md). **With a slow tier the layout
+difference is a time difference at every hot-set size:** a packed 1% hot set
+sends 9.8% of accesses to the slow tier and a scattered one **97.4%**, and
+the time follows the share, 3.2–5.7× across runs for 0.1–1% hot sets. At 5%
+the packed hot set (3,257 pages) no longer fits the 1,024-page fast tier —
+71.7% of its accesses go slow — and the gap closes to 1.3×. That is what a
+fast tier too small for the hot set looks like, and it is the same boundary
+as lane 1b's, one tier up.
+
+What this does **not** say: that CXL would show these ratios. A real CXL
+card has a bandwidth ceiling (65.6% of local DRAM on SIDLE's platform), a
+prefetcher that hides latency for sequential access, and a queue that fills
+under concurrency; a dependent chain at queue depth 1 exercises none of it.
+The 165.7 ns is an input to this lane, not an output. The measured content
+is that the time follows the counted slow share, to within the stated 16%.
+
 ## What this machine cannot measure, and why
 
 | claim | why it is not a number here |
 |---|---|
 | CXL load latency and bandwidth | No CXL device. Apple silicon has one unified memory pool on the SoC package; `sysctl` shows one memory size and no NUMA topology. The table below quotes the papers' measurements, each with its section. |
-| a latency-injected "far tier" | Rejected on purpose: spinning N ns per access measures the spin, not a memory device, and hides exactly what a real CXL link changes (bandwidth sharing, queueing at the controller, prefetcher behaviour — Weisgut et al. §4.4 found sequential CXL reads at 65 ns vs 45 ns because the prefetcher hides latency). |
+| a latency-injected "far tier" as a *measurement* | Spinning N ns per access measures the spin, not a memory device, and hides exactly what a real CXL link changes (bandwidth sharing, queueing at the controller, prefetcher behaviour — Weisgut et al. §4.4 found sequential CXL reads at 65 ns vs 45 ns because the prefetcher hides latency). Lane 1c uses that spin anyway, as a labelled MODEL, for the one thing it can show: how much a layout's *page count* costs in time once a slow tier exists. Its latency is a published number, not a measurement of anything here. |
 | TPP / MEMTIS / weighted interleave | Linux kernel features (`numa_balancing = 2`, `demotion_enabled`, `MPOL_WEIGHTED_INTERLEAVE`). macOS has none of them. Lane 3 is a **simulation** of a TPP-like policy over lane 1's page trace, priced with published latencies, and every figure from it is labelled MODEL. |
 | the hash-join paper's partial move | Needs a CXL node and Linux ≥ 6.9; and its released code does not contain the partial-move strategy ([reading-hashjoins-cxl-code.md](reading-hashjoins-cxl-code.md), Step 5). Lane 3 recomputes the paper's model from its Table 1 instead — and one row does not reproduce. |
 | RDMA disaggregated memory | No RDMA NIC. SHARD's numbers are quoted, not reproduced. |
@@ -189,7 +252,7 @@ not quite the gain (1.1665 vs 1.1703); the NPHJ row reproduces neither (x\*
 reductions, i.e. 1.285× and 1.037×) exceed what the paper calls its model's
 upper bound. The direction holds — move part of the data to DRAM, not all of
 it, and never into the interleaved tier — the bound does not
-([reading-hashjoins-meet-cxl.md](reading-hashjoins-meet-cxl.md)).
+([reading-hashjoins-meet-cxl.md](reading-hashjoins-meet-cxl.md)). The fast-tier latency, TLB-reach and bandwidth ladder these partitioned and non-partitioned costs assume is measured for an M3 in [topic 54](../54-join-algorithms/README.md) lane 0.
 
 ## Step 5 — the far tiers: disaggregated memory and metadata
 
@@ -245,7 +308,7 @@ Linux the kernel side is `kernel.numa_balancing = 2`
 
 ```
 cd experiments
-cargo test              # 10 provided tests pass; 8 stub tests (lanes 2 and 3) are the specification
+cargo test              # 12 provided tests pass; 8 stub tests (lanes 2 and 3) are the specification
 cargo run --release --bin tier_bench
 ```
 
@@ -255,8 +318,9 @@ cargo run --release --bin tier_bench
 - `layout.rs` (PROVIDED) — packed and scattered layouts as arithmetic
   bijections; exact counts: pages touched, pages for 90% coverage, page
   utilization, hot-set footprint.
-- `chase.rs` (PROVIDED, lane 1) — the latency ladder and the timed placement
-  loop, layouts timed in alternation.
+- `chase.rs` (PROVIDED, lanes 1 and 1c) — the latency ladder, the timed
+  placement loop with layouts timed in alternation, and the two-tier loop (a
+  fast-page bitmap, a calibrated spin on every slow access — MODEL).
 - `reorg.rs` (stub, lane 2) — `learn_layout`: count, order, pack. Contract:
   a permutation; deterministic; ≥ 95% of hot objects in the first hot-set-sized
   pages; ≤ 1.25× the oracle's pages for 90% on a held-out window; ≥ 2× the
@@ -323,7 +387,8 @@ whole graph in one memory pool; this milestone adds the placement layer.
 - [ ] Vertex renumbering by access frequency (lane 2's `learn_layout` applied
       to matrix rows), with page utilization and pages-for-90% reported before
       and after on a skewed traversal workload — the counted columns of lane
-      1b, for the engine's own data.
+      1b, for the engine's own data ([topic 52](../52-graph-compression/README.md)
+      measures renumbering in bits per edge and gather misses).
 - [ ] Before a bulk traversal over a slow-tier adjacency, the Huang et al.
       decision: measure k and m once, copy x\* of the rows to the fast tier, and
       report the end-to-end time against copy-nothing and copy-all.

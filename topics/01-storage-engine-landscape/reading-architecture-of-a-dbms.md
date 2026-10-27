@@ -229,8 +229,9 @@ an ordinary procedure call, so "a tuple is returned to a parent in the graph
 exactly when control is returned. This implies that only a single DBMS thread
 is needed to execute an entire query graph, and queues or rate-matching between
 iterators are not needed." Dataflow and control flow are the same edge. Topic 11
-measures what that costs: Volcano tops out at **103 M rows/s** and gets *slower*
-as selectivity rises ([FINDINGS.md](../../FINDINGS.md) row 11).
+measures what that costs: Volcano runs at **183.5 M rows/s** at 50% selectivity,
+its slowest point, with a mispredicted filter branch on top of the per-tuple
+call cost ([FINDINGS.md](../../FINDINGS.md) row 11).
 
 The stakes of stage 3 are not cosmetic, and the arithmetic is worth doing
 rather than asserting. Assume a 1,000,000-row table, 100-byte rows, 8 KB pages,

@@ -46,29 +46,39 @@ This repo has the tax on a machine you can hold:
 
 ```
  FINDINGS.md row 11 / notes.md — exec_bench volcano lane,
- Apple M3 Pro, 50M rows, scan -> filter -> group-by-sum:
+ Apple M3 Pro, 50M rows, scan -> filter -> group-by-sum
+ (median of three runs; ns per scanned row = 1e3 / rate):
 
-   5%  selectivity   0.386 s   129.4 M rows/s    7.72 ns per scanned row
-   50%               0.484 s   103.3 M rows/s    9.68 ns
-   95%               0.669 s    74.7 M rows/s   13.38 ns
+   5%  selectivity   0.098 s   511.2 M rows/s    1.96 ns per scanned row
+   50%               0.272 s   183.5 M rows/s    5.45 ns
+   95%               0.169 s   295.0 M rows/s    3.39 ns
 
- at ~4 GHz:      7.72 ns = ~31 cycles to move one row through
-                 two dyn calls and one accumulate
+ at ~4 GHz:      1.96 ns = ~8 cycles per row at 5% (about one dyn call
+                 per row), 3.39 ns = ~14 cycles at 95% (about two dyn
+                 calls and one accumulate per row), 5.45 ns = ~22
+                 cycles at 50%
 ```
 
-Two things to carry forward. First the size: ~31 cycles for work that is
-a compare and an add. X100's profile of MySQL puts a single addition at
-49 cycles ([reading-x100.md](reading-x100.md)); the paper here notes the
+Two things to carry forward. First the size: ~14 cycles for work that is
+a compare and an add, and ~22 when the filter's branch is a coin flip. X100's
+profile of MySQL puts a single addition at 49 cycles
+([reading-x100.md](reading-x100.md)); the paper here notes the
 resulting whole-system gap between HyPer and Postgres is "between one and
-two orders of magnitude" (§4.1). That is the war both contenders won.
+two orders of magnitude" (§4.1). A predictable `Box<dyn>` chain on a modern
+core is far closer to the compiled engine than that: this repo's reference
+fused kernel is 9.2x over Volcano at 50% ([notes.md](notes.md)), not two
+orders of magnitude.
 
-Second, the direction: the lane gets **slower as selectivity rises**.
-Surviving the filter is what costs — a rejected row costs one `next()`
-call inside the filter's own loop, a survivor pays a second `next()` up
-the chain plus the aggregate's hash and accumulate. "High selectivity =
-less work" is exactly backwards for a tuple-at-a-time engine, and the
-95% column is the number to keep in mind when Step 5 explains why the
-*probe* is where the two models actually separate.
+Second, the shape: the lane is **slowest at 50% selectivity, not at 95%**.
+The 50% peak is branch misprediction — the filter compiles to a real
+conditional branch, and on random data it is a coin flip only at 50%;
+sorting `f` (`cargo run --release --bin sorted_filter`) takes 50% from 5.05
+to 2.23 ns/row and leaves the ends nearly where they were. Underneath it,
+surviving the filter still costs: 95% is 1.4 ns/row slower than 5%, because
+a survivor pays a second `next()` up the chain plus the aggregate's
+accumulate, where a rejected row costs one `next()` call inside the filter's
+own loop. The 95% column is the number to keep in mind when Step 5
+explains why the *probe* is where the two models actually separate.
 
 ### Step 2 — vectorized execution: interpret once per thousand rows
 

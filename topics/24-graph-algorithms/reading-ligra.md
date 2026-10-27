@@ -19,7 +19,7 @@ the frontier's out-edges or pull over all vertices' in-edges — and
 getting it wrong can make a single round traverse the graph's *entire*
 edge set when a small fraction of it would have done; Ligra moves that
 choice out of every algorithm and into one framework function with one
-threshold: **|frontier| + its out-degree sum vs m/20**.
+threshold: **|frontier| + its out-degree sum vs m/20**. Ligra+ (the compressed variant, byte and run-length byte codes) is read in [topic 52](../52-graph-compression/reading-ligra-plus.md).
 
 ## The concepts, step by step
 

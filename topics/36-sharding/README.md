@@ -55,7 +55,7 @@ three times (§6.2):
 |---|---|---|
 | 1 | T random tokens per node; partition = token gap | new node must "steal" ranges: donors *scan disk* to find the keys (bootstrap "took almost a day"), Merkle trees of split ranges recomputed, no clean key-space snapshot |
 | 2 | T random tokens + Q fixed equal partitions | decouples placement from partitioning — an interim step |
-| 3 | Q/S tokens per node, equal partitions | best balance; membership metadata **3 orders of magnitude smaller** than strategy 1; partitions transfer as whole files; archival is trivial |
+| 3 | Q/S tokens per node, equal partitions | best balance; the authors report membership information smaller by **three orders of magnitude** than strategy 1 (§6.2 states it in prose; no table or measurement behind the figure); partitions transfer as whole files; archival is trivial |
 
 The lesson generalizes: **fixed partitions + movable ownership** beats
 "partition boundaries follow node identity." Redis cluster hard-codes

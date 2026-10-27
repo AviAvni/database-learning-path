@@ -625,6 +625,100 @@ representation for the scan, expensive one only for survivors.
 picks the scorer per collection config, and the RAM/mmap/chunked
 storage variants live beside it.
 
+### Step 7 — recall is a property of decisions, not of average distance error
+
+> **In:** Step 6's oversample-and-rescore pipeline and the error numbers of
+> Steps 2–5. **Out:** the 2026 argument that quantization damages a graph search
+> only where a comparison's margin is small, with its measured evidence and its
+> stated scope — and what that says about how to choose a rung.
+
+Every rung above is compared by *fidelity*: how closely the quantized distances
+track the exact ones, summarised as mean squared error, a rank correlation, or
+end-to-end recall. Xiao and Cao (*When Does Low-Bit Quantization Preserve the
+Decisions of Vector Search?*, [arXiv:2609.09854](https://arxiv.org/abs/2609.09854),
+v1, Sep 2026) start from a puzzle: the same two-bit coordinate code that the
+authors report recovers 95 % of exact neighbours on Cohere text embeddings
+recovers 2 % on GIST image descriptors (abstract; the figures come from their
+earlier QuIVer paper, cited in §1, not from this one). Average distortion does
+not explain the gap, they argue, because a graph search never consumes a
+distance, only **comparisons** — "is candidate x closer than candidate y?" — and
+a comparison fails only when quantization noise crosses the exact boundary it sits
+on.
+
+**The decomposition.** Let Ψ be the exact signed quantity a comparison decides
+(for ranking, the difference of two distances), Γ = |Ψ| its **margin**, and R the
+**calibrated residual**, the quantized quantity minus c times the exact one for a
+fitted scale c (§3.1). A **flip** is the quantized comparison disagreeing with the
+exact one. Theorem 2 (§3.1) says, for any threshold τ > 0 and with no assumption
+about how R and Ψ relate,
+
+  P(flip) ≤ P(0 < Γ ≤ τ) + P(|R| ≥ c·τ):
+
+the chance a comparison is *near a tie*, plus the chance the noise is *large*. A
+global fidelity metric averages over both and so cannot tell them apart; a
+well-correlated code can still flip many comparisons if the candidates a search
+actually compares are close together, which is exactly what candidate lists are.
+
+**Two worked numbers from the paper.**
+
+1. *Shared error cancels* (§1, Example 1; Cohere, two-bit codes). Two distances
+   in a nearest-neighbour comparison have calibrated errors with standard
+   deviations 0.024 and 0.027 and a pooled correlation of 0.87. The variance of
+   their difference is 0.024² + 0.027² − 2 · 0.87 · 0.024 · 0.027 = 0.000576 +
+   0.000729 − 0.001128 = 0.000177, a standard deviation of 0.0133 — the paper's
+   0.013. Ignoring the covariance gives √(0.000576 + 0.000729) = 0.036, 7.4× the
+   variance (0.001305 / 0.000177), the "independence ratio" of §3 and Table 2
+   (7.42×). So a comparison is *less* noisy than either of its distances, because
+   both distances share a query and its quantization error.
+2. *Flip rate falls with standardized margin* (§8.2, Table 6; 4,960 held-out
+   decisions, Cohere-768 two-bit codes). Standardized margin M = c·Γ / v divides
+   the margin by the residual's scale v, so M = 2 means the exact gap is twice the
+   noise level:
+
+| M | < 0.25 | 0.25–1 | 1–2 | 2–3 | 3–5 | > 5 |
+|---|---|---|---|---|---|---|
+| decisions | 70 | 381 | 1,210 | 1,577 | 1,413 | 309 |
+| flip rate | 48.6 % | 25.7 % | 9.50 % | 2.54 % | 0.14 % | 0.00 % |
+
+Weighting by decisions, the overall flip rate is (0.486·70 + 0.257·381 +
+0.095·1,210 + 0.0254·1,577 + 0.0014·1,413) / 4,960 ≈ 5.8 % — dominated by the
+three small-margin bins that hold 1,661 of the 4,960 decisions. The rate drops
+by more than two orders of magnitude and the paper observed no flips above M = 5.
+
+**Predictive power.** Across 24 held-out dataset-and-quantizer configurations
+(12 datasets, two-bit codes with and without rotation), the boundary-plus-tail
+predictor tracks unseen flip rates with Spearman correlation 0.970 for ranking and
+0.992 for pruning, whereas each configuration's global distance Spearman gives
+0.739 and 0.053, and its mean squared error 0.184 and 0.447 (§8.2). "Fidelity is
+a weak predictor of ranking risk and no predictor of pruning risk; the
+standardized margin predicts both."
+
+**Rotation is not a free win.** Step 5 rotates first so coordinates look alike.
+The paper's rotation duality (§5.4): a random rotation equalises coordinate
+variances, which destroys the structure a fixed *coordinate* code exploits and is
+exactly what RaBitQ's randomised codebook needs. Measured effect on Cohere
+(abstract): rotation raises global rank fidelity from 0.58 to 0.93 while leaving
+one held-out flip rate unchanged and raising another by half — fidelity went up
+and decision risk did not go down. Table 2 shows the mechanism for the shared
+error: rotated two-bit codes have residual correlation 0.435 and independence
+ratio 1.77×, against 0.870 and 7.42× unrotated, so rotation removes the
+cancellation that was helping.
+
+**Scope, stated by the authors (§1).** The theory covers fixed candidate sets and
+frozen execution traces; end-to-end recall "additionally depends on candidate
+coverage", which needs separate graph-expansion arguments and is outside the
+paper. The 95 % / 2 % gap is therefore explained *per comparison*, not derived as
+a recall formula; the quoted evidence is on 12 embedding sets, with 80 calibration
+and 160 held-out queries each and fixed 32-neighbour candidate sets (§8.1).
+
+**What this adds to Step 6.** Oversample-and-rescore is the remedy this analysis
+predicts: it only requires the true neighbours to land inside the top
+`oversampling × top`, so only flips among *near-tied* candidates matter, and the
+exact rescore fixes the order inside the shortlist. The practical reading for
+choosing a rung is to measure flip rate by margin bin on your own candidate lists,
+not mean error on random pairs; a rung that looks fine on a global metric can still
+flip the comparisons your search makes.
+
 ## Where each step lives in the code
 
 All at qdrant v1.20.0, `qdrant/qdrant@222b2e44a`.
@@ -666,6 +760,10 @@ variations.
    fit in L1? What happens to the trick when m=64?
 5. M14 decision: which rung of the ladder for graph node embeddings,
    given M17 SIMD comes later — commit + reason.
+6. Two quantizers have the same mean distance error. Why can one flip far
+   more of a graph search's comparisons than the other? Use the margin
+   decomposition, and say which measurement on your own data would tell them
+   apart.
 
 ## Done when
 
@@ -789,7 +887,26 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You wrote answers to all five questions in notes.md, including the M14 rung decision.
+- [ ] You can state why average distance error does not predict which comparisons a quantized search gets wrong, with the paper's numbers.
+  <details><summary>Answer</summary>
+
+  A graph search consumes comparisons, and a comparison flips only when the noise
+  is large enough to cross the exact gap between the two candidates being
+  compared. Theorem 2 (§3.1) bounds the flip probability by the mass of exact
+  margins near zero plus the tail of the calibrated residual, and the two
+  mechanisms are merged by any global fidelity metric. Evidence: on 4,960 held-out
+  Cohere two-bit decisions the flip rate falls from 48.6 % at standardized
+  margin below 0.25 to 0.14 % at 3–5 and 0.00 % above 5 (Table 6), and across 24
+  configurations the margin predicts flip rates with Spearman 0.970 (ranking) and
+  0.992 (pruning) against 0.739 and 0.053 for global rank fidelity (§8.2). Shared
+  error also cancels: individual error standard deviations 0.024 and 0.027 with
+  correlation 0.87 give a difference with standard deviation 0.013, not 0.036.
+  The stated limit (§1): the theory covers fixed candidate sets, not end-to-end
+  recall.
+
+  </details>
+
+- [ ] You wrote answers to all six questions in notes.md, including the M14 rung decision.
   <details><summary>Answer</summary>
 
   For question 4 specifically, the arithmetic is
@@ -806,6 +923,10 @@ Answer each before unfolding it.
 ## References
 
 **Papers**
+- Xiao, Cao — *When Does Low-Bit Quantization Preserve the Decisions of Vector
+  Search?* ([arXiv:2609.09854](https://arxiv.org/abs/2609.09854), v1, Sep 2026):
+  §1 (scope and Example 1), §3.1 (Theorem 2), §5.4 (rotation duality), §8.2
+  (Table 6 and the Spearman comparison), Table 2 (residual correlation). Step 7.
 - Jégou, Douze, Schmid — the PQ paper (IEEE TPAMI 33(1), 2011) —
   gets its own chapter: [reading-pq.md](reading-pq.md). §II-B's
   warning about the lookup table outgrowing cache is the one to have

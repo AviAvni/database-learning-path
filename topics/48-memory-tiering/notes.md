@@ -90,6 +90,59 @@ recorded as the reason the all-cold row and its check exist, not as data.
 Run 1 is therefore excluded from the quoted range as well. Runs 2–5 give
 1.4–2.4× for 0.1–1% hot sets and ~1× at 5%; that is the figure to quote.
 
+### Lane 1c — two-tier emulation (slow tier MODEL; load 13–25, 5 alternating reps of 4 M accesses)
+
+Fast tier: the 1,024 most-accessed 16 KiB pages of an earlier window
+(learned per layout, ties broken by page number). Every other access pays a
+calibrated dependent spin: 165.7 ns = SIDLE Figure 1(c)'s 276.9 − 111.2.
+**The 165.7 ns is a constant taken from a paper; nothing here touched CXL.**
+Counted: slow share (exact for the seed). Measured: control (same loop, same
+bitmap lookup, 0 spin iterations), tiered, and the spin's calibration
+(1.069 ns/iteration, 166 iterations = 163.8 ns per call with call overhead
+included, in the run below).
+
+| hot set | layout | slow share | control ns | tiered ns | control + share × 165.7 | tiered/control |
+|---|---|---|---|---|---|---|
+| 0.1% | packed | 9.8% | 30.61 | 47.79 | 46.92 | 1.56× |
+| | scattered | 83.4% | 51.39 | 219.05 | 189.50 | 4.26× |
+| 0.5% | packed | 9.9% | 41.20 | 59.61 | 57.53 | 1.45× |
+| | scattered | 96.6% | 94.45 | 275.26 | 254.43 | 2.91× |
+| 1.0% | packed | 9.8% | 78.06 | 84.70 | 94.37 | 1.09× |
+| | scattered | 97.4% | 111.44 | 274.28 | 272.84 | 2.46× |
+| 5.0% | packed | 71.7% | 105.69 | 217.38 | 224.53 | 2.06× |
+| | scattered | 98.2% | 128.55 | 293.20 | 291.32 | 2.28× |
+
+scattered/packed with the slow tier, two runs (the first at load 35–42, spin
+calibrated to 166.9 ns per call; the second above):
+
+| hot set | run A | run B |
+|---|---|---|
+| 0.1% | 4.42× | 4.58× |
+| 0.5% | 5.74× | 4.62× |
+| 1.0% | 4.07× | 3.24× |
+| 5.0% | 1.26× | 1.35× |
+
+- **The slow share is the finding, and it is exact:** 9.8% packed against
+  97.4% scattered at a 1% hot set. Time follows it; the ratio is not a
+  property of CXL.
+- **Run B's 1% packed control read 78.06 ns**; runs A and a third run read
+  42.75 and 37.89 ns for the same row. That is the machine, not the layout
+  (load average 13–25), and it is why the 1% row's ratio (3.24×) is the low end
+  of the range. The quotable range is 3.2–5.7× for 0.1–1% hot sets and 1.3×
+  at 5%; the integrator's quiet-machine rerun replaces it.
+- **The spin runs over its calibration inside the loop.** Tiered exceeds
+  control + share × 165.7 by up to 16% (run A: up to 18%; the disturbed 1%
+  packed row is 10% below it), because the in-loop
+  call, the opaque-zero dependency and the slow/fast branch cost a few ns the
+  isolated calibration does not see. The bench's sanity line allows 25% and
+  prints the observed maximum.
+- **5% is the boundary, not an exception:** the packed hot set (3,257 pages)
+  exceeds the 1,024-page fast tier, so 71.7% of its accesses go slow and the
+  advantage of packing shrinks to 1.3×.
+- **What it cannot show:** bandwidth limits, controller queueing and
+  prefetch behaviour of a real CXL link (README, "What this machine cannot
+  measure").
+
 ## Predictions (fill BEFORE running the lanes or implementing the stubs)
 
 | question | prediction | actual |
@@ -98,6 +151,8 @@ Run 1 is therefore excluded from the quoted range as well. Runs 2–5 give
 | lane 1b: packed vs scattered ns/access at a 1% hot set | | |
 | lane 1b: at which hot fraction is scattered/packed largest, and why? | | |
 | lane 1b: 4 KiB pages needed for 90% of accesses, 1% hot, scattered | | |
+| lane 1c: fraction of accesses a 16 MiB fast tier serves, 1% hot set, packed vs scattered (counted) | | |
+| lane 1c: scattered/packed time at 1% hot once every slow access costs +165.7 ns | | |
 | lane 2: pages for 90% for your learned layout on the held-out window | | |
 | lane 2: the same after half the hot set drifts | | |
 | lane 3: TPP fast-hit rate, packed and scattered, 20% fast tier | | |

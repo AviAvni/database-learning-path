@@ -104,6 +104,16 @@ Read these after filling the worksheet. What the reference solution printed
 - Order of work: PPR procedure first (pure read path over CSR), then
   ingest/resolution, then temporal versioning (touches write path).
 
+## Paper numbers worth keeping (ingest cost)
+
+- arXiv:2609.23315 (Graph Memory for LLM Agents: At What Cost?, v1): FalkorDB
+  query geomean 1.81 ms at 1.02 M nodes, 18/20 shapes correct, point update
+  0.85 ms (§5.1, §5.5, App. A.1); no FalkorDB ingest, version or hardware
+  reported. Ingest spread across engines 4.3 M to 5.0 k rows/s (~860×);
+  crossover Corvic AI vs Memgraph q* = 60.16 s / 1.57 ms ≈ 38,318 updates
+  (paper prints 38,304). README section "What a graph-memory benchmark has
+  to report".
+
 ## Infra notes
 
 - Papers read in full: arXiv 2405.14831v3 (HippoRAG), 2404.16130v2

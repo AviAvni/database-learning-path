@@ -10,27 +10,35 @@ use crate::expr::Expr;
 
 /// Bottom-up fixpoint. Returns (result, rule firings).
 pub fn hand_optimize(e: &Expr) -> (Expr, usize) {
+    hand_optimize_ordered(e, false)
+}
+
+/// Same rules, same fixpoint loop; `div_first` moves R4 (division
+/// reassociation) ahead of R2 (strength reduction). This is the control for
+/// "just reorder the rules": it fixes the `(a*2)/2` trap and nothing else
+/// about the approach (see `normalise_bench`).
+pub fn hand_optimize_ordered(e: &Expr, div_first: bool) -> (Expr, usize) {
     let mut cur = e.clone();
     let mut steps = 0;
     loop {
         let before = steps;
-        cur = pass(&cur, &mut steps);
+        cur = pass(&cur, &mut steps, div_first);
         if steps == before {
             return (cur, steps);
         }
     }
 }
 
-fn pass(e: &Expr, steps: &mut usize) -> Expr {
+fn pass(e: &Expr, steps: &mut usize, div_first: bool) -> Expr {
     use Expr::*;
     let rebuilt = match e {
-        Add(a, b) => Add(Box::new(pass(a, steps)), Box::new(pass(b, steps))),
-        Mul(a, b) => Mul(Box::new(pass(a, steps)), Box::new(pass(b, steps))),
-        Div(a, b) => Div(Box::new(pass(a, steps)), Box::new(pass(b, steps))),
-        Shl(a, b) => Shl(Box::new(pass(a, steps)), Box::new(pass(b, steps))),
+        Add(a, b) => Add(Box::new(pass(a, steps, div_first)), Box::new(pass(b, steps, div_first))),
+        Mul(a, b) => Mul(Box::new(pass(a, steps, div_first)), Box::new(pass(b, steps, div_first))),
+        Div(a, b) => Div(Box::new(pass(a, steps, div_first)), Box::new(pass(b, steps, div_first))),
+        Shl(a, b) => Shl(Box::new(pass(a, steps, div_first)), Box::new(pass(b, steps, div_first))),
         leaf => leaf.clone(),
     };
-    match try_rules(&rebuilt) {
+    match try_rules(&rebuilt, div_first) {
         Some(next) => {
             *steps += 1;
             next
@@ -41,7 +49,7 @@ fn pass(e: &Expr, steps: &mut usize) -> Expr {
 
 /// First matching rule wins — THE defining property (and flaw) of
 /// the hand-ordered approach.
-fn try_rules(e: &Expr) -> Option<Expr> {
+fn try_rules(e: &Expr, div_first: bool) -> Option<Expr> {
     use Expr::*;
     // R1: constant folding
     if let Add(a, b) = e {
@@ -59,6 +67,11 @@ fn try_rules(e: &Expr) -> Option<Expr> {
             if *y != 0 {
                 return Some(Num(x / y));
             }
+        }
+    }
+    if div_first {
+        if let Some(r) = div_rules(e) {
+            return Some(r);
         }
     }
     // R2: strength reduction — ordered too early ON PURPOSE
@@ -91,18 +104,29 @@ fn try_rules(e: &Expr) -> Option<Expr> {
         }
     }
     // R4: division reassociation — too late once R2 fired
-    if let Div(m, z) = e {
-        if let Mul(x, y) = &**m {
-            return Some(Mul(x.clone(), Box::new(Div(y.clone(), z.clone()))));
-        }
-        if **z == Num(1) {
-            return Some((**m).clone());
+    if !div_first {
+        if let Some(r) = div_rules(e) {
+            return Some(r);
         }
     }
     // R5: x/x → 1 (assumes x ≠ 0 — the soundness caveat, see README)
     if let Div(a, b) = e {
         if a == b {
             return Some(Num(1));
+        }
+    }
+    None
+}
+
+/// R4: division reassociation and x/1.
+fn div_rules(e: &Expr) -> Option<Expr> {
+    use Expr::*;
+    if let Div(m, z) = e {
+        if let Mul(x, y) = &**m {
+            return Some(Mul(x.clone(), Box::new(Div(y.clone(), z.clone()))));
+        }
+        if **z == Num(1) {
+            return Some((**m).clone());
         }
     }
     None

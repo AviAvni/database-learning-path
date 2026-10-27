@@ -61,6 +61,43 @@ runs with the data already cached in GPU memory, half of which is
 reserved as that cache (§4.1). The per-query breakdown shows joins
 dominating, which is §4's libcudf hash join doing the work.
 
+Sirius keeps the data in GPU memory; the opposite end of the same bus is a
+GPU that must *read the file*. Luo, Chen, Binnig (*Do GPUs Really Need New
+Tabular File Formats?*, DaMoN '26, [arXiv:2602.17335](https://arxiv.org/abs/2602.17335))
+measure cuDF scanning Parquet from local NVMe SSDs straight into an A100's
+memory with GPUDirect Storage, so the PCIe hop above is carrying *file* bytes.
+With the file rewritten for the GPU (many pages per column chunk so the decode
+kernels fill the grid, multi-million-row row groups so each read is MiB-scale,
+per-chunk encoding choice, compression only when it pays) they report 125
+GiB/s of **effective** bandwidth on TPC-H SF300 `lineitem` with four SSDs
+(Fig. 1) — logical bytes after decode divided by scan time, not a bus rate.
+Their own figures bound it: one SSD saturates at 6.4 GiB/s (Fig. 2), four at
+25.6 GiB/s, and 25.6 × 5.3 (the compression ratio Fig. 3 annotates) = 135.7
+GiB/s, an upper bound the reported 125 sits just under. The storage bus, not the 400-3000 GB/s of
+HBM, sets the scan rate, so the lever is *fewer bytes per row*
+([topic 12](../12-columnar-analytics/README.md) §4); and the paper's other half
+is overlap — decode and the query operator for row group *k* run while row
+group *k+1* is read (§4.1, Fig. 4) — the hide-the-transfer rule.
+
+### The transfer path, drawn
+
+```mermaid
+flowchart LR
+    subgraph D["discrete GPU (the paper's A100 + NVMe)"]
+        SSD["NVMe SSD(s)<br/>6.4 GiB/s each<br/>(measured, Luo et al. Fig. 2)"] -- "GPUDirect Storage<br/>DMA over PCIe,<br/>no CPU bounce" --> HBM["GPU memory<br/>(HBM)"]
+        HBM --> DEC["decompress + decode<br/>kernels, grid = pages"]
+        DEC --> OP["query operators<br/>(hash join, agg)"]
+        HOST["host RAM"] -. "cudaMemcpy over PCIe:<br/>the 'transfer tax'" .-> HBM
+    end
+    subgraph U["Apple Silicon (this machine)"]
+        UM["one LPDDR pool"] -- "wgpu still stages<br/>host -> private buffer" --> KER["compute kernel"]
+    end
+```
+
+The left subgraph is where the bytes are *scarce* (storage and PCIe, tens of
+GB/s); the right is where they are not, and the fixed ~1.5 ms dispatch cost of
+section 3 dominates instead.
+
 ## 3. Measured on this machine (Apple M3 Pro, wgpu/Metal)
 
 ```
@@ -86,7 +123,7 @@ happens.
   two-phase size/retrieve pattern (inner_join_size.cu before
   inner_join_retrieve.cu): count matches first, allocate exactly,
   fill second. GPU code can't `Vec::push` — every output needs its
-  size known or an atomic cursor.
+  size known or an atomic cursor. The CPU counterpart of this hash join, with the shared-table vs partitioned trade-off measured, is [topic 54](../54-join-algorithms/README.md).
 - Group-by: shared-memory aggregation per block when cardinality
   fits (groupby/hash/compute_shared_memory_aggs.cu). It does *not*
   spill: `compute_single_pass_aggs.cuh:95-122` sets a device

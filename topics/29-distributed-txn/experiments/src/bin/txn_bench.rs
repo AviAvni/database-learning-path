@@ -58,6 +58,61 @@ fn main() {
     }
     println!();
 
+    // ---- Lane 1b (provided): contention priced in round trips --------------
+    // Same Zipf transfers, now with the cost the topic is about. Batches of
+    // BATCH txns prewrite in order; the first locker of a key wins and a txn
+    // that finds any of its two keys already locked in this batch aborts and
+    // retries first thing in the next batch (retries go to the head, so a
+    // retry beats fresh work). Round trips are counted, not timed, with the
+    // Percolator protocol's fixed costs: a committed attempt pays 4 (start_ts
+    // from the TSO, prewrite, commit_ts from the TSO, commit primary); an
+    // aborted attempt pays 3 (start_ts, prewrite, rollback of the locks it
+    // took). Multiply by a network RTT to get latency.
+    println!("-- contention priced in round trips (provided; model constants 4 / 3 RTT) --");
+    println!(
+        "{:<9} {:>10} {:>10} {:>14} {:>12} {:>10}",
+        "zipf theta", "abort %", "attempts/txn", "RTT per commit", "max attempts", "vs theta 0.5"
+    );
+    let mut base_rtt = 0.0f64;
+    for &theta in &THETAS {
+        let mut z = Zipf::new(ACCOUNTS as usize, theta, 42);
+        let mut retry: Vec<((u64, u64), u32)> = Vec::new();
+        let (mut fresh, mut committed, mut aborted, mut max_attempts) = (0usize, 0u64, 0u64, 0u32);
+        while fresh < TXNS || !retry.is_empty() {
+            let mut batch: Vec<((u64, u64), u32)> = std::mem::take(&mut retry);
+            while batch.len() < BATCH && fresh < TXNS {
+                batch.push((z.transfer_pair(), 1));
+                fresh += 1;
+            }
+            let mut locked: Vec<u64> = Vec::with_capacity(BATCH * 2);
+            for ((a, b), attempt) in batch {
+                if locked.contains(&a) || locked.contains(&b) {
+                    aborted += 1;
+                    retry.push(((a, b), attempt + 1));
+                } else {
+                    locked.push(a);
+                    locked.push(b);
+                    committed += 1;
+                    max_attempts = max_attempts.max(attempt);
+                }
+            }
+        }
+        let rtt = (4 * committed + 3 * aborted) as f64 / committed as f64;
+        if base_rtt == 0.0 {
+            base_rtt = rtt;
+        }
+        println!(
+            "{:<9} {:>9.2}% {:>12.3} {:>14.3} {:>12} {:>9.2}x",
+            theta,
+            aborted as f64 / (committed + aborted) as f64 * 100.0,
+            (committed + aborted) as f64 / committed as f64,
+            rtt,
+            max_attempts,
+            rtt / base_rtt
+        );
+    }
+    println!();
+
     // ---- Lane 2 (stub): Percolator abort rate vs contention ---------------
     let r = catch_unwind(AssertUnwindSafe(|| {
         println!("-- percolator: abort rate vs contention (stub lane) --");

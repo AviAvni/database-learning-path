@@ -24,9 +24,9 @@ describing a technique the source does not use.
 
 Store and intersect sets of u32 IDs cheaply: a sorted `Vec<u32>` costs 4
 bytes/element and answers membership by binary search — the topic
-headline's **246 ns** point miss ([FINDINGS.md](../../FINDINGS.md) row
+headline's **151 ns** point miss ([FINDINGS.md](../../FINDINGS.md) row
 26) — while a flat bitmap over the whole u32 space answers in O(1) like
-that row's **28 ns** 224 MB HashSet but costs **512 MB no matter how few
+that row's **14 ns** 224 MB HashSet but costs **512 MB no matter how few
 elements it holds** (2^32 bits ÷ 8 = 536,870,912 bytes = 512 MiB); no
 single encoding wins, because density varies wildly across the key space
 of any real ID set, so Roaring keeps both and picks per 64K chunk.
@@ -59,8 +59,8 @@ values) the arithmetic is exact and worth doing once:
 
 Below 4,096 the array is smaller (and a bitmap would be mostly zeros); at
 or above it the bitmap is smaller — and it also buys **O(1) membership**
-and word-at-a-time set algebra, the 28 ns HashSet side of the topic
-headline, where the array is the 246 ns binary-search side
+and word-at-a-time set algebra, the 14 ns HashSet side of the topic
+headline, where the array is the 151 ns binary-search side
 ([FINDINGS.md](../../FINDINGS.md) row 26). No threshold tuning, pure
 arithmetic — the same density crossover GraphBLAS meets at whole-matrix
 granularity (topic 20).

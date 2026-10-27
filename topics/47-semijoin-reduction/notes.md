@@ -2,6 +2,8 @@
 
 ## Baseline (provided lane, Apple M3 Pro, measured 2026-10-26)
 
+**Headline vs detail.** FINDINGS row 47 leads with the order effect: 3,020,210 intermediate tuples in the bad join order against 23,246 in the good one (130×) for a 20,210-row answer. After a full Yannakakis reduction (1.07 × N hash operations) the bad order emits 60,504 tuples, no join exceeds the output, and the gap falls to 2.62×; on an already-good order the reduction is pure overhead.
+
 `cargo run --release --bin semijoin_bench`. Seeded generator (`gen.rs`,
 `GraphParams::LANE1`, seed 47): every count below reproduces exactly on any
 machine. Timings are best of 3 in one run; other agents were benchmarking on

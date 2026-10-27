@@ -381,7 +381,7 @@ The menu (`src/Compression/`) includes the general-purpose codecs — LZ4, ZSTD,
 and ZSTD", `CompressionCodecZXC.h:44`) — plus a set of *preprocessors* that shrink nothing
 by themselves: `Delta`, `DoubleDelta` (deltas of deltas — near-zero for regular
 timestamps), `Gorilla` (XOR consecutive floats — sensor values barely change), `FPC`,
-`GCD`, `T64`, and `ALP` (topic 30 material).
+`GCD`, `T64`, and `ALP` (topic 30 material: [reading-alp-chimp.md](../30-timeseries/reading-alp-chimp.md)).
 
 "Preprocessor" is the codebase's own word, not a gloss. `CompressionCodecDelta.cpp:33`
 declares `bool isCompression() const override { return false; }`, and `:39` returns the

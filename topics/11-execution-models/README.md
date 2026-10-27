@@ -3,7 +3,9 @@
 Volcano vs vectorized vs compiled — the defining performance battle of
 modern analytics. Topic 10 chose the plan; this topic is about how fast
 you can RUN it. The gap between tuple-at-a-time and vectorized execution
-is one to two orders of magnitude, and you will measure it yourself.
+is a few-fold for vectorized batches and close to one order of magnitude for a
+fused, branch-free kernel (the reference solution measured 1.7-3.1x and 3.7-9.2x
+across selectivities, `notes.md`), and you will measure it yourself.
 
 ```mermaid
 flowchart LR
@@ -11,7 +13,7 @@ flowchart LR
     M -->|"Volcano '90"| V["next() per TUPLE<br/>interpret per tuple"]
     M -->|"X100 '05"| X["next() per VECTOR<br/>interpret per 1-2K batch"]
     M -->|"HyPer '11"| H["compile plan to<br/>machine code, no next()"]
-    V --> C[same results,<br/>10-100x apart]
+    V --> C[same results,<br/>~2-5x / ~4-9x apart]
     X --> C
     H --> C
 ```
@@ -19,23 +21,36 @@ flowchart LR
 ## The problem, measured (bench lane 1, provided — runs today)
 
 `cargo run --release --bin exec_bench` — 50 M rows,
-`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3:
+`SELECT k, SUM(v) WHERE f < t GROUP BY k`, best of 3 (median of three
+invocations, idle machine, rustc 1.99.0):
 
 ```
-selectivity      volcano
-        5%      0.386 s     129.4 M rows/s
-       50%      0.484 s     103.3 M rows/s
-       95%      0.669 s      74.7 M rows/s
+selectivity      volcano       ns per scanned row
+        5%      0.098 s     511.2 M rows/s     1.96
+       50%      0.272 s     183.5 M rows/s     5.45
+       95%      0.169 s     295.0 M rows/s     3.39
 ```
 
-**103 M rows/s is the tuple-at-a-time ceiling on this machine — and notice which
-way it moves.** Cost rises monotonically with selectivity, because in a Volcano
-pipeline every row that *survives* the filter pays the full per-tuple
-interpretation bill on its way to the aggregate: a virtual call per operator per
-row. The filter is not the expensive part. Passing it is.
+**183 M rows/s at 50% is the tuple-at-a-time ceiling on this machine — and notice
+the shape: it is slowest in the middle, not at the permissive end.** Two costs
+stack. The filter is a data-dependent branch, so at 50% selectivity on random
+data the predictor is wrong about every other row — and a misprediction costs
+more than the whole per-row call chain at 5%. (`cargo run --release --bin
+sorted_filter` runs the same pipeline with `f` sorted: 50% falls from 5.05 to
+2.23 ns/row, while 5% and 95% barely move; [notes.md](notes.md) has the
+numbers.) On top of that, a row that survives pays a second `dyn` return and
+the aggregate's write: 95% vs 5% is 1.4 ns/row slower, about 1.6 ns per
+additional survivor. Topic 0's `branch_misprediction` lane measures the same
+penalty on a flat loop.
+
+The reference solution for the two exercise lanes (`notes.md`, "Reference
+numbers") puts a number on the gap: at 50% selectivity vectorized ran **1.7x**
+faster than Volcano and the fused kernel **9.2x**, in one run of all three
+back to back; the ratios moved between runs on a loaded machine, the ordering
+never did.
 
 Put that next to topic 12's measurement of the same machine — ~50 GB/s of
-sequential u64 fold, about 6.2 G values/s — and the gap is 60×. That gap is what
+sequential u64 fold, about 6.2 G values/s — and the gap is 34× (6200 / 183.5). That gap is what
 vectorized execution and compiled kernels are competing to close, and the
 interesting question is not whether they close it but *what the remainder
 consists of* once they do. Predict the split before you implement either lane.
@@ -131,14 +146,14 @@ workers PULL morsels dynamically instead of getting static partitions.
 
 ## 5. Hash joins and aggregation, vectorized
 
-The two operators where analytics time actually goes.
+The two operators where analytics time actually goes. The third operator that re-packs vectors into rows is `ORDER BY`: [topic 57](../57-sorting/README.md) measures what encoding the sort key once buys over a comparator, and where a radix sort on that key loses.
 
 - **Hash join** (DuckDB `join_hashtable.cpp`): build side materializes
   into row-format tuple data, partitioned by hash radix; the hash table
   stores 8-byte entries = pointer + SALT bits (topic 2's bit-smuggling:
   compare salt before chasing the pointer — most misses never touch the
   tuple). Probe is vectorized: hash 2048 keys, gather 2048 buckets,
-  compare salts, chase survivors via selection vector.
+  compare salts, chase survivors via selection vector. Whether to partition by hash radix at all, and what DuckDB's radix bits are used for, is topic 54's question ([reading-duckdb-join-hashtable.md](../54-join-algorithms/reading-duckdb-join-hashtable.md)).
 - **Hash aggregation**: same skeleton, plus two-phase: threads build
   thread-local partial HTs (no contention), then radix-partitioned
   merge (`RadixPartitionedHashTable`). DataFusion's

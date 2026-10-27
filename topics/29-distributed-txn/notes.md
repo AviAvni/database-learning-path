@@ -34,6 +34,20 @@ The jump from θ=0.9 to 1.1 is the whole story: real workloads sit exactly
 where contention goes from "occasionally" to "usually". Any protocol
 evaluated only at uniform keys is being evaluated on the easy case.
 
+Contention priced in round trips (same bin, provided lane 1b, seeded count — identical on
+every run). Percolator-shaped model: batches of 8, first locker wins, abort ->
+retry at the head of the next batch, 4 RTT per committed attempt (start_ts,
+prewrite, commit_ts, commit primary), 3 RTT per aborted attempt (start_ts,
+prewrite, rollback):
+
+```
+zipf theta    abort % attempts/txn RTT per commit max attempts vs theta 0.5
+0.5            0.03%        1.000          4.001            2      1.00x
+0.9            7.74%        1.084          4.252            6      1.06x
+1.1           50.67%        2.027          7.082            8      1.77x
+1.3           72.90%        3.690         12.070            8      3.02x
+```
+
 ## Predictions (fill BEFORE implementing the stubs)
 
 | lane | predicted | measured |

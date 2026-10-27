@@ -18,7 +18,7 @@ specifically.
 ## The problem in one sentence
 
 Exactness has a price list: a postgres btree probe is 3–4 *page* reads
-cold (299 ns for an in-memory BTreeMap on the motivation bench,
+cold (218 ns for an in-memory BTreeMap on the motivation bench,
 [FINDINGS.md](../../FINDINGS.md) row 26), every insert dirties a leaf page
 plus WAL, and the tree itself costs ~50–100 bits per key — each
 probabilistic structure in this topic undercuts exactly one line of that
@@ -90,7 +90,7 @@ is trying to avoid it:
 ```
 
 On a 10M-key index that's 3–4 page visits, each a cache-or-disk miss
-chain — the in-memory analogue (a `BTreeMap` point miss) measured 299 ns
+chain — the in-memory analogue (a `BTreeMap` point miss) measured 218 ns
 ([FINDINGS.md](../../FINDINGS.md) row 26). What the misses buy is the
 strongest possible answer: the *exact* position of the key, plus
 ordered iteration from it (range scans), on *any* key distribution, with
@@ -196,7 +196,7 @@ its bill.
 
 | AM | granularity | answer type | write cost | shadow in this topic |
 |---|---|---|---|---|
-| nbtree | row (TID) | exact | leaf dirty + WAL per insert | the 246/299 ns baseline lanes |
+| nbtree | row (TID) | exact | leaf dirty + WAL per insert | the 151/218 ns baseline lanes |
 | GIN | key → TID set | exact set | pending-list amortized | roaring/postings (topic 23) |
 | BRIN | 128-page range | one-sided maybe | update range summary | zone maps (topic 12), bloom's cousin |
 
@@ -222,7 +222,7 @@ rare case where that order pays.
 
 ## Questions to answer in notes.md
 
-1. Our motivation table: BTreeMap miss = 240 ns *in memory*. A postgres
+1. Our motivation table: BTreeMap miss = 218 ns *in memory*. A postgres
    btree probe on a cold cache is 3-4 *page* reads. Where does the
    learned index's "the top of the tree is predictable" claim break for
    postgres? (Hint: pages move; TIDs aren't positions in a sorted array;
@@ -269,7 +269,7 @@ Answer each before unfolding it.
   The 3–4 page reads of `_bt_search` (nbtsearch.c:100) / `_bt_binsrch`
   (:343) return the *exact* position — no false positives to verify — plus
   ordered iteration for range scans, on any key distribution. The
-  in-memory analogue is a 299 ns `BTreeMap` point miss
+  in-memory analogue is a 218 ns `BTreeMap` point miss
   ([FINDINGS.md](../../FINDINGS.md) row 26). A filter only ever says
   "definitely absent / maybe present"; it can neither locate the row nor
   scan in order.
@@ -316,7 +316,7 @@ Answer each before unfolding it.
 
   </details>
 
-- [ ] You wrote answers to all questions in notes.md, including the M26 synthesis — and you have this topic's in-memory baseline (BTreeMap miss at 299 ns) to put beside postgres's page-based numbers.
+- [ ] You wrote answers to all questions in notes.md, including the M26 synthesis — and you have this topic's in-memory baseline (BTreeMap miss at 218 ns) to put beside postgres's page-based numbers.
 
   <details><summary>Answer</summary>
 
@@ -324,7 +324,7 @@ Answer each before unfolding it.
   nbtree, LSM blooms → none (postgres has no LSM to hang them on), roaring
   label filters → GIN, HLL count-distinct → none (postgres computes
   `count(DISTINCT)` exactly). The absence that hurts a graph workload most
-  is the missing per-file bloom, priced by point-miss cost (299 ns) ×
+  is the missing per-file bloom, priced by point-miss cost (218 ns) ×
   MATCH miss rate — the product topic 4 already measured.
 
   </details>

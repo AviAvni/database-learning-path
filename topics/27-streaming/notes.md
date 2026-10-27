@@ -63,9 +63,37 @@ speedup disappoints, the fix is an indexed/spine state (an arrangement!)
 
 ## Reference numbers for the exercise lanes
 
-No reference run is recorded for this topic's stubs; the stub tests are the
-specification (incremental results equal full recompute after every batch,
-and the relaxation bound of 4m).
+Read these after filling the worksheet. A scratch reference solution passing
+every stub test (triangles: per-edge `|N(u) ∩ N(v)|` against current
+`HashMap<u32, BTreeSet<u32>>` state; wedge join: `delta_join` composed from
+`join_oracle` over the integrated `ZSet` state, then `merge`; reach: frontier
+BFS from newly-connected endpoints) printed, from `cargo run --release --bin
+ivm_bench` (Apple M3 Pro, 2026-10-27, one run on an idle machine; the
+full-recompute lines of that same run were 100.8 / 885.3 / 29.2 ms):
+
+| lane | incremental | speedup in that run | check |
+|---|---|---|---|
+| triangles, +90/-10 batch | 69.5 µs/batch | 1450x | count 1365 == oracle |
+| wedge join | 41,175 µs/batch | 21x | wedges 21,063,140 == oracle |
+| reach, 50 insert chunks | 655.2 µs/batch | 44x | |reached| 50000; 110,608 relaxations for 500,000 edges |
+
+- **A "3-5 orders of magnitude" claim does not
+  reproduce.** The best lane is 1450x (3.2 orders) and the median is 44x
+  (1.6 orders). The wedge join, whose incremental form is the textbook
+  bilinear identity, reaches only 21x because `ZSet::merge` re-sorts the whole
+  1 M-entry state every batch and `join_oracle` rebuilds a hash index over the
+  whole other side: the delta is 200 rows, the state work is 2 M. The fix is
+  the arrangement the author's prediction flagged, and it is left as the
+  exercise's stretch.
+- The triangle `probes` counter reads 3,144,377 after the whole run because it
+  includes loading the 500 K-edge base through `apply`; the per-batch work is
+  the test's `< 4000` probes bound.
+- Semi-naive relaxations: 110,608 for 500,000 edges, 0.22 per edge — far under
+  the 2m bound, because most late chunks land inside the already-reached
+  component and cost nothing.
+
+The stub tests remain the specification (incremental results equal full recompute
+after every batch, and the relaxation bound of 4m).
 
 ## Questions to answer while reading (from the guides)
 

@@ -107,6 +107,24 @@ vectorises; a real engine materialises every tuple into an output vector. Re-run
 on a loaded machine (load 12.5), the same rows took up to 2.3× longer while
 every count stayed identical — see [notes.md](notes.md).
 
+**What a graph-aware optimizer changes — and what it does not.** RelGo
+(Lou et al., [reading-relgo.md](reading-relgo.md)) is the optimizer-side test
+of the sentence above. Its graph index is the CSR of this crate, its
+`EXPAND_EDGE`/`GET_VERTEX` pair is `expand.rs`, and the paper's physical
+operators flatten the adjacency lists back into one tuple per neighbour
+(§3.2.2), so for a path pattern its plan enumerates the same 2,272,724,241
+tuples as the table above: the access path, 1.3× here, is what the graph index
+buys on this pattern. The paper's 21.9× average over DuckDB (LDBC100, §5.3.1)
+comes from other things — filters pushed into the match (299.4× and 699.8× on
+two queries at LDBC10/30), join orders that keep expanding along the index,
+and worst-case-optimal intersection for cycles — none of which a filterless
+acyclic path has. The C engine, run on the same seeded graph, enumerates the
+flat tuples too: **234,636,483 3-hop paths in 30,091.5 ms, about 128 ns per
+row**, against 0.2–0.35 ns per tuple for this crate's bare loops
+([notes.md](notes.md#c-falkordb-on-the-same-graph-measured-2026-10-26-apple-m3-pro)).
+A real engine's cost per flat tuple is two to three orders of magnitude above
+the lower bound, which is the case for not building them.
+
 ## Step 1 — a graph pattern is a join, and the join is many-to-many
 
 **SQL/PGQ** declares a property graph as a view over tables and queries it with
@@ -209,6 +227,7 @@ has ratios that do not match its own milliseconds.
 3. [reading-crpq-unified-planning.md](reading-crpq-unified-planning.md) — Pang, Zou, Bonifati, Özsu & Zhou (VLDB'26): RPQs and CRPQs, six operators, the cost model worked; Table 5's "average speedup" is a ratio of averages.
 4. [reading-duckpgq.md](reading-duckpgq.md) — DuckPGQ (CIDR'23) and `cwida/duckpgq-extension` at `29ca668`, with TurboLynx's measurement of it.
 5. [reading-postgres-sqlpgq.md](reading-postgres-sqlpgq.md) — PostgreSQL's SQL/PGQ rewriter at the reverted commit `2f094e7ac69`.
+6. [reading-relgo.md](reading-relgo.md) — RelGo (Lou et al., PACMMOD 2(6) / SIGMOD, Dec 2024, arXiv:2408.13480) and the cross-model-tax preprint (arXiv:2609.05014): what a graph-aware optimizer changes about the flat lowering — and what it leaves alone — read against lane 1's numbers; the same pattern on the C FalkorDB engine.
 
 ## Experiments
 
@@ -218,6 +237,10 @@ cargo test              # 8 provided tests pass; 5 stub tests (lanes 2 and 3) fa
 cargo run --release --bin pgq_bench
 ```
 
+- `src/bin/pgq_edges.rs` and `cengine.py` (PROVIDED) — dump lane 1b's seeded edge
+  list and run the same 2- and 3-hop pattern on the C FalkorDB engine
+  (redis-server + `falkordb.so`, non-default port); prints `[skip — …]` and
+  exits 0 when the module is absent. Results in [notes.md](notes.md).
 - `gen.rs` (PROVIDED) — SplitMix64 and an integer-only power-law generator
   (sorted, deduplicated edge list), the ten-edge relation of FFX Fig. 1a, and a
   hash-based edge labelling for lane 3.
@@ -274,6 +297,7 @@ cargo run --release --bin pgq_bench
   multi-source BFS family; lane 3's product BFS is BFS on a product graph.
 - **Topic 27 (incremental views) ↔ 46.** Semi-naive recursion is the delta
   rule; lane 3 shows that under set semantics it already does BFS's work.
+- **Topic 55 (Datalog engines) ↔ 46.** The closure `WITH RECURSIVE … UNION` derives is the quantity [topic 55](../55-datalog-engines/README.md)'s lane 1 counts; its lane 3 evaluates the same closure as a masked sparse product.
 
 ## Capstone M46 — factorized expansion and closures as join operands
 
@@ -295,3 +319,4 @@ representation of intermediates.
       `(a)-[:R*1..k]->(b)` as a closure that can be intersected with other edges
       at `b` (Pang et al.'s TI-with-KC), under explicit set or bag semantics,
       and measure lane 3's pairs-vs-walks gap through Cypher.
+- [ ] For patterns whose intermediate vertices are unnamed, decide `count(*)` bag vs set semantics explicitly, and test the decision against the C engine's two answers in notes.md.

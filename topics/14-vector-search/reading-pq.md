@@ -344,6 +344,15 @@ builds.
   oversample-and-rescore
   ([reading-qdrant-quantization.md](reading-qdrant-quantization.md)),
   which fixes ranking errors rather than distance bias.
+- **How to measure the damage.** PQ's error is judged here by distance
+  error (Step 3). The 2026 decision-level analysis argues the quantity
+  that matters for a graph search is the flip rate of comparisons by
+  their standardized margin, not mean error; it treats product
+  quantizers through the same interface as binary codes (§1, §7). The
+  measured margin table is Step 7 of
+  [reading-qdrant-quantization.md](reading-qdrant-quantization.md); no
+  PQ-specific number from that paper is quoted here because none was
+  verified.
 
 ## How to read the paper (with the concepts in hand)
 

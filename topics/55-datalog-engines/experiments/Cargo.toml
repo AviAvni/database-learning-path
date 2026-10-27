@@ -1,0 +1,12 @@
+[package]
+name = "datalog-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+debug = true

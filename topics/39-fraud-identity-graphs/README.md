@@ -113,6 +113,24 @@ FAUC 0.761/0.843 vs FRAUDAR's 0.529/0.704, and holds F1 ≥ 0.9 down to
 injected volumes of $76M vs FRAUDAR's $180M. Covered as a reading guide
 plus exercise 5 — the peeling machinery is the same as fraudar.rs.
 
+The identity-resolution pipeline the lane builds, from raw records to
+account clusters that the dense-block detectors above then run on:
+
+```mermaid
+flowchart TD
+    R["records"] --> B["blocking passes<br/>(last name OR dob ...)<br/>candidate pairs only"]
+    B --> U["estimate u from random pairs"]
+    B --> E["EM per pass: fit p and m<br/>with u fixed, skipping the<br/>field that pass blocked on"]
+    U --> S["score each candidate pair<br/>log2 R = sum of per-field weights"]
+    E --> S
+    S --> T{"R vs thresholds"}
+    T -->|"R > T_mu"| MATCH["match edge"]
+    T -->|"between"| CL["clerical review"]
+    T -->|"R < T_lambda"| NO["non-match"]
+    MATCH --> UF["union-find:<br/>entity clusters"]
+    UF --> G["entity-level graph:<br/>peel dense blocks (FRAUDAR)<br/>or dense flow (FlowScope)"]
+```
+
 ## Production shape: splink (cloned under ~/repos/splink @ 04189f5)
 
 | anchor (`splink/internals/`) | what to see |

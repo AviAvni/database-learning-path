@@ -40,7 +40,7 @@ every fast kernel hardcodes.
 
 ## 3. Branchless selection: the filter kernel
 
-The DB kernel (SIGMOD '15's centerpiece). Three shapes:
+The DB kernel (SIGMOD '15's centerpiece). The same idea drives Rust's branchless partition and sorting-network base case, and IPS⁴o's branch-free classification ([topic 57](../57-sorting/reading-rust-sort.md)). Three shapes:
 
 ```
  branchy:     if v[i] < t { out[k++] = v[i] }        ← mispredicts at 50% sel
@@ -52,6 +52,21 @@ The DB kernel (SIGMOD '15's centerpiece). Three shapes:
               vqtbl1q (simdjson arm64/simd.h:283-299,
               `compress_halves`, does exactly this for 8-byte
               compaction; :267-276 is the 16-byte `compress`)
+```
+
+The NEON compress path, step by step (no hardware compress instruction exists
+there, so a lookup table stands in for it):
+
+```mermaid
+flowchart LR
+    V["16 input bytes<br/>v[i..i+16]"] --> C["compare with t<br/>lane mask 0xFF / 0x00"]
+    C --> M["narrow to a<br/>bit mask (movemask)"]
+    M --> L["LUT[mask]<br/>shuffle indices"]
+    V --> T["vqtbl1q: gather the<br/>selected lanes to the front"]
+    L --> T
+    T --> S["unconditional store<br/>at out + k"]
+    M --> P["k += popcount(mask)"]
+    P --> S
 ```
 
 Selectivity decides the winner: branchy wins at ~0%/100% (predicted

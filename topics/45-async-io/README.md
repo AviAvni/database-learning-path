@@ -68,6 +68,13 @@ device itself starts to queue: p50 climbs to 203 µs at 64, and the extra
 in-flight reads buy latency rather than throughput — 244,300 → 248,363 IOPS from
 32 to 64 is a 1.7% gain for twice the threads.
 
+Which path this is matters when you set it beside other topics' latencies. These
+rows read *around* the page cache (`F_NOCACHE`), so 68.8 µs is the device. A read
+that hits the page cache costs 612 ns per call for one page (lane 1c, warm cache,
+`notes.md`) — two orders of magnitude less — and topic 28's "local NVMe 0.10 ms"
+is not a measurement at all but a simulated latency (90–119 µs first byte plus
+transfer, `28-cloud-native/experiments/src/sim.rs`) chosen to be NVMe-shaped.
+
 That is the io_uring paper's §3.3 result restated on a laptop. Their buffer
 manager, synchronous, runs at **16.5 k tx/s through POSIX and 16.5 k tx/s
 through io_uring** — the same number, because "throughput is directly tied to
@@ -327,7 +334,7 @@ DLP_IO_FILE=/mnt/nvme/x.dat cargo run --release --bin io_bench   # measure a spe
 - **Topic 6 (buffer pool) ↔ 45.** The buffer manager is where reads become
   I/O. The mmap chapter's "page faults are I/O you cannot schedule" is the
   QD-1 problem; LeanStore's `O_DIRECT` and vmcache are the engines Jasny et al.
-  and Lee et al. build on.
+  and Lee et al. build on. [reading-predictive-translation.md](../06-buffer-pool/reading-predictive-translation.md) is the hash-table-pool counterpart to LeanStore and vmcache.
 - **Topic 7 (networking) ↔ 45.** Completion vs readiness notification, and
   who owns the buffer between submission and completion — the same inversion
   for sockets and for disk.

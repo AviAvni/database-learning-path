@@ -139,7 +139,7 @@ which has no `src/graph/`. Open the files with
 This is topic 3's LSM memtable+tombstones, rebuilt over matrices —
 same read-merge, same deferred compaction, same "don't block the
 writer" motive. Guide:
-[reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md).
+[reading-falkordb-delta-matrix.md](reading-falkordb-delta-matrix.md). The measured side of this design — flush cost, c + F/T, delta growth, and the same graph in a real FalkorDB — is [topic 51](../51-dynamic-graph-storage/README.md). [Topic 52](../52-graph-compression/reading-graphblas-bytes.md) counts the bytes per edge of these matrices (4.5 for an iso boolean, 12.5 for the UINT64 tensor, 32-bit indices) with a probe linked against FalkorDB's libgraphblas; renumbering is a row/column permutation that changes no result. [Topic 55](../55-datalog-engines/README.md) shows that the transitive-closure loop `D' = (D·A)⟨¬T⟩` is LAGraph's BFS level with a matrix frontier: its flops equal semi-naive evaluation's derivations, so GraphBLAS changes the cost of a derivation, not their number.
 
 ## 6. Parallelism: OpenMP inside SuiteSparse, rayon in Rust
 
@@ -203,6 +203,31 @@ thread right, and who owns the workspace?
 - GPU GraphBLAS (GraphBLAST/Gunrock) = topic 18's regime question:
   frontiers ship, matrices stay resident.
 
+## 8. GxB_Container — handing a Rust CSR to GraphBLAS without copying it
+
+FalkorDB's Rust rewrite will own its adjacency as plain CSR arrays and call
+GraphBLAS for the operations it has not rewritten. SuiteSparse 10.0.0 added
+the door for that: **`GxB_Container`** (`Doc/ChangeLog:147–153`), a struct
+with one slot per array of a `GrB_Matrix` (`p`, `h`, `b`, `i`, `x`, and `Y`
+for the hypersparse hash). `GxB_Vector_load` points a slot at a caller's array
+— readonly, so the caller keeps ownership — and
+`GxB_load_Matrix_from_Container` moves the slots into the matrix: pointer
+assignments only, "O(1) time" by the source's own comment
+(`Source/container/GB_load_from_container.c:261`). Row pointers may be 64-bit
+and column indices 32-bit, which is exactly this topic's `Csr`.
+
+Measured on RMAT scale 14–20 (120,128 to 8,175,704 entries): load and unload
+cost **0.12 µs at every size**; `GrB_Matrix_build` of the same entries
+costs 386 → 4,582 µs in CSR order and 7,210 → 107,659 µs shuffled,
+`extractTuples` 106 → 3,492 µs, and a plain `memcpy` of the CSR 19 → 2,126 µs.
+The price of O(1) is that the library checks only lengths, not that indices are
+sorted or in range. On the same matrices `GrB_mxv` against this topic's SpMV
+kernel, on the Rust CSR in place: 3–4× slower with the JIT off (the generic
+kernel), 1.2–1.7× faster with it on, and 1.4–7.0× faster with 11 threads
+([notes.md](notes.md)). The chapter reads the source line by line and states
+the ownership rules a Rust wrapper must follow:
+[reading-gxb-container.md](reading-gxb-container.md).
+
 ## Experiments (`experiments/`)
 
 | file | role |
@@ -213,11 +238,13 @@ thread right, and who owns the workspace?
 | src/bfs.rs | PROVIDED scalar queue BFS oracle; **STUB** push (SpMSpV), pull (masked SpMV w/ early exit), and direction-optimizing switch |
 | src/hyper.rs | PROVIDED — hypersparse row index; bench shows when 80 MB of rowptr disappears |
 | src/bin/gb_bench.rs | PROVIDED — RMAT scale sweep: SpMV GB/s, SpGEMM variants, BFS push/pull/adaptive with per-level frontier trace |
+| src/bin/gb_container.rs, src/gbffi.rs, shim/gb_shim.c, build.rs | PROVIDED — links a real SuiteSparse:GraphBLAS v10 install: Container load/unload vs `GrB_Matrix_build`/`extractTuples` vs `memcpy`, and `GrB_mxv` vs the Rust SpMV on the same seeded matrix. Prints `[skip — libgraphblas not found]` and exits 0 without an install (`GRAPHBLAS_DIR` or a standard prefix) |
 
 ```bash
 cd topics/20-graphblas/experiments
 cargo test         # oracle + provided green; stubs panic
 cargo run --release --bin gb_bench
+GRAPHBLAS_DIR=/path/to/install cargo run --release --bin gb_container
 ```
 
 ## M20 (capstone)
@@ -242,3 +269,5 @@ cargo run --release --bin gb_bench
 6. reading-falkordb-delta-matrix.md — then implement the stubs
 7. reading-openmp-vs-rayon.md — saxpy3's OpenMP scheduling vs rayon
    work-stealing, before parallelizing the M20 kernels
+8. reading-gxb-container.md — how a Rust-owned CSR crosses into GraphBLAS
+   without a copy (the door a Rust CSR needs)

@@ -71,8 +71,11 @@ The payoff of cell granularity: replica A sets `post.title` while
 replica B concurrently sets `post.likes` on the *same row* — both
 survive, because they're different registers. Row-granularity LWW would
 throw one whole row away. Same column → one write still loses; bench
-lane 1 (FINDINGS row 31) priced that at **94.98%** — 37,991 of 40,000
-acknowledged writes to 10 hot keys lost under per-write sync.
+lane 1 (FINDINGS row 31) priced that: with 10 hot keys and per-write sync,
+**5.00%** of acknowledged writes (2,000 of 40,000) are replaced by a write that
+never saw them, and about 20% when the sync window is as long as the key space
+(lane 1b). The 94.98% a plain overwrite counter reports is mostly ordinary
+sequential updates, not losses.
 
 ### Step 3 — versions without wall clocks: db_version and col_version
 
@@ -258,7 +261,7 @@ Answer each before unfolding it.
   writing `post.title` and replica B concurrently writing `post.likes` on
   the same row both survive — they are different registers with their own
   `col_version`. Row-granularity LWW would keep only one replica's whole
-  row and silently drop the other's column write. Lane 1's 94.98% loss is
+  row and silently drop the other's column write. Lane 1's 5.00% concurrent-loss rate (10 hot keys, per-write sync) is
   the *same-cell* collision rate; row-granularity would add cross-column
   losses on top of it, so per-cell is strictly less lossy (Step 2).
 

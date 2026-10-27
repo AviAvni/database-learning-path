@@ -73,6 +73,7 @@ uniform data measures a different algorithm.
 - [reading-brandes.md](reading-brandes.md) — Brandes betweenness: restructure the sum, not the data structure
 - [reading-ligra.md](reading-ligra.md) — Ligra: two functions, every frontier algorithm
 - [reading-louvain-leiden.md](reading-louvain-leiden.md) — Louvain to Leiden: communities that stay connected
+  ([Topic 52](../52-graph-compression/README.md) uses community order — sort vertices by (community, degree) — as the cheap vertex ordering, and measures what it buys in bytes per edge and cache misses.)
 - [reading-lagraph-algos.md](reading-lagraph-algos.md) — Analytics with four verbs: LAGraph's algorithm shelf
 - topic 20: `reading-lagraph.md` (BFS push/pull) and `reading-beamer-sc12.md` — direction switching's origin
 

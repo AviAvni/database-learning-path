@@ -509,7 +509,7 @@ The full menu:
 The cost of getting this wrong is asymmetric, which is the argument
 for a planner rather than a constant: brute-forcing a 90% filter
 scans ~900k points for nothing, while HNSW-ing a 1% filter returns
-garbage — and unlike the first mistake, the second one is silent.
+garbage — and unlike the first mistake, the second one is silent. The survey ladder and the measured over-fetch table are in [reading-filtered-ann-survey.md](reading-filtered-ann-survey.md).
 
 One more place the filter reaches into the walk: where it starts.
 `HnswGraph::get_entry_point` (`graph.rs:219-273`) first looks for a

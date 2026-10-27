@@ -387,7 +387,7 @@ The speedups, kept together so they cannot be quoted loose:
 
 The abstract's headline — "up to an order of magnitude faster than the
 state-of-the-art scalar and vector approaches" — is the top-left cell
-of that table, not a general result.
+of that table, not a general result. On an M3 the plain scalar radix join's best configuration is a single pass of 9–12 bits ([topic 54](../54-join-algorithms/README.md), lane 2 reference numbers).
 
 ## Questions for notes.md
 
