@@ -444,40 +444,41 @@ often the guess is wrong. `direct` is correct only when every page is in its
 preferred frame, so it is shown only at 0%.
 
 Output of two runs on an Apple M3 Pro (ns per page access; 5 M accesses per
-cell; the two numbers in a cell are run 1 / run 2; the benchmark lock was held
-but the machine was busy with unrelated builds, so read the ratios, not the
-absolute nanoseconds):
+cell; the two numbers in a cell are run 1 / run 2, measured 2026-10-27 on an
+otherwise idle machine):
 
 ```text
  miss%  workload         direct          hash         predictive
-     0  independent    4.2 /  4.9    14.2 / 10.8    10.9 /  8.5
-     0  chained      101.5 / 102.9   213.4 / 198.2  107.5 / 107.5
-    10  independent       -           9.8 / 10.2      8.8 /  8.6
-    10  chained           -         201.1 / 200.9   130.6 / 118.5
-    50  independent       -          11.2 / 10.3     16.4 / 16.1
-    50  chained           -         243.2 / 209.5   178.4 / 184.2
+     0  independent    3.9 /  3.6     9.1 /  9.4     7.2 /  7.3
+     0  chained       86.9 / 86.3    183.3 / 181.3   99.6 / 100.7
+    10  independent       -           9.4 /  9.5      8.1 /  8.1
+    10  chained           -         181.5 / 178.5  107.0 / 108.5
+    50  independent       -           9.4 /  9.3     13.4 / 13.0
+    50  chained           -         182.7 / 178.2  160.9 / 161.6
 ```
 
 How to read it. **Chained, 0% miss** is the clean test of Step 4: `hash` costs
-about 200 ns — two DRAM misses in a row, one for the table slot and one for the
-page, each about 100 ns — and `predictive` costs 107.5 ns in both runs, within
-6% of `direct` (101.5 and 102.9), which has no translation at all. The lookup's
-latency is hidden almost completely, as the paper's Listing 2 promises; the
-saving here (about 45%) is larger than the paper's 20.6% (§6.4) because this
+about 180 ns — two DRAM misses in a row, one for the table slot and one for the
+page, each about 90 ns — and `predictive` costs about 100 ns in both runs, 15–17%
+above `direct` (86.9 and 86.3), which has no translation at all. Most of the
+lookup's latency is hidden, as the paper's Listing 2 promises — what remains is
+the lookup's own instructions, which no longer wait on a miss; the saving against
+`hash` (about 45%) is larger than the paper's 20.6% (§6.4) because this
 lane isolates the one dependent pair and the paper's number is a whole B-tree
 lookup with other work in it. **As the guess gets worse the saving erodes
-smoothly**: at 10% miss `predictive` is 118–131 ns, at 50% it is 178–184 ns,
-against `hash` at 200–243. Treating each access as "fast with probability
-1 − m, slow otherwise" and solving from the 50% row (0.5 × 107 + 0.5 × x = 181)
-puts the slow path near 255 ns, 25–55 ns *above* plain `hash`: the price of a
+smoothly**: at 10% miss `predictive` is 107–109 ns, at 50% it is 161–162 ns,
+against `hash` at 178–183. Treating each access as "fast with probability
+1 − m, slow otherwise" and solving from the 50% row (0.5 × 100 + 0.5 × x = 161)
+puts the slow path near 222 ns, about 40 ns *above* plain `hash`: the price of a
 mispredicted branch and of the wasted speculative read. The break-even miss rate
-under that estimate is about 107 + m·(255 − 107) = 205 → m ≈ 66%. Two predictions
+under that estimate is 100 + m·(222 − 100) = 181 → m = 81 / 122 ≈ 66%; the same
+model predicts 100 + 0.1 × 122 = 112 ns at 10% miss, against 107–109 measured. Two predictions
 fit in two numbers: the technique wins while most accesses hit their preferred
 frame, and loses once most do not — which is why the paper's promotion policy
 (Step 5) exists. **Independent** accesses tell a smaller story: the CPU already
-overlaps neighbouring iterations, so `hash` is only 10–14 ns per access and
-`predictive` 8.5–11 ns at 0%; at 50% miss it is *worse* than `hash` (16 against
-10–11 ns). The overlap trick pays where there is a dependent chain to hide
+overlaps neighbouring iterations, so `hash` is only 9 ns per access and
+`predictive` 7 ns at 0%; at 50% miss it is *worse* than `hash` (13 against
+9 ns). The overlap trick pays where there is a dependent chain to hide
 behind — a tree descent — and costs where there is not.
 
 

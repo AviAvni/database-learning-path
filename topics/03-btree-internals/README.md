@@ -47,7 +47,7 @@ u64    n=   1000000  insert std 154.0 bb 121.9 ns (1.26x) | get std 203.8 bb  71
 String n=   1000000  insert std 457.5 bb 245.3 ns (1.86x) | get std 700.1 bb 270.0 ns (2.59x)
 ```
 
-Single gets are 2.3–3.2× faster than std across two runs, not the 5× in the
+Single gets are 2.2–3.2× faster than std across three runs, not the 5× in the
 crate's README: that figure sits inside the author's own *batched* range (his
 one-thread tables: gets 1.7–4.1×, batched 2.4–6.6×), and batching 16 keys per
 `get_many` is here a further 2.1–2.7× on top of bbtree's own `get` at 10M. [`reading-bbtree.md`](reading-bbtree.md)

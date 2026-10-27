@@ -62,7 +62,9 @@ checksums are identical, only the timings move):
 | u64 | 10M | 294.2 → 215.1 / 294.2 → 190.6 | 352.5 → 151.1 / 568.1 → 175.6 | 73.0 / 65.8 |
 | String | 1M | 457.5 → 245.3 / 413.7 → 226.3 | 700.1 → 270.0 / 676.3 → 271.8 | — |
 
-(run 1 / run 2 in each cell.) Single `get` is 2.3–3.2× faster than std at 10M;
+(run 1 / run 2 in each cell. A third run on an idle machine, `./verify.sh 03`
+2026-10-27, gave get 2.25× / 2.51× / 2.23× at 100K / 1M / 10M and get_many16
+5.49× std's get at 10M.) Single `get` is 2.2–3.2× faster than std at 10M;
 `get_many16` is 2.1–2.7× faster than bbtree's own `get` at 10M and gives almost nothing
 at 100K, where the tree is cache-resident. The crate README's "5× faster than
 std at single thread" does not reproduce for single gets; the author's own

@@ -784,7 +784,7 @@ String 1M     run 1     457.5 → 245.3  1.86×       700.1 → 270.0  2.59×
 
 What to read from it:
 
-- **Single `get`: 2.3–3.2× faster than std at 10M, 2.4–2.8× at 1M.** The
+- **Single `get`: 2.2–3.2× faster than std at 10M, 2.4–2.8× at 1M.** The
   README's "5× faster than std's `BTreeMap` at single thread" does **not**
   reproduce for single gets here, and the author's own tables do not show it
   either: his one-thread table on the 9900X at 10M (`design/14-blogpost.md`
@@ -903,7 +903,7 @@ predicts depth and bytes, then a catalogued list of how reality contradicted
 it** — a saved level is not a saved miss, fewer misses is not lower latency, and
 the compiler can flip a result. Its verification story is narrower than its
 badge, and its speed claim is narrower than its headline: on this machine single
-gets are 2.3–3.2× and batches of 16 are 2.1–2.7× faster again at 10M; "5×" is
+gets are 2.2–3.2× and batches of 16 are 2.1–2.7× faster again at 10M; "5×" is
 a batched number.
 
 ## Done when
@@ -1047,7 +1047,7 @@ Answer each before unfolding it.
   <details><summary>Answer</summary>
 
   On this machine (Apple M3 Pro, system allocator, single thread, two runs):
-  single `get` 2.3–3.2× faster than std at 10M and 2.4–2.8× at 1M; random insert
+  single `get` 2.2–3.2× faster than std at 10M and 2.4–2.8× at 1M; random insert
   1.3–1.5×; `String` get at 1M 2.5–2.6× (the favourable, rarely-tying key
   shape); `get_many` of 16 at 10M 4.8–8.6× std and 2.1–2.7× bbtree's own `get`.
   The author's own one-thread tables on a 9900X give `u64` get 2.4× and

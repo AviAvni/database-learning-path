@@ -41,14 +41,14 @@ dependent chain of accesses (each page names the next), M3 Pro, ns per access:
 
 ```
  miss%  workload       direct      hash     predictive
-     0  chained         101.5     213.4        107.5
-    10  chained           -       201.1        130.6
-    50  chained           -       243.2        178.4
+     0  chained          86.9     183.3         99.6
+    10  chained           -       181.5        107.0
+    50  chained           -       182.7        160.9
 ```
 
 **A hash lookup in front of a dependent page read doubles the cost — two DRAM
 misses in series instead of one — and reading the guessed frame beside the
-lookup gets it back to within 6% of no translation at all, as long as the guess
+lookup gets it back to within 15% of no translation at all, as long as the guess
 is right.** At 50% wrong guesses most of the saving is gone. Two runs, ratios
 stable; full table in `notes.md`.
 

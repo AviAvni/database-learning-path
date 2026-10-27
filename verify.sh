@@ -55,7 +55,7 @@ BENCHES=(
   "01-storage-engine-landscape:engine-shootout:the RUM conjecture priced — space amp, B-tree vs LSM"
   "02-in-memory-structures:rehash_spike:the doubling rehash you can see in the tail"
   "03-btree-internals:btree_baseline:height is one lever; cache residency is the other"
-  "03-btree-internals:bbtree_vs_std:an in-memory B+tree against std — 2.3-3.2x on get, and batches that overlap the misses"
+  "03-btree-internals:bbtree_vs_std:an in-memory B+tree against std — 2.2-3.2x on get, and batches that overlap the misses"
   "05-durability-wal:fsync_ladder:what a durable commit costs, per sync policy"
   "06-buffer-pool:pool_vs_mmap:mmap's tail — the page fault you cannot schedule"
   "06-buffer-pool:translation_micro:a hash lookup doubles a dependent page read; a guessed frame hides it"
